@@ -1,0 +1,513 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "http-basics-and-headers"
+module = "networking"
+title = "HTTP Basics and Security Headers"
+short_title = "HTTP and Headers"
+package = "http"
+main_class = "HttpDemo"
+tagline = "A web request is just text, and every line of it is the sender's choice"
+bold = "HTTP messages are plain text that the sender controls, so a server must read them strictly, never put raw text in a header, set cookies with care, and tell the browser what to refuse with security headers."
+domain = "an online store"
+domain_note = ""
+youtube_description = """HTTP basics and security headers in Java: an HTTP message is text, and the sender writes every line. Explained with an online store. We parse and write a request byte by byte, refuse messages that two programs could read differently (the idea behind request smuggling), refuse header injection through a customer's search text, judge session cookies for HttpOnly, Secure and SameSite, and score a real response from a real local server against five security headers."""
+thumb_lines = ["HTTP BASICS AND", "SECURITY HEADERS"]
+thumb_code = "Set-Cookie: Secure; HttpOnly"
+youtube_title = "HTTP Basics and Security Headers in Java (Cookies, Smuggling, Injection)"
+youtube_tags = ["http", "security headers", "cookies", "httponly", "samesite", "request smuggling", "header injection", "hsts", "java", "cybersecurity for beginners"]
+
+[readme]
+intro = """
+**HTTP** is how browsers talk to web servers, and an HTTP/1.1 message is plain text: a **request line**, some **headers**, a blank line and an optional **body**. Every line is chosen by the sender, and the server and any proxy
+in front of it must read it the same way. When they do not, an attacker can hide a second request inside the first, which is the idea behind **request smuggling**. When a server puts a customer's text into a header without checking for line breaks,
+the customer can add headers of their own: **header injection**. **Cookies** carry the login, so their attributes (**HttpOnly**, **Secure**, **SameSite**) decide who can read or send them. And **security headers** tell the browser what to refuse:
+use HTTPS only, load scripts only from the site, do not guess content types, do not be put in a frame, do not leak the address.
+
+The demo parses and writes messages, refuses ambiguous ones, refuses injection, judges four cookies, and scores two real responses from a real server on this machine.
+"""
+analogy = """
+Think of an order form that anyone can fill in by hand. The shop's clerk and the warehouse worker must read it the same way: if the clerk thinks the form ends at the first signature and the worker keeps reading, a second order written below
+gets filled for the wrong person. A customer's name written on the form must not be able to add a new line that says "deliver to me". Cookies are the membership card, and the headers are the notices on the shop door: "enter only by this door",
+"no photographs", "do not follow strangers' directions".
+"""
+scenario = """
+An online store receives a purchase request, redirects a search, sets a session cookie and serves pages. The demo shows each of those messages as text, shows which malformed versions are refused, judges cookies, and audits the headers of a real response.
+"""
+costs = [
+    "**Strict parsing refuses some real traffic.** Old clients and odd proxies sometimes send folded headers or bare line feeds. Refusing them is safer, and it should be logged so a real client with a bug is found.",
+    "**SameSite=Strict can break links.** A customer who follows a link from another site arrives without the cookie and looks logged out, so Lax is the usual choice for a session.",
+    "**A strict Content-Security-Policy takes work.** Inline scripts and styles must be moved out or given nonces, and every third-party script must be listed.",
+    "**HSTS is hard to undo.** Once a browser has seen a long max-age, it will refuse plain HTTP for that long, so it should be rolled out with a short age first.",
+    "**The demo is a model.** The parser handles a request with a Content-Length body only: no chunked bodies, no HTTP/2, no folding, no obsolete forms. Real servers do more, and their own defences should be switched on.",
+]
+too_much = """
+Every public site should send the five headers and set its session cookie with HttpOnly, Secure and SameSite. Writing a parser is rarely needed: the point is to know what the server and the proxy in front of it do with an odd message,
+and to configure both to refuse it.
+"""
+met_before = [
+    "The browser developer tools' Network tab, which shows request and response headers.",
+    "`curl -v`, which prints the lines of both messages.",
+    "Scanners such as securityheaders.com and Mozilla Observatory that grade a site's headers.",
+    "Advisories titled \"HTTP request smuggling\" for proxies and servers.",
+]
+where = """
+This project is the third in [networking](..), after [tcp-ip-basics](../tcp-ip-basics), and prepares the transport-security module: HTTPS is HTTP carried inside TLS.
+"""
+twin = """
+Messages are built and parsed in memory, so the demo is exact. The real exchange uses the JDK's own HTTP server and HTTP client on the loopback interface, and the demo prints only facts that do not depend on the port number.
+"""
+test_note = "Messages are parsed and written in memory, cookies and headers are judged by fixed rules, and the one real exchange prints only facts that do not depend on the port number, so the golden output is the same on every run."
+
+[[act]]
+title = "An HTTP message is just text"
+summary = "A request of 82 characters is parsed into method, target, Host and a 17-byte body, and written out again as the same text."
+detail = """
+A customer's browser sends 82 characters: a request line, headers, a blank line and a body. Parsed, it is a POST to /orders for the host shop.example with a 17-byte body. Written out again it is the same text.
+Every header is only a line of text that the sender chose, so the server must check it.
+"""
+speech = """
+First demo: an H T T P message is just text. [[slnc 400]] A customer's browser sends eighty two characters. [[slnc 300]] A request line, headers, a blank line, and a body. [[slnc 600]]
+Parsed, it is a post to orders, for the host shop dot example. [[slnc 300]] Written out again, it is the same text. [[slnc 600]]
+Every header is only a line of text that the sender chose. [[slnc 300]] So the server must check it.
+"""
+rows = { message = "active ok" }
+console = [
+    ["a customer's browser sends 82 characters: a request line, headers, a blank line, and a body", "muted"],
+    ["parsed: method POST, target /orders, Host shop.example, body 17 bytes", "ok"],
+    ["written out again it is the same text: true", "ok"],
+    ["every header is only a line of text that the sender chose, so the server must check it", "amber"],
+]
+
+[[act]]
+title = "Messages that two programs could read differently"
+summary = "Both Content-Length and Transfer-Encoding, two different lengths, a space before a colon and a body with a hidden second request are all refused; the exact request is accepted."
+detail = """
+A proxy and a server in a chain must agree where a request ends. Content-Length and Transfer-Encoding together are refused. Two different Content-Length headers are refused. A space before the colon in a header name is refused.
+A body longer than its Content-Length, with a second request hidden after it, is refused. The same request, plain and exact, is accepted. When a proxy and a server disagree about where a request ends, the rest is read as the next customer's request.
+"""
+speech = """
+Second demo: messages that two programs could read differently. [[slnc 400]] A proxy and a server must agree where a request ends. [[slnc 600]]
+Content length and transfer encoding together are refused. [[slnc 300]] Two different content lengths are refused. [[slnc 300]] A space before the colon is refused. [[slnc 600]]
+A body with a second request hidden after it is refused. [[slnc 600]]
+The same request, plain and exact, is accepted. [[slnc 600]]
+When a proxy and a server disagree about where a request ends, the rest is read as the next customer's request.
+"""
+rows = { ambiguity = "active wrong" }
+console = [
+    ["Content-Length and Transfer-Encoding together: refused (both Content-Length and Transfer-Encoding)", "ok"],
+    ["two different Content-Length headers: refused (two different Content-Length headers)", "ok"],
+    ["a space before the colon in a header name: refused", "ok"],
+    ["a body longer than its Content-Length, with a second request hidden after it: refused (Content-Length says 4 bytes but 47 follow)", "ok"],
+    ["the same request, plain and exact: accepted", "ok"],
+    ["when a proxy and a server disagree about where a request ends, the rest is read as the next customer's request", "amber"],
+]
+
+[[act]]
+title = "Header injection"
+summary = "A normal search redirect is written; search text with a line break and a second header is refused, because otherwise the attacker would set a cookie."
+detail = """
+The store puts the customer's search text in a redirect address. A normal search, shoes, is written. Search text with a line break and a second header is refused: without the check, the attacker sets a cookie.
+The answer is to refuse or encode line breaks in anything that reaches a header.
+"""
+speech = """
+Third demo: header injection. [[slnc 400]] The store puts the customer's search text in a redirect address. [[slnc 600]]
+A normal search is written. [[slnc 600]]
+Search text with a line break and a second header is refused. [[slnc 300]] Without that check, the attacker sets a cookie. [[slnc 600]]
+So refuse or encode line breaks in anything that reaches a header.
+"""
+rows = { injection = "active wrong" }
+console = [
+    ["the store puts the customer's search text in a redirect address", "muted"],
+    ["a normal search, shoes: written", "ok"],
+    ["search text with a line break and a second header: refused (a line break inside the value of Location)  <- WITHOUT THE CHECK THE ATTACKER SETS A COOKIE", "bad"],
+    ["the answer is to refuse or encode line breaks in anything that reaches a header", "amber"],
+]
+
+[[act]]
+title = "Cookies that carry a login"
+summary = "A bare cookie has three problems; Secure, HttpOnly, SameSite=Lax and Path=/ has none; SameSite=None without Secure has two; a __Host- cookie with a Domain has one."
+detail = """
+Four cookies are judged. session=abc123 has three problems: no HttpOnly, no Secure and no SameSite. With Secure, HttpOnly, SameSite=Lax and Path=/ it has none.
+With HttpOnly and SameSite=None but no Secure it has two. And a cookie with the __Host- prefix and a Domain attribute has one, because that prefix needs Secure, Path=/ and no Domain.
+"""
+speech = """
+Fourth demo: cookies that carry a login. [[slnc 400]] A bare cookie has three problems. [[slnc 300]] No HttpOnly, so a script can read it. [[slnc 300]] No Secure, so it is sent over plain H T T P. [[slnc 300]] No SameSite, so other sites can trigger requests that carry it. [[slnc 600]]
+With all three set, it has none. [[slnc 600]]
+SameSite none without Secure has two. [[slnc 600]]
+And a cookie with the host prefix and a domain has one.
+"""
+rows = { cookie = "active amber" }
+console = [
+    ["session=abc123  ->  problems: 3 (no HttpOnly, no Secure, no SameSite)", "bad"],
+    ["session=abc123; Secure; HttpOnly; SameSite=Lax; Path=/  ->  problems: 0", "ok"],
+    ["session=abc123; HttpOnly; SameSite=None  ->  problems: 2", "amber"],
+    ["__Host-session=abc123; Secure; HttpOnly; SameSite=Strict; Path=/; Domain=shop.example  ->  problems: 1", "amber"],
+]
+
+[[act]]
+title = "Security headers on a real response"
+summary = "A real local server with no security headers scores 0 of 5, the same server with the five headers scores 5 of 5, and headers set badly score 1 of 5."
+detail = """
+A real request to a plain server on this machine returns status 200 with security headers present: 0 of 5. The same request to a server that sets the five headers scores 5 of 5: Strict-Transport-Security, Content-Security-Policy,
+X-Content-Type-Options, X-Frame-Options and Referrer-Policy. Headers present but set badly score 1 of 5, because a header is only worth its value.
+"""
+speech = """
+Fifth demo: security headers on a real response. [[slnc 400]] A real request to a plain server on this machine has none of the five. [[slnc 600]]
+The same request to a server that sets them scores five out of five. [[slnc 600]]
+Strict transport security. Content security policy. No sniff. Frame options. Referrer policy. [[slnc 600]]
+Headers that are present but set badly score one out of five. [[slnc 300]] A header is only worth its value.
+"""
+rows = { headers = "active ok" }
+console = [
+    ["a real request to a plain server: status 200", "muted"],
+    ["security headers present: 0 of 5", "bad"],
+    ["the same request to a server that sets the five headers: 5 of 5", "ok"],
+    ["headers present but set badly score 1 of 5: a header is only worth its value", "amber"],
+]
+
+[animation]
+subtitle = "An online store's requests, redirects, cookies and headers, and what each one lets an attacker do."
+boxes = [
+    ["message", "A message", "text the sender controls"],
+    ["ambiguity", "Ambiguity", "where does the request end?"],
+    ["injection", "Injection", "a line break adds a header"],
+    ["cookie", "Cookies", "HttpOnly, Secure, SameSite"],
+    ["headers", "Security headers", "what the browser must refuse"],
+]
+
+[docs.problem]
+scenario = """
+An online store sits behind a proxy and receives requests from browsers and from anyone else. It sets a login cookie and sends pages that browsers must handle safely.
+"""
+naive = """
+Trust whatever arrives, copy customer text into headers, set cookies with defaults, and leave the browser to guess.
+"""
+deliver = [
+    "A strict HTTP/1.1 request parser and a response writer that refuse ambiguity and line breaks in headers.",
+    "A cookie judge for HttpOnly, Secure, SameSite and the __Host- prefix.",
+    "A header auditor for five security headers that checks values and not only presence.",
+    "A real server and client on this machine, so the audit runs on headers that crossed a socket.",
+    "The same facts printed on every run.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "A rough idea of what a browser, a server and a cookie are",
+]
+not_required = [
+    "The HTTP specification",
+    "Any web framework",
+    "A proxy: its part is described, not run",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "describe the parts of an HTTP/1.1 request and response",
+    "explain how two programs reading one message differently allows smuggling",
+    "explain header injection and how to prevent it",
+    "choose cookie attributes for a login session",
+    "name five security headers and what each tells the browser",
+]
+walkthrough = """
+Start with the order form analogy. Run the demo one act at a time. After act two, ask what a proxy would do with the hidden request. After act three, ask where else customer text reaches a header. In act four, ask which attribute stops which attack.
+In act five, ask why presence is not enough.
+"""
+exercises = [
+    "Add support for a chunked body, keep the refusal of Content-Length together with Transfer-Encoding, and test it.",
+    "Add a sixth header, Permissions-Policy, to the auditor.",
+    "Add the Max-Age and Expires attributes to the cookie judge and flag a session cookie that lasts a year.",
+    "Run `curl -v` against the loopback server and match each line to the parser's rules.",
+]
+
+[docs.explained]
+sentence = """
+An HTTP message is text written by the sender, so a server must read it strictly and the same way as the proxy in front of it, keep customer text out of headers, set cookies with HttpOnly, Secure and SameSite, and send security headers whose values really restrict the browser.
+"""
+verdict = """
+Use a current, well-maintained server and proxy, and keep them updated. Refuse ambiguous messages and log them. Encode customer text before it reaches a header. Set session cookies with HttpOnly, Secure and SameSite=Lax, and the __Host- prefix when possible.
+Send the five headers, starting HSTS with a short age. Grade the site with a scanner after every change.
+"""
+recognise = [
+    "`Set-Cookie: ...; Secure; HttpOnly; SameSite=Lax` in login responses.",
+    "`Strict-Transport-Security` and `Content-Security-Policy` in a framework's security configuration.",
+    "Spring Security's `headers()` configuration and nginx's `add_header`.",
+    "Advisories about request smuggling in proxies.",
+]
+
+[spec]
+purpose = """
+Teach how HTTP messages are built and abused by writing a strict parser and writer for an online store, judging cookies, and auditing the security headers of a real response.
+"""
+nongoals = [
+    "A complete HTTP implementation: chunked bodies, HTTP/2, connection reuse and caching.",
+    "A framework's security configuration: the Spring Boot and nginx counterparts.",
+    "TLS: the transport-security module.",
+]
+problem = """
+Learners see HTTP through frameworks and do not know what the server receives, what a proxy changes, or what a header does.
+"""
+roles = [["Request model", "`HttpRequest`"], ["Strict parser", "`HttpParser`"], ["Response writer", "`HttpResponse`"], ["Cookie judge", "`Cookie`"], ["Header auditor", "`HeaderAudit`"], ["A real exchange", "`LoopbackExchange`"], ["Entry point", "`HttpDemo`"]]
+requirements = [
+    "A request round-trips through the parser and the writer.",
+    "Ambiguous messages are refused: both lengths, differing lengths, a space before a colon, folded headers, bare line feeds, wrong body length.",
+    "A response with a line break in a header value or a bad header name is refused.",
+    "Cookies are judged for HttpOnly, Secure, SameSite and the __Host- prefix.",
+    "Headers are audited for value as well as presence.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A request through a proxy to the server"
+caption = "Two programs read the same bytes, and the attacker lives in the gap between how they read them."
+nodes = [
+    { id = "browser", label = "Browser", sub = "writes the request text", col = 0, row = 0, colour = "client" },
+    { id = "proxy", label = "Proxy", sub = "decides where the request ends", col = 1, row = 0, colour = "amber" },
+    { id = "server", label = "Server", sub = "decides again", col = 2, row = 0, colour = "green" },
+    { id = "app", label = "The store", sub = "sets cookies and headers", col = 3, row = 0, colour = "accent" },
+]
+edges = [
+    { from = "browser", to = "proxy" },
+    { from = "proxy", to = "server", label = "forwards the bytes" },
+    { from = "server", to = "app" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "HttpParser reads, HttpResponse writes, Cookie and HeaderAudit judge."
+nodes = [
+    { id = "parser", label = "HttpParser", sub = ["parse(raw)"], col = 0, row = 0, colour = "green" },
+    { id = "request", label = "HttpRequest", sub = ["method, target, headers, body", "serialize()"], col = 1, row = 0, colour = "green" },
+    { id = "response", label = "HttpResponse", sub = ["status, headers, body", "serialize()"], col = 2, row = 0, colour = "green" },
+    { id = "cookie", label = "Cookie", sub = ["parse(setCookie)", "problems()"], col = 0, row = 1, colour = "amber" },
+    { id = "audit", label = "HeaderAudit", sub = ["audit(headers)", "score(findings)"], col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "parser", to = "request", label = "produces" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The parts of a request"
+caption = "Each part is a line or block of text the sender wrote."
+nodes = [
+    { id = "line", label = "Request line", sub = "POST /orders HTTP/1.1", col = 0, row = 0, colour = "client" },
+    { id = "headers", label = "Headers", sub = "Host, Content-Length, Cookie", col = 1, row = 0, colour = "accent" },
+    { id = "blank", label = "Blank line", sub = "ends the headers", col = 2, row = 0, colour = "amber" },
+    { id = "body", label = "Body", sub = "exactly Content-Length bytes", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "line", to = "headers" },
+    { from = "headers", to = "blank" },
+    { from = "blank", to = "body" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A strict parse: who decides what"
+participants = ["Browser", "HttpParser", "The store"]
+steps = [
+    ["Browser", "HttpParser", "request text"],
+    ["note", "HttpParser", "one length, no folding, no bare line feeds, exact body"],
+    ["HttpParser", "The store", "an HttpRequest", "reply"],
+    ["The store", "Browser", "response with cookie and five headers", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Request smuggling"
+caption = "The proxy thinks one request, the server thinks two."
+participants = ["Attacker", "Proxy", "Server"]
+steps = [
+    ["Attacker", "Proxy", "one request that carries a second one in its body"],
+    ["note", "Proxy", "Content-Length says the body ends here: one request"],
+    ["Proxy", "Server", "the same bytes"],
+    ["note", "Server", "Transfer-Encoding says it ends sooner: two requests"],
+    ["Server", "Server", "runs the hidden request as if from the proxy"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Header injection"
+caption = "A line break in customer text starts a new header."
+participants = ["Attacker", "The store", "Victim's browser"]
+steps = [
+    ["Attacker", "The store", "search text with a line break and Set-Cookie"],
+    ["The store", "Victim's browser", "redirect whose Location is followed by the attacker's header", "reply"],
+    ["note", "Victim's browser", "stores the attacker's cookie"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["proxy", "app"], colour = "green" },
+    { label = "The customer's browser", nodes = ["browser", "cookie"], colour = "amber" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "proxy", label = "Proxy and server", sub = "read the request", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T1"] },
+    { id = "app", label = "The store's code", sub = "builds headers and cookies", col = 0, row = 1, colour = "green", shape = "ellipse", threats = ["T2"] },
+    { id = "browser", label = "Browser", sub = "obeys security headers", col = 1, row = 0, colour = "client", threats = ["T4"] },
+    { id = "cookie", label = "Session cookie", sub = "the login", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T3"] },
+    { id = "attacker", label = "Attacker", sub = "sends crafted text", col = 2, row = 0, colour = "red", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "attacker", to = "proxy", label = "ambiguous request", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "app", label = "line break in text", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "attacker", to = "cookie", label = "reads or sends it", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "app", to = "browser", label = "response and headers" },
+]
+
+[poster]
+headline = [["HTTP BASICS AND", "text"], ["SECURITY HEADERS", "accent"]]
+taglines = [["A web request is just text, and every line of it is the sender's choice", "gold"]]
+before = { code = "Set-Cookie: session=abc", note = "readable, and sent anywhere", tag = "BEFORE" }
+after = { code = "Secure; HttpOnly; SameSite=Lax", note = "plus five security headers", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "HTTP Basics and Security Headers"
+narration = """Hello, and welcome. [[slnc 400]] This video explains H T T P basics and security headers, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] H T T P is how browsers talk to web servers. [[slnc 300]] A message is plain text, and the sender writes every line. [[slnc 600]] Think of an order form filled in by hand. [[slnc 300]] The clerk and the warehouse must read it the same way. [[slnc 300]] A customer's name must not be able to add a new line that says, deliver to me. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how messages are read strictly. [[slnc 300]] How injection works. [[slnc 300]] How cookies are set safely. [[slnc 300]] And which headers tell the browser what to refuse."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store sits behind a proxy.", "", "It receives requests from browsers", "and from anyone else,", "sets a login cookie,", "and sends pages browsers must handle safely."]
+narration = """Here is the scenario. [[slnc 400]] An online store sits behind a proxy. [[slnc 500]] It receives requests from browsers, and from anyone else. [[slnc 300]] It sets a login cookie. [[slnc 300]] And it sends pages that browsers must handle safely."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Header: a name and a value, one line", "Cookie: a small value the browser sends back", "HttpOnly: scripts cannot read it", "SameSite: other sites cannot send it", "HSTS: always use HTTPS for this site"]
+narration = """Before the demos, the words. [[slnc 500]] A header is a name and a value, on one line. [[slnc 500]] A cookie is a small value that the browser sends back. [[slnc 500]] HttpOnly means scripts cannot read it. [[slnc 500]] SameSite means other sites cannot make the browser send it. [[slnc 500]] And H S T S tells the browser to always use H T T P S for this site."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Five Headers, Five Refusals"
+body = ["Strict-Transport-Security: no plain HTTP", "Content-Security-Policy: scripts only from here", "X-Content-Type-Options: do not guess types", "X-Frame-Options: do not be framed", "Referrer-Policy: do not leak addresses"]
+narration = """Let's put the five headers side by side. [[slnc 400]] Strict transport security. Do not use plain H T T P. [[slnc 500]] Content security policy. Load scripts only from here. [[slnc 500]] X content type options. Do not guess file types. [[slnc 500]] X frame options. Do not let other sites put this one in a frame. [[slnc 500]] Referrer policy. Do not leak the address to other sites. [[slnc 600]] Each one is a refusal that the browser enforces for you."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["HttpParser: strict reading", "HttpRequest, HttpResponse: the messages", "Cookie: parse and judge", "HeaderAudit: score five headers", "LoopbackExchange: a real server and client"]
+narration = """Here is who does what in the code. [[slnc 400]] The parser reads a request strictly and refuses ambiguity. [[slnc 500]] The request and response classes are the messages, and the response refuses line breaks in headers. [[slnc 500]] The cookie class parses a cookie and judges it. [[slnc 500]] The header audit scores a response. [[slnc 300]] And the loopback exchange runs a real server and client on this machine."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Developer tools: the Network tab", "curl -v", "Header scanners and grades", "Smuggling advisories for proxies"]
+narration = """You have probably met this already. [[slnc 400]] The network tab in your browser's developer tools shows every header. [[slnc 500]] The command curl with the dash v option prints both messages. [[slnc 500]] Header scanners give sites a grade. [[slnc 500]] And security advisories for proxies often mention request smuggling."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Keep the proxy and server updated", "Refuse ambiguity, and log it", "Encode customer text in headers", "HttpOnly, Secure, SameSite on the session", "Five headers, with real values"]
+narration = """So, how do you use it? [[slnc 400]] Keep the proxy and the server up to date. [[slnc 500]] Refuse ambiguous messages, and log them. [[slnc 500]] Encode customer text before it reaches a header. [[slnc 500]] Set the session cookie with HttpOnly, Secure and SameSite. [[slnc 500]] And send the five headers, with values that really restrict the browser."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a sixth header", "to the auditor."]
+narration = """That's H T T P basics and security headers. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A web request is just text that the sender wrote, so read it strictly, keep customer text out of headers, and tell the browser what to refuse. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a sixth header to the auditor. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store's HTTP handling: how a proxy and server read requests, how the store builds response headers and cookies from customer text, and which security headers it sends to the browser. It covers an attacker who can send crafted requests and text.
+It does not cover TLS, the contents of pages, or the web application's own logic.
+"""
+assets = [
+    "The customer's session cookie.",
+    "The integrity of each request: that it means the same to every program that reads it.",
+    "The response headers that set the browser's rules.",
+    "Other customers' requests in the same connection.",
+]
+actors = [
+    "Customers and their browsers.",
+    "An attacker who can craft requests and customer text.",
+    "The proxy and the server in front of the store.",
+]
+boundaries = [
+    "Internet to proxy: every byte is chosen by the sender.",
+    "Proxy to server: the two must read the bytes alike.",
+    "Customer text to response headers: line breaks must not cross it.",
+    "Server to browser: security headers are the store's only way to set the browser's rules.",
+]
+assumptions = [
+    "The browser enforces the headers it is sent.",
+    "Transport is protected by TLS, which is the next module.",
+    "In the demo, the proxy is not run: its disagreement with the server is shown by the strict parser's refusals.",
+]
+out_of_scope = [
+    "TLS and certificates.",
+    "Cross-site scripting in the page itself, which Content-Security-Policy limits but does not remove.",
+    "HTTP/2 and HTTP/3 framing.",
+]
+tests = [
+    "`ParserTest` checks round trips and the refusal of both lengths, differing lengths, spaces before colons, folded headers, bare line feeds, wrong body lengths and header injection.",
+    "`CookieAndHeaderTest` checks cookie judgement, header scores for empty, hardened and badly set headers, and a real loopback exchange.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, transport security, starts with the TLS handshake: how a connection like these becomes private and authenticated.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "A request is read differently by the proxy and the server, hiding a second request"
+where = "`HttpParser`"
+control = "Refuse both Content-Length and Transfer-Encoding, differing lengths, odd header names, folding and bare line feeds"
+residual = "Real proxies and servers must be configured and updated to be as strict, and HTTP/2 end to end removes the ambiguity"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "Customer text with a line break adds a header or splits the response"
+where = "`HttpResponse.serialize`"
+control = "Refuse line breaks in header names and values"
+residual = "Encoding the text is better than refusing it, so the customer still gets an answer"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "A session cookie is read by a script, sent over plain HTTP or sent by another site"
+where = "`Cookie.problems`"
+control = "HttpOnly, Secure, SameSite and the __Host- prefix"
+residual = "A cookie that is still stolen from the device or by a network observer on HTTP is valid until it expires"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "The browser allows a page to be framed, sniffed, downgraded or to run any script"
+where = "`HeaderAudit`"
+control = "Strict-Transport-Security, Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy"
+residual = "Headers reduce what an injected script can do, and do not remove the injection"
