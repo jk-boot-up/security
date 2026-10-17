@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authentication vs Authorization with Spring Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Authentication vs Authorization with Spring Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/authspring/
+├── CommonConfig.java             What every version of the shop shares: the controller, the ownership rules and the four accounts
+├── CountingPasswordEncoder.java  BCrypt, which is slow on purpose, with a counter of how many passwords were checked
+├── LayeredConfig.java            Version three with a second layer: a rule on the address itself, so an endpoint that forgot its annotation is still guarded
+├── LoginOnlyConfig.java          Version two: authentication only
+├── OpenConfig.java               Version one: Spring Security is present, but every request is permitted
+├── OrderRules.java               Who owns each order
+├── PolicyConfig.java             Version three: authentication, then authorization
+├── Shop.java                     One running copy of the shop: a Spring application context holding Spring Security's filter chain, driven by MockMvc, so requests go through the real chain without opening a network port
+├── ShopController.java           The store's order endpoints
+└── SpringAuthDemo.java           Runs the online store story in five numbered acts, with Spring Security, and prints exact, repeatable results
+</code></pre>
+<p><strong>Spring Security answers who is asking with a login filter and a password encoder, and what they may do with rules on the endpoints, and a forgotten rule is still an open door.</strong></p>
+<p>This project teaches the same two questions as the plain version, <strong>authentication</strong>
+(who are you?) and <strong>authorization</strong> (what may you do?), but with a framework
+doing the work. Spring Security puts a chain of filters in front of the
+application. One filter reads the username and password. A password encoder
+checks them against a stored BCrypt hash. If nobody is known, the chain answers
+401. Rules written on the endpoints, such as <code>@PreAuthorize</code>, decide what a known
+person may do, and a refusal is a 403.</p>
+<p>The demo runs the real filter chain through Spring's <code>MockMvc</code>, so there is no web
+server and no network port. The online store, its four people and the five acts
+are the same as in the plain project, so the two can be compared side by side.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a hotel again, now with a security desk at the door. The desk checks
+every guest's passport (the authentication filter), and a key-card system holds
+the rules for who may open which door (the authorization rules). You still run
+the hotel. The framework simply makes sure nobody walks past the desk, and that
+every door asks the key-card system.</p>
+<h2>The scenario</h2>
+<p>The online store has customers Ana and Ben, support staff Sam and an admin Alex.
+Version one has Spring Security installed but permits everything. Version two
+requires a login and nothing else, so a signed-in customer can still refund any
+order. Version three adds <code>@PreAuthorize</code> rules to the endpoints. A last act shows
+two costs: an endpoint whose rule was forgotten is open to every signed-in user,
+and HTTP Basic checks the password on every single request.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Spring Security present, but every request permitted</td>
+<td>With the filter chain set to permit everything, anyone can refund and view any order.</td>
+</tr>
+<tr>
+<td>2. Authentication: HTTP Basic, passwords stored as BCrypt</td>
+<td>No credentials or a wrong password get a 401; the right password gets 200; stored passwords start with the BCrypt marker.</td>
+</tr>
+<tr>
+<td>3. Authenticated is not the same as authorized</td>
+<td>With the login rule and nothing else, a customer can refund orders and read other people's orders.</td>
+</tr>
+<tr>
+<td>4. Authorization: @PreAuthorize rules on the endpoints</td>
+<td>Rules on the methods decide: no credentials get 401, a customer who may not gets 403, support and admins get what their role allows.</td>
+</tr>
+<tr>
+<td>5. The bill: a forgotten rule, and a password check on every request</td>
+<td>An endpoint without its annotation is open to every signed-in user; a rule on the address closes it; HTTP Basic checks the password on all 3 requests.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>13 tests in <code>BillTest</code>, <code>DemoRunsTest</code>, <code>FilterChainTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>, the filter chain runs in the same JVM with no network, and BCrypt hashes are only compared, never printed in full, so every run gives the same result.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo does not start a web server. <code>MockMvc</code> sends requests straight through the filter chain and the
+dispatcher, so the results are the ones a real server would give, and the run is fast and repeatable. HTTP Basic
+without a session is used because it keeps each request self-contained; real browsers more often use a login form and a
+session cookie. CSRF protection is switched off in the demo's configuration to keep the code short, and must stay on for any
+application that uses cookies. The BCrypt cost is 4, the lowest allowed, for speed; real systems use 10 or more.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/authentication-vs-authorization-with-spring-security-explained.html">Authentication vs Authorization with Spring Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A request meets the filter chain first (login, then the address rules), then the dispatcher, then the method's own rule, and only then the controller code runs.</p>
+<p><img alt="Where Spring Security sits" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Four configurations share one CommonConfig and one controller; only the rules differ.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The header becomes a user, the user's authorities meet the rule, and the rule gives the answer.</p>
+<p><img alt="How a login becomes an answer" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Ben tries to refund: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/authentication-vs-authorization-with-spring-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A forgotten rule is an open endpoint.</strong> <code>@PreAuthorize</code> protects only the methods that carry it. A rule on the address as a second layer catches the ones that forget.</li>
+<li><strong>HTTP Basic checks the password on every request.</strong> BCrypt is slow on purpose, so every call pays for it. Sessions or tokens avoid this, at the cost of managing them.</li>
+<li><strong>Framework configuration is code to review.</strong> The chain, the matchers and the order of the rules are as important as the rules themselves, and a mistake there is silent.</li>
+<li><strong>A dependency to keep up to date.</strong> Security fixes arrive through new Spring Security versions, and falling behind is a risk of its own.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a tiny internal tool with a single shared password, the framework is more than the problem needs.
+For anything with accounts and different rights, a framework's tested filters and password handling
+are better than writing your own, which is why the plain project exists to teach the ideas and this one
+to show how they are normally applied.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The <code>@PreAuthorize</code>, <code>@Secured</code> and <code>hasRole(...)</code> annotations in almost every Spring application.</li>
+<li>A <code>SecurityFilterChain</code> bean, and the <code>authorizeHttpRequests</code> block inside it.</li>
+<li>The <code>{bcrypt}</code> prefix in stored passwords of Spring applications.</li>
+<li>The browser's built-in sign-in box, which is HTTP Basic.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the second one in <a href="..">identity</a>, the framework version of <a href="../authentication-vs-authorization">authentication-vs-authorization</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
