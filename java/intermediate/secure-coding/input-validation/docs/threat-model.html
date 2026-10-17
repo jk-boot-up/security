@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Input Validation Done Right</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Input Validation Done Right</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The online store's checkout and account forms at the server's trust boundary: the values they accept, the form of text they compare, and the sizes they allow. It covers anyone who can send a request.
+It does not cover output encoding, database queries or access control, which have their own projects.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Order totals and prices.</li>
+<li>Account names and the uniqueness of each name.</li>
+<li>The server's time and memory.</li>
+<li>The trust customers place in names shown as the shop's staff.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>An honest customer using the page.</li>
+<li>An attacker sending requests directly.</li>
+<li>Someone registering a look-alike account name.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Client to server: the page's checks end here, and the server's begin.</li>
+<li>Validated values to the store's logic: only typed values cross it.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Tampering</td>
+<td>Values the page would refuse are sent directly to the server</td>
+<td><code>TrustingShop</code>, <code>Checkout.place</code></td>
+<td>Every field is validated on the server; the page's checks are only a convenience</td>
+<td>None for these fields; every new field needs its own type</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>A hidden or extra field, such as a price, changes what the server does</td>
+<td><code>Checkout.place</code></td>
+<td>Unknown fields are refused, and prices come from the catalogue</td>
+<td>A field that is expected but trusted too much is still a risk, so each one is reviewed</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Spoofing</td>
+<td>A second account, or a staff look-alike, is registered with another spelling of a name</td>
+<td><code>Username</code>, <code>DisplayName</code>, <code>Accounts</code></td>
+<td>One canonical form (NFKC, trim, Locale.ROOT), invisible characters refused, and a look-alike check for display names</td>
+<td>The look-alike table is small; the full Unicode confusables data catches more</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>A huge body, a huge list or a slow pattern uses up the server</td>
+<td><code>Limits</code>, <code>Backtracking</code></td>
+<td>Size limits before any work, and no nested repetition in patterns that read input</td>
+<td>Limits must also be set in the web server and gateway in front of the application</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Information disclosure</td>
+<td>An error message repeats raw input, which may hold markup or forged log lines</td>
+<td><code>Rejected</code></td>
+<td>Messages name the field and the rule only</td>
+<td>Logs of refused requests must also be written safely</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Tampering</td>
+<td>A valid value is treated as safe for output or for a query</td>
+<td>the code after the boundary</td>
+<td>None here: output encoding and query parameters are separate controls</td>
+<td>Covered by the cross-site-scripting project and by parameterized queries</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>Prices and products come from the store's own catalogue.</li>
+<li>The country list is the one the JDK ships, and is current enough for shipping.</li>
+<li>In the demo, all values are fixed and no network is used.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Output encoding: the cross-site-scripting project.</li>
+<li>Database query safety: parameters, named here as the reason validation is not enough.</li>
+<li>Authorization: the broken-access-control project.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>ValueTypesTest</code> checks accepted and refused values for every type, and that refusals never repeat the raw input.</li>
+<li><code>CheckoutTest</code> checks the boundary: direct requests, unknown fields, unknown products, every problem at once.</li>
+<li><code>CanonicalTest</code> checks canonical names, invisible characters, locale independence, NFC and look-alikes.</li>
+<li><code>LimitsTest</code> checks body, cart and pattern limits.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, race-conditions-and-business-logic, turns from single values to sequences of requests: two valid withdrawals that together spend money twice.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
