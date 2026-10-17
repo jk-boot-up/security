@@ -1,0 +1,40 @@
+ONE. Three parts, and decoding is not verifying.
+  the bank's authorization server issues ana an access token of 347 characters in 3 parts
+  header: {"alg":"EdDSA","typ":"at+jwt","kid":"bank-2026-01"}
+  claims: {"iss":"https://auth.bank.example","sub":"ana","aud":"accounts-api","scope":"accounts:read","iat":1800000000,"nbf":1800000000,"exp":1800000300}
+  the third part is a 64-byte Ed25519 signature over the first two
+  anyone can read the claims: base64url is an encoding, not encryption, so no secret belongs in them
+  the claims edited to sub=mallory, with ana's signature kept: a reader that only decodes says mallory  <- DECODING IS NOT VERIFYING
+  the validator: refused (signature does not match)
+TWO. The server chooses the algorithm, never the token.
+  the RFC 8037 example token verifies with its published key: true, and signing it again gives the same signature: true
+  the JDK derives the published public key from the published private key: true
+  ana's token with the bank's key: accepted for ana
+  the same claims with a header that says none and no signature: refused (algorithm none is not EdDSA)
+  a header that says HS256: refused (algorithm HS256 is not EdDSA)
+  a correctly signed token of another type, offered as an access token: refused (type id+jwt is not at+jwt)
+  the algorithm and the type are settings of the API; the header is only checked against them
+THREE. Every claim that matters is checked.
+  at the moment of issue: accepted for ana
+  20 seconds after exp, inside the 30 seconds allowed for clock skew: accepted for ana
+  30 seconds after exp: refused (expired)
+  a token that starts in 2 minutes, presented now: refused (not valid yet)
+  issued by another authorization server: refused (another issuer)
+  meant for the loyalty API, sent to the accounts API: refused (another audience)
+  with only the scope cards:read: refused (missing scope accounts:read)
+  a valid signature proves who wrote the token; only the claims say whether it is for this API, now
+FOUR. Keys by id, from a set the API already holds.
+  during the changeover the API trusts 2 keys: bank-2026-01 and bank-2026-07
+  a token signed with the old key: accepted for ana
+  a token signed with the new key: accepted for ana
+  after the old key is retired, the old token: refused (unknown key id bank-2026-01)
+  a token naming a key id the API has never seen: refused (unknown key id attacker-key)
+  a token signed with another key but naming the bank's key id: refused (signature does not match)
+  an unknown key id is refused; the API never fetches a key because a token asked it to
+FIVE. The bill: a token cannot be taken back.
+  ana's access is removed 2 minutes after her token was issued
+  2 minutes later her access token: accepted for ana  <- STILL WORKS UNTIL IT EXPIRES
+  her refresh token, which the server looks up: refused (revoked)
+  at 5 minutes and 30 seconds the access token: refused (expired)
+  so access tokens live for minutes, and a token asking for more than 15 is refused: refused (lifetime longer than the policy allows)
+  where a browser should keep tokens is the tokens-in-the-browser project; in production, use a maintained library

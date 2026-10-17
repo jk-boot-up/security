@@ -1,0 +1,588 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "jwt-done-right"
+level = "intermediate"
+module = "identity-and-access"
+title = "JWT Done Right"
+short_title = "JWT Done Right"
+package = "jwt"
+main_class = "JwtDemo"
+tagline = "Decoding a token is not verifying it"
+bold = "A JSON Web Token is only as trustworthy as the checks around it: the server fixes the algorithm and the type, picks the key from a set it already holds, verifies the signature, and only then believes expiry, issuer, audience and scope. And because a token cannot be taken back, it must not live long."
+domain = "an online bank"
+domain_note = ""
+youtube_description = """JSON Web Tokens done right, in Java with only the JDK. Explained with an online bank's accounts API, like a cinema ticket that anyone can read but only the box office can stamp. We take a bank access token apart into its three parts, show that a reader which only decodes believes a forged subject, fix the algorithm and token type on the server so that a header saying none or HS256 is refused, check expiry with a small clock skew, not-before, issuer, audience and scope, choose keys by key id from a set the API already holds and rotate them without downtime, and finish with the bill: an access token cannot be revoked before it expires, so lifetimes are minutes and refresh tokens stay on the server. Checked against the published Ed25519 example in RFC 8037."""
+thumb_lines = ["JWT", "DONE RIGHT"]
+thumb_code = "alg: none  ->  refused"
+youtube_title = "JWT Done Right in Java (alg none, kid, aud, exp, RFC 8725) - OWASP A07"
+youtube_tags = ["jwt", "json web token", "jws", "eddsa", "ed25519", "rfc 8725", "access token", "api security", "java", "application security"]
+
+[readme]
+intro = """
+A **JSON Web Token (JWT)** is a set of **claims** (who it is for, who issued it, which API it is for, until when) in JSON, signed as a **JWS**
+(RFC 7515). Bank APIs and almost every OAuth 2.0 deployment carry their **access tokens** this way. The format is simple, and most of the damage comes
+from validators that check too little. **RFC 8725, JSON Web Token Best Current Practices**, lists the checks: let the server, not the token, choose the
+algorithm; verify the signature before believing anything; check the issuer, the audience and the expiry; type tokens explicitly so one kind cannot
+be used as another; and use keys the server already trusts.
+
+This project maps to **OWASP Top 10 (2025) A07 Authentication Failures**; to **CWE-347**, improper verification of a cryptographic signature,
+**CWE-345**, insufficient verification of data authenticity, and **CWE-613**, insufficient session expiration; and to the **self-contained tokens**
+chapter of **OWASP ASVS 5.0**.
+
+The demo builds a strict validator with the JDK alone, using **Ed25519** signatures (`EdDSA` in JOSE, RFC 8037), and checks it against the example
+token that RFC 8037 publishes. Each check a naive validator skips is shown as a token the naive reader believes and the validator refuses.
+"""
+analogy = """
+Think of a cinema ticket. Anyone can read what is printed on it: the film, the seat, the time. That is decoding. What makes it valid is the box office's
+stamp, checked by an usher who knows what the stamp looks like, and who also checks that it is for this cinema, this film and tonight. An usher who
+lets in anyone holding a piece of paper with a film name on it has decoded the ticket and verified nothing. And a ticket cannot be taken back once
+sold, which is why it is only good for one evening.
+"""
+scenario = """
+An online bank's authorization server issues access tokens for its accounts API. The demo reads one token, forges and alters others, rotates the
+bank's signing key, and removes a customer's access, and shows for each what a naive reader believes and what the strict validator does.
+"""
+costs = [
+    "**A token cannot be taken back.** Until it expires, an access token works even after the customer's access is removed. Keep lifetimes to minutes, and keep refresh tokens on the server, where they can be revoked.",
+    "**Clock skew is a trade-off.** Servers' clocks differ, so a few seconds of leeway are needed; every second of leeway is a second an expired token still works.",
+    "**Keys need operations.** A key set must be updated before a new key is used and kept until the last token signed with the old key has expired.",
+    "**Claims are readable by anyone.** A JWS is signed, not encrypted: never put secrets or personal data in it that the holder should not see.",
+    "**A hand-written validator is for learning.** Production code should use a maintained library configured as strictly as this one; see the `-with-nimbus-jose-jwt` version.",
+]
+too_much = """
+For a single application with server-side sessions, a JWT adds nothing but risk: a session cookie is simpler and can be revoked at once. JWTs earn
+their place when an API must check a token without calling the server that issued it, which is the usual case for OAuth 2.0 access tokens.
+"""
+met_before = [
+    "`Authorization: Bearer eyJ...` headers in API calls; every token starting with `eyJ` is base64url of `{\"`.",
+    "OAuth 2.0 and OpenID Connect providers such as Keycloak, and their `/.well-known/jwks.json` key sets.",
+    "Debugging sites that decode a JWT: they show the claims without checking anything, which is exactly the point of act one.",
+    "Advisories about `alg: none` and algorithm confusion in JWT libraries.",
+]
+where = """
+This is the first project of [identity-and-access](..) in the [intermediate track](../..). It builds on the beginner projects
+[digital-signatures](../../../beginner/cryptography/digital-signatures) and [authentication-vs-authorization](../../../beginner/identity/authentication-vs-authorization).
+"""
+twin = """
+Everything runs in memory with a simulated clock in whole seconds. Ed25519 signatures are deterministic, so the same key and claims always give the
+same token, and the demo prints exact tokens. The bank's first signing key is the RFC 8037 test key, so its signatures can be checked by anyone; the
+other keys come from fixed seeds and protect nothing. No key is ever fetched over a network.
+"""
+test_note = "The Ed25519 code is checked against RFC 8037 appendix A: the published token verifies, signing its input gives the published signature, and the published public key is derived from the published private key. Every refusal is a test with its exact reason."
+
+[[act]]
+title = "Three parts, and decoding is not verifying"
+summary = "A bank access token is a header, claims and a 64-byte Ed25519 signature; anyone can read the claims, and a reader that only decodes believes claims edited to sub=mallory, which the validator refuses."
+detail = """
+The bank's authorization server issues Ana an access token of 347 characters in 3 parts. The header says the algorithm is EdDSA, the type is at+jwt
+and the key id is bank-2026-01. The claims name the issuer, the subject ana, the audience accounts-api, the scope accounts:read, and the times of issue,
+start and expiry. The third part is a 64-byte Ed25519 signature over the first two. Anyone can read the claims, because base64url is an encoding, not
+encryption. When the claims are edited to sub=mallory and Ana's signature is kept, a reader that only decodes says mallory. The validator refuses it:
+the signature does not match.
+"""
+speech = """
+First demo: three parts. [[slnc 400]] The bank issues Ana an access token. [[slnc 300]] It has three parts, separated by dots. [[slnc 600]]
+The first is a header: the algorithm, the type, and the key id. [[slnc 300]] The second is the claims: who it is for, who issued it, which A P I, and until when. [[slnc 300]] The third is a signature over the first two. [[slnc 600]]
+Anyone can read the claims. [[slnc 300]] Base sixty four url is an encoding, not encryption. [[slnc 600]]
+Now edit the claims to say mallory, and keep Ana's signature. [[slnc 300]] A reader that only decodes says mallory. [[slnc 300]] Decoding is not verifying. [[slnc 600]]
+The validator refuses it. [[slnc 300]] The signature does not match.
+"""
+rows = { parts = "active amber" }
+console = [
+    ["the bank's authorization server issues ana an access token of 347 characters in 3 parts", "muted"],
+    ["header: {\"alg\":\"EdDSA\",\"typ\":\"at+jwt\",\"kid\":\"bank-2026-01\"}", "muted"],
+    ["claims: {\"iss\":\"https://auth.bank.example\",\"sub\":\"ana\",\"aud\":\"accounts-api\",\"scope\":\"accounts:read\",...}", "muted"],
+    ["the third part is a 64-byte Ed25519 signature over the first two", "muted"],
+    ["anyone can read the claims: base64url is an encoding, not encryption, so no secret belongs in them", "amber"],
+    ["the claims edited to sub=mallory, with ana's signature kept: a reader that only decodes says mallory  <- DECODING IS NOT VERIFYING", "bad"],
+    ["the validator: refused (signature does not match)", "ok"],
+]
+
+[[act]]
+title = "The server chooses the algorithm, never the token"
+summary = "The RFC 8037 example verifies and re-signs exactly; Ana's token is accepted; a header saying none, a header saying HS256 and a correctly signed token of another type are all refused."
+detail = """
+The published RFC 8037 example token verifies with its published key, signing it again gives the same signature, and the JDK derives the published
+public key from the published private key. Ana's token is accepted with the bank's key. The same claims with a header that says none and no signature
+are refused: the algorithm none is not EdDSA. A header that says HS256 is refused the same way. A correctly signed token of another type, an ID token
+offered as an access token, is refused because its type id+jwt is not at+jwt. The algorithm and the type are settings of the API; the header is only
+checked against them.
+"""
+speech = """
+Second demo: the algorithm. [[slnc 400]] The validator is first checked against the example token published in R F C eight oh three seven. [[slnc 300]] It verifies. [[slnc 300]] And signing it again gives exactly the same signature. [[slnc 600]]
+Ana's token, with the bank's key, is accepted. [[slnc 600]]
+Now the same claims, with a header that says none, and no signature at all. [[slnc 300]] Refused. [[slnc 300]] A header that says H S two five six. [[slnc 300]] Refused. [[slnc 600]]
+And a correctly signed token of another type, an I D token offered as an access token. [[slnc 300]] Refused, by its type. [[slnc 600]]
+The algorithm and the type are settings of the A P I. [[slnc 300]] The header is only checked against them.
+"""
+rows = { algorithm = "active ok" }
+console = [
+    ["the RFC 8037 example token verifies with its published key: true, and signing it again gives the same signature: true", "ok"],
+    ["the JDK derives the published public key from the published private key: true", "ok"],
+    ["ana's token with the bank's key: accepted for ana", "ok"],
+    ["the same claims with a header that says none and no signature: refused (algorithm none is not EdDSA)", "ok"],
+    ["a header that says HS256: refused (algorithm HS256 is not EdDSA)", "ok"],
+    ["a correctly signed token of another type, offered as an access token: refused (type id+jwt is not at+jwt)", "ok"],
+    ["the algorithm and the type are settings of the API; the header is only checked against them", "muted"],
+]
+
+[[act]]
+title = "Every claim that matters is checked"
+summary = "Accepted at issue and 20 seconds after expiry within the 30-second skew, refused 30 seconds after; refused before its start time, from another issuer, for another audience, and without the required scope."
+detail = """
+At the moment of issue the token is accepted. Twenty seconds after its expiry time it is still accepted, inside the 30 seconds allowed for clock skew;
+30 seconds after, it is refused as expired. A token that starts in 2 minutes, presented now, is refused as not valid yet. A token issued by another
+authorization server is refused, and so is one meant for the loyalty API but sent to the accounts API, and one with only the scope cards:read. A valid
+signature proves who wrote the token; only the claims say whether it is for this API, now.
+"""
+speech = """
+Third demo: the claims. [[slnc 400]] At the moment of issue, the token is accepted. [[slnc 600]]
+Twenty seconds after it expires, it is still accepted. [[slnc 300]] Servers' clocks differ, so thirty seconds of leeway are allowed. [[slnc 300]] Thirty seconds after, it is refused. [[slnc 600]]
+A token that starts in two minutes is refused now. [[slnc 300]] A token from another issuer is refused. [[slnc 300]] A token for another A P I is refused. [[slnc 300]] And a token without the right scope is refused. [[slnc 600]]
+A valid signature proves who wrote the token. [[slnc 300]] Only the claims say whether it is for this A P I, now.
+"""
+rows = { claims = "active ok" }
+console = [
+    ["at the moment of issue: accepted for ana", "ok"],
+    ["20 seconds after exp, inside the 30 seconds allowed for clock skew: accepted for ana", "amber"],
+    ["30 seconds after exp: refused (expired)", "ok"],
+    ["a token that starts in 2 minutes, presented now: refused (not valid yet)", "ok"],
+    ["issued by another authorization server: refused (another issuer)", "ok"],
+    ["meant for the loyalty API, sent to the accounts API: refused (another audience)", "ok"],
+    ["with only the scope cards:read: refused (missing scope accounts:read)", "ok"],
+]
+
+[[act]]
+title = "Keys by id, from a set the API already holds"
+summary = "During a changeover two keys are trusted and tokens from both work; after the old key is retired its token is refused; an unknown key id and a forged signature under the bank's key id are refused, and nothing is fetched."
+detail = """
+During the changeover the API trusts 2 keys, bank-2026-01 and bank-2026-07, and tokens signed with either are accepted. After the old key is retired,
+the old token is refused with an unknown key id. A token naming a key id the API has never seen is refused, and so is a token signed with another key but
+naming the bank's key id, because its signature does not match. An unknown key id is refused; the API never fetches a key because a token asked it to.
+"""
+speech = """
+Fourth demo: keys. [[slnc 400]] Each token names its key, by a key id. [[slnc 300]] The A P I keeps its own set of keys. [[slnc 600]]
+During a changeover, it trusts two keys. [[slnc 300]] Tokens signed with either one are accepted. [[slnc 600]]
+After the old key is retired, the old token is refused. [[slnc 600]]
+A token that names a key the A P I has never seen is refused. [[slnc 300]] A token signed with another key, but naming the bank's key id, is refused, because the signature does not match. [[slnc 600]]
+And the A P I never fetches a key because a token asked it to.
+"""
+rows = { keys = "active ok" }
+console = [
+    ["during the changeover the API trusts 2 keys: bank-2026-01 and bank-2026-07", "muted"],
+    ["a token signed with the old key: accepted for ana", "ok"],
+    ["a token signed with the new key: accepted for ana", "ok"],
+    ["after the old key is retired, the old token: refused (unknown key id bank-2026-01)", "ok"],
+    ["a token naming a key id the API has never seen: refused (unknown key id attacker-key)", "ok"],
+    ["a token signed with another key but naming the bank's key id: refused (signature does not match)", "ok"],
+    ["an unknown key id is refused; the API never fetches a key because a token asked it to", "muted"],
+]
+
+[[act]]
+title = "The bill: a token cannot be taken back"
+summary = "Two minutes after Ana's access is removed her access token still works, while her server-side refresh token is refused; the access token stops at five and a half minutes, and a fifteen-minute cap refuses longer lifetimes."
+detail = """
+Ana's access is removed 2 minutes after her token was issued. Two minutes later her access token is still accepted: it still works until it expires.
+Her refresh token, which the server looks up every time, is refused as revoked. At 5 minutes and 30 seconds the access token is refused as expired. So
+access tokens live for minutes, and a token asking for more than 15 minutes is refused by policy. Where a browser should keep tokens is the subject of
+the tokens-in-the-browser project, and in production a maintained library should do this work.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Ana's access is removed, two minutes after her token was issued. [[slnc 600]]
+Two minutes later, her access token still works. [[slnc 300]] The A P I checks the token, not the bank's records. [[slnc 300]] It works until it expires. [[slnc 600]]
+Her refresh token is refused, because the server looks it up every time. [[slnc 600]]
+At five and a half minutes, the access token stops working. [[slnc 600]]
+So access tokens live for minutes. [[slnc 300]] A token asking for more than fifteen is refused. [[slnc 300]] And in production, a maintained library should do this work.
+"""
+rows = { revoke = "active amber" }
+console = [
+    ["ana's access is removed 2 minutes after her token was issued", "muted"],
+    ["2 minutes later her access token: accepted for ana  <- STILL WORKS UNTIL IT EXPIRES", "bad"],
+    ["her refresh token, which the server looks up: refused (revoked)", "ok"],
+    ["at 5 minutes and 30 seconds the access token: refused (expired)", "ok"],
+    ["so access tokens live for minutes, and a token asking for more than 15 is refused: refused (lifetime longer than the policy allows)", "amber"],
+    ["where a browser should keep tokens is the tokens-in-the-browser project; in production, use a maintained library", "muted"],
+]
+
+[animation]
+subtitle = "An online bank's accounts API checks the access tokens its authorization server issues."
+boxes = [
+    ["parts", "Three parts", "header, claims, signature"],
+    ["algorithm", "Fixed algorithm", "chosen by the API, not the token"],
+    ["claims", "Claims", "exp, nbf, iss, aud, scope"],
+    ["keys", "Key set", "by key id, rotated, never fetched"],
+    ["revoke", "Lifetime", "short, because it cannot be revoked"],
+]
+
+[docs.problem]
+scenario = """
+An online bank's accounts API receives access tokens from customers' apps. The tokens were issued by the bank's authorization server, but the API
+receives them from the customer, so every byte of a token arrives from someone who may have changed it.
+"""
+naive = """
+Split the token, decode the claims, check that it has not expired, and use the subject. Or use a library with its defaults, which may take the algorithm
+from the header, accept any audience and fetch a key from a URL in the token.
+"""
+deliver = [
+    "A strict validator: three parts, base64url and JSON read strictly, duplicate members refused.",
+    "An algorithm and token type fixed by the API, so `none`, `HS256` and an ID token are refused.",
+    "Ed25519 verification with the JDK, checked against RFC 8037.",
+    "Expiry with a small skew, not-before, issued-at, maximum lifetime, issuer, audience and scope.",
+    "Keys chosen by key id from a set the API holds, with rotation and no fetching.",
+    "Short lifetimes, and refresh tokens kept on the server so that access can be withdrawn.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The beginner digital-signatures project, or what a signature and a public key are",
+    "The beginner authentication-vs-authorization project, or what 401 and 403 mean",
+]
+not_required = [
+    "OAuth 2.0: the oauth2-authorization-code-pkce project comes next",
+    "A JWT library: the point is to see every check",
+    "Elliptic-curve mathematics",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "take a JWT apart and say what each part is for",
+    "explain why the algorithm must be chosen by the server",
+    "list the claims an API must check, and why each matters",
+    "describe key rotation with key ids, and why keys are never fetched on a token's say-so",
+    "explain why access tokens must be short-lived",
+]
+walkthrough = """
+Start with the cinema ticket. Decode a real token from act one by hand, with any base64url tool, to show that anyone can read it. Then run the acts. After
+act two, ask what would happen if the validator took the algorithm from the header. After act three, ask which claim stops a token for one API being
+used at another. In act five, ask how long a stolen access token is useful, and how the bank could shorten that.
+"""
+exercises = [
+    "Add a `jti` (token id) claim and a small deny-list for tokens reported stolen; measure what it costs to check on every request.",
+    "Require the `scope` claim to contain two scopes for a payment endpoint, and write the refusal test first.",
+    "Add a third key, rotate twice, and list which tokens still work after each step.",
+    "Change the skew to zero and to five minutes, and write down what each choice costs.",
+]
+
+[docs.explained]
+sentence = """
+A JWT is believable only after the server has checked it against its own settings: its algorithm and type, a key it already holds, the signature, and
+then the expiry, issuer, audience and scope; and since it cannot be taken back, it must expire soon.
+"""
+verdict = """
+Use a maintained library, configured strictly: one allowed algorithm, an explicit token type, a fixed issuer and audience, a required expiry with a small
+skew, a key set loaded from configuration or from the issuer's own JWKS address, never from the token. Keep access tokens short and refresh tokens on the
+server. Never put secrets in claims.
+"""
+recognise = [
+    "`Authorization: Bearer eyJ...` in API requests.",
+    "A JWKS document at `/.well-known/jwks.json` with `kid` values.",
+    "Library settings named `allowedAlgorithms`, `expectedAudience`, `clockSkew`.",
+    "Advisories titled \"JWT signature bypass\" or \"algorithm confusion\".",
+]
+
+[spec]
+purpose = """
+Teach how to validate JWT access tokens correctly by building a strict validator with the JDK, checked against RFC 8037, and showing for each check what a
+naive reader lets through.
+"""
+nongoals = [
+    "Issuing tokens through OAuth 2.0 flows: the oauth2-authorization-code-pkce project.",
+    "Encrypted tokens (JWE).",
+    "Storing tokens in a browser: the tokens-in-the-browser project.",
+]
+problem = """
+Learners use JWTs through libraries and rarely see which checks the library is making; the common bugs are checks that were never switched on.
+"""
+roles = [["Strict base64url", "`Base64Url`"], ["Strict JSON", "`Json`"], ["Ed25519 keys and signatures", "`Ed25519`"], ["Compact JWS", "`Jws`"], ["Keys by id", "`KeySet`"], ["The API's settings", "`Policy`"], ["The validator", "`Validator`"], ["The mistake", "`NaiveReader`"], ["Server-side refresh tokens", "`RefreshTokens`"], ["Entry point", "`JwtDemo`"]]
+requirements = [
+    "The RFC 8037 example token verifies, re-signs to the same signature, and its public key is derived from its private key.",
+    "Any algorithm other than EdDSA, a missing or wrong type, a critical header and an unknown key id are refused before the claims are read.",
+    "Expiry and not-before allow exactly the configured skew; issuer, audience, scope, subject and lifetime are checked.",
+    "Duplicate JSON members, padding and other base64 alphabets are refused.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who issues, who holds, who checks"
+caption = "The token travels through the customer's hands, so the API checks every part of it against its own settings and keys."
+nodes = [
+    { id = "auth", label = "Authorization server", sub = "signs with a private key", col = 0, row = 0, colour = "green" },
+    { id = "app", label = "Customer's app", sub = "holds the token", col = 1, row = 0, colour = "client" },
+    { id = "api", label = "Accounts API", sub = "validates every request", col = 2, row = 0, colour = "accent", shape = "ellipse" },
+    { id = "keys", label = "Key set", sub = "public keys by key id", col = 2, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "auth", to = "app", label = "access token" },
+    { from = "app", to = "api", label = "Bearer token" },
+    { from = "keys", to = "api", label = "loaded from configuration", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The validator reads the token with Jws and Json, chooses a key from KeySet, and checks everything against Policy."
+nodes = [
+    { id = "validator", label = "Validator", sub = ["validate(token)"], col = 0, row = 0, colour = "green" },
+    { id = "policy", label = "Policy", sub = ["ALGORITHM = EdDSA", "TYPE = at+jwt", "issuer, audience, scope, skew"], col = 1, row = 0, colour = "accent" },
+    { id = "keys", label = "KeySet", sub = ["add(kid, key)", "find(kid)", "remove(kid)"], col = 2, row = 0, colour = "amber" },
+    { id = "jws", label = "Jws", sub = ["parse(token)", "sign(header, payload, key)"], col = 0, row = 1, colour = "client" },
+    { id = "ed", label = "Ed25519", sub = ["verify(key, input, signature)", "fromSeed(seed)"], col = 1, row = 1, colour = "client" },
+    { id = "naive", label = "NaiveReader", sub = ["subject(token)"], col = 2, row = 1, colour = "red" },
+]
+edges = [
+    { from = "validator", to = "policy", label = "checks against" },
+    { from = "validator", to = "keys", label = "chooses a key" },
+    { from = "validator", to = "jws", label = "reads with" },
+    { from = "jws", to = "ed", label = "signs with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The order of the checks"
+caption = "Nothing in the claims is believed until the signature has been checked with a key the API already holds."
+nodes = [
+    { id = "shape", label = "Shape", sub = "3 parts, strict base64url and JSON", col = 0, row = 0, colour = "client" },
+    { id = "header", label = "Header", sub = "alg and typ fixed by the API", col = 1, row = 0, colour = "amber" },
+    { id = "key", label = "Key", sub = "kid from the API's own set", col = 2, row = 0, colour = "amber" },
+    { id = "sig", label = "Signature", sub = "Ed25519 over header.claims", col = 3, row = 0, colour = "green" },
+    { id = "claims", label = "Claims", sub = "exp, nbf, iat, iss, aud, scope, sub", col = 4, row = 0, colour = "green" },
+]
+edges = [
+    { from = "shape", to = "header" },
+    { from = "header", to = "key" },
+    { from = "key", to = "sig" },
+    { from = "sig", to = "claims" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A request with an access token: who does what, in order"
+participants = ["App", "Accounts API", "Validator", "KeySet"]
+steps = [
+    ["App", "Accounts API", "GET /accounts, Authorization: Bearer token"],
+    ["Accounts API", "Validator", "validate(token)"],
+    ["Validator", "Validator", "shape, alg = EdDSA, typ = at+jwt"],
+    ["Validator", "KeySet", "find(kid)"],
+    ["KeySet", "Validator", "the public key", "reply"],
+    ["note", "Validator", "verify the signature, then the claims"],
+    ["Validator", "Accounts API", "AccessToken for ana", "reply"],
+    ["Accounts API", "App", "200 with the accounts", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A header that says none"
+caption = "The validator compares the header with its own setting before anything else, so an unsigned token never reaches the claims."
+participants = ["Attacker", "Validator"]
+steps = [
+    ["Attacker", "Validator", "header alg: none, claims, empty signature"],
+    ["note", "Validator", "the API's algorithm is EdDSA"],
+    ["Validator", "Attacker", "refused: algorithm none is not EdDSA", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Rotating a signing key"
+caption = "The new key is trusted before it is used, and the old one is removed after its last tokens have expired."
+participants = ["Authorization server", "Key set", "Accounts API"]
+steps = [
+    ["Authorization server", "Key set", "publish bank-2026-07"],
+    ["note", "Accounts API", "trusts both keys"],
+    ["Authorization server", "Accounts API", "tokens signed with bank-2026-07"],
+    ["note", "Accounts API", "old tokens expire within minutes"],
+    ["Key set", "Accounts API", "remove bank-2026-01", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The bank", nodes = ["auth", "api", "keys"], colour = "green" },
+    { label = "The customer's side", nodes = ["app"], colour = "amber" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "auth", label = "Authorization server", sub = "holds the private keys", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T5"] },
+    { id = "app", label = "Customer's app", sub = "holds tokens", col = 1, row = 0, colour = "client", threats = ["T6"] },
+    { id = "api", label = "Accounts API", sub = "validates tokens", col = 2, row = 0, colour = "accent", shape = "ellipse", threats = ["T1", "T2", "T3"] },
+    { id = "keys", label = "Key set", sub = "public keys by kid", col = 2, row = 1, colour = "amber", shape = "store", threats = ["T4"] },
+    { id = "attacker", label = "Attacker", sub = "edits, forges, replays", col = 1, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4", "T6"] },
+]
+edges = [
+    { from = "auth", to = "app", label = "token" },
+    { from = "app", to = "api", label = "Bearer token" },
+    { from = "keys", to = "api" },
+    { from = "attacker", to = "api", label = "edited or forged token", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "attacker", to = "app", label = "steals a token", colour = "red", dashed = true, threats = ["T6"] },
+]
+
+[poster]
+headline = [["JWT", "text"], ["DONE RIGHT", "accent"]]
+taglines = [["Decoding a token is not verifying it", "gold"]]
+before = { code = "decode, trust sub", note = "believes anything", tag = "BEFORE" }
+after = { code = "alg fixed, kid known, aud, exp", note = "every check, in order", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "JWT Done Right"
+narration = """Hello, and welcome. [[slnc 400]] This video explains how to check JSON web tokens properly, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A J W T is a small set of claims, such as who a token is for and until when, signed by the server that issued it. [[slnc 300]] A P Is receive them with every request. [[slnc 600]] Think of a cinema ticket. [[slnc 300]] Anyone can read what is printed on it. [[slnc 300]] What makes it valid is the box office's stamp, checked by an usher who also checks the film and the date. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will hear why decoding is not verifying. [[slnc 300]] Why the server, not the token, chooses the algorithm. [[slnc 300]] Which claims must be checked. [[slnc 300]] And why a token must not live long."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank's accounts API", "receives access tokens from customers' apps.", "", "Every byte arrives from the customer's side,", "so every byte must be checked."]
+narration = """Here is the scenario. [[slnc 400]] An online bank's accounts A P I receives access tokens from customers' apps. [[slnc 500]] The bank's own server issued them. [[slnc 300]] But they arrive from the customer's side. [[slnc 500]] So every byte must be checked."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Claims: what the token says", "Signature: who wrote it", "Key id: which key signed it", "Audience: which API it is for", "Expiry: until when it works"]
+narration = """Before the demos, the words. [[slnc 500]] The claims are what the token says. [[slnc 500]] The signature shows who wrote it. [[slnc 500]] The key id says which key signed it. [[slnc 500]] The audience says which A P I it is for. [[slnc 500]] And the expiry says until when it works."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "The Checks, In Order"
+body = ["Shape: three strict parts", "Header: algorithm and type fixed by the API", "Key: from the API's own set", "Signature", "Claims: expiry, issuer, audience, scope"]
+narration = """Let's put the checks in order. [[slnc 400]] First, the shape: three parts, read strictly. [[slnc 500]] Then the header, against the A P I's own algorithm and type. [[slnc 500]] Then a key, from the A P I's own set. [[slnc 500]] Then the signature. [[slnc 500]] And only then, the claims: expiry, issuer, audience and scope."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Validator: every check, in order", "Policy: the API's settings", "KeySet: public keys by key id", "Jws and Ed25519: the format and the signature", "NaiveReader: the mistake, kept for the tests"]
+narration = """Here is who does what in the code. [[slnc 400]] The validator makes every check, in order. [[slnc 500]] The policy holds the A P I's settings, including the one algorithm it accepts. [[slnc 500]] The key set holds public keys by key id. [[slnc 500]] The J W S and Ed twenty five five one nine classes handle the format and the signature. [[slnc 300]] And the naive reader is the mistake, kept so the tests can show what it lets in."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Authorization: Bearer eyJ...", "JWKS documents with key ids", "Library settings for algorithms and audience", "Advisories about alg none"]
+narration = """You have probably met this already. [[slnc 400]] Every A P I call with a header that says Bearer, followed by text starting with e y J, carries a J W T. [[slnc 500]] Identity providers publish their keys as a J W K S document, with key ids. [[slnc 500]] Libraries have settings for the allowed algorithms and the audience. [[slnc 500]] And security advisories about the none algorithm are about exactly these checks."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["One algorithm, chosen by the server", "A known key set, never fetched from a token", "Check issuer, audience, expiry and scope", "Short lifetimes; refresh tokens on the server", "A maintained library, configured strictly"]
+narration = """So, how do you use it? [[slnc 400]] Accept one algorithm, chosen by the server. [[slnc 500]] Use a key set the server already knows, and never fetch a key because a token asked. [[slnc 500]] Check the issuer, the audience, the expiry and the scope. [[slnc 500]] Keep access tokens short, and refresh tokens on the server. [[slnc 500]] And use a maintained library, configured strictly."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Rotate the key twice", "and list which tokens still work."]
+narration = """That's J W T done right. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Decoding a token is not verifying it, and the server, not the token, decides how it is checked. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Rotate the key twice, and list which tokens still work after each step. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The validation of access tokens by an online bank's accounts API: reading the token, choosing the key, verifying the signature and checking the claims,
+plus key rotation and token lifetime. It does not cover how tokens are issued (OAuth flows), how they are stored in browsers, or encrypted tokens.
+"""
+assets = [
+    "Customers' accounts behind the API.",
+    "The authorization server's private signing keys.",
+    "The API's key set and settings.",
+    "Access and refresh tokens in customers' hands.",
+]
+actors = [
+    "Customers' apps presenting tokens.",
+    "An attacker who edits, forges or replays tokens, or steals one.",
+    "Operators who rotate keys.",
+]
+boundaries = [
+    "Customer's app to the accounts API: every token crosses it and may have been changed.",
+    "Authorization server to the key set: only the bank publishes keys.",
+]
+assumptions = [
+    "The private signing keys stay inside the authorization server.",
+    "The API's clock is close to the authorization server's, within the configured skew.",
+    "In the demo, the first key is the published RFC 8037 test key and the others come from fixed seeds; none of them protects anything.",
+]
+out_of_scope = [
+    "Issuing tokens through OAuth 2.0 and OpenID Connect flows.",
+    "Token storage in browsers.",
+    "Encrypted tokens (JWE) and token introspection.",
+]
+tests = [
+    "`Rfc8037Test` checks the Ed25519 code against RFC 8037 appendix A.",
+    "`ValidatorTest` checks every refusal with its exact reason, including the skew boundaries and the locale-free type check.",
+    "`NaiveReaderTest` shows, for each missing check, a token the naive reader believes and the validator refuses.",
+    "`KeysTest` checks rotation, unknown and missing key ids, and that a token cannot pick another key from the set.",
+    "`JsonAndBase64UrlTest` checks the strict readers; `RefreshTokensTest` checks server-side revocation.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, oauth2-authorization-code-pkce, shows how a customer's app obtains these tokens safely in the first place.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "Edited claims are believed because the token was decoded but not verified"
+where = "`NaiveReader`, `Validator.validate`"
+control = "The signature is verified before any claim is read"
+residual = "Any code path that reads claims before validation reintroduces the flaw; keep one validator at one choke point"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A token chooses a weak or absent algorithm (`none`, HS256 with a public key as the secret)"
+where = "the token header"
+control = "One algorithm, fixed in `Policy`; the header is only compared with it"
+residual = "A library left on its defaults may still honour the header; configure it strictly"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A valid token is used where it was not meant: another API, another token type, too wide a scope, after expiry"
+where = "`Validator` claim checks"
+control = "Explicit type, issuer, audience, scope, expiry with a small skew, not-before and a maximum lifetime"
+residual = "Every API must configure its own audience and scope; a shared default undoes the check"
+
+[[threat]]
+id = "T4"
+stride = "S"
+threat = "A token points to a key of the attacker's choosing, or the API fetches one because the token asked"
+where = "`KeySet`, the `kid` header"
+control = "Keys come only from the API's own set; an unknown key id is refused"
+residual = "The key set itself must be loaded from a trusted source and kept current"
+
+[[threat]]
+id = "T5"
+stride = "I"
+threat = "A signing key leaks and every token it signed must be distrusted"
+where = "the authorization server"
+control = "Key ids and rotation with a changeover: a new key is trusted first, the old one removed"
+residual = "Until the old key is removed from every API, its forgeries are accepted"
+
+[[threat]]
+id = "T6"
+stride = "R"
+threat = "A stolen or revoked customer's access token keeps working"
+where = "the customer's app, `Validator`"
+control = "Short lifetimes and a cap on them; refresh tokens checked on the server"
+residual = "A stolen access token works until it expires; sender-constrained tokens (DPoP) are the tokens-in-the-browser project"

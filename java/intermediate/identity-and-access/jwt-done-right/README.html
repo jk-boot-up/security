@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JWT Done Right</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>JWT Done Right</h1>
+<pre><code>src/main/java/com/jk/explore/security/jwt/
+├── AccessToken.java            A token that passed every check: who it is for, what it allows, and when it stops working
+├── Base64Url.java              Base64url without padding, as JWS uses it (RFC 7515 section 2)
+├── Ed25519.java                Ed25519 keys and signatures with the JDK alone (RFC 8032, used in JOSE as &quot;EdDSA&quot;, RFC 8037)
+├── InvalidTokenException.java  A token the validator refuses
+├── Issuer.java                 The bank's authorization server, reduced to the part that signs access tokens
+├── Json.java                   A small, strict JSON reader and writer for token headers and claims: objects, arrays, strings, integers, booleans and null
+├── Jws.java                    The compact JWS form, header.payload.signature (RFC 7515 section 7.1), with Ed25519 signatures
+├── JwtDemo.java                Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── KeySet.java                 The public keys the bank's API trusts, by key id: the API's own copy of the authorization server's JWKS
+├── NaiveReader.java            What too many APIs do: split the token, decode the claims, check that it has not expired, and trust the subject
+├── Policy.java                 What the bank's accounts API accepts
+├── RefreshTokens.java          Refresh tokens kept on the server
+├── SimClock.java               A clock in whole seconds that only moves when told, so expiry checks are exact and repeatable
+└── Validator.java              Validates the bank's access tokens, in this order: the shape, the algorithm and type the server expects, a key the server already holds, the signature, and only then the claims (expiry, not-before, issuer, audience, scope)
+</code></pre>
+<p><strong>A JSON Web Token is only as trustworthy as the checks around it: the server fixes the algorithm and the type, picks the key from a set it already holds, verifies the signature, and only then believes expiry, issuer, audience and scope. And because a token cannot be taken back, it must not live long.</strong></p>
+<p>A <strong>JSON Web Token (JWT)</strong> is a set of <strong>claims</strong> (who it is for, who issued it, which API it is for, until when) in JSON, signed as a <strong>JWS</strong>
+(RFC 7515). Bank APIs and almost every OAuth 2.0 deployment carry their <strong>access tokens</strong> this way. The format is simple, and most of the damage comes
+from validators that check too little. <strong>RFC 8725, JSON Web Token Best Current Practices</strong>, lists the checks: let the server, not the token, choose the
+algorithm; verify the signature before believing anything; check the issuer, the audience and the expiry; type tokens explicitly so one kind cannot
+be used as another; and use keys the server already trusts.</p>
+<p>This project maps to <strong>OWASP Top 10 (2025) A07 Authentication Failures</strong>; to <strong>CWE-347</strong>, improper verification of a cryptographic signature,
+<strong>CWE-345</strong>, insufficient verification of data authenticity, and <strong>CWE-613</strong>, insufficient session expiration; and to the <strong>self-contained tokens</strong>
+chapter of <strong>OWASP ASVS 5.0</strong>.</p>
+<p>The demo builds a strict validator with the JDK alone, using <strong>Ed25519</strong> signatures (<code>EdDSA</code> in JOSE, RFC 8037), and checks it against the example
+token that RFC 8037 publishes. Each check a naive validator skips is shown as a token the naive reader believes and the validator refuses.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a cinema ticket. Anyone can read what is printed on it: the film, the seat, the time. That is decoding. What makes it valid is the box office's
+stamp, checked by an usher who knows what the stamp looks like, and who also checks that it is for this cinema, this film and tonight. An usher who
+lets in anyone holding a piece of paper with a film name on it has decoded the ticket and verified nothing. And a ticket cannot be taken back once
+sold, which is why it is only good for one evening.</p>
+<h2>The scenario</h2>
+<p>An online bank's authorization server issues access tokens for its accounts API. The demo reads one token, forges and alters others, rotates the
+bank's signing key, and removes a customer's access, and shows for each what a naive reader believes and what the strict validator does.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Three parts, and decoding is not verifying</td>
+<td>A bank access token is a header, claims and a 64-byte Ed25519 signature; anyone can read the claims, and a reader that only decodes believes claims edited to sub=mallory, which the validator refuses.</td>
+</tr>
+<tr>
+<td>2. The server chooses the algorithm, never the token</td>
+<td>The RFC 8037 example verifies and re-signs exactly; Ana's token is accepted; a header saying none, a header saying HS256 and a correctly signed token of another type are all refused.</td>
+</tr>
+<tr>
+<td>3. Every claim that matters is checked</td>
+<td>Accepted at issue and 20 seconds after expiry within the 30-second skew, refused 30 seconds after; refused before its start time, from another issuer, for another audience, and without the required scope.</td>
+</tr>
+<tr>
+<td>4. Keys by id, from a set the API already holds</td>
+<td>During a changeover two keys are trusted and tokens from both work; after the old key is retired its token is refused; an unknown key id and a forged signature under the bank's key id are refused, and nothing is fetched.</td>
+</tr>
+<tr>
+<td>5. The bill: a token cannot be taken back</td>
+<td>Two minutes after Ana's access is removed her access token still works, while her server-side refresh token is refused; the access token stops at five and a half minutes, and a fifteen-minute cap refuses longer lifetimes.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>38 tests in <code>DemoRunsTest</code>, <code>JsonAndBase64UrlTest</code>, <code>KeysTest</code>, <code>NaiveReaderTest</code>, <code>RefreshTokensTest</code>, <code>Rfc8037Test</code>, <code>ValidatorTest</code>. The Ed25519 code is checked against RFC 8037 appendix A: the published token verifies, signing its input gives the published signature, and the published public key is derived from the published private key. Every refusal is a test with its exact reason.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Everything runs in memory with a simulated clock in whole seconds. Ed25519 signatures are deterministic, so the same key and claims always give the
+same token, and the demo prints exact tokens. The bank's first signing key is the RFC 8037 test key, so its signatures can be checked by anyone; the
+other keys come from fixed seeds and protect nothing. No key is ever fetched over a network.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/jwt-done-right-explained.html">JWT Done Right, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The token travels through the customer's hands, so the API checks every part of it against its own settings and keys.</p>
+<p><img alt="Who issues, who holds, who checks" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The validator reads the token with Jws and Json, chooses a key from KeySet, and checks everything against Policy.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Nothing in the claims is believed until the signature has been checked with a key the API already holds.</p>
+<p><img alt="The order of the checks" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A request with an access token: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/jwt-done-right-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A token cannot be taken back.</strong> Until it expires, an access token works even after the customer's access is removed. Keep lifetimes to minutes, and keep refresh tokens on the server, where they can be revoked.</li>
+<li><strong>Clock skew is a trade-off.</strong> Servers' clocks differ, so a few seconds of leeway are needed; every second of leeway is a second an expired token still works.</li>
+<li><strong>Keys need operations.</strong> A key set must be updated before a new key is used and kept until the last token signed with the old key has expired.</li>
+<li><strong>Claims are readable by anyone.</strong> A JWS is signed, not encrypted: never put secrets or personal data in it that the holder should not see.</li>
+<li><strong>A hand-written validator is for learning.</strong> Production code should use a maintained library configured as strictly as this one; see the <code>-with-nimbus-jose-jwt</code> version.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a single application with server-side sessions, a JWT adds nothing but risk: a session cookie is simpler and can be revoked at once. JWTs earn
+their place when an API must check a token without calling the server that issued it, which is the usual case for OAuth 2.0 access tokens.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>Authorization: Bearer eyJ...</code> headers in API calls; every token starting with <code>eyJ</code> is base64url of <code>{"</code>.</li>
+<li>OAuth 2.0 and OpenID Connect providers such as Keycloak, and their <code>/.well-known/jwks.json</code> key sets.</li>
+<li>Debugging sites that decode a JWT: they show the claims without checking anything, which is exactly the point of act one.</li>
+<li>Advisories about <code>alg: none</code> and algorithm confusion in JWT libraries.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the first project of <a href="..">identity-and-access</a> in the <a href="../..">intermediate track</a>. It builds on the beginner projects
+<a href="../../../beginner/cryptography/digital-signatures">digital-signatures</a> and <a href="../../../beginner/identity/authentication-vs-authorization">authentication-vs-authorization</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

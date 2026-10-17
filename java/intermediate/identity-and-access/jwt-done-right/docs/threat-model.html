@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — JWT Done Right</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — JWT Done Right</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>The validation of access tokens by an online bank's accounts API: reading the token, choosing the key, verifying the signature and checking the claims,
+plus key rotation and token lifetime. It does not cover how tokens are issued (OAuth flows), how they are stored in browsers, or encrypted tokens.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Customers' accounts behind the API.</li>
+<li>The authorization server's private signing keys.</li>
+<li>The API's key set and settings.</li>
+<li>Access and refresh tokens in customers' hands.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Customers' apps presenting tokens.</li>
+<li>An attacker who edits, forges or replays tokens, or steals one.</li>
+<li>Operators who rotate keys.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Customer's app to the accounts API: every token crosses it and may have been changed.</li>
+<li>Authorization server to the key set: only the bank publishes keys.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Spoofing</td>
+<td>Edited claims are believed because the token was decoded but not verified</td>
+<td><code>NaiveReader</code>, <code>Validator.validate</code></td>
+<td>The signature is verified before any claim is read</td>
+<td>Any code path that reads claims before validation reintroduces the flaw; keep one validator at one choke point</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>A token chooses a weak or absent algorithm (<code>none</code>, HS256 with a public key as the secret)</td>
+<td>the token header</td>
+<td>One algorithm, fixed in <code>Policy</code>; the header is only compared with it</td>
+<td>A library left on its defaults may still honour the header; configure it strictly</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Elevation of privilege</td>
+<td>A valid token is used where it was not meant: another API, another token type, too wide a scope, after expiry</td>
+<td><code>Validator</code> claim checks</td>
+<td>Explicit type, issuer, audience, scope, expiry with a small skew, not-before and a maximum lifetime</td>
+<td>Every API must configure its own audience and scope; a shared default undoes the check</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Spoofing</td>
+<td>A token points to a key of the attacker's choosing, or the API fetches one because the token asked</td>
+<td><code>KeySet</code>, the <code>kid</code> header</td>
+<td>Keys come only from the API's own set; an unknown key id is refused</td>
+<td>The key set itself must be loaded from a trusted source and kept current</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Information disclosure</td>
+<td>A signing key leaks and every token it signed must be distrusted</td>
+<td>the authorization server</td>
+<td>Key ids and rotation with a changeover: a new key is trusted first, the old one removed</td>
+<td>Until the old key is removed from every API, its forgeries are accepted</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Repudiation</td>
+<td>A stolen or revoked customer's access token keeps working</td>
+<td>the customer's app, <code>Validator</code></td>
+<td>Short lifetimes and a cap on them; refresh tokens checked on the server</td>
+<td>A stolen access token works until it expires; sender-constrained tokens (DPoP) are the tokens-in-the-browser project</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The private signing keys stay inside the authorization server.</li>
+<li>The API's clock is close to the authorization server's, within the configured skew.</li>
+<li>In the demo, the first key is the published RFC 8037 test key and the others come from fixed seeds; none of them protects anything.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Issuing tokens through OAuth 2.0 and OpenID Connect flows.</li>
+<li>Token storage in browsers.</li>
+<li>Encrypted tokens (JWE) and token introspection.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>Rfc8037Test</code> checks the Ed25519 code against RFC 8037 appendix A.</li>
+<li><code>ValidatorTest</code> checks every refusal with its exact reason, including the skew boundaries and the locale-free type check.</li>
+<li><code>NaiveReaderTest</code> shows, for each missing check, a token the naive reader believes and the validator refuses.</li>
+<li><code>KeysTest</code> checks rotation, unknown and missing key ids, and that a token cannot pick another key from the set.</li>
+<li><code>JsonAndBase64UrlTest</code> checks the strict readers; <code>RefreshTokensTest</code> checks server-side revocation.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, oauth2-authorization-code-pkce, shows how a customer's app obtains these tokens safely in the first place.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
