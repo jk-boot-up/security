@@ -1,0 +1,561 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "cross-site-scripting-with-spring-boot"
+level = "intermediate"
+module = "web-security"
+title = "Cross-Site Scripting with Spring Boot: Thymeleaf Escaping and a Nonce CSP"
+short_title = "XSS with Spring Boot"
+package = "xssspring"
+main_class = "XssSpringDemo"
+tagline = "Let the template escape, and know the one switch that stops it"
+bold = "Thymeleaf escapes every value written with th:text, in the right way for an attribute, a link or a script; th:utext switches that off, and Spring Security can send a strict policy with a fresh nonce for every page once a small filter supplies the nonce."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Cross-site scripting defences with Spring Boot and Thymeleaf: the template engine does the encoding, as long as you do not switch it off. Explained with an online store's product reviews. We see th:text escape a review by default, see th:utext turn the same review into markup, write values into an attribute, a link and a script the way Thymeleaf escapes each, send a strict Content-Security-Policy from Spring Security with a fresh nonce for every page, and finish with the bill: escaping protects only what goes through it, and the nonce needs one small filter."""
+thumb_lines = ["XSS WITH SPRING BOOT", "THYMELEAF + CSP NONCE"]
+thumb_code = "th:text, not th:utext"
+youtube_title = "XSS Defences in Spring Boot: Thymeleaf Escaping and a Nonce-Based CSP"
+youtube_tags = ["xss", "cross-site scripting", "spring boot", "thymeleaf", "spring security", "content security policy", "csp nonce", "owasp top 10", "java"]
+
+[readme]
+technologies = [["Thymeleaf", "3.1 (from the Spring Boot BOM)", "the template engine that writes the store's pages and escapes values by default"]]
+intro = """
+The plain version of this lesson wrote an encoder for each place a value can go. Real applications let a **template engine** do it. **Thymeleaf**, the engine that Spring Boot
+uses for server-rendered pages, escapes every value written with `th:text`, and it escapes differently for an attribute, a link built with `@{...}` and a value inside a script
+with `th:inline="javascript"`. The danger is the one switch that turns escaping off: **`th:utext`**, "unescaped text", which writes a value as markup.
+
+The second line of defence is a strict **Content-Security-Policy** with a fresh **nonce** for every page. Spring Security writes security headers, but its policy is a fixed string, so
+the store adds one small filter that makes a nonce for each request, gives it to the header and to the template, and puts it on the page's own script. It maps to **Injection (A05)** in the
+OWASP Top 10 (2025), **CWE-79**, and the OWASP ASVS chapter on encoding and sanitization.
+"""
+analogy = """
+Think of a shop that prints customers' reviews on its notice board through a printer that always prints in plain letters. Whatever a customer writes, it comes out as words. The
+printer has one switch marked "print as the shop's own sign", and anyone who flips it for a customer's note lets that note pass as the shop. The policy is the board's rule that
+only notices with today's stamp count.
+"""
+scenario = """
+An online store shows product reviews with Thymeleaf. The demo writes Ana's review with th:text and with th:utext, writes Ben's fit note, a search link and a value inside a script,
+checks the page's policy and nonce on two requests, and reads the session cookie's flags.
+"""
+costs = [
+    "**Escaping protects only what goes through it.** th:utext, HTML assembled in Java code and values passed to a client-side framework's own raw-HTML feature all skip it.",
+    "**Some places cannot be made safe by escaping.** An event handler attribute, a style, or a URL that starts with a scheme the customer chose need a different design: keep customer text out of them.",
+    "**The nonce needs code.** Spring Security writes a fixed policy; a per-request nonce needs a filter and a template variable, and every inline script must carry it.",
+    "**The policy needs care.** Every new script source must be added on purpose, and a policy with 'unsafe-inline' and no nonce protects nothing.",
+]
+too_much = """
+For any page that shows text a customer wrote, escaping by default is the minimum and costs nothing. The nonce-based policy is worth it for any page behind a login. A test that
+lists every use of th:utext costs a few lines and stops the trap from spreading.
+"""
+met_before = [
+    "`th:text` and `th:utext` in Thymeleaf templates.",
+    "`Content-Security-Policy` response headers with `'nonce-...'` in browser developer tools.",
+    "`server.servlet.session.cookie.http-only` and `same-site` in Spring Boot settings.",
+    "Code reviews that ask \"why is this th:utext?\"",
+]
+where = """
+This project follows [cross-site-scripting](../cross-site-scripting) in [web-security](..), the first module of the intermediate track. It uses the Spring Boot setup of
+[http-basics-and-headers-with-spring-boot](../../../beginner/networking/http-basics-and-headers-with-spring-boot).
+"""
+twin = """
+The store is a real Spring Boot server on a free port of the loopback interface. Nonces are random, so the demo prints only facts about them: that the header and the script agree, that
+the next page has a different one, and whether a script is allowed. The policy is evaluated in Java with the rules browsers apply, so no browser is needed. The problem is shown with a
+harmless bold tag; the project contains no attack payloads.
+"""
+test_note = "The real server is tested for escaping in each place, the trap template, a fresh nonce on every page that matches the page's script, and the cookie flags. A guard test fails if any template other than the trap uses th:utext, or if an inline script lacks the nonce. Nonces and ports change on every run, so the demo prints only facts about them and the golden output is the same every time."
+
+[[act]]
+title = "Thymeleaf escapes by default"
+summary = "Ana's review, the text <b>Great boots</b>, written with th:text comes out as &lt;b&gt;Great boots&lt;/b&gt;: no bold element on the page, and nothing had to be remembered."
+detail = """
+Ana's review is the text of a bold tag around "Great boots". Written with th:text, the page answers 200 and the review is written as escaped text, so the page has no bold element.
+Nothing had to be remembered: th:text is the ordinary way to write a value in Thymeleaf.
+"""
+speech = """
+First demo: escaping by default. [[slnc 400]] Ana's review contains a bold tag. [[slnc 600]]
+Written with th text, the ordinary way, the tag comes out as escaped text. [[slnc 300]] The page has no bold element. [[slnc 600]]
+Nothing had to be remembered. [[slnc 300]] The template engine did the encoding.
+"""
+rows = { text = "active ok" }
+console = [
+    ["Ana's review is the text <b>Great boots</b>, written with th:text", "muted"],
+    ["the page answers 200, and the review is written as: &lt;b&gt;Great boots&lt;/b&gt;", "ok"],
+    ["bold elements on the page: 0, so the review stayed text", "ok"],
+    ["nothing had to be remembered: th:text is the ordinary way to write a value", "muted"],
+]
+
+[[act]]
+title = "th:utext, the one switch that turns escaping off"
+summary = "The same review written with th:utext becomes a bold element the shop never wrote; one of the two templates uses th:utext, and a test fails if another appears."
+detail = """
+The same review written with th:utext, unescaped text, is written as markup: the page now has one bold element, and the shop wrote none. th:utext is for markup the shop wrote itself,
+never for anything a customer typed. A search of the templates finds every place this can happen: one of the two, and a test fails if another one appears.
+"""
+speech = """
+Second demo: the trap. [[slnc 400]] The same review, written with th u text. [[slnc 600]]
+Now the tag is markup. [[slnc 300]] The page has a bold element that the shop never wrote. [[slnc 600]]
+The u stands for unescaped. [[slnc 300]] It is for markup the shop wrote itself, never for anything a customer typed. [[slnc 600]]
+A test lists every template that uses it, and fails if a new one appears.
+"""
+rows = { utext = "active wrong" }
+console = [
+    ["the same review written with th:utext: <b>Great boots</b>", "bad"],
+    ["bold elements on the page: 1, and the shop wrote none  <- THE REVIEW BECAME PART OF THE PAGE", "bad"],
+    ["th:utext means unescaped text: it is for markup the shop wrote itself, never for anything a customer typed", "amber"],
+    ["a search of the templates for th:utext finds every place this can happen: 1 of 2 templates, and a test fails if another one appears", "ok"],
+]
+
+[[act]]
+title = "The other places a value can go"
+summary = "Ben's fit note reads back whole from an attribute, the search text stays one link parameter, and a value inside a script is written as one JavaScript string."
+detail = """
+In an attribute written with th:attr, Ben's fit note with its double quote reads back whole. In a link built with @{/search(q=...)}, the search text "size 5 & up" is encoded as one
+parameter, and its ampersand does not start a second one. In a script with th:inline="javascript", the note with quotes is written as one JavaScript string. Each value went through the
+escaping for its own place, chosen by how it was written in the template.
+"""
+speech = """
+Third demo: the other places a value can go. [[slnc 400]] In an attribute, Ben's fit note, with its quote, reads back whole. [[slnc 600]]
+In a link built by Thymeleaf, the search text stays one parameter. [[slnc 300]] Its ampersand does not start a second one. [[slnc 600]]
+Inside a script, with inline javascript, the note is written as one string. [[slnc 600]]
+Each value got the escaping for its own place, chosen by how the template wrote it.
+"""
+rows = { places = "active ok" }
+console = [
+    ["in an attribute, with th:attr: Ben's fit note reads back whole: Fits 5\" boots  (true)", "ok"],
+    ["in a link, with @{/search(q=...)}: /search?q=size%205%20%26%20up", "ok"],
+    ["the search text is one parameter, and its & did not start a second one: true", "ok"],
+    ["in a script, with th:inline=\"javascript\": const note = \"It's \\\"great\\\"\"", "ok"],
+    ["each value went through the escaping for its own place, chosen by how it was written in the template", "muted"],
+]
+
+[[act]]
+title = "A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page"
+summary = "Every page has a policy whose nonce matches the page's own script, the next page has a different nonce, and a script without the nonce may not run."
+detail = """
+The product page answers with a strict policy. The policy names a nonce, and the shop's own script carries the same one. The next page has a different nonce. The shop's script may run;
+a script that slipped in without the nonce may not, which is the second line of defence. The nonce comes from a filter that runs before Spring Security writes its headers, so the
+header and the page always agree.
+"""
+speech = """
+Fourth demo: the policy. [[slnc 400]] Every page answers with a strict content security policy. [[slnc 600]]
+The policy names a nonce, and the shop's own script carries the same one. [[slnc 300]] The next page has a different nonce. [[slnc 600]]
+The shop's script may run. [[slnc 300]] A script without the nonce may not. [[slnc 300]] That is the second line of defence. [[slnc 600]]
+A small filter makes the nonce before Spring Security writes its headers, so the header and the page always agree.
+"""
+rows = { policy = "active ok" }
+console = [
+    ["the product page answers with a policy: true", "ok"],
+    ["the policy names a nonce, and the shop's own script carries the same one: true", "ok"],
+    ["the next page has a different nonce: true", "ok"],
+    ["the shop's script may run: true", "ok"],
+    ["a script that slipped in without the nonce may run: false  <- A SECOND LINE OF DEFENCE", "ok"],
+    ["the nonce comes from a filter that runs before Spring Security writes its headers, so the header and the page always agree", "muted"],
+]
+
+[[act]]
+title = "The bill"
+summary = "The session cookie is HttpOnly and SameSite=Strict; escaping protects only what goes through it; some places need design rather than escaping; the nonce needs a small filter."
+detail = """
+The session cookie is HttpOnly, so a script cannot read it, and SameSite=Strict. Escaping by default protects only the values written through it: th:utext and HTML built in Java code
+skip it. A value placed in an event handler or a style needs more than escaping, so customer text stays out of those places. And Spring Security writes a fixed policy unless the
+application supplies the nonce, as this store does with one small filter.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The session cookie is H T T P only, so a script cannot read it, and same site strict. [[slnc 600]]
+Escaping by default protects only the values that go through it. [[slnc 300]] th u text, and H T M L built in Java code, skip it. [[slnc 600]]
+Some places, like an event handler or a style, need more than escaping. [[slnc 300]] Keep customer text out of them. [[slnc 600]]
+And a fresh nonce needs one small filter, because Spring Security's policy is a fixed string.
+"""
+rows = { utext = "active amber", policy = "active amber" }
+console = [
+    ["the session cookie is HttpOnly: true, and SameSite=Strict: true", "ok"],
+    ["escaping by default protects only the values written through it: th:utext, and HTML built in Java code, skip it", "amber"],
+    ["a value placed in an event handler or a style needs more than escaping: keep customer text out of those places", "amber"],
+    ["Spring Security writes a fixed policy unless the application supplies the nonce, as this store does with one small filter", "amber"],
+]
+
+[animation]
+subtitle = "An online store's product page in Thymeleaf: escaping by default, the th:utext trap, each place a value goes, and a nonce policy from Spring Security."
+boxes = [
+    ["text", "th:text", "escapes by default"],
+    ["utext", "th:utext", "the switch that turns it off"],
+    ["places", "Attribute, link, script", "each escaped for its place"],
+    ["policy", "Nonce CSP", "a fresh nonce for every page"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses Spring Boot with Spring MVC, Spring Security and Thymeleaf. The versions come from the Spring Boot BOM.
+"""
+what = [
+    ["Spring Boot", "starts the store as a real web server, with Tomcat, on a free port of the loopback interface."],
+    ["Spring Security", "writes the response headers, including the Content-Security-Policy that this store fills with a fresh nonce."],
+    ["Thymeleaf", "the template engine. It escapes values written with th:text for their place in the page, and writes raw markup only with th:utext."],
+]
+why = """
+The plain project wrote an encoder for each place by hand, to show what encoding is. Real applications use a template engine that encodes by default, so the lesson becomes knowing what the
+engine does for each place, and where it stops.
+"""
+install_note = "A JDK. Gradle downloads the libraries, and the versions are pinned through the Spring Boot BOM:"
+versions = [
+    ["Spring Boot", "4.1.1"],
+    ["Spring Framework", "7.0.9"],
+    ["Spring Security", "7.1.1"],
+    ["Thymeleaf", "3.1 (Boot BOM)"],
+    ["Tomcat", "11.0.24"],
+    ["Java", "25"],
+    ["JUnit", "6.1.3"],
+]
+costs = [
+    "A full web framework for one page.",
+    "A per-request nonce needs a filter of the store's own; Spring Security's policy setting is a fixed string.",
+]
+
+[docs.problem]
+scenario = """
+An online store shows reviews, fit notes and search links written by customers on its product pages, rendered with Thymeleaf.
+"""
+naive = """
+Build the page with th:utext, or with HTML assembled in code, "because the review may contain formatting".
+"""
+deliver = [
+    "Pages that show a review escaped with th:text and, once, the trap with th:utext.",
+    "Values written into an attribute, a link and a script, each escaped for its place.",
+    "A strict Content-Security-Policy with a fresh nonce for every page, from Spring Security and a small filter.",
+    "HttpOnly and SameSite session cookies.",
+    "A guard test that lists every template using th:utext.",
+]
+
+[docs.prerequisites]
+required = [
+    "The cross-site-scripting project, or an idea of what output encoding and a nonce are",
+    "Spring Boot basics",
+]
+not_required = [
+    "A browser: the page is read and the policy evaluated in Java",
+    "Front-end frameworks",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "say what th:text escapes and what th:utext does not",
+    "write a value safely into an attribute, a link and a script with Thymeleaf",
+    "add a per-request nonce to Spring Security's policy",
+    "write a test that stops new uses of th:utext",
+]
+walkthrough = """
+Start with the printer and its one switch. Run the demo. After act two, ask where else in a real code base markup could be built outside the template. After act four, ask what happens
+if a developer adds an inline script without the nonce, and run the guard test to see it fail.
+"""
+exercises = [
+    "Add a second template that uses th:utext and watch the guard test fail.",
+    "Add an inline script to product.html without the nonce and check what the policy evaluator says.",
+    "Move the fit note into an onclick attribute and explain why escaping is no longer enough.",
+    "Allow a formatted review safely by converting a few known tags on the server and escaping everything else.",
+]
+
+[docs.explained]
+sentence = """
+In Spring Boot, cross-site scripting is prevented by writing every customer value with Thymeleaf's escaping, never th:utext, and by sending a strict Content-Security-Policy whose fresh
+per-request nonce is carried only by the shop's own scripts.
+"""
+verdict = """
+Use th:text and Thymeleaf's own syntax for attributes, links and scripts. Treat every th:utext as a finding to justify, and guard them with a test. Add a nonce filter and a strict policy,
+make the session cookie HttpOnly and SameSite, and keep customer text out of event handlers, styles and scheme-controlled URLs.
+"""
+recognise = [
+    "`th:utext` in a template review.",
+    "A `Content-Security-Policy` header with `'nonce-...'` and `'strict-dynamic'`.",
+    "`th:inline=\"javascript\"` blocks with `[[${...}]]` values.",
+    "Advisories that mention CWE-79.",
+]
+
+[spec]
+purpose = """
+Teach cross-site scripting defences in Spring Boot: Thymeleaf's escaping for each place, the th:utext trap, a per-request nonce policy from Spring Security, and session cookie flags.
+"""
+nongoals = [
+    "Attack payloads or filter evasion: the problem is shown with a harmless bold tag.",
+    "Client-side frameworks and their own raw-HTML features.",
+    "HTML sanitizers for rich text: mentioned as an exercise.",
+]
+problem = """
+Developers trust the template engine without knowing where its escaping stops, and policies with nonces are rarely wired correctly into Spring Security.
+"""
+roles = [["The store and its policy", "`Shop`"], ["A nonce for every request", "`NonceFilter`"], ["The pages", "`ReviewController`, `templates/product.html`, `templates/product-unescaped.html`"], ["The policy evaluator", "`ContentSecurityPolicy`"], ["Reading a page as a browser would", "`Markup`"], ["The th:utext guard", "`Templates`"], ["Entry point", "`XssSpringDemo`"]]
+requirements = [
+    "th:text escapes the review, and th:utext does not.",
+    "Attribute, link and script values survive whole and stay in their place.",
+    "Every page has a policy with a fresh nonce, matching the page's script, and a script without it is not allowed.",
+    "The session cookie is HttpOnly and SameSite=Strict.",
+    "Only the trap template uses th:utext.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "How a page is written"
+caption = "The filter makes the nonce, Spring Security writes it into the policy, and Thymeleaf writes it on the shop's script while escaping every value."
+nodes = [
+    { id = "browser", label = "Browser", sub = "asks for /product", col = 0, row = 0, colour = "client" },
+    { id = "filter", label = "NonceFilter", sub = "a fresh nonce", col = 1, row = 0, colour = "accent" },
+    { id = "security", label = "Spring Security", sub = "writes the policy", col = 2, row = 0, colour = "green" },
+    { id = "thymeleaf", label = "Thymeleaf", sub = "escapes every value", col = 3, row = 0, colour = "green" },
+    { id = "reviews", label = "Reviews", sub = "customer text", col = 3, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "browser", to = "filter" },
+    { from = "filter", to = "security", label = "nonce" },
+    { from = "security", to = "thymeleaf", label = "nonce" },
+    { from = "reviews", to = "thymeleaf", label = "text" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Shop wires the filter and the header; the controller fills the model; the helpers read the page as a browser would."
+nodes = [
+    { id = "shop", label = "Shop", sub = ["chain(http)"], col = 0, row = 0, colour = "green" },
+    { id = "filter", label = "NonceFilter", sub = ["doFilterInternal(...)", "nonceOf(request)"], col = 1, row = 0, colour = "accent" },
+    { id = "controller", label = "ReviewController", sub = ["product(model)", "unescaped(model)"], col = 2, row = 0, colour = "green" },
+    { id = "csp", label = "ContentSecurityPolicy", sub = ["strict(nonce)", "allowsInlineScript(policy, nonce)"], col = 0, row = 1, colour = "accent" },
+    { id = "markup", label = "Markup", sub = ["count(html, name)", "attribute(...)", "scriptNonces(html)"], col = 1, row = 1, colour = "client" },
+    { id = "templates", label = "Templates", sub = ["unescaped()"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "shop", to = "filter", label = "adds" },
+    { from = "shop", to = "csp", label = "writes" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "One value, four places"
+caption = "How the template writes a value decides how it is escaped."
+nodes = [
+    { id = "value", label = "Customer text", sub = "a review, a note, a search", col = 0, row = 0, colour = "amber" },
+    { id = "text", label = "th:text", sub = "between tags", col = 1, row = 0, colour = "green" },
+    { id = "attr", label = "th:attr", sub = "in an attribute", col = 2, row = 0, colour = "green" },
+    { id = "link", label = "@{...}", sub = "in a link", col = 1, row = 1, colour = "green" },
+    { id = "script", label = "th:inline", sub = "in a script", col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "value", to = "text" },
+    { from = "value", to = "attr" },
+    { from = "value", to = "link" },
+    { from = "value", to = "script" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A product page is served: who does what, in order"
+participants = ["Browser", "NonceFilter", "Spring Security", "Thymeleaf"]
+steps = [
+    ["Browser", "NonceFilter", "GET /product"],
+    ["NonceFilter", "NonceFilter", "make a fresh nonce"],
+    ["NonceFilter", "Spring Security", "the request, carrying the nonce"],
+    ["Spring Security", "Thymeleaf", "policy header written with the nonce"],
+    ["note", "Thymeleaf", "escape every value, put the nonce on the shop's script"],
+    ["Thymeleaf", "Browser", "the page and its policy", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The th:utext trap"
+caption = "Unescaped text is written as markup."
+participants = ["Template", "Thymeleaf", "Browser"]
+steps = [
+    ["Template", "Thymeleaf", "th:utext=\"${review}\""],
+    ["note", "Thymeleaf", "no escaping"],
+    ["Thymeleaf", "Browser", "the review as markup", "reply"],
+    ["note", "Browser", "a bold element the shop never wrote"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A script without the nonce"
+caption = "The browser checks every inline script against the policy."
+participants = ["Page", "Browser"]
+steps = [
+    ["Page", "Browser", "the shop's script, carrying the nonce"],
+    ["note", "Browser", "allowed"],
+    ["Page", "Browser", "a script with no nonce"],
+    ["note", "Browser", "refused by the policy"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["templates", "security", "reviews"], colour = "green" },
+    { label = "The customer's browser", nodes = ["page"], colour = "amber" },
+    { label = "Outside", nodes = ["writer"], colour = "red" },
+]
+nodes = [
+    { id = "writer", label = "Review writer", sub = "any customer", col = 0, row = 0, colour = "red", threats = ["T1"] },
+    { id = "reviews", label = "Reviews", sub = "stored customer text", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T1"] },
+    { id = "templates", label = "Templates", sub = "th:text or th:utext", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T2", "T3"] },
+    { id = "security", label = "Spring Security", sub = "policy and nonce", col = 2, row = 1, colour = "green", shape = "ellipse", threats = ["T4"] },
+    { id = "page", label = "The page", sub = "runs in the customer's browser", col = 3, row = 0, colour = "client", threats = ["T5"] },
+]
+edges = [
+    { from = "writer", to = "reviews", label = "writes", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "reviews", to = "templates" },
+    { from = "templates", to = "page" },
+    { from = "security", to = "page", label = "policy" },
+]
+
+[poster]
+headline = [["XSS WITH", "text"], ["SPRING BOOT", "accent"]]
+taglines = [["Let the template escape, and know the one switch that stops it", "gold"]]
+before = { code = "th:utext=\"${review}\"", note = "customer text as markup", tag = "BEFORE" }
+after = { code = "th:text + nonce CSP", note = "escaped, with a second line of defence", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Cross-Site Scripting with Spring Boot"
+narration = """Hello, and welcome. [[slnc 400]] This video looks at cross site scripting defences in Spring Boot. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a reminder. [[slnc 300]] Cross site scripting happens when a customer's text is read by the browser as part of the page. [[slnc 300]] The defence is to encode every value for the place it is written. [[slnc 600]] Think of a shop that prints customers' reviews through a printer that always prints plain letters. [[slnc 300]] The printer has one switch that prints a note as the shop's own sign. [[slnc 300]] Flip it for a customer's note, and the note passes as the shop. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear what Thymeleaf escapes for you. [[slnc 300]] The one switch that stops it. [[slnc 300]] How each place a value goes is escaped. [[slnc 300]] And how to send a policy with a fresh nonce from Spring Security."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store shows product reviews", "with Thymeleaf templates.", "", "Reviews, fit notes and searches", "are written by customers."]
+narration = """Here is the scenario. [[slnc 400]] An online store shows product reviews on its pages, using Thymeleaf templates. [[slnc 500]] Reviews, fit notes and searches are all written by customers. [[slnc 600]] Every one of them must stay text."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Template engine: writes pages from data", "th:text: writes a value, escaped", "th:utext: writes a value as markup", "Nonce: a random value, new for every page", "CSP: the browser's rule for which scripts run"]
+narration = """Before the demos, the words. [[slnc 500]] A template engine writes pages from data. [[slnc 500]] th text writes a value, escaped. [[slnc 500]] th u text writes a value as markup, with no escaping. [[slnc 500]] A nonce is a random value, new for every page. [[slnc 500]] And a content security policy tells the browser which scripts may run."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Two Lines of Defence"
+body = ["First: every value escaped for its place", "th:text, th:attr, @{...}, th:inline", "Second: a strict policy with a nonce", "Only the shop's own scripts run"]
+narration = """Let's put it side by side. [[slnc 400]] The first line of defence is escaping every value for its place. [[slnc 500]] Thymeleaf does that with th text, th attr, link expressions, and inline javascript. [[slnc 500]] The second line is a strict policy with a nonce. [[slnc 500]] Only the shop's own scripts carry it, so only they run."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Shop: Spring Security and the policy", "NonceFilter: a fresh nonce per request", "ReviewController: the pages", "Templates: the th:utext guard", "Markup: reading the page as a browser would"]
+narration = """Here is who does what in the code. [[slnc 400]] The shop class configures Spring Security and the policy header. [[slnc 500]] The nonce filter makes a fresh nonce for every request. [[slnc 500]] The review controller fills the pages. [[slnc 500]] The templates class lists every template that uses th u text. [[slnc 300]] And the markup class reads a page the way a browser would."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["th:text and th:utext in templates", "CSP headers with nonces in developer tools", "Session cookie settings in Spring Boot", "\"Why is this th:utext?\" in code review"]
+narration = """You have probably met this already. [[slnc 400]] th text and th u text in Thymeleaf templates. [[slnc 500]] Content security policy headers with nonces, in the browser's developer tools. [[slnc 500]] Session cookie settings in Spring Boot. [[slnc 500]] And code reviews that ask, why is this th u text?"""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Write values with th:text and friends", "Treat every th:utext as a finding", "Guard it with a test", "Add a nonce filter and a strict policy", "HttpOnly and SameSite session cookies"]
+narration = """So, how do you use it? [[slnc 400]] Write every value with th text, and Thymeleaf's own syntax for attributes, links and scripts. [[slnc 500]] Treat every th u text as a finding to justify. [[slnc 500]] Guard it with a test. [[slnc 500]] Add a nonce filter and a strict policy. [[slnc 500]] And make the session cookie H T T P only and same site."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a second th:utext", "and watch the guard test fail."]
+narration = """That's cross site scripting defences in Spring Boot. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Let the template escape every value, and treat th u text as the exception it is. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second template with th u text, and watch the guard test fail. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store's product pages rendered by Thymeleaf in Spring Boot, showing text written by customers, and the policy and cookies sent with them. It covers a customer who writes a
+review or note, and the browsers of other customers who read it. It does not cover client-side frameworks, rich-text sanitizing or other injection types.
+"""
+assets = [
+    "The customer's session and what it can do.",
+    "The content of the page as the shop meant it.",
+    "The shop's own scripts and the nonce that lets them run.",
+]
+actors = [
+    "A customer who writes reviews, notes and searches.",
+    "Other customers whose browsers render the page.",
+    "Developers who write templates.",
+]
+boundaries = [
+    "Customer text to the template: every value crosses it.",
+    "The store to the browser: the page and its policy cross it.",
+]
+assumptions = [
+    "Browsers enforce Content-Security-Policy.",
+    "Templates are reviewed, and the guard test runs in the build.",
+    "In the demo, reviews are fixed demo values and the problem is shown with a bold tag only.",
+]
+out_of_scope = [
+    "Client-side rendering frameworks.",
+    "Rich text that must keep formatting, which needs a sanitizer.",
+    "SQL and other injection types.",
+]
+tests = [
+    "`ShopPagesTest` checks escaping in each place, the trap page, fresh matching nonces and the cookie flags on the real server.",
+    "`TemplatesTest` fails if a template other than the trap uses th:utext, or if a script lacks the nonce.",
+    "`ContentSecurityPolicyTest` checks the policy evaluator against browser rules.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, cross-site-request-forgery, looks at a different way another site can act as the customer: by sending requests the customer did not mean.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Customer text is written as markup and changes the page"
+where = "`templates/product-unescaped.html` (th:utext)"
+control = "th:text everywhere, and a guard test that lists every th:utext"
+residual = "HTML built in Java code bypasses the template and needs the same review"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A value breaks out of an attribute or a link"
+where = "`templates/product.html`"
+control = "th:attr and @{...} escape for their place"
+residual = "Event handlers, styles and scheme-controlled URLs cannot be made safe by escaping"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A value inside a script ends the string and becomes code"
+where = "the inline script"
+control = "th:inline=\"javascript\" writes one escaped string"
+residual = "Values in other script positions, such as building code from text, are never safe"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "A script that slipped onto the page runs as the shop's own"
+where = "`Shop`, `NonceFilter`"
+control = "A strict policy with a fresh nonce for every page"
+residual = "A nonce reused across pages, or 'unsafe-inline' without a nonce, removes the protection"
+
+[[threat]]
+id = "T5"
+stride = "I"
+threat = "A script reads the session cookie"
+where = "the session cookie"
+control = "HttpOnly and SameSite=Strict"
+residual = "A script can still act within the page without reading the cookie, so the first line of defence matters most"

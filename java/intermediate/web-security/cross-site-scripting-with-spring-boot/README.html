@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-Site Scripting with Spring Boot: Thymeleaf Escaping and a Nonce CSP</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cross-Site Scripting with Spring Boot: Thymeleaf Escaping and a Nonce CSP</h1>
+<pre><code>src/main/java/com/jk/explore/security/xssspring/
+├── ContentSecurityPolicy.java  A strict Content-Security-Policy with a fresh nonce for every response, and an evaluator that answers what a browser would: may this inline script run?
+├── Encode.java                 Reads an HTML-escaped value back as a browser would, so a test can check that a value survived the page whole
+├── Markup.java                 A small model of how a browser would read a page: which elements it contains, and what an attribute's value is
+├── NonceFilter.java            Gives every request a fresh nonce, before Spring Security writes its headers
+├── ReviewController.java       The product page, written twice: the way Thymeleaf writes it by default, and with th:utext, the one switch that turns escaping off
+├── Shop.java                   The store: Thymeleaf pages, and Spring Security writing a strict Content-Security-Policy with this request's nonce
+├── Templates.java              The store's templates, read from the class path, so a test can list every place that turns escaping off
+├── Wire.java                   Fetches a page from a running store over the loopback interface with the JDK's HTTP client
+└── XssSpringDemo.java          Runs the online store story in five numbered acts against a real Spring Boot server on the loopback interface
+</code></pre>
+<p><strong>Thymeleaf escapes every value written with th:text, in the right way for an attribute, a link or a script; th:utext switches that off, and Spring Security can send a strict policy with a fresh nonce for every page once a small filter supplies the nonce.</strong></p>
+<p>The plain version of this lesson wrote an encoder for each place a value can go. Real applications let a <strong>template engine</strong> do it. <strong>Thymeleaf</strong>, the engine that Spring Boot
+uses for server-rendered pages, escapes every value written with <code>th:text</code>, and it escapes differently for an attribute, a link built with <code>@{...}</code> and a value inside a script
+with <code>th:inline="javascript"</code>. The danger is the one switch that turns escaping off: <strong><code>th:utext</code></strong>, "unescaped text", which writes a value as markup.</p>
+<p>The second line of defence is a strict <strong>Content-Security-Policy</strong> with a fresh <strong>nonce</strong> for every page. Spring Security writes security headers, but its policy is a fixed string, so
+the store adds one small filter that makes a nonce for each request, gives it to the header and to the template, and puts it on the page's own script. It maps to <strong>Injection (A05)</strong> in the
+OWASP Top 10 (2025), <strong>CWE-79</strong>, and the OWASP ASVS chapter on encoding and sanitization.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a shop that prints customers' reviews on its notice board through a printer that always prints in plain letters. Whatever a customer writes, it comes out as words. The
+printer has one switch marked "print as the shop's own sign", and anyone who flips it for a customer's note lets that note pass as the shop. The policy is the board's rule that
+only notices with today's stamp count.</p>
+<h2>The scenario</h2>
+<p>An online store shows product reviews with Thymeleaf. The demo writes Ana's review with th:text and with th:utext, writes Ben's fit note, a search link and a value inside a script,
+checks the page's policy and nonce on two requests, and reads the session cookie's flags.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Thymeleaf escapes by default</td>
+<td>Ana's review, the text <b>Great boots</b>, written with th:text comes out as &lt;b&gt;Great boots&lt;/b&gt;: no bold element on the page, and nothing had to be remembered.</td>
+</tr>
+<tr>
+<td>2. th:utext, the one switch that turns escaping off</td>
+<td>The same review written with th:utext becomes a bold element the shop never wrote; one of the two templates uses th:utext, and a test fails if another appears.</td>
+</tr>
+<tr>
+<td>3. The other places a value can go</td>
+<td>Ben's fit note reads back whole from an attribute, the search text stays one link parameter, and a value inside a script is written as one JavaScript string.</td>
+</tr>
+<tr>
+<td>4. A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page</td>
+<td>Every page has a policy whose nonce matches the page's own script, the next page has a different nonce, and a script without the nonce may not run.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The session cookie is HttpOnly and SameSite=Strict; escaping protects only what goes through it; some places need design rather than escaping; the nonce needs a small filter.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>13 tests in <code>ContentSecurityPolicyTest</code>, <code>DemoRunsTest</code>, <code>ShopPagesTest</code>, <code>TemplatesTest</code>. The real server is tested for escaping in each place, the trap template, a fresh nonce on every page that matches the page's script, and the cookie flags. A guard test fails if any template other than the trap uses th:utext, or if an inline script lacks the nonce. Nonces and ports change on every run, so the demo prints only facts about them and the golden output is the same every time.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The store is a real Spring Boot server on a free port of the loopback interface. Nonces are random, so the demo prints only facts about them: that the header and the script agree, that
+the next page has a different one, and whether a script is allowed. The policy is evaluated in Java with the rules browsers apply, so no browser is needed. The problem is shown with a
+harmless bold tag; the project contains no attack payloads.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-thymeleaf</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Thymeleaf</td>
+<td>3.1 (from the Spring Boot BOM)</td>
+<td>the template engine that writes the store's pages and escapes values by default</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cross-site-scripting-with-spring-boot-explained.html">Cross-Site Scripting with Spring Boot: Thymeleaf Escaping and a Nonce CSP, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The filter makes the nonce, Spring Security writes it into the policy, and Thymeleaf writes it on the shop's script while escaping every value.</p>
+<p><img alt="How a page is written" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Shop wires the filter and the header; the controller fills the model; the helpers read the page as a browser would.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>How the template writes a value decides how it is escaped.</p>
+<p><img alt="One value, four places" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A product page is served: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/cross-site-scripting-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Escaping protects only what goes through it.</strong> th:utext, HTML assembled in Java code and values passed to a client-side framework's own raw-HTML feature all skip it.</li>
+<li><strong>Some places cannot be made safe by escaping.</strong> An event handler attribute, a style, or a URL that starts with a scheme the customer chose need a different design: keep customer text out of them.</li>
+<li><strong>The nonce needs code.</strong> Spring Security writes a fixed policy; a per-request nonce needs a filter and a template variable, and every inline script must carry it.</li>
+<li><strong>The policy needs care.</strong> Every new script source must be added on purpose, and a policy with 'unsafe-inline' and no nonce protects nothing.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For any page that shows text a customer wrote, escaping by default is the minimum and costs nothing. The nonce-based policy is worth it for any page behind a login. A test that
+lists every use of th:utext costs a few lines and stops the trap from spreading.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>th:text</code> and <code>th:utext</code> in Thymeleaf templates.</li>
+<li><code>Content-Security-Policy</code> response headers with <code>'nonce-...'</code> in browser developer tools.</li>
+<li><code>server.servlet.session.cookie.http-only</code> and <code>same-site</code> in Spring Boot settings.</li>
+<li>Code reviews that ask "why is this th:utext?"</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../cross-site-scripting">cross-site-scripting</a> in <a href="..">web-security</a>, the first module of the intermediate track. It uses the Spring Boot setup of
+<a href="../../../beginner/networking/http-basics-and-headers-with-spring-boot">http-basics-and-headers-with-spring-boot</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
