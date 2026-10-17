@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Symmetric Encryption (AES-GCM)</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Symmetric Encryption (AES-GCM)</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>An online bank's stored account statements, encrypted by the application before they are stored: the choice of mode, the nonces, the
+associated data, the key, and the messages on disk and in backups. It covers a thief who reads a disk, and one who changes a file. It does
+not cover who is allowed to ask the application for a statement, or how the key is stored and rotated.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The contents of each statement.</li>
+<li>The integrity of each statement.</li>
+<li>The encryption key.</li>
+<li>The record of which nonces have been used.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The bank's application, which seals and opens messages.</li>
+<li>A thief who copies a disk or a backup.</li>
+<li>An attacker who can change or move stored messages.</li>
+<li>An attacker who sees two messages made with the same nonce.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Application to disk: messages leave the application only as nonce, cipher text and tag.</li>
+<li>Key store to application: the key must reach the application and nowhere else.</li>
+<li>Account to account: associated data stops one account's message being used for another.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A thief reads statements from a disk or a backup</td>
+<td>stored messages</td>
+<td>AES-GCM hides the contents, so the disk holds only cipher text</td>
+<td>The length of each message still shows, and the key must not be on the same disk</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>Someone changes a stored message, or moves it to another account</td>
+<td><code>GcmBox.open</code></td>
+<td>The tag covers the cipher text, nonce and associated data, so any change or move is refused</td>
+<td>An attacker can still delete a message, or replace it with an older valid one for the same account</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Information disclosure</td>
+<td>Patterns in the data show through the cipher text</td>
+<td><code>EcbCipher</code></td>
+<td>Use GCM, not ECB, so equal blocks give different cipher text</td>
+<td>Message lengths and timing can still leak something</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Information disclosure</td>
+<td>A nonce is reused and an attacker recovers one message from another</td>
+<td><code>NonceSource</code></td>
+<td>A fresh nonce for every message, from <code>RandomNonces</code> or a carefully kept counter</td>
+<td>Random nonces may repeat near 2^32 messages under one key; replace the key before that</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Information disclosure</td>
+<td>The key is read by someone who should not have it</td>
+<td>the key store</td>
+<td>None in this project; the key is kept apart from the data</td>
+<td>Whoever holds the key reads everything, so it must be guarded and its use logged</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Denial of service</td>
+<td>The key is lost, and with it every message</td>
+<td>the key store</td>
+<td>None in this project</td>
+<td>Back up the key separately from the data, and test that the backup works</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>Repudiation</td>
+<td>Anyone with the key can make a valid message, so nobody can tell who made it</td>
+<td><code>GcmBox</code></td>
+<td>None with a shared key</td>
+<td>Digital signatures give each maker an identity; a later project covers them</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The attacker does not have the key.</li>
+<li>The application's memory is not itself compromised.</li>
+<li>In the demo, keys and nonces are fixed values. Real systems use a random key from a key store and never repeat a nonce.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Key generation, storage, rotation and destruction: the keystore-basics project.</li>
+<li>Who may open a statement: authorization, in the identity module.</li>
+<li>Traffic analysis, which can use message sizes and timing.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>StandardVectorsTest</code> checks AES and GCM against FIPS 197 and the original GCM specification.</li>
+<li><code>EcbTest</code> shows ECB keeps the repeats of the plain text.</li>
+<li><code>GcmBoxTest</code> shows a changed bit, tag, nonce, associated data or key all make <code>open</code> fail, and the overhead is 28 bytes.</li>
+<li><code>NonceReuseTest</code> shows an attacker who knows one message recovers another when a nonce is reused, and not when nonces are fresh.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, asymmetric-encryption, solves the problem that this one leaves: how two parties who have never met can agree on a key.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
