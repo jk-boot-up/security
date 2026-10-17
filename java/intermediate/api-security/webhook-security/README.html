@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Webhook Security: Signatures, Replays and Idempotency</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Webhook Security: Signatures, Replays and Idempotency</h1>
+<pre><code>src/main/java/com/jk/explore/security/webhooks/
+├── Event.java          A payment event: its unique id, its type, the order and the amount in cents
+├── Orders.java         The store's orders and the money a refund event pays out
+├── Provider.java       The payment provider, simulated: it records what really happened, signs the events it sends, and answers a status query from the store
+├── Receiver.java       The store's webhook endpoint logic, with each check switched on by its {@link Policy}
+├── Reply.java          What the store's webhook endpoint answers: an HTTP status and a short message
+├── Signatures.java     The signature a payment provider puts on each webhook: an HMAC-SHA256, with a secret shared with the store, over the timestamp and the exact raw body, sent in one header as {@code t=&lt;seconds&gt;,v1=&lt;hex&gt;}
+├── SimClock.java       A clock in whole seconds that only moves when told, so every timestamp in the demo is the same on every run
+├── WebhookDemo.java    Runs the online store story in five numbered acts and prints exact, repeatable results
+└── WebhookServer.java  The store's webhook endpoint on a real HTTP server on the loopback address, at POST /webhooks/payments, in front of a {@link Receiver}
+</code></pre>
+<p><strong>A webhook endpoint is a public address that anyone can post to, so the store must verify every message: a signature over the exact raw bytes, a signed time inside a short window, a record of events already processed, and handlers that are idempotent and check the order's state.</strong></p>
+<p>A <strong>webhook</strong> is a message that another service posts to your application when something happens: a payment provider tells an online store that a
+payment succeeded, or that a refund went through. The store's webhook address is public, so anyone can post to it. A message that arrives there
+proves nothing about who sent it, whether it was changed, or whether it is new.</p>
+<p>The defences, in the order this project builds them:
+- An <strong>HMAC-SHA256 signature</strong> over the signed time and the <strong>exact raw body</strong>, with a secret shared with the provider, compared in constant time.
+- A <strong>signed timestamp</strong> inside a short window, and a <strong>record of processed event ids</strong>, so a real message cannot be replayed.
+- <strong>Idempotent handlers</strong> that check the order's state, because providers retry and events arrive late, twice or out of order.
+- <strong>Secret rotation</strong> with two valid secrets during a changeover.</p>
+<p><strong>Maps to:</strong> OWASP API Security Top 10 (2023) API8 Security Misconfiguration and API10 Unsafe Consumption of APIs · CWE-345 Insufficient
+Verification of Data Authenticity · CWE-294 Authentication Bypass by Capture-replay · CWE-347 · OWASP ASVS 5.0, the web services and API chapter.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a shop that ships whenever a note saying "paid" is pushed through its letterbox. Anyone can push a note. A wax seal that only the bank owns
+stops forged notes; a date in the seal stops someone from pushing yesterday's real note again; a list of note numbers already handled stops the same
+note being acted on twice; and for anything valuable, the shop still phones the bank before it ships.</p>
+<h2>The scenario</h2>
+<p>An online store sells through a payment provider. The provider posts payment and refund events to the store's webhook address. The demo runs the store's
+endpoint in process and on a real local HTTP server, with the provider simulated, a clock that moves only when told, and two orders: A-1001 for 4200 cents
+and A-1002 for 1999 cents.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. An endpoint that trusts whatever is posted</td>
+<td>Anyone posts a payment-succeeded event with no signature, and the store marks order A-1001 paid, while the provider has no payment for it.</td>
+</tr>
+<tr>
+<td>2. A signature over the exact bytes</td>
+<td>An HMAC-SHA256 of the signed time and raw body accepts the real event and refuses a changed body, a missing signature and another secret, compared in constant time.</td>
+</tr>
+<tr>
+<td>3. A real message sent again</td>
+<td>With signatures only, a real refund replayed an hour later pays 8400 cents for a 4200-cent order; a signed time window and a record of event ids stop it.</td>
+</tr>
+<tr>
+<td>4. Twice, out of order, and a new secret</td>
+<td>A retried event changes the order once; a refund before its payment is answered 409 and applied on retry; old and new secrets both work during a changeover.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A re-serialized body fails the signature, so raw bytes must be kept; critical events are confirmed with the provider's API; the secret is kept and rotated; handlers stay idempotent.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>16 tests in <code>DemoRunsTest</code>, <code>ReceiverTest</code>, <code>ServerTest</code>, <code>SignaturesTest</code>. The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The store's endpoint runs in process and on a real HTTP server on the loopback address of this machine; the port is never printed. The payment provider is
+simulated in Java, and the clock moves only when the demo moves it, so every signature and every answer is the same on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/webhook-security-explained.html">Webhook Security: Signatures, Replays and Idempotency, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The address is public; only the checks decide whether a message is from the provider, unchanged and new.</p>
+<p><img alt="Where a webhook comes from, and where it is checked" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Receiver runs the checks in order; Signatures does the cryptography; Orders enforces the allowed state changes.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The signature covers the time and the raw body; the checks run before the body is parsed.</p>
+<p><img alt="What is signed, and what is checked first" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Receiving one event: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/webhook-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The secret must be kept and rotated.</strong> Anyone with the shared secret can forge any event, so it lives outside the code, and a change needs a window in which both secrets are accepted.</li>
+<li><strong>The raw bytes must be kept.</strong> The signature covers the exact body; a framework that parses and re-serializes it first will see every real event fail.</li>
+<li><strong>Clocks must be roughly right.</strong> The time window refuses messages from a clock that is too far ahead or behind, so servers need time synchronization.</li>
+<li><strong>The record of events grows.</strong> Processed event ids must be kept at least as long as the provider retries, and in a store shared by every server.</li>
+<li><strong>A signature is not the provider's final word.</strong> For anything valuable, such as shipping goods, confirm the event with the provider's API.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Every webhook endpoint that changes state needs signature verification and replay protection; there is no small version. A purely informational webhook
+that only triggers a fresh fetch from the provider's API needs less, because the store then trusts the API answer and not the message.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>Stripe-Signature</code>, <code>X-Hub-Signature-256</code> and similar headers on webhooks from payment providers and code hosts.</li>
+<li>Webhook settings pages that show a signing secret and a "roll secret" button.</li>
+<li>Delivery logs that show the same event retried several times.</li>
+<li>Incident reports where orders were marked paid by forged callbacks.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">api-security</a> and builds on <a href="../../../beginner/cryptography/hashing-and-integrity">hashing-and-integrity</a>, which introduced HMAC,
+and <a href="../../../beginner/cryptography/keystore-basics">keystore-basics</a>, which introduced key rotation by name.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

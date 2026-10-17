@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Webhook Security: Signatures, Replays and Idempotency</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Webhook Security: Signatures, Replays and Idempotency</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>An online store's webhook endpoint for payment and refund events from a payment provider: verification of each message, replay protection, idempotent handling and the shared
+secret. It does not cover the provider's own security, the store's other APIs, or the transport, which is assumed to be HTTPS in production.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Orders and their payment state, which decide whether goods ship.</li>
+<li>Refunds, which move money out of the store.</li>
+<li>The shared signing secret.</li>
+<li>The record of processed event ids.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The payment provider, the only legitimate sender.</li>
+<li>Anyone on the internet who can post to the webhook address.</li>
+<li>Someone who has seen a real message, for example in a log or a proxy.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Internet to the webhook endpoint: every message crosses it, and none is trusted until verified.</li>
+<li>Endpoint to orders and refunds: only verified, fresh, state-appropriate events cross it.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Spoofing</td>
+<td>A forged event claims to come from the provider</td>
+<td><code>Receiver.receive</code></td>
+<td>An HMAC-SHA256 signature with the shared secret, required on every message</td>
+<td>Anyone who obtains the secret can forge events, so the secret is stored and rotated with care</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>A real event's body is changed, for example to another order</td>
+<td><code>Signatures.matchesAny</code></td>
+<td>The signature covers the exact raw body and is compared in constant time</td>
+<td>A framework that verifies a re-serialized body breaks verification, so raw bytes are kept</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Spoofing</td>
+<td>A real, correctly signed message is replayed, paying a refund twice</td>
+<td><code>Receiver.receive</code>, <code>Orders.apply</code></td>
+<td>A signed time inside a 300-second window, a record of processed event ids, and state checks</td>
+<td>The record must be shared by every server and kept as long as the provider retries</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Information disclosure</td>
+<td>The shared secret leaks from code, configuration or logs</td>
+<td>the secret store</td>
+<td>The secret is kept outside the code and rotated with a changeover in which both secrets work</td>
+<td>Between a leak and a rotation, forged events are possible; confirm valuable events with the provider's API</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Denial of service</td>
+<td>Oversized or malformed messages exhaust the endpoint</td>
+<td><code>WebhookServer</code>, <code>Event.parse</code></td>
+<td>POST only, a 4096-byte body limit, and a strict parser that refuses anything unexpected</td>
+<td>A flood of small messages needs rate limiting in front of the endpoint</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Tampering</td>
+<td>Events out of order, such as a refund before its payment, leave an order in a wrong state</td>
+<td><code>Orders.apply</code></td>
+<td>Only allowed state changes are applied; others are answered 409 and retried by the provider</td>
+<td>Events the provider stops retrying need monitoring and manual review</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The secret is known only to the provider and the store.</li>
+<li>Server clocks are synchronized to within the time window.</li>
+<li>In the demo, the provider is simulated and the secrets are demo values.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Transport security, which HTTPS provides: the transport-security module.</li>
+<li>Asymmetric webhook signatures and key distribution.</li>
+<li>Denial of service against the endpoint beyond the body size limit.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>SignaturesTest</code> checks the HMAC against RFC 4231, the header against an independent computation, strict parsing, and matching under any listed secret.</li>
+<li><code>ReceiverTest</code> checks refusals, the time window both ways, replays, idempotency, events out of order, wrong amounts, rotation and re-serialized bodies.</li>
+<li><code>ServerTest</code> checks the real loopback endpoint: POST only, the body limit and the same verification.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next projects in api-security look at the rest of an API's surface: request and response shapes, rate limits, sessions and cross-origin access.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

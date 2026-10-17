@@ -1,0 +1,565 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "webhook-security"
+level = "intermediate"
+module = "api-security"
+title = "Webhook Security: Signatures, Replays and Idempotency"
+short_title = "Webhook Security"
+package = "webhooks"
+main_class = "WebhookDemo"
+tagline = "A message to a public address proves nothing until it is verified"
+bold = "A webhook endpoint is a public address that anyone can post to, so the store must verify every message: a signature over the exact raw bytes, a signed time inside a short window, a record of events already processed, and handlers that are idempotent and check the order's state."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Webhook security in Java: a payment provider tells an online store "payment succeeded" by posting to a public address, and anyone can post to that address. A forged message marks an order paid that was never paid; then an HMAC-SHA256 signature over the exact raw body stops forgeries and changed bodies, a signed timestamp and a record of processed events stop a real refund message from being replayed and paid twice, idempotent handlers cope with retries and events out of order, and two secrets overlap while the secret is changed. The bill: keep the raw bytes, store and rotate the secret, and still confirm critical events with the provider's API. Mapped to the OWASP API Security Top 10 API8 and API10 and CWE-345."""
+thumb_lines = ["WEBHOOK SECURITY", "SIGN, TIME, REMEMBER"]
+thumb_code = "t=...,v1=HMAC(t.body)"
+youtube_title = "Webhook Security in Java (HMAC Signatures, Replay Protection, Idempotency)"
+youtube_tags = ["webhooks", "hmac", "webhook signature", "replay attack", "idempotency", "api security", "owasp api top 10", "java", "application security"]
+
+[readme]
+intro = """
+A **webhook** is a message that another service posts to your application when something happens: a payment provider tells an online store that a
+payment succeeded, or that a refund went through. The store's webhook address is public, so anyone can post to it. A message that arrives there
+proves nothing about who sent it, whether it was changed, or whether it is new.
+
+The defences, in the order this project builds them:
+- An **HMAC-SHA256 signature** over the signed time and the **exact raw body**, with a secret shared with the provider, compared in constant time.
+- A **signed timestamp** inside a short window, and a **record of processed event ids**, so a real message cannot be replayed.
+- **Idempotent handlers** that check the order's state, because providers retry and events arrive late, twice or out of order.
+- **Secret rotation** with two valid secrets during a changeover.
+
+**Maps to:** OWASP API Security Top 10 (2023) API8 Security Misconfiguration and API10 Unsafe Consumption of APIs · CWE-345 Insufficient
+Verification of Data Authenticity · CWE-294 Authentication Bypass by Capture-replay · CWE-347 · OWASP ASVS 5.0, the web services and API chapter.
+"""
+analogy = """
+Think of a shop that ships whenever a note saying "paid" is pushed through its letterbox. Anyone can push a note. A wax seal that only the bank owns
+stops forged notes; a date in the seal stops someone from pushing yesterday's real note again; a list of note numbers already handled stops the same
+note being acted on twice; and for anything valuable, the shop still phones the bank before it ships.
+"""
+scenario = """
+An online store sells through a payment provider. The provider posts payment and refund events to the store's webhook address. The demo runs the store's
+endpoint in process and on a real local HTTP server, with the provider simulated, a clock that moves only when told, and two orders: A-1001 for 4200 cents
+and A-1002 for 1999 cents.
+"""
+costs = [
+    "**The secret must be kept and rotated.** Anyone with the shared secret can forge any event, so it lives outside the code, and a change needs a window in which both secrets are accepted.",
+    "**The raw bytes must be kept.** The signature covers the exact body; a framework that parses and re-serializes it first will see every real event fail.",
+    "**Clocks must be roughly right.** The time window refuses messages from a clock that is too far ahead or behind, so servers need time synchronization.",
+    "**The record of events grows.** Processed event ids must be kept at least as long as the provider retries, and in a store shared by every server.",
+    "**A signature is not the provider's final word.** For anything valuable, such as shipping goods, confirm the event with the provider's API.",
+]
+too_much = """
+Every webhook endpoint that changes state needs signature verification and replay protection; there is no small version. A purely informational webhook
+that only triggers a fresh fetch from the provider's API needs less, because the store then trusts the API answer and not the message.
+"""
+met_before = [
+    "`Stripe-Signature`, `X-Hub-Signature-256` and similar headers on webhooks from payment providers and code hosts.",
+    "Webhook settings pages that show a signing secret and a \"roll secret\" button.",
+    "Delivery logs that show the same event retried several times.",
+    "Incident reports where orders were marked paid by forged callbacks.",
+]
+where = """
+This project is in [api-security](..) and builds on [hashing-and-integrity](../../../beginner/cryptography/hashing-and-integrity), which introduced HMAC,
+and [keystore-basics](../../../beginner/cryptography/keystore-basics), which introduced key rotation by name.
+"""
+twin = """
+The store's endpoint runs in process and on a real HTTP server on the loopback address of this machine; the port is never printed. The payment provider is
+simulated in Java, and the clock moves only when the demo moves it, so every signature and every answer is the same on every run.
+"""
+test_note = "The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run."
+
+[[act]]
+title = "An endpoint that trusts whatever is posted"
+summary = "Anyone posts a payment-succeeded event with no signature, and the store marks order A-1001 paid, while the provider has no payment for it."
+detail = """
+Anyone posts a "payment succeeded" event for order A-1001 to the store's webhook address, with no signature. The store answers 200 and marks the order
+paid. The provider's own records for A-1001 say: no payment. The webhook address is public, so a message to it proves nothing about who sent it.
+"""
+speech = """
+First demo: an endpoint that trusts whatever is posted to it. [[slnc 400]] Anyone posts a message saying payment succeeded for an order. [[slnc 300]] With no signature. [[slnc 600]]
+The store marks the order paid. [[slnc 600]]
+The provider's own records say: no payment. [[slnc 300]] The order is marked paid, and was never paid. [[slnc 600]]
+The webhook address is public, so a message to it proves nothing about who sent it.
+"""
+rows = { trust = "active wrong" }
+console = [
+    ["anyone posts {\"type\":\"payment.succeeded\",\"order\":\"A-1001\"} to the store's webhook address, with no signature", "muted"],
+    ["the store answers: 200 order A-1001 is now paid", "bad"],
+    ["the provider's own records for A-1001: no payment  <- MARKED PAID, NEVER PAID", "bad"],
+    ["the webhook address is public, so a message to it proves nothing about who sent it", "amber"],
+]
+
+[[act]]
+title = "A signature over the exact bytes"
+summary = "An HMAC-SHA256 of the signed time and raw body accepts the real event and refuses a changed body, a missing signature and another secret, compared in constant time."
+detail = """
+The provider signs an HMAC-SHA256 of the timestamp and the raw body with the secret it shares with the store. The real event, as signed, is accepted. The same
+signature on a body changed to order A-1002 is refused with 401; a forged event with no signature is refused with 400; and one signed with a secret that is not the
+provider's is refused with 401. The comparison takes the same time however many bytes match. Over the local HTTP server the answers are the same: 200, 401 and 400.
+"""
+speech = """
+Second demo: a signature over the exact bytes. [[slnc 400]] The provider signs each message with a secret it shares with the store. [[slnc 300]] An H MAC, over the time and the raw body. [[slnc 600]]
+The real event is accepted. [[slnc 600]]
+The same signature on a body changed to another order is refused. [[slnc 300]] A message with no signature is refused. [[slnc 300]] A message signed with any other secret is refused. [[slnc 600]]
+The comparison takes the same time however many bytes match, so timing gives nothing away. [[slnc 300]] And the real server gives the same answers.
+"""
+rows = { sign = "active ok" }
+console = [
+    ["the provider signs HMAC-SHA256 of the timestamp and the raw body with the secret it shares with the store", "muted"],
+    ["the real event, as signed: 200 order A-1001 is now paid", "ok"],
+    ["the same signature on a body changed to order A-1002: 401 refused: the signature does not match", "ok"],
+    ["a forged event with no signature: 400 refused: no signature", "ok"],
+    ["a forged event signed with a secret that is not the provider's: 401 refused: the signature does not match", "ok"],
+    ["the same checks over the local HTTP server: real event 200, changed body 401, no signature 400", "ok"],
+]
+
+[[act]]
+title = "A real message sent again"
+summary = "With signatures only, a real refund replayed an hour later pays 8400 cents for a 4200-cent order; a signed time window and a record of event ids stop it."
+detail = """
+With signatures only, a real refund is applied and pays back 4200 cents. Someone who saw that message sends a copy an hour later; it is still correctly signed, so it is
+applied again: two refunds, 8400 cents for a 4200-cent order. With a 300-second window on the signed time and a record of processed event ids, the real refund is applied;
+the same message after 30 seconds is answered "already processed, nothing changed"; an hour later it is refused as signed too long ago; and with its time edited to now
+the signature no longer matches, because the time is part of what is signed. One refund, 4200 cents.
+"""
+speech = """
+Third demo: a real message sent again. [[slnc 400]] With signatures only, a real refund pays the customer back. [[slnc 600]]
+Someone who saw that message sends a copy an hour later. [[slnc 300]] It is still correctly signed. [[slnc 300]] So it is paid again. [[slnc 300]] Two refunds, for one order. [[slnc 600]]
+Now add a short window on the signed time, and a record of the events already processed. [[slnc 600]]
+The same message after thirty seconds changes nothing. [[slnc 300]] An hour later it is refused. [[slnc 300]] And editing its time breaks the signature, because the time is signed too. [[slnc 600]]
+One refund, as it should be.
+"""
+rows = { replay = "active amber" }
+console = [
+    ["with signatures only, a real refund: 200 order A-1001 is now refunded, 4200 cents paid back", "muted"],
+    ["someone who saw that message sends a copy an hour later: 200 order A-1001 is now refunded, 4200 cents paid back", "bad"],
+    ["refunds paid for A-1001: 2, 8400 cents for a 4200-cent order  <- A REAL MESSAGE, REPLAYED", "bad"],
+    ["with a 300-second window on the signed time, and a record of processed event ids:", "muted"],
+    ["  the same message again after 30 seconds: 200 already processed evt_1001refund, nothing changed", "ok"],
+    ["  the same message again an hour later: 400 refused: signed too long ago", "ok"],
+    ["  the same message with its time edited to now: 401 refused: the signature does not match", "ok"],
+    ["  refunds paid for A-1001: 1, 4200 cents", "ok"],
+]
+
+[[act]]
+title = "Twice, out of order, and a new secret"
+summary = "A retried event changes the order once; a refund before its payment is answered 409 and applied on retry; old and new secrets both work during a changeover."
+detail = """
+The provider retries the payment event, so it arrives twice: the order changes once, and A-1001 is paid. A refund for A-1002 arrives before its payment and is answered
+409, "not applied: order is new, try again later", and is not recorded as processed; then the payment is applied, and the provider's retry of the refund is applied.
+When the secret changes, the store accepts both for a while, so messages signed with the old and the new secret both get 200; once the old secret is removed, a message
+signed with it is refused with 401.
+"""
+speech = """
+Fourth demo: the same event twice, events out of order, and a new secret. [[slnc 400]] Providers retry, so the same event can arrive twice. [[slnc 300]] The order changes once. [[slnc 600]]
+A refund arrives before its payment. [[slnc 300]] The store answers, not yet, try again, and does not record it as done. [[slnc 600]]
+Then the payment arrives. [[slnc 300]] And the retried refund is applied. [[slnc 600]]
+When the secret is changed, the store accepts both for a while. [[slnc 300]] Once the old one is removed, a message signed with it is refused.
+"""
+rows = { idempotent = "active ok", rotate = "active ok" }
+console = [
+    ["the provider retries the payment event, so it arrives twice: order changes 1 time, A-1001 is paid", "ok"],
+    ["a refund for A-1002 arrives before its payment: 409 not applied: order is new, try again later", "amber"],
+    ["then the payment: 200 order A-1002 is now paid", "ok"],
+    ["then the provider's retry of the refund: 200 order A-1002 is now refunded, 1999 cents paid back", "ok"],
+    ["changing the secret: old secret 200, new secret 200 during the changeover", "ok"],
+    ["after the old secret is removed, a message signed with it: 401 refused: the signature does not match", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A re-serialized body fails the signature, so raw bytes must be kept; critical events are confirmed with the provider's API; the secret is kept and rotated; handlers stay idempotent."
+detail = """
+A framework that parses the body and writes it again with other spacing, then checks the signature, refuses the real event with 401: the raw bytes must be kept, and checked,
+before anything parses them. The real event is accepted. Before shipping, the store asks the provider's API about A-1001, and the answer, payment.succeeded 4200, matches the event.
+The shared secret lives outside the code, is changed on a schedule with a changeover, and a leak is a forged-payment risk. Events can arrive late, twice or out of order, so every
+handler must be idempotent and check the order's state.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] A framework that parses the body and writes it again, before checking, breaks every real signature. [[slnc 300]] So keep the raw bytes, and check them first. [[slnc 600]]
+For anything valuable, like shipping goods, still ask the provider's own A P I. [[slnc 600]]
+The shared secret lives outside the code, and is changed on a schedule. [[slnc 300]] A leaked secret lets anyone forge a payment. [[slnc 600]]
+And because events arrive late, twice, or out of order, every handler must be safe to run again.
+"""
+rows = { bill = "active amber" }
+console = [
+    ["a framework that parses the body and writes it again with other spacing, then checks the signature: 401 refused", "bad"],
+    ["so the raw bytes must be kept, and checked, before anything parses them", "amber"],
+    ["before shipping, the store asks the provider's API about A-1001: payment.succeeded 4200, which matches the event", "ok"],
+    ["the shared secret lives outside the code, is changed on a schedule with a changeover, and leaks are a forged-payment risk", "amber"],
+    ["events can arrive late, twice or out of order, so every handler must be idempotent and check the order's state", "amber"],
+]
+
+[animation]
+subtitle = "A payment provider posts events to an online store's public webhook address, and the store learns to verify them."
+boxes = [
+    ["trust", "Trusting endpoint", "acts on any posted message"],
+    ["sign", "Signatures", "HMAC over the time and the raw body"],
+    ["replay", "Replays", "a time window and processed event ids"],
+    ["idempotent", "Idempotency", "retries and events out of order"],
+    ["rotate", "Rotation", "two secrets during a changeover"],
+    ["bill", "The bill", "raw bytes, the provider's API, the secret"],
+]
+
+[docs.problem]
+scenario = """
+An online store learns about payments and refunds from webhooks that a payment provider posts to a public address. The store ships goods and pays refunds based on them.
+"""
+naive = """
+Trust any well-formed event posted to the webhook address, and act on every one that arrives.
+"""
+deliver = [
+    "An endpoint that verifies an HMAC-SHA256 signature over the signed time and the exact raw body, in constant time.",
+    "Replay protection with a signed time window and a record of processed event ids.",
+    "Idempotent handlers with state checks, and retryable answers for events that arrive out of order.",
+    "Secret rotation with two valid secrets during a changeover.",
+    "The same checks on a real local HTTP server, with a size limit and POST only.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The hashing-and-integrity project, or an idea of what an HMAC is",
+]
+not_required = [
+    "An account with any payment provider: the provider is simulated",
+    "A web framework",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a message to a public address proves nothing on its own",
+    "verify an HMAC signature over raw bytes, in constant time",
+    "explain why the time must be signed, and how a window and an event record stop replays",
+    "make a handler idempotent and safe for events out of order",
+    "rotate a shared secret without refusing real events",
+]
+walkthrough = """
+Start with the letterbox. Run act one and ask what the store would ship. In act two, ask why the body must be the raw bytes. In act three, ask why the signature alone did not stop the
+second refund. In act four, ask what the provider does after a 409. In act five, ask which events are worth a call to the provider's API.
+"""
+exercises = [
+    "Add a third event type, payment.disputed, with the state changes it allows.",
+    "Keep the processed event ids for a limited time, and find the shortest time that is still safe given the provider's retry schedule.",
+    "Make the receiver accept a header with two v1 values, as some providers send during rotation.",
+    "Move the record of processed events into a store shared by two receivers, and show that a replay to the second one is still caught.",
+]
+
+[docs.explained]
+sentence = """
+A webhook endpoint is a public address, so every message must be verified: an HMAC signature over the signed time and exact raw body, a short time window and a record of processed
+events against replays, idempotent state-checked handlers for retries and disorder, a rotated secret, and the provider's API for anything valuable.
+"""
+verdict = """
+Verify the provider's signature on the raw body before parsing, with a constant-time comparison. Refuse messages outside a few minutes, remember processed event ids, and make
+every handler idempotent. Keep the secret in a secret store and rotate it with an overlap. For high-value actions, confirm with the provider's API before acting.
+"""
+recognise = [
+    "A webhook handler that reads the raw request body before deserializing it.",
+    "Signature headers with a `t=` timestamp and a `v1=` HMAC.",
+    "Tables of processed event ids with an expiry.",
+    "Security findings titled \"missing webhook signature verification\", CWE-345.",
+]
+
+[spec]
+purpose = """
+Teach how to receive webhooks safely by forging and replaying events against an online store's endpoint, then verifying signatures over raw bytes, refusing replays, handling
+retries and disorder idempotently, and rotating the shared secret.
+"""
+nongoals = [
+    "Sending webhooks: the provider side is only simulated.",
+    "Asymmetric signatures on webhooks, which some providers use: the digital-signatures project covers the idea.",
+    "A message queue or a database for the processed events: the record is in memory.",
+]
+problem = """
+Webhook endpoints are public, and teams often act on any well-formed message, verify a parsed copy instead of the raw bytes, or forget replays and retries.
+"""
+roles = [["Signature format and checks", "`Signatures`"], ["The event and its strict parser", "`Event`"], ["Orders and refunds", "`Orders`"], ["The endpoint's checks", "`Receiver`"], ["The local HTTP endpoint", "`WebhookServer`"], ["The simulated provider", "`Provider`"], ["Entry point", "`WebhookDemo`"]]
+requirements = [
+    "An unsigned, wrongly signed or changed message changes nothing.",
+    "The HMAC matches RFC 4231 test case two, and the header matches an independently computed value.",
+    "Messages outside the time window are refused, and a processed event is not applied again.",
+    "An event that arrives before its order is ready is answered 409 and applied on a later retry.",
+    "Two secrets work during a changeover, and only the new one after.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where a webhook comes from, and where it is checked"
+caption = "The address is public; only the checks decide whether a message is from the provider, unchanged and new."
+nodes = [
+    { id = "provider", label = "Payment provider", sub = "signs with the shared secret", col = 0, row = 0, colour = "client" },
+    { id = "anyone", label = "Anyone", sub = "can post to the address", col = 0, row = 1, colour = "red" },
+    { id = "endpoint", label = "Webhook endpoint", sub = "POST /webhooks/payments", col = 1, row = 0, colour = "amber", shape = "ellipse" },
+    { id = "checks", label = "Checks", sub = "signature, time, event id", col = 2, row = 0, colour = "green" },
+    { id = "orders", label = "Orders", sub = "paid, refunded", col = 3, row = 0, colour = "accent", shape = "store" },
+]
+edges = [
+    { from = "provider", to = "endpoint", label = "signed event" },
+    { from = "anyone", to = "endpoint", label = "forged or replayed", colour = "red", dashed = true },
+    { from = "endpoint", to = "checks", label = "raw bytes" },
+    { from = "checks", to = "orders", label = "only if all pass" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Receiver runs the checks in order; Signatures does the cryptography; Orders enforces the allowed state changes."
+nodes = [
+    { id = "receiver", label = "Receiver", sub = ["receive(rawBody, header)", "addSecret, removeSecret"], col = 0, row = 0, colour = "green" },
+    { id = "sig", label = "Signatures", sub = ["header(secret, time, body)", "parse(header)", "matchesAny(secrets, parsed, body)"], col = 1, row = 0, colour = "accent" },
+    { id = "orders", label = "Orders", sub = ["apply(event, checkState)", "state, refunds"], col = 2, row = 0, colour = "amber" },
+    { id = "event", label = "Event", sub = ["toJson()", "parse(raw)"], col = 0, row = 1, colour = "client" },
+    { id = "server", label = "WebhookServer", sub = ["POST only", "body limit"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "receiver", to = "sig", label = "verifies with" },
+    { from = "receiver", to = "orders", label = "applies to" },
+    { from = "server", to = "receiver", label = "passes raw bytes to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What is signed, and what is checked first"
+caption = "The signature covers the time and the raw body; the checks run before the body is parsed."
+nodes = [
+    { id = "time", label = "Signed time", sub = "t=1800000000", col = 0, row = 0, colour = "amber" },
+    { id = "body", label = "Raw body", sub = "the exact bytes sent", col = 1, row = 0, colour = "client" },
+    { id = "mac", label = "HMAC-SHA256", sub = "with the shared secret", col = 2, row = 0, colour = "green" },
+    { id = "header", label = "Shop-Signature", sub = "t=...,v1=...", col = 3, row = 0, colour = "accent" },
+]
+edges = [
+    { from = "time", to = "mac" },
+    { from = "body", to = "mac" },
+    { from = "mac", to = "header" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Receiving one event: who does what, in order"
+participants = ["Provider", "WebhookServer", "Receiver", "Orders"]
+steps = [
+    ["Provider", "WebhookServer", "POST raw body + Shop-Signature"],
+    ["WebhookServer", "Receiver", "receive(raw bytes, header)"],
+    ["note", "Receiver", "signature, then time window, then event id"],
+    ["Receiver", "Orders", "apply(event) if all pass"],
+    ["Orders", "Receiver", "new state, or not yet", "reply"],
+    ["Receiver", "Provider", "200, or 409 to retry later", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A replay, stopped"
+caption = "The copy is correctly signed, so only the time window and the record of events stop it."
+participants = ["Someone", "Receiver"]
+steps = [
+    ["Someone", "Receiver", "copy of a real refund, 30 seconds later"],
+    ["Receiver", "Someone", "200 already processed, nothing changed", "reply"],
+    ["Someone", "Receiver", "the same copy, an hour later"],
+    ["Receiver", "Someone", "400 signed too long ago", "reply"],
+    ["Someone", "Receiver", "the copy with its time edited"],
+    ["Receiver", "Someone", "401 the signature does not match", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Changing the secret"
+caption = "Both secrets are accepted while the provider switches; the old one is removed afterwards."
+participants = ["Provider", "Receiver"]
+steps = [
+    ["note", "Receiver", "accepts old and new secret"],
+    ["Provider", "Receiver", "event signed with the old secret"],
+    ["Receiver", "Provider", "200", "reply"],
+    ["Provider", "Receiver", "event signed with the new secret"],
+    ["Receiver", "Provider", "200", "reply"],
+    ["note", "Receiver", "old secret removed: only the new one works"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["endpoint", "orders", "secret"], colour = "green" },
+    { label = "The internet", nodes = ["provider", "anyone"], colour = "red" },
+]
+nodes = [
+    { id = "provider", label = "Payment provider", sub = "the real sender", col = 0, row = 0, colour = "client" },
+    { id = "anyone", label = "Anyone", sub = "forges, changes or replays", col = 0, row = 1, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "endpoint", label = "Webhook endpoint", sub = "public address", col = 1, row = 0, colour = "amber", shape = "ellipse", threats = ["T1", "T2", "T3", "T5"] },
+    { id = "secret", label = "Shared secret", sub = "in a secret store", col = 1, row = 1, colour = "accent", shape = "store", threats = ["T4"] },
+    { id = "orders", label = "Orders and refunds", sub = "money moves here", col = 2, row = 0, colour = "green", shape = "store", threats = ["T3", "T6"] },
+]
+edges = [
+    { from = "provider", to = "endpoint", label = "signed events" },
+    { from = "anyone", to = "endpoint", label = "forged, changed, replayed", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "endpoint", to = "orders", label = "verified events" },
+    { from = "secret", to = "endpoint", label = "verifies with" },
+]
+
+[poster]
+headline = [["WEBHOOK SECURITY", "text"], ["SIGN, TIME, REMEMBER", "accent"]]
+taglines = [["A message to a public address proves nothing until it is verified", "gold"]]
+before = { code = "if (event.paid) ship()", note = "anyone can post", tag = "BEFORE" }
+after = { code = "verify(raw, sig, t) + seen(id)", note = "signed, fresh, once", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Webhook Security"
+narration = """Hello, and welcome. [[slnc 400]] This video explains webhook security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A webhook is a message that another service posts to your application when something happens. [[slnc 300]] A payment provider tells a store that a payment succeeded. [[slnc 600]] Think of a shop that ships whenever a note saying paid is pushed through its letterbox. [[slnc 300]] Anyone can push a note. [[slnc 300]] A seal, a date, and a list of notes already handled are what make the note worth trusting. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how to verify a signature. [[slnc 300]] How to stop a real message being replayed. [[slnc 300]] How to cope with retries and events out of order. [[slnc 300]] And how to change the secret without refusing real events."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store sells through a payment provider.", "", "The provider posts payment and refund events", "to the store's public webhook address.", "", "The store ships goods and pays refunds on them."]
+narration = """Here is the scenario. [[slnc 400]] An online store sells through a payment provider. [[slnc 500]] The provider posts payment and refund events to the store's webhook address. [[slnc 500]] That address is public. [[slnc 300]] And the store ships goods, and pays refunds, because of what arrives there."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Webhook: a message posted when something happens", "HMAC: a keyed hash that proves who sent it", "Replay: a real message sent again", "Idempotent: safe to run twice", "Rotation: changing the secret"]
+narration = """Before the demos, the words. [[slnc 500]] A webhook is a message posted to your application when something happens. [[slnc 500]] An H MAC is a keyed hash, which only someone with the secret can make. [[slnc 500]] A replay is a real message, sent again. [[slnc 500]] Idempotent means safe to run twice. [[slnc 500]] And rotation means changing the secret."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Four Questions for Every Message"
+body = ["Is it from the provider? the signature", "Is it unchanged? the raw bytes", "Is it new? the time and the event id", "Is it safe to apply? the order's state"]
+narration = """Let's put it in order. [[slnc 400]] Is it from the provider? The signature answers that. [[slnc 500]] Is it unchanged? Only if the signature covers the raw bytes. [[slnc 500]] Is it new? The signed time and the record of events answer that. [[slnc 500]] And is it safe to apply now? The order's state answers that."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Signatures: the header and the HMAC", "Event: a strict parser", "Receiver: the checks, in order", "Orders: the allowed state changes", "WebhookServer: the real local endpoint"]
+narration = """Here is who does what in the code. [[slnc 400]] The signatures class writes and checks the signature header. [[slnc 500]] The event class parses exactly one shape of message. [[slnc 500]] The receiver runs the checks, in order. [[slnc 500]] The orders class allows only the right state changes. [[slnc 300]] And the webhook server is the real endpoint on this machine."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Signature headers on provider webhooks", "\"Roll secret\" buttons", "Retried deliveries in delivery logs", "Forged callback incidents"]
+narration = """You have probably met this already. [[slnc 400]] Payment providers and code hosts put a signature header on every webhook. [[slnc 500]] Their settings pages have a button to roll the signing secret. [[slnc 500]] Their delivery logs show the same event retried several times. [[slnc 500]] And incident reports describe orders marked paid by forged callbacks."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Verify the signature on the raw body first", "Refuse old messages; remember event ids", "Make every handler idempotent", "Rotate the secret with an overlap", "Confirm valuable events with the API"]
+narration = """So, how do you use it? [[slnc 400]] Verify the signature on the raw body, before parsing anything. [[slnc 500]] Refuse messages signed too long ago, and remember the events already processed. [[slnc 500]] Make every handler safe to run twice. [[slnc 500]] Rotate the secret, with a period where both work. [[slnc 500]] And for anything valuable, confirm with the provider's A P I."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a disputed event", "and decide which state changes it allows."]
+narration = """That's webhook security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A message to a public address proves nothing until its signature, its time, and its event id have been checked. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a disputed event, and decide which state changes it allows. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store's webhook endpoint for payment and refund events from a payment provider: verification of each message, replay protection, idempotent handling and the shared
+secret. It does not cover the provider's own security, the store's other APIs, or the transport, which is assumed to be HTTPS in production.
+"""
+assets = [
+    "Orders and their payment state, which decide whether goods ship.",
+    "Refunds, which move money out of the store.",
+    "The shared signing secret.",
+    "The record of processed event ids.",
+]
+actors = [
+    "The payment provider, the only legitimate sender.",
+    "Anyone on the internet who can post to the webhook address.",
+    "Someone who has seen a real message, for example in a log or a proxy.",
+]
+boundaries = [
+    "Internet to the webhook endpoint: every message crosses it, and none is trusted until verified.",
+    "Endpoint to orders and refunds: only verified, fresh, state-appropriate events cross it.",
+]
+assumptions = [
+    "The secret is known only to the provider and the store.",
+    "Server clocks are synchronized to within the time window.",
+    "In the demo, the provider is simulated and the secrets are demo values.",
+]
+out_of_scope = [
+    "Transport security, which HTTPS provides: the transport-security module.",
+    "Asymmetric webhook signatures and key distribution.",
+    "Denial of service against the endpoint beyond the body size limit.",
+]
+tests = [
+    "`SignaturesTest` checks the HMAC against RFC 4231, the header against an independent computation, strict parsing, and matching under any listed secret.",
+    "`ReceiverTest` checks refusals, the time window both ways, replays, idempotency, events out of order, wrong amounts, rotation and re-serialized bodies.",
+    "`ServerTest` checks the real loopback endpoint: POST only, the body limit and the same verification.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next projects in api-security look at the rest of an API's surface: request and response shapes, rate limits, sessions and cross-origin access.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A forged event claims to come from the provider"
+where = "`Receiver.receive`"
+control = "An HMAC-SHA256 signature with the shared secret, required on every message"
+residual = "Anyone who obtains the secret can forge events, so the secret is stored and rotated with care"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A real event's body is changed, for example to another order"
+where = "`Signatures.matchesAny`"
+control = "The signature covers the exact raw body and is compared in constant time"
+residual = "A framework that verifies a re-serialized body breaks verification, so raw bytes are kept"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A real, correctly signed message is replayed, paying a refund twice"
+where = "`Receiver.receive`, `Orders.apply`"
+control = "A signed time inside a 300-second window, a record of processed event ids, and state checks"
+residual = "The record must be shared by every server and kept as long as the provider retries"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "The shared secret leaks from code, configuration or logs"
+where = "the secret store"
+control = "The secret is kept outside the code and rotated with a changeover in which both secrets work"
+residual = "Between a leak and a rotation, forged events are possible; confirm valuable events with the provider's API"
+
+[[threat]]
+id = "T5"
+stride = "D"
+threat = "Oversized or malformed messages exhaust the endpoint"
+where = "`WebhookServer`, `Event.parse`"
+control = "POST only, a 4096-byte body limit, and a strict parser that refuses anything unexpected"
+residual = "A flood of small messages needs rate limiting in front of the endpoint"
+
+[[threat]]
+id = "T6"
+stride = "T"
+threat = "Events out of order, such as a refund before its payment, leave an order in a wrong state"
+where = "`Orders.apply`"
+control = "Only allowed state changes are applied; others are answered 409 and retried by the provider"
+residual = "Events the provider stops retrying need monitoring and manual review"
