@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asymmetric Encryption (RSA and Key Agreement)</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Asymmetric Encryption (RSA and Key Agreement)</h1>
+<pre><code>src/main/java/com/jk/explore/security/asymmetric/
+├── AsymmetricDemo.java   Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── Envelope.java         A hybrid-encrypted message: the data key locked with RSA, the AES-GCM nonce, and the cipher text with its tag
+├── Hex.java              Small helpers for text and bytes
+├── HybridBox.java        Hybrid encryption: the data is encrypted with a fresh AES-256-GCM key made for this one message, and only that small key is locked with the recipient's RSA public key
+├── KeyAgreementBox.java  Key agreement with X25519 (elliptic-curve Diffie-Hellman)
+├── RsaBox.java           RSA encryption with OAEP padding
+└── Wire.java             A network line with an eavesdropper on it
+</code></pre>
+<p><strong>A key pair lets a bank lock a message that only its owner can open, hybrid encryption carries big data under a small locked key, and key agreement makes a shared key without sending one, but none of it says whose public key it is.</strong></p>
+<p>Symmetric encryption has a chicken-and-egg problem: both sides need the same secret key, and the only way to share one is to send it, which an
+eavesdropper can read. <strong>Asymmetric</strong> encryption solves it with a <strong>key pair</strong>: a <strong>public key</strong>, which anyone may have, and a <strong>private key</strong>,
+which its owner never shares. Anything locked with the public key can only be opened with the private key. <strong>RSA</strong> is the best known: the bank locks a small message, such as a key, with
+the customer's public key, using <strong>OAEP</strong> padding, which adds randomness and must always be used. RSA can only lock a few hundred bytes, so real systems use <strong>hybrid encryption</strong>: a fresh AES key
+encrypts the data, and RSA locks only that key. A second route, <strong>key agreement</strong>, such as <strong>X25519</strong>, sends no key at all: each side sends only a public key, and combining its own private key with the other's public key
+gives both the same secret, which HKDF turns into a key.</p>
+<p>This project follows an online bank and a customer, Ana, through these, and ends with what none of them can do: tell whose public key it is.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a mailbox on the street. Anyone can drop a letter through the slot, but only the owner, with the key, can open the box and take the letters out. The slot is the public key
+and the owner's key is the private key. Hybrid encryption is putting a house key in the letter, and sending the big parcel separately, locked with that key.
+Key agreement is two people each mixing their own colour of paint with a colour shown openly to everyone: both end with the same secret shade, which an onlooker cannot
+make from what they saw. And the mailbox has a problem: nothing on it proves it is really Ana's, which is the last act.</p>
+<h2>The scenario</h2>
+<p>An online bank wants to send Ana an encrypted statement, but the bank and Ana have never met, and Eve can read everything on the network between them. The bank first tries sending the key
+in the clear, then a key pair, then hybrid encryption for a 10,000-byte statement, then key agreement, and finally meets a man in the middle, Mallory, who swaps in her own public key.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The problem: sharing a key</td>
+<td>If the bank sends the key in the clear, Eve, who sees every message on the wire, has it, and can open anything.</td>
+</tr>
+<tr>
+<td>2. A key pair: lock with the public key, open with the private key</td>
+<td>The bank locks a 32-byte key with Ana's 294-byte public key into 256 bytes; only Ana's private key opens it, Eve's does not, and OAEP makes every lock different; at most 190 bytes fit.</td>
+</tr>
+<tr>
+<td>3. Hybrid encryption: RSA for the key, AES for the data</td>
+<td>A 10,000-byte statement is sealed with a fresh AES key, only that key is locked with RSA: 256 + 12 + 10,016 = 10,284 bytes; Eve's key and a flipped bit are refused.</td>
+</tr>
+<tr>
+<td>4. Key agreement: no key is sent at all</td>
+<td>The bank and Ana swap 44-byte X25519 public keys and each derives the same 32-byte key; Eve, with both public keys, does not; a new session gives a new key.</td>
+</tr>
+<tr>
+<td>5. The bill: whose key is it?</td>
+<td>Mallory swaps Ana's public key for her own, reads the message, locks it again for Ana, and nobody notices; RSA keys are 294 bytes and X25519 44; a stolen private key opens everything.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>24 tests in <code>DemoRunsTest</code>, <code>HybridTest</code>, <code>KeyAgreementTest</code>, <code>RsaTest</code>, <code>StandardVectorsTest</code>. X25519 is checked against the test values of RFC 7748 and HKDF against RFC 5869. Keys are random, so the demo and its test check only sizes, equalities and refusals, and the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keys are generated fresh and at random on every run, so the demo prints only facts that do not depend on them: sizes, whether two things are equal, whether an operation is refused.
+RSA key size 2048 and OAEP with SHA-256 are used because they are widely supported, and X25519 and HKDF-SHA-256 because they are modern and small. The man in the middle is a few lines that stand
+for anyone who can alter the network. The tests check X25519 and HKDF against the published test values of RFC 7748 and RFC 5869.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/asymmetric-encryption-explained.html">Asymmetric Encryption (RSA and Key Agreement), explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A fresh AES key encrypts the statement; only that small key is locked with Ana's public key; the envelope carries both.</p>
+<p><img alt="Hybrid encryption of a statement" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>RsaBox locks keys, HybridBox uses it with AES-GCM for data, KeyAgreementBox makes keys by agreement, and Wire is the network with Eve on it.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each side combines its own private key with the other's public key; the results match, and HKDF turns the secret into a key.</p>
+<p><img alt="How two sides get the same key without sending it" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Sending a statement to Ana: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/asymmetric-encryption-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A public key must be known to be the right one.</strong> Nothing in RSA or X25519 says whose key it is. A man in the middle who swaps the key reads everything. Signatures and certificates, in the next projects, answer this.</li>
+<li><strong>A stolen private key opens everything locked to its public key,</strong> including old messages, unless fresh keys were used for each session (forward secrecy).</li>
+<li><strong>RSA is slow and small.</strong> It locks at most 190 bytes at 2048 bits, and is used only to carry a key. Its keys are large: 294 bytes against 44 for X25519.</li>
+<li><strong>Padding must be right.</strong> Textbook RSA, without OAEP, can be attacked, so the padding is not optional.</li>
+<li><strong>Key sizes need updating over time,</strong> as computers and mathematics improve.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For data that stays on one machine, a single symmetric key is simpler. Asymmetric methods earn their cost exactly when two parties have not shared a secret in advance, which is
+most of the internet. In practice, nobody writes this by hand for a network connection: TLS does it, and the next modules show how.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Every HTTPS connection, which begins with a key agreement like the fourth act.</li>
+<li>PGP and S/MIME email encryption, which use hybrid encryption with the recipient's public key.</li>
+<li>SSH keys: <code>id_rsa.pub</code> is a public key, and <code>id_rsa</code> is the private one.</li>
+<li>The padlock in the browser, which is the result of keys being checked by a certificate.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the fourth in <a href="..">cryptography</a>, after <a href="../symmetric-encryption">symmetric-encryption</a>, and it leaves open the question that <a href="../digital-signatures">digital-signatures</a> answers.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asymmetric Encryption (RSA and Key Agreement), Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Asymmetric Encryption (RSA and Key Agreement), Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Asymmetric encryption uses a public key that anyone may have and a private key that only its owner keeps, so two parties who have never met can lock a key to each other with RSA and OAEP, carry large data with hybrid encryption, or agree a key with X25519 and HKDF without sending one, but nothing in the maths tells them whose public key it is.</p>
+<h2>The 5 acts</h2>
+<h3>1. The problem: sharing a key</h3>
+<p>The bank wants to send Ana an encrypted statement, so first it must give her the key. It sends the key over the open network. Eve sees every message on the wire, including the key,
+and can open anything encrypted with it from then on. A secret key cannot be sent in the clear, and the bank and Ana have never met, so there is no safe way to hand it over.</p>
+<h3>2. A key pair: lock with the public key, open with the private key</h3>
+<p>Ana makes a key pair. Her public key, 294 bytes, is published, and her private key stays with her. The bank locks the 32-byte key with the public key using RSA with OAEP padding, and 256 bytes go over the wire. Ana opens it with
+her private key. Eve has the public key and the locked message, and tries her own private key: it is refused. Locking the same key again gives different bytes, because OAEP adds randomness. And only 190
+bytes fit in a 2048-bit RSA lock, one byte more is refused. RSA is for carrying a key, not data.</p>
+<h3>3. Hybrid encryption: RSA for the key, AES for the data</h3>
+<p>A statement is far longer than 190 bytes, so the bank does the heavy work with AES. It makes a fresh 256-bit AES key for this one message, encrypts the 10,000-byte statement with AES-GCM, and locks only that small key with
+Ana's RSA public key. The envelope holds 256 bytes of locked key, 12 of nonce and 10,016 of cipher text and tag: 10,284 bytes in all. Ana opens it. Eve's private key is refused, and a flipped bit is refused, because the AES-GCM tag covers
+the data. Every message gets its own data key, so one message's key never opens another.</p>
+<h3>4. Key agreement: no key is sent at all</h3>
+<p>Key agreement sends no key. The bank and Ana each make an X25519 key pair and swap only the public keys, 44 bytes each. Each combines its own private key with the other's public key, and the two get the same secret, which HKDF turns into
+the same 32-byte key. Eve saw both public keys, and makes a key pair of her own. Her key comes out different, because she lacks either private key. And a new session, with a new key pair on the bank's side, gives a completely different key, so an old
+session's key is not part of the new one. That is called forward secrecy.</p>
+<h3>5. The bill: whose key is it?</h3>
+<p>Nothing in RSA or X25519 says whose public key it is. Mallory sits on the wire and swaps Ana's public key for her own. The bank locks a message to the wrong key. Mallory reads it, PIN is 4821, locks it again for Ana, and sends it on. Ana opens what she receives,
+and nobody notices. This is a man-in-the-middle attack, and the maths cannot stop it. Signatures and certificates, in the next projects, are the answer: they let a key arrive with proof of whose it is. Other costs: an RSA-2048 public key is 294 bytes against
+44 for X25519, and a stolen private key opens every message ever locked to its public key.</p>
+<h2>The verdict</h2>
+<p>Use hybrid encryption, with RSA-OAEP or an elliptic-curve key agreement, never raw RSA and never data locked by RSA directly. Use fresh keys for each session, so a later theft does not reveal old messages. Keep private
+keys private, and always check, with a signature or a certificate, that a public key belongs to the party you think it does.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>KeyPairGenerator.getInstance("RSA")</code> and <code>Cipher.getInstance("RSA/ECB/OAEPPadding")</code>.</li>
+<li><code>KeyAgreement.getInstance("X25519")</code> followed by a key derivation.</li>
+<li>An envelope with a locked key, a nonce and a cipher text.</li>
+<li>A <code>.pub</code> file next to a private key file.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Every HTTPS connection, which begins with a key agreement like the fourth act.</li>
+<li>PGP and S/MIME email encryption, which use hybrid encryption with the recipient's public key.</li>
+<li>SSH keys: <code>id_rsa.pub</code> is a public key, and <code>id_rsa</code> is the private one.</li>
+<li>The padlock in the browser, which is the result of keys being checked by a certificate.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
