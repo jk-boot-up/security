@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patching and Dependency Hygiene with Trivy and Gradle</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Patching and Dependency Hygiene with Trivy and Gradle</h1>
+<pre><code>src/main/java/com/jk/explore/security/patchingtrivy/
+├── CycloneDx.java             Writes and checks a software bill of materials in the CycloneDX 1.6 JSON format, which scanners such as Trivy read
+├── Dependency.java            One Maven library: group, artifact and exact version
+├── GradleLockfile.java        Reads a Gradle dependency lock file (gradle.lockfile): one `group:artifact:version=configurations` line per resolved library
+├── Json.java                  A small JSON reader for objects, arrays, strings, numbers, booleans and null: enough for the demo's inventory and advisory files
+├── OwnAdvisory.java           A problem the team knows about itself, with the versions it affects: from (included) up to until (not included)
+├── PatchingTrivyDemo.java     Runs the online store story in five numbered acts and prints exact, repeatable results
+├── Triage.java                Turns a scanner report into a decision: how many of each severity, what order to work in, and the version to move each library to
+├── TrivyReport.java           Reads the JSON that `trivy sbom --format json` and `trivy fs --format json` write: Results, each with a list of Vulnerabilities
+├── VerificationMetadata.java  Reads gradle/verification-metadata.xml: the SHA-256 that Gradle expects for every artifact it downloads
+├── Version.java               A Maven-style version: numbers separated by dots, optionally followed by a qualifier after a dash
+└── Vulnerability.java         One finding from a scanner report: which advisory, which library and version, which versions fix it, and how serious it is
+</code></pre>
+<p><strong>A lock file pins what the build uses, a bill of materials lets a scanner such as Trivy find known problems in it, and Gradle's verification refuses a changed download, but a scanner only knows what is in its database today.</strong></p>
+<p>The plain version of this lesson worked out by hand which libraries a store ships, which of them have known problems and how bad they are. Real teams let tools do that. Four things work together here. A Gradle <strong>lock file</strong> records the exact version of every library the build used.
+A <strong>bill of materials</strong> (SBOM) in the standard <strong>CycloneDX</strong> format lists them in a form scanners understand. <strong>Trivy</strong>, an open-source scanner, compares that list with a database of known problems and writes a report. And Gradle's <strong>dependency verification</strong> compares the SHA-256 checksum of every download with a pinned value, and refuses to build when one differs.</p>
+<p>The demo uses real libraries with real, famous problems, such as log4j-core 2.14.1 behind Log4Shell, and a report that the real Trivy wrote, saved in the project. The code reads the report, cross-checks it with its own range checks, and works out what to fix first and to which version.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a shop that keeps a list of every ingredient in every product. The list is only useful if it is exact, so each ingredient has its brand and batch number. An inspector arrives with this morning's recall notices, goes down the list, and marks the products that contain a recalled batch. The inspector cannot know about a recall issued tomorrow, so the inspection is repeated. And when a delivery arrives, the label on the box is checked against the list before anything is used.</p>
+<h2>The scenario</h2>
+<p>An online store's build uses five libraries, among them log4j-core 2.14.1 and snakeyaml 1.26. The demo reads the lock file, writes the bill of materials, reads the report Trivy wrote for it, decides what to fix first and to which version, and checks the pinned checksums.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Pinning exactly what the build uses</td>
+<td>Gradle's lock file records the exact version of every library, five entries, one of which arrived as a dependency of another.</td>
+</tr>
+<tr>
+<td>2. A bill of materials a scanner can read</td>
+<td>The code writes a CycloneDX 1.6 file of five libraries with package URLs, checks them against the lock file, and refuses a package URL that disagrees with its version.</td>
+</tr>
+<tr>
+<td>3. What the scanner reported</td>
+<td>The real Trivy found 16 problems in 4 libraries, 3 critical, and the code's own range checks agree on Log4Shell and the Commons Text problem.</td>
+</tr>
+<tr>
+<td>4. What to fix first, and to which version</td>
+<td>Critical problems come first, and one upgrade per library fixes everything that has a fix: log4j-core to 2.25.4 and snakeyaml to 2.0, which crosses a major version.</td>
+</tr>
+<tr>
+<td>5. Checking what is downloaded, and automating the updates</td>
+<td>Gradle's verification file pins six checksums and the build refuses a changed one; Dependabot and Renovate configurations open the update pull requests.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>20 tests in <code>DemoRunsTest</code>, <code>FormatsTest</code>, <code>ToolsIntegrationTest</code>. The ordinary tests need only a JDK and read committed files, so they are identical on every run. The integration tests (tagged tools) run the real Trivy in Docker against the files the code writes, and a nested Gradle build that must refuse a changed checksum; they are skipped cleanly without Docker or the vulnerability database.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo reads files committed in <code>fixtures/</code>: the lock file, the bill of materials the code writes, a trimmed report from a real Trivy 0.76.0 run on 17 October 2026, and a Gradle verification file generated by Gradle. It needs no tool and no network. The integration tests run Trivy in Docker and a nested Gradle build; a different day's database will report different problems, so those tests check agreement and the disappearance of the original critical problems, not exact counts.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Trivy</td>
+<td>0.76.0 (Docker image aquasec/trivy:0.76.0)</td>
+<td>the scanner that reads the bill of materials and the lock file; used by the integration tests</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>any recent version</td>
+<td>runs Trivy without installing it</td>
+</tr>
+<tr>
+<td>CycloneDX</td>
+<td>1.6 (JSON)</td>
+<td>the standard format of the bill of materials</td>
+</tr>
+<tr>
+<td>Gradle dependency locking and verification</td>
+<td>Gradle 9.8.1</td>
+<td>gradle.lockfile pins versions; verification-metadata.xml pins SHA-256 checksums</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/patching-and-dependency-hygiene-with-trivy-explained.html">Patching and Dependency Hygiene with Trivy and Gradle, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The lock file feeds the bill of materials, which Trivy compares with its database; the triage turns the report into work.</p>
+<p><img alt="From the build to a decision" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Readers and writers for each file format, and Triage over the parsed report.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A report entry names the advisory, the library and version, and the versions that fix it.</p>
+<p><img alt="What a finding contains" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Scanning the bill of materials: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/patching-and-dependency-hygiene-with-trivy-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A scanner knows only what its database knows.</strong> A clean report means no known problem on the day of the scan, so the scan must be repeated, ideally on every build and every day.</li>
+<li><strong>The first run needs the network.</strong> Trivy downloads a database of about 130 MB, and then keeps it in a Docker volume.</li>
+<li><strong>Lock files and checksums need reviewing.</strong> Every update changes them, so automate the update pull requests and keep each review small.</li>
+<li><strong>Scanners report what is present, not what is reachable.</strong> A critical problem in a feature the store never uses still needs a plan, but not the same urgency.</li>
+<li><strong>Fixes can cross major versions.</strong> Moving snakeyaml from 1.26 to 2.0 can break the build, so the tests must run after each move.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a small project, a lock file and one scheduled scan are enough. The checksum verification, the signed artifacts and the automated pull requests pay off as the number of libraries and of people grows.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>gradle.lockfile</code> and <code>package-lock.json</code> files in repositories.</li>
+<li>Dependabot and Renovate pull requests with titles such as "Bump log4j-core from 2.14.1 to 2.17.1".</li>
+<li>Security tabs and scan steps in CI pipelines, that run Trivy, Grype or Dependency-Check.</li>
+<li>SBOM requirements in government and customer contracts.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../patching-and-dependency-hygiene">patching-and-dependency-hygiene</a> and is the fifth in <a href="..">safe-habits</a>. It does with tools what that project did by hand.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

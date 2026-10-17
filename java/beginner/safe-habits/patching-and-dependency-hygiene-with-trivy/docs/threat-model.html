@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Patching and Dependency Hygiene with Trivy and Gradle</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Patching and Dependency Hygiene with Trivy and Gradle</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>How an online store finds out what its build contains and whether any of it is known to be vulnerable: the Gradle lock file, the bill of materials, the Trivy scan and its database, and the checksum verification of downloads. It does not cover container images, secrets, licences, or the store's own code.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The libraries the store ships, and the integrity of what is downloaded.</li>
+<li>The lock file and the pinned checksums.</li>
+<li>The accuracy of the scan result, which drives the decision what to fix.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The store's developers and build servers.</li>
+<li>An attacker who can change a library in a repository or on the way.</li>
+<li>The scanner and its vulnerability database.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Library repository to the build: every download crosses it.</li>
+<li>Vulnerability database to the scanner: a database that is old or unavailable changes the answer.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Tampering</td>
+<td>A library is changed in the repository or on the way, and the build uses the changed file</td>
+<td><code>VerificationMetadata</code>, the Gradle build</td>
+<td>Gradle's dependency verification pins the SHA-256 of every download and fails the build on a mismatch</td>
+<td>A bad file that was pinned when the file was written stays pinned, so review new hashes, and consider signatures</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>A dependency version floats and the build picks up a malicious or broken release</td>
+<td><code>GradleLockfile</code></td>
+<td>Dependency locking records the exact version of every library</td>
+<td>The lock file must be updated deliberately, with review, or the store falls behind</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Repudiation</td>
+<td>Nobody can say which versions a past release shipped</td>
+<td><code>CycloneDx</code></td>
+<td>A bill of materials is written for each build and kept with the release</td>
+<td>It describes what the build resolved, not what was copied in by other means</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Information disclosure</td>
+<td>A scan gives a false sense of safety because the input is wrong or incomplete</td>
+<td><code>TrivyReport</code>, <code>OwnAdvisory</code></td>
+<td>The code checks that every reported library is in the list and cross-checks well known problems with its own ranges</td>
+<td>Libraries copied into the source, or not in the list, are not scanned at all</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Denial of service</td>
+<td>The vulnerability database is old or cannot be downloaded, so the scan reports less than is known</td>
+<td>the Trivy database</td>
+<td>Download the database once and update it on a schedule, and fail the pipeline when it is too old</td>
+<td>A clean report means no known problem on the day of the database</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The repository is reached over TLS, and Gradle's verification file was reviewed when it was written.</li>
+<li>The scan is repeated, since new problems appear after a library ships.</li>
+<li>In the demo, the libraries are real but never run, and the report is a saved copy from 17 October 2026.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Container image scanning, secret scanning and licence checks.</li>
+<li>Verifying signatures of artifacts.</li>
+<li>The store's own code.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>FormatsTest</code> checks version comparison, the lock file, the CycloneDX file and its strict checks, the saved report, the triage, and the verification file.</li>
+<li><code>ToolsIntegrationTest</code> (integration) runs the real Trivy in Docker on the files the code writes, compares the SBOM and lock file scans, checks that the upgrade removes the original critical problems, and runs a nested Gradle build that must refuse a changed checksum.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, backups-and-recovery, covers what to do when prevention fails: copies that survive an attack, and a restore that has been tested.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
