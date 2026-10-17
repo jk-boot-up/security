@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 
-REPO_PATH = "github.com/jk-boot-up/security/tree/main/java/beginner"
+REPO_PATH = "github.com/jk-boot-up/security/tree/main/java"
 
 
 def clean(text):
@@ -59,7 +59,7 @@ def youtube_doc(d, pdir, scenes):
     p = d["project"]
     durations = timeline(pdir)
     desc = " ".join(clean(p["youtube_description"]).split())
-    repo = "%s/%s/%s" % (REPO_PATH, p["module"], p["slug"])
+    repo = "%s/%s/%s/%s" % (REPO_PATH, p.get("level", "beginner"), p["module"], p["slug"])
     lines = ["# YouTube sheet — %s" % p["title"], "",
              "Prepared text for YouTube Studio. **Nothing is uploaded until the author has reviewed the video "
              "and asks for it.**", "",

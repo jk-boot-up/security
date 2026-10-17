@@ -5,8 +5,9 @@
                                      YouTube sheet, spec and the HTML twins
     conceptkit.sh build <project> --no-media    the same without the video and the narration audio
     conceptkit.sh html  <project>    only the .html twins of the Markdown files
-    conceptkit.sh site               the .html twins of every Markdown file under java/beginner
+    conceptkit.sh site               the .html twins of every Markdown file under java/ (every level)
     conceptkit.sh scaffold <module> <project> <package> <MainClass>
+                                     <module> is a beginner module (identity) or <level>/<module> (intermediate/web-security)
                                      a new project folder: Gradle build and wrapper, voice settings
 
 <project> is the project's directory name, for example cia-triad.
@@ -97,7 +98,8 @@ rootProject.name = '%s'
 
 def scaffold(module, name, package, main_class):
     """A new project: Gradle build and wrapper (copied from the first project), packages, video settings."""
-    p = REPO / "java" / "beginner" / module / name
+    level, _, module = module.rpartition("/")
+    p = REPO / "java" / (level or "beginner") / module / name
     if p.exists():
         raise SystemExit("conceptkit: %s already exists" % p)
     template = project_dir("cia-triad")
@@ -116,7 +118,7 @@ def scaffold(module, name, package, main_class):
 
 
 def project_dir(name):
-    hits = sorted(REPO.glob("*/beginner/*/%s/concept.toml" % name))
+    hits = sorted(REPO.glob("java/*/*/%s/concept.toml" % name))
     if len(hits) != 1:
         raise SystemExit("conceptkit: %s project %r" % ("no" if not hits else "more than one", name))
     return hits[0].parent
@@ -210,7 +212,7 @@ def main(argv):
     elif cmd == "scaffold":
         print(scaffold(*rest))
     elif cmd == "site":
-        print("%d HTML twins" % site.tree(REPO / "java" / "beginner"))
+        print("%d HTML twins" % site.tree(REPO / "java"))
     elif cmd == "html":
         print("%d HTML twins" % site.twins(project_dir(rest[0])))
     else:
