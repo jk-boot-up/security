@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — The TLS Handshake</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — The TLS Handshake</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The connection between a customer's client and an online store's server: the handshake, the certificate check, the keys and the records. It covers an attacker who can listen to, record, change and inject traffic, and one who can run a server of their own
+with a certificate of their own. It does not cover the endpoints, the certificate authorities, or the web application on top.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The content of orders, such as card numbers.</li>
+<li>The integrity of the records.</li>
+<li>The server's private key.</li>
+<li>The client's belief about who it is talking to.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The customer's client.</li>
+<li>The store's server.</li>
+<li>A passive attacker who records traffic.</li>
+<li>An active attacker who can change traffic or pose as the server.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Client to server across the internet: every record crosses it.</li>
+<li>Server to its private key: the key never crosses the network.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A passive attacker records traffic and reads the order</td>
+<td><code>Connection</code>, <code>Wire</code></td>
+<td>Records are encrypted with keys agreed in the handshake</td>
+<td>The site name, sizes and timing still show</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>An attacker poses as the store with a certificate of their own or one for another name</td>
+<td><code>TestCertificates</code>, <code>Connection</code></td>
+<td>The client trusts only configured certificates and checks the name</td>
+<td>A wrongly issued certificate from a trusted authority would be accepted</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>An attacker changes a record in transit</td>
+<td><code>Connection.serverOpens</code></td>
+<td>Every record carries an authentication tag, and a changed record is refused</td>
+<td>The attacker can still drop the connection</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Information disclosure</td>
+<td>The server's private key is stolen</td>
+<td>the server's keystore</td>
+<td>Fresh keys per connection give forward secrecy for recorded traffic</td>
+<td>The thief can impersonate the server until the certificate is replaced</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Tampering</td>
+<td>An attacker pushes the connection down to an old, weak protocol version</td>
+<td><code>Connection</code>, protocol settings</td>
+<td>Old versions are switched off, and modern versions protect the negotiation</td>
+<td>Servers that still allow old versions can be attacked</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The client trusts only certificates it was configured to trust.</li>
+<li>The server's private key stays secret.</li>
+<li>In the demo, the keys and certificates are test values in the repository.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Certificate authorities and revocation: the next project.</li>
+<li>Attacks on the endpoints.</li>
+<li>Side channels in the implementation.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>HandshakeTest</code> checks the agreed protocol, the record types, the readable hello, data round trips, every changed byte of a record, untrusted certificates, wrong names, and protocol versions.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, certificates-and-chain-of-trust, looks at who vouches for a key, and how a chain of certificates is checked.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

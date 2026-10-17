@@ -1,0 +1,549 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "tls-handshake"
+module = "transport-security"
+title = "The TLS Handshake"
+short_title = "TLS Handshake"
+package = "tls"
+main_class = "TlsDemo"
+tagline = "How two strangers agree on a secret in public"
+bold = "TLS lets a client and a server agree on secret keys in front of a sniffer, check who the server is, and then protect every record against reading and changing, but it hides neither the site's name nor the sizes of messages."
+domain = "an online store"
+domain_note = ""
+youtube_description = """The TLS handshake in Java: how two strangers agree on a secret in public. Explained with an online store, like two people who must settle on a code word while a stranger listens. Using two real TLS engines wired together in memory, we watch a sniffer see a card number without TLS and only scrambled records with it, follow the handshake from the readable ClientHello to the encrypted rest, see a client refuse an impostor and a wrong site name, see that one changed bit in a record is refused, see that old protocol versions are switched off, and finish with the bill."""
+thumb_lines = ["THE TLS", "HANDSHAKE"]
+thumb_code = "SSLEngine.beginHandshake()"
+youtube_title = "The TLS Handshake Explained in Java (TLS 1.3, Certificates, Tampering)"
+youtube_tags = ["tls", "tls 1.3", "handshake", "ssl", "sslengine", "certificates", "https", "java", "cybersecurity for beginners"]
+
+[readme]
+technologies = [
+    ["keytool (from the JDK)", "25", "made the two test keystores in src/main/resources once; not needed to run anything"],
+]
+intro = """
+**TLS** (Transport Layer Security) is the protection under HTTPS, and under mail, databases and most other things on the internet. It has two jobs. A **handshake** at the start of a connection lets the two sides agree on
+secret keys, even though a sniffer is listening to every word, and lets the client check the server's **certificate**, which says that a key belongs to a name. Then the **record layer** protects every piece of data that follows,
+so that it cannot be read or changed without being noticed.
+
+This project uses two real TLS engines from the JDK, wired together in memory, so every byte one produces is exactly what would cross a network, and a sniffer class records it. The demo compares the wire with and without TLS,
+follows the handshake, makes the client refuse an impostor and a wrong name, changes one bit of a record, and switches off old versions.
+"""
+analogy = """
+Think of two people who have never met and must agree on a code word while a stranger listens. They each mix a private colour into a public one and swap the results, and each can finish the mix, while the listener cannot.
+Then the server shows a letter signed by someone the client trusts, saying that this person is who they claim to be. From then on every message goes in a tamper-evident sealed envelope.
+"""
+scenario = """
+An online store's customer sends an order with a card number to the store. The demo shows what a sniffer sees without TLS and with it, how the connection is agreed, who the client will talk to, and what happens when a record is changed
+or an old protocol is offered.
+"""
+costs = [
+    "**Certificates must be obtained, renewed and protected.** An expired certificate is an outage, and a stolen private key lets someone pose as the store.",
+    "**The handshake costs a round trip and some computing.** TLS 1.3 reduced it to one round trip, and resumption can skip most of the rest.",
+    "**The first message is readable.** The ClientHello shows the name of the site, and the sizes and timing of records still show, even though their content does not.",
+    "**TLS ends at the endpoints.** It protects the connection between two ends, not what the ends do with the data, and a proxy that ends TLS sees everything.",
+    "**Settings matter.** Old protocol versions and weak cipher suites must stay switched off, and the defaults of the platform are what keep that true.",
+]
+too_much = """
+TLS is not optional: every connection that carries anything of value should use it. The choices are about how: modern versions only, certificates from a trusted authority, and automatic renewal.
+"""
+met_before = [
+    "The padlock in a browser, and `https://` in every address.",
+    "\"Certificate expired\" and \"your connection is not private\" errors.",
+    "`curl -v https://...` showing the handshake and the negotiated cipher.",
+    "Settings called `minimum TLS version` in cloud load balancers.",
+]
+where = """
+This project is the first in [transport-security](..) and uses the keys, hashes and signatures of [cryptography](../../cryptography), and the connections of [networking](../networking).
+"""
+twin = """
+Both TLS engines run in one process and pass bytes to each other in memory, so no network or port is used. The keys and nonces are random, so the demo prints only facts that do not depend on them. The test keystores were made once with
+`keytool` and are valid for a hundred years, so the demo never expires. The cipher suite shown is the JDK 25 default.
+"""
+test_note = "The two engines run in memory and the keys and nonces are random, so the demo prints only facts that do not depend on them: protocol and cipher suite names, the types of records, and yes or no results. The test keystores are fixed files, valid for a hundred years."
+
+[[act]]
+title = "A sniffer on the wire, without and with TLS"
+summary = "Without TLS the sniffer reads the card number; with TLS it sees a record of type 23 and no card number, and the record is only a few dozen bytes larger than the order."
+detail = """
+Without TLS the order is sent as it is, and the sniffer sees the card number. With TLS the sniffer sees a record of type 23, application data, and no card number. The record is only a few dozen bytes larger than the order: a header, padding and an authentication tag.
+"""
+speech = """
+First demo: a sniffer on the wire. [[slnc 400]] Without T L S, the order is sent as it is. [[slnc 300]] The sniffer sees the card number. [[slnc 600]]
+With T L S, the sniffer sees a record of type twenty three, application data. [[slnc 300]] And no card number. [[slnc 600]]
+The record is only a few dozen bytes larger than the order.
+"""
+rows = { wire = "active ok" }
+console = [
+    ["without TLS the order is sent as it is, and the sniffer sees the card number: true", "bad"],
+    ["with TLS the sniffer sees a record of type 23 (application data) and the card number: false", "ok"],
+    ["the record is not larger than the order plus a few dozen bytes of header, padding and tag: true", "muted"],
+]
+
+[[act]]
+title = "The handshake"
+summary = "The client speaks first with a readable ClientHello that shows the site's name; the ServerHello chooses TLS 1.3 and TLS_AES_256_GCM_SHA384; the rest of the handshake, including the certificate, is encrypted."
+detail = """
+The client speaks first, with a handshake record called ClientHello. It is not encrypted, because no key exists yet, so the sniffer reads the name of the site. The server answers with a ServerHello, which chooses the protocol and cipher: TLS 1.3 and TLS_AES_256_GCM_SHA384.
+After the ServerHello the rest of the handshake is encrypted, so even the certificate is hidden from the sniffer. Both sides now share keys that were never sent over the wire.
+"""
+speech = """
+Second demo: the handshake. [[slnc 400]] The client speaks first, with a message called ClientHello. [[slnc 300]] It is not encrypted, because no key exists yet. [[slnc 300]] So a sniffer reads the name of the site. [[slnc 600]]
+The server answers with a ServerHello, which chooses the protocol and the cipher. [[slnc 300]] T L S one point three. [[slnc 600]]
+After that, the rest of the handshake is encrypted. [[slnc 300]] Even the certificate is hidden. [[slnc 600]]
+Both sides now share keys that were never sent over the wire.
+"""
+rows = { hello = "active amber", keys = "active ok" }
+console = [
+    ["the client speaks first, with a handshake record (type 22) called ClientHello", "muted"],
+    ["the ClientHello is not encrypted, because no key exists yet, so the sniffer reads the name of the site: true", "amber"],
+    ["the server answers with a handshake record (type 22) called ServerHello, which chooses the protocol and cipher", "muted"],
+    ["after the ServerHello the rest of the handshake is encrypted: the certificate is hidden from the sniffer: true", "ok"],
+    ["agreed protocol: TLSv1.3", "ok"],
+    ["agreed cipher suite: TLS_AES_256_GCM_SHA384", "ok"],
+    ["both sides now share keys that were never sent over the wire", "ok"],
+]
+
+[[act]]
+title = "Who is on the other end"
+summary = "The shop's own certificate works; an impostor with the same name but an untrusted certificate is refused; the real certificate with a different requested name is refused."
+detail = """
+The shop's own certificate, for the name shop.example.test, works. An impostor with the same name but a certificate the client does not trust is refused by the client. The shop's real certificate, when the client asked for another name, is also refused: the name must match.
+A certificate proves a key belongs to a name because someone the client trusts vouched for it.
+"""
+speech = """
+Third demo: who is on the other end. [[slnc 400]] The shop's own certificate works. [[slnc 600]]
+An impostor with the same name, but a certificate the client does not trust, is refused. [[slnc 600]]
+The shop's real certificate is also refused, if the client asked for a different name. [[slnc 300]] The name must match. [[slnc 600]]
+A certificate proves a key belongs to a name, because someone the client trusts vouched for it.
+"""
+rows = { identity = "active ok" }
+console = [
+    ["the shop's own certificate, name shop.example.test: handshake works: true", "ok"],
+    ["an impostor with the same name but a certificate the client does not trust: handshake works: false  <- THE CLIENT REFUSES", "ok"],
+    ["the shop's real certificate, but the client asked for another.example.test: handshake works: false  <- THE NAME MUST MATCH", "ok"],
+    ["a certificate proves a key belongs to a name, because someone the client trusts vouched for it", "muted"],
+]
+
+[[act]]
+title = "Protecting the data"
+summary = "The server opens an untouched record; the same order in two connections looks different; one changed bit is refused; keys are made fresh each time from temporary key pairs."
+detail = """
+The server opens an untouched record and gets the order back. The same order in two connections gives different bytes on the wire, because each connection has fresh keys. One changed bit in a record is refused, so TLS protects integrity as well as secrecy.
+Because the keys of each connection are made fresh from temporary key pairs, a stolen server key cannot open recorded traffic. This is called forward secrecy.
+"""
+speech = """
+Fourth demo: protecting the data. [[slnc 400]] The server opens an untouched record, and gets the order back. [[slnc 600]]
+The same order, in two connections, looks different on the wire. [[slnc 300]] Each connection has fresh keys. [[slnc 600]]
+One changed bit in a record is refused. [[slnc 300]] So T L S protects integrity, as well as secrecy. [[slnc 600]]
+And because the keys are made fresh each time, a stolen server key cannot open recorded traffic. [[slnc 300]] This is called forward secrecy.
+"""
+rows = { records = "active ok" }
+console = [
+    ["the server opens an untouched record and gets the order back: true", "ok"],
+    ["the same order in two connections gives different bytes on the wire, because each has fresh keys: true", "ok"],
+    ["one changed bit in a record: refused  <- TLS PROTECTS INTEGRITY AS WELL AS SECRECY", "ok"],
+    ["the keys of each connection are made fresh from temporary key pairs, so a stolen server key cannot open recorded traffic", "muted"],
+]
+
+[[act]]
+title = "Settings, and the bill"
+summary = "A client offering only TLS 1.0 fails; TLS 1.2 still works and agrees TLSv1.2 unless the server requires 1.3; the bill is certificates, a round trip, and what still shows."
+detail = """
+A client that only offers TLS 1.0 cannot connect, because old versions are switched off. A client that offers only TLS 1.2 still works and agrees TLS 1.2, but fails against a server that requires TLS 1.3. The bill: certificates must be obtained and renewed,
+the handshake costs a round trip and some computing, and the keys must be kept safe. TLS protects the connection between two ends, not what the ends do with the data, and the name of the site and the sizes of messages still show.
+"""
+speech = """
+Fifth demo: settings, and the bill. [[slnc 400]] A client that offers only T L S one point zero cannot connect. [[slnc 300]] Old versions are switched off. [[slnc 600]]
+A client that offers only T L S one point two still works. [[slnc 300]] Unless the server requires one point three. [[slnc 600]]
+And the bill. [[slnc 300]] Certificates must be obtained and renewed. [[slnc 300]] The handshake costs a round trip. [[slnc 300]] And T L S protects the connection, not what the ends do with the data.
+"""
+rows = { settings = "active amber" }
+console = [
+    ["a client that only offers TLS 1.0: handshake works: false  <- OLD VERSIONS ARE SWITCHED OFF", "ok"],
+    ["a client that offers only TLS 1.2: handshake works: true, agreed protocol: TLSv1.2", "amber"],
+    ["the same client against a server that requires TLS 1.3: handshake works: false", "amber"],
+    ["the bill: certificates must be obtained and renewed, the handshake costs a round trip and some computing, and the keys must be kept safe", "amber"],
+    ["TLS protects the connection between two ends, not what the ends do with the data, and the name of the site and the sizes of messages still show", "amber"],
+]
+
+[animation]
+subtitle = "A customer's order meets TLS: a readable hello, an encrypted handshake, a certificate check and protected records."
+boxes = [
+    ["wire", "The wire", "readable without TLS, scrambled with it"],
+    ["hello", "Hellos", "the first messages are readable"],
+    ["keys", "Shared keys", "agreed in public, never sent"],
+    ["identity", "Certificate", "who the server is"],
+    ["records", "Records", "encrypted and tamper-evident"],
+    ["settings", "Settings", "modern versions only"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses no library beyond the JDK. Its test certificates were made once with the JDK's `keytool`.
+"""
+what = [
+    ["javax.net.ssl.SSLEngine", "the JDK's TLS engine without any sockets: it turns application data into records and back, and it runs the handshake when the caller passes it bytes."],
+    ["keytool", "the JDK's tool for keystores. It made `shop.p12` and `impostor.p12` with an elliptic-curve key, the name shop.example.test, and a validity of one hundred years."],
+]
+why = """
+Using the engine directly, with nothing but memory between the two sides, shows exactly what crosses the wire and keeps the demo exact and fast.
+"""
+install_note = "A JDK is all that is needed. The versions are pinned where Gradle controls them:"
+versions = [
+    ["Java (includes TLS 1.3)", "25"],
+    ["JUnit", "6.1.3"],
+    ["Keystore format", "PKCS12"],
+    ["Test key", "EC P-256, 100-year certificate"],
+]
+costs = [
+    "SSLEngine is a low-level API: the caller moves every byte and must handle buffer sizes and the handshake loop.",
+    "The test keys are public in the repository and protect nothing.",
+]
+
+[docs.problem]
+scenario = """
+An online store's customer sends a card number across networks the store does not control. The two sides have never met, and anyone on the path can listen, record and change what passes.
+"""
+naive = """
+Send the order as it is, or encrypt it with a key that was sent first in the same open connection.
+"""
+deliver = [
+    "A comparison of what a sniffer sees without and with TLS.",
+    "A handshake between two real TLS engines, with the wire recorded.",
+    "A client that refuses an untrusted certificate and a wrong name.",
+    "A record that is refused when one bit changes.",
+    "Old protocol versions that are refused, and the TLS 1.2 against TLS 1.3 choice.",
+    "The same facts printed on every run although keys and nonces are random.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The hashing, symmetric and asymmetric encryption and signatures projects, or at least what a key and a signature are",
+    "The tcp-ip-basics project, for what a connection and a sniffer are",
+]
+not_required = [
+    "Certificate authorities in detail: the next project",
+    "The mathematics of key agreement",
+    "openssl or a browser",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "say what a TLS handshake achieves",
+    "say what a sniffer can and cannot see with TLS",
+    "explain why a client checks a certificate and a name",
+    "explain forward secrecy in one sentence",
+    "say why old protocol versions are switched off",
+]
+walkthrough = """
+Start with the code word and the stranger. Run the demo one act at a time. After act one, ask what a thief learns from the capture of a TLS connection. After act two, ask why the first message cannot be encrypted.
+In act three, ask what would happen if the client accepted every certificate. In act four, ask what an attacker could do to a record without the key.
+"""
+exercises = [
+    "Print the record types of the whole handshake and match them with the ClientHello, ServerHello and the encrypted records.",
+    "Make the client trust both certificates and see the impostor accepted.",
+    "Offer only TLS 1.3 on the client and a cipher suite that the server does not allow.",
+    "Swap two records on the wire and see what the server does.",
+]
+
+[docs.explained]
+sentence = """
+TLS lets a client and a server agree on fresh secret keys in public, lets the client check the server's certificate and name, and then protects every record against reading and tampering, while the site's name and the sizes of messages stay visible.
+"""
+verdict = """
+Use TLS 1.3, or 1.2 where needed, for every connection. Keep old versions off. Let the client verify the certificate and the name. Renew certificates automatically and protect their private keys. Remember what TLS does not hide.
+"""
+recognise = [
+    "`https://` and the padlock in a browser.",
+    "\"Your connection is not private\" errors for expired or wrong-name certificates.",
+    "`minimum_tls_version` in load balancer settings.",
+    "`curl -v` output showing the ClientHello, the ServerHello and the cipher suite.",
+]
+
+[spec]
+purpose = """
+Teach what the TLS handshake and record layer do by running two real TLS engines against each other in memory, with a sniffer that records the wire, a trusted and an untrusted certificate, a tampered record and old protocol versions.
+"""
+nongoals = [
+    "Certificate authorities and chains: the next project.",
+    "Writing the protocol: the JDK engine does that.",
+    "Sockets, HTTP and servers: the https-server project.",
+]
+problem = """
+Learners know HTTPS is safe but not why, and cannot say what it protects against or what it leaves visible.
+"""
+roles = [["The two engines and the loop", "`Connection`"], ["The sniffer's view", "`Wire`"], ["Test certificates", "`TestCertificates`"], ["Entry point", "`TlsDemo`"]]
+requirements = [
+    "The handshake succeeds with TLS 1.3 and the wire is recorded.",
+    "An untrusted certificate and a wrong name are refused.",
+    "A record with any changed byte is refused.",
+    "TLS 1.0 is refused, TLS 1.2 works unless the server requires 1.3.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A TLS connection"
+caption = "A handshake agrees the keys and checks the server, then records carry the data."
+nodes = [
+    { id = "client", label = "Client", sub = "the customer's browser", col = 0, row = 0, colour = "client" },
+    { id = "hello", label = "Hellos", sub = "readable: versions, ciphers, key shares", col = 1, row = 0, colour = "amber" },
+    { id = "hs", label = "Encrypted handshake", sub = "certificate and proof", col = 2, row = 0, colour = "accent" },
+    { id = "records", label = "Records", sub = "encrypted and authenticated data", col = 3, row = 0, colour = "green" },
+    { id = "server", label = "Server", sub = "the store", col = 3, row = 1, colour = "green" },
+]
+edges = [
+    { from = "client", to = "hello" },
+    { from = "hello", to = "hs" },
+    { from = "hs", to = "records" },
+    { from = "records", to = "server" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Connection holds both engines and the Wire; TestCertificates builds their contexts."
+nodes = [
+    { id = "conn", label = "Connection", sub = ["handshake()", "clientSeals(data)", "serverOpens(record)", "protocol(), cipherSuite()"], col = 0, row = 0, colour = "green" },
+    { id = "wire", label = "Wire", sub = ["clientBytes(), serverBytes()", "recordTypes(bytes)", "contains(bytes, text)"], col = 1, row = 0, colour = "amber" },
+    { id = "certs", label = "TestCertificates", sub = ["client()", "server(keystore)"], col = 2, row = 0, colour = "accent" },
+]
+edges = [
+    { from = "conn", to = "wire", label = "records into" },
+    { from = "conn", to = "certs", label = "built from" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What is readable on the wire"
+caption = "Only the first messages are readable; the rest is encrypted."
+nodes = [
+    { id = "ch", label = "ClientHello", sub = "readable: site name, versions", col = 0, row = 0, colour = "red" },
+    { id = "sh", label = "ServerHello", sub = "readable: chosen cipher", col = 1, row = 0, colour = "amber" },
+    { id = "cert", label = "Certificate and proof", sub = "encrypted", col = 2, row = 0, colour = "green" },
+    { id = "data", label = "Application data", sub = "encrypted and authenticated", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "ch", to = "sh" },
+    { from = "sh", to = "cert" },
+    { from = "cert", to = "data" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "The TLS 1.3 handshake: who sends what, in order"
+participants = ["Client", "Server"]
+steps = [
+    ["Client", "Server", "ClientHello: versions, ciphers, a temporary public key, the site name"],
+    ["Server", "Client", "ServerHello: chosen cipher, its temporary public key", "reply"],
+    ["note", "Server", "both sides now derive the same secret keys"],
+    ["Server", "Client", "encrypted: certificate, proof of the private key, Finished", "reply"],
+    ["Client", "Server", "encrypted: Finished"],
+    ["Client", "Server", "encrypted application data"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The client checks the server"
+caption = "A certificate must chain to a trusted authority and match the name."
+participants = ["Client", "Server"]
+steps = [
+    ["Server", "Client", "certificate for shop.example.test", "reply"],
+    ["note", "Client", "is it signed by a certificate the client trusts?"],
+    ["note", "Client", "does the name in it match the site asked for?"],
+    ["note", "Client", "does the server prove it holds the private key?"],
+    ["Client", "Server", "continue, or an alert and a closed connection"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A tampered record"
+caption = "The authentication tag does not match, so the record is refused."
+participants = ["Attacker", "Server"]
+steps = [
+    ["Attacker", "Server", "a record with one bit changed"],
+    ["note", "Server", "decrypt and check the authentication tag"],
+    ["Server", "Attacker", "SSLException: the record is refused", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The customer", nodes = ["client"], colour = "green" },
+    { label = "The network", nodes = ["wire"], colour = "amber" },
+    { label = "The store", nodes = ["server", "key"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "client", label = "Client", sub = "checks certificate and name", col = 0, row = 0, colour = "client", shape = "ellipse", threats = ["T2"] },
+    { id = "wire", label = "The wire", sub = "records, readable hellos", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T1", "T3", "T5"] },
+    { id = "server", label = "Server", sub = "presents a certificate", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T4"] },
+    { id = "key", label = "Private key", sub = "proves identity", col = 2, row = 1, colour = "amber", shape = "store", threats = ["T4"] },
+    { id = "attacker", label = "Attacker", sub = "listens, changes, impersonates", col = 1, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T5"] },
+]
+edges = [
+    { from = "client", to = "wire" },
+    { from = "wire", to = "server" },
+    { from = "attacker", to = "wire", label = "reads and changes", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "attacker", to = "client", label = "poses as the server", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "attacker", to = "server", label = "offers an old version", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["THE TLS", "text"], ["HANDSHAKE", "accent"]]
+taglines = [["How two strangers agree on a secret in public", "gold"]]
+before = { code = "card=4111...", note = "readable by anyone on the path", tag = "BEFORE" }
+after = { code = "TLS 1.3 record", note = "encrypted and tamper-evident", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "The TLS Handshake"
+narration = """Hello, and welcome. [[slnc 400]] This video explains the T L S handshake, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] T L S is the protection under H T T P S. [[slnc 300]] A handshake at the start lets two strangers agree on secret keys, while someone listens. [[slnc 600]] Think of two people who must agree on a code word while a stranger listens. [[slnc 300]] Then one of them shows a letter, signed by someone the other trusts, saying who they are. [[slnc 300]] From then on, every message goes in a sealed envelope that shows if it was opened. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear what a sniffer sees. [[slnc 300]] How the keys are agreed. [[slnc 300]] How a client checks the server. [[slnc 300]] And what T L S does not hide."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A customer sends an order with a card number.", "", "The two sides have never met.", "Anyone on the path can listen,", "record, and change what passes."]
+narration = """Here is the scenario. [[slnc 400]] A customer sends an order, with a card number, to an online store. [[slnc 500]] The two sides have never met. [[slnc 300]] Anyone on the path can listen. [[slnc 300]] Record. [[slnc 300]] And change what passes."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Handshake: agreeing keys, checking identity", "Record: one protected piece of data", "Certificate: a key tied to a name", "Cipher suite: the algorithms in use", "Forward secrecy: fresh keys every time"]
+narration = """Before the demos, the words. [[slnc 500]] The handshake is the start of a connection, where the keys are agreed and the identity is checked. [[slnc 500]] A record is one protected piece of data. [[slnc 500]] A certificate ties a key to a name. [[slnc 500]] The cipher suite is the set of algorithms in use. [[slnc 500]] And forward secrecy means that fresh keys are made every time."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "What TLS Gives, and Does Not"
+body = ["Gives: secrecy of the data", "Gives: detection of changes", "Gives: the identity of the server", "Does not hide: the site name, sizes, timing", "Does not protect: the ends themselves"]
+narration = """Let's put it side by side. [[slnc 400]] T L S gives secrecy of the data. [[slnc 500]] It gives detection of changes. [[slnc 500]] It gives the identity of the server. [[slnc 500]] It does not hide the name of the site, the sizes of messages, or their timing. [[slnc 500]] And it does not protect the two ends themselves."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Connection: two real TLS engines", "Wire: what a sniffer would see", "TestCertificates: the shop and an impostor", "TlsDemo: the five acts"]
+narration = """Here is who does what in the code. [[slnc 400]] The connection class wires two real T L S engines together in memory. [[slnc 500]] The wire class records what a sniffer would see. [[slnc 500]] The test certificates class loads the shop's certificate, and an impostor's. [[slnc 500]] And the demo runs the five acts."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["The padlock and https://", "\"Your connection is not private\"", "minimum TLS version settings", "curl -v output"]
+narration = """You have probably met this already. [[slnc 400]] The padlock in a browser, and https at the start of an address. [[slnc 500]] The warning, your connection is not private. [[slnc 500]] Settings called minimum T L S version, in load balancers. [[slnc 500]] And the output of curl with the verbose option, which shows the handshake."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["TLS on every connection", "Modern versions only", "Verify the certificate and the name", "Renew certificates automatically", "Know what TLS does not hide"]
+narration = """So, how do you use it? [[slnc 400]] Use T L S on every connection. [[slnc 500]] Allow modern versions only. [[slnc 500]] Verify the certificate, and the name. [[slnc 500]] Renew certificates automatically, and protect their private keys. [[slnc 500]] And remember what T L S does not hide."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Make the client trust both", "certificates and see what happens."]
+narration = """That's the T L S handshake. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] T L S lets two strangers agree on secret keys in public, check who the server is, and protect every record, while the site's name and the sizes of messages stay visible. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Make the client trust both certificates, and see what happens. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The connection between a customer's client and an online store's server: the handshake, the certificate check, the keys and the records. It covers an attacker who can listen to, record, change and inject traffic, and one who can run a server of their own
+with a certificate of their own. It does not cover the endpoints, the certificate authorities, or the web application on top.
+"""
+assets = [
+    "The content of orders, such as card numbers.",
+    "The integrity of the records.",
+    "The server's private key.",
+    "The client's belief about who it is talking to.",
+]
+actors = [
+    "The customer's client.",
+    "The store's server.",
+    "A passive attacker who records traffic.",
+    "An active attacker who can change traffic or pose as the server.",
+]
+boundaries = [
+    "Client to server across the internet: every record crosses it.",
+    "Server to its private key: the key never crosses the network.",
+]
+assumptions = [
+    "The client trusts only certificates it was configured to trust.",
+    "The server's private key stays secret.",
+    "In the demo, the keys and certificates are test values in the repository.",
+]
+out_of_scope = [
+    "Certificate authorities and revocation: the next project.",
+    "Attacks on the endpoints.",
+    "Side channels in the implementation.",
+]
+tests = [
+    "`HandshakeTest` checks the agreed protocol, the record types, the readable hello, data round trips, every changed byte of a record, untrusted certificates, wrong names, and protocol versions.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, certificates-and-chain-of-trust, looks at who vouches for a key, and how a chain of certificates is checked.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A passive attacker records traffic and reads the order"
+where = "`Connection`, `Wire`"
+control = "Records are encrypted with keys agreed in the handshake"
+residual = "The site name, sizes and timing still show"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "An attacker poses as the store with a certificate of their own or one for another name"
+where = "`TestCertificates`, `Connection`"
+control = "The client trusts only configured certificates and checks the name"
+residual = "A wrongly issued certificate from a trusted authority would be accepted"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "An attacker changes a record in transit"
+where = "`Connection.serverOpens`"
+control = "Every record carries an authentication tag, and a changed record is refused"
+residual = "The attacker can still drop the connection"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "The server's private key is stolen"
+where = "the server's keystore"
+control = "Fresh keys per connection give forward secrecy for recorded traffic"
+residual = "The thief can impersonate the server until the certificate is replaced"
+
+[[threat]]
+id = "T5"
+stride = "T"
+threat = "An attacker pushes the connection down to an old, weak protocol version"
+where = "`Connection`, protocol settings"
+control = "Old versions are switched off, and modern versions protect the negotiation"
+residual = "Servers that still allow old versions can be attacked"
