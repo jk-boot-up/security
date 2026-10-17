@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Least Privilege with Kubernetes RBAC</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Least Privilege with Kubernetes RBAC</h1>
+<pre><code>src/main/java/com/jk/explore/security/leastprivilegek8s/
+├── LeastPrivilegeK8sDemo.java  Runs the online store story in five numbered acts, reading the real manifests in infra/rbac and printing exact, repeatable results
+├── Linter.java                 Flags the RBAC habits that cause incidents: cluster-admin bindings, wildcards, escalation verbs and automounted tokens
+├── Manifests.java              The parts of Kubernetes manifests that RBAC cares about, read from YAML
+└── Rbac.java                   Answers the question `kubectl auth can-i` answers, from the manifests alone: may this service account do this verb on this resource in this namespace?
+</code></pre>
+<p><strong>Kubernetes RBAC denies everything until a rule allows it, and the damage from a stolen token is set by the rules you wrote: cluster-admin, wildcards and the create-pods and bind verbs are where least privilege is lost.</strong></p>
+<p>In Kubernetes every program that talks to the cluster has an identity, usually a <strong>service account</strong>, and a token that proves it. <strong>RBAC</strong> (role-based access control) decides what each identity may do. It is <strong>deny by default</strong>: nothing is allowed until a <strong>Role</strong>
+(rules in one namespace) or a <strong>ClusterRole</strong> (rules for the whole cluster) says so, and a <strong>RoleBinding</strong> or <strong>ClusterRoleBinding</strong> gives the role to an identity. A rule lists <strong>verbs</strong> (get, list, create, delete ...) on <strong>resources</strong> (pods, secrets ...), and can name the objects it covers.</p>
+<p>This project reads real manifests, answers the question <code>kubectl auth can-i</code> answers, counts the <strong>blast radius</strong> of a stolen token, finds the escalation paths, and lints the manifests. The integration tests make a real cluster with kind and check that it answers exactly as the Java code does.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of the keys of a shop. A master key given to the night cleaner "to make it work" opens the till, the stockroom and the office. A key cut for the cleaner's cupboard opens one door. A key that says "all doors on the ground floor" sounds modest, until you remember the safe is on the ground floor.</p>
+<h2>The scenario</h2>
+<p>An online store runs its jobs as service accounts. A nightly export was given cluster-admin, a reporting job was given "get and list everything", and the deploy pipeline can create pods. The demo asks what each stolen token could do.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The nightly job that was given cluster-admin</td>
+<td>A stolen cluster-admin token reaches 56 of 56 things; the scoped exporter reaches 2, one named config map is readable, and secrets are not.</td>
+</tr>
+<tr>
+<td>2. The wildcard trap: read everything</td>
+<td>A role that allows get and list on all resources sounds harmless, but it can read secrets; naming resources keeps a rule meaning what it said.</td>
+</tr>
+<tr>
+<td>3. Ways to become more powerful</td>
+<td>The deploy pipeline has 4 escalation paths: create pods, create role bindings, bind roles and escalate roles; the exporter has none.</td>
+</tr>
+<tr>
+<td>4. A cluster-wide role through a namespaced binding</td>
+<td>The support agent holds a ClusterRole through a RoleBinding, so it works in shop and not in warehouse, while a ClusterRoleBinding ignores namespaces.</td>
+</tr>
+<tr>
+<td>5. A linter for the habits that cause incidents</td>
+<td>The linter finds 6 problems in the shop manifests: a cluster-admin binding, a wildcard, two escalation verbs and two auto-mounted tokens.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>17 tests in <code>DemoRunsTest</code>, <code>KubectlInteropTest</code>, <code>ManifestsAndLinterTest</code>, <code>RbacTest</code>. The demo and the default tests read the manifests and need nothing installed. The integration tests (tagged k8s) make a real kind cluster, compare 490 kubectl answers with the Java evaluator, and always delete the cluster.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo reads the manifests in <code>infra/rbac</code> and needs no cluster, so it is the same on every machine. The integration tests create a kind cluster with a generated name, apply the same manifests, ask <code>kubectl auth can-i</code> for 490 combinations of identity, namespace, resource and verb, and always delete the cluster.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.snakeyaml:snakeyaml-engine</td>
+<td>3.2</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>kind</td>
+<td>0.33.0</td>
+<td>makes a real Kubernetes cluster in Docker for the integration tests</td>
+</tr>
+<tr>
+<td>kubectl</td>
+<td>1.27.2 (client)</td>
+<td>asks the cluster <code>auth can-i</code> as each service account; newer than the supported skew is only a warning</td>
+</tr>
+<tr>
+<td>Kubernetes</td>
+<td>1.37.0 (kindest/node image)</td>
+<td>the cluster the manifests are applied to in the integration tests</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>required for the integration tests</td>
+<td>runs the kind node</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/least-privilege-with-kubernetes-rbac-explained.html">Least Privilege with Kubernetes RBAC, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>An identity gets a permission only through a binding to a role with a rule that allows it.</p>
+<p><img alt="How RBAC grants a permission" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Manifests holds what was read; Rbac and Linter only read it.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Count the verb and resource pairs the identity may use.</p>
+<p><img alt="Blast radius of a stolen token" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Asking whether an identity may act: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/least-privilege-with-kubernetes-rbac-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Narrow roles need maintenance.</strong> Each new feature may need a new permission, so the rules need an owner and a review.</li>
+<li><strong>RBAC has no deny rules.</strong> You can only leave permissions out, so one extra binding can undo careful work, and the audit has to look at all of them.</li>
+<li><strong>The Java evaluator is a model.</strong> It ignores API groups, non-resource URLs, aggregated roles and groups of users, so it teaches the idea and does not replace asking the cluster.</li>
+<li><strong>Real clusters add roles you did not write.</strong> Built-in and operator-installed roles also grant permissions, so check with <code>kubectl auth can-i --list</code>.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a throwaway local cluster, cluster-admin is fine. For anything that holds real data or is reachable by other people, give each workload its own service account, bind it in one namespace, and turn off token mounting for pods that do not call the API.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>cluster-admin</code> in tutorials, copied into production.</li>
+<li><code>kubectl auth can-i</code> and <code>kubectl auth can-i --list</code>.</li>
+<li>Cloud kubernetes services that map cloud identities onto service accounts.</li>
+<li>Reports that begin "a pod's service account token was stolen".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../least-privilege">least-privilege</a> and <a href="../least-privilege-with-spring-security">least-privilege-with-spring-security</a>. The first modelled the ideas in memory, the second applied them in a Spring application, and this one applies them to the platform the application runs on.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

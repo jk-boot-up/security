@@ -1,0 +1,551 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "least-privilege-with-kubernetes-rbac"
+module = "safe-habits"
+title = "Least Privilege with Kubernetes RBAC"
+short_title = "Least Privilege with Kubernetes"
+package = "leastprivilegek8s"
+main_class = "LeastPrivilegeK8sDemo"
+tagline = "Give each identity only what its job needs"
+bold = "Kubernetes RBAC denies everything until a rule allows it, and the damage from a stolen token is set by the rules you wrote: cluster-admin, wildcards and the create-pods and bind verbs are where least privilege is lost."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Least privilege with Kubernetes RBAC, in Java: every service account is a key, and the question is how many doors it opens. Explained with an online store, like a master key given to the night cleaner. We compare a nightly export job given cluster-admin with one scoped to two actions, fall into the wildcard trap where read everything includes secrets, find the escalation paths of create pods, bind and escalate, see that a namespaced binding keeps a cluster-wide role inside its namespace, and lint the manifests. The Java evaluator is checked against a real kind cluster and kubectl auth can-i."""
+thumb_lines = ["LEAST PRIVILEGE", "KUBERNETES RBAC"]
+thumb_code = "kubectl auth can-i get secrets"
+youtube_title = "Least Privilege with Kubernetes RBAC (cluster-admin, Wildcards, Escalation)"
+youtube_tags = ["kubernetes", "rbac", "least privilege", "service account", "cluster-admin", "kind", "kubectl", "java", "cybersecurity for beginners"]
+
+[readme]
+technologies = [
+    ["kind", "0.33.0", "makes a real Kubernetes cluster in Docker for the integration tests"],
+    ["kubectl", "1.27.2 (client)", "asks the cluster `auth can-i` as each service account; newer than the supported skew is only a warning"],
+    ["Kubernetes", "1.37.0 (kindest/node image)", "the cluster the manifests are applied to in the integration tests"],
+    ["Docker", "required for the integration tests", "runs the kind node"],
+]
+intro = """
+In Kubernetes every program that talks to the cluster has an identity, usually a **service account**, and a token that proves it. **RBAC** (role-based access control) decides what each identity may do. It is **deny by default**: nothing is allowed until a **Role**
+(rules in one namespace) or a **ClusterRole** (rules for the whole cluster) says so, and a **RoleBinding** or **ClusterRoleBinding** gives the role to an identity. A rule lists **verbs** (get, list, create, delete ...) on **resources** (pods, secrets ...), and can name the objects it covers.
+
+This project reads real manifests, answers the question `kubectl auth can-i` answers, counts the **blast radius** of a stolen token, finds the escalation paths, and lints the manifests. The integration tests make a real cluster with kind and check that it answers exactly as the Java code does.
+"""
+analogy = """
+Think of the keys of a shop. A master key given to the night cleaner "to make it work" opens the till, the stockroom and the office. A key cut for the cleaner's cupboard opens one door. A key that says "all doors on the ground floor" sounds modest, until you remember the safe is on the ground floor.
+"""
+scenario = """
+An online store runs its jobs as service accounts. A nightly export was given cluster-admin, a reporting job was given "get and list everything", and the deploy pipeline can create pods. The demo asks what each stolen token could do.
+"""
+costs = [
+    "**Narrow roles need maintenance.** Each new feature may need a new permission, so the rules need an owner and a review.",
+    "**RBAC has no deny rules.** You can only leave permissions out, so one extra binding can undo careful work, and the audit has to look at all of them.",
+    "**The Java evaluator is a model.** It ignores API groups, non-resource URLs, aggregated roles and groups of users, so it teaches the idea and does not replace asking the cluster.",
+    "**Real clusters add roles you did not write.** Built-in and operator-installed roles also grant permissions, so check with `kubectl auth can-i --list`.",
+]
+too_much = """
+For a throwaway local cluster, cluster-admin is fine. For anything that holds real data or is reachable by other people, give each workload its own service account, bind it in one namespace, and turn off token mounting for pods that do not call the API.
+"""
+met_before = [
+    "`cluster-admin` in tutorials, copied into production.",
+    "`kubectl auth can-i` and `kubectl auth can-i --list`.",
+    "Cloud kubernetes services that map cloud identities onto service accounts.",
+    "Reports that begin \"a pod's service account token was stolen\".",
+]
+where = """
+This project follows [least-privilege](../least-privilege) and [least-privilege-with-spring-security](../least-privilege-with-spring-security). The first modelled the ideas in memory, the second applied them in a Spring application, and this one applies them to the platform the application runs on.
+"""
+twin = """
+The demo reads the manifests in `infra/rbac` and needs no cluster, so it is the same on every machine. The integration tests create a kind cluster with a generated name, apply the same manifests, ask `kubectl auth can-i` for 490 combinations of identity, namespace, resource and verb, and always delete the cluster.
+"""
+test_note = "The demo and the default tests read the manifests and need nothing installed. The integration tests (tagged k8s) make a real kind cluster, compare 490 kubectl answers with the Java evaluator, and always delete the cluster."
+
+[[act]]
+title = "The nightly job that was given cluster-admin"
+summary = "A stolen cluster-admin token reaches 56 of 56 things; the scoped exporter reaches 2, one named config map is readable, and secrets are not."
+detail = """
+The shop's namespace has 56 things a token could be used for: 7 verbs on 8 kinds of object. If the nightly-export-admin token is stolen it reaches all 56, and the whole cluster as well. If the exporter token is stolen it reaches 2 of 56: get and list pods.
+It can also read one config map by name, export-settings, but not another one, payment-keys, and it cannot read secrets.
+"""
+speech = """
+First demo: the nightly job that was given cluster admin. [[slnc 400]] The shop's namespace has fifty six things a token could be used for. [[slnc 600]]
+If the cluster admin token is stolen, it reaches all fifty six. [[slnc 300]] And the whole cluster as well. [[slnc 600]]
+The scoped exporter reaches two. [[slnc 300]] It can read one config map by name. [[slnc 300]] It cannot read another. [[slnc 300]] And it cannot read secrets.
+"""
+rows = { admin = "active wrong", scoped = "active ok" }
+console = [
+    ["the shop's namespace has 56 things a token could be used for: 7 verbs on 8 kinds of object", "muted"],
+    ["if the nightly-export-admin token is stolen it reaches 56 of 56  <- THE WHOLE NAMESPACE, AND THE WHOLE CLUSTER", "bad"],
+    ["if the exporter token is stolen it reaches 2 of 56: get and list pods", "ok"],
+    ["the exporter can read the config map export-settings: true", "ok"],
+    ["the exporter can read another config map, payment-keys: false", "ok"],
+    ["the exporter can read secrets: false", "ok"],
+]
+
+[[act]]
+title = "The wildcard trap: read everything"
+summary = "A role that allows get and list on all resources sounds harmless, but it can read secrets; naming resources keeps a rule meaning what it said."
+detail = """
+The reporter's role says get and list on all resources, which sounds read-only and harmless. But the reporter can read secrets, every password and key in the namespace. It reaches 16 of 56, and "everything" also includes things that did not exist when the role was written.
+A rule that names its resources keeps meaning what it said.
+"""
+speech = """
+Second demo: the wildcard trap. [[slnc 400]] The reporter's role says get and list on everything. [[slnc 300]] That sounds read only and harmless. [[slnc 600]]
+But the reporter can read secrets. [[slnc 300]] Every password and key in the namespace. [[slnc 600]]
+And everything includes things that did not exist when the role was written. [[slnc 300]] A rule that names its resources keeps meaning what it said.
+"""
+rows = { wildcard = "active wrong" }
+console = [
+    ["the reporter's role says get and list on all resources, which sounds read-only and harmless", "muted"],
+    ["the reporter can read secrets: true  <- EVERY PASSWORD AND KEY IN THE NAMESPACE", "bad"],
+    ["the reporter can change anything: false", "ok"],
+    ["the reporter reaches 16 of 56, but \"everything\" includes things that did not exist when the role was written", "amber"],
+]
+
+[[act]]
+title = "Ways to become more powerful"
+summary = "The deploy pipeline has 4 escalation paths: create pods, create role bindings, bind roles and escalate roles; the exporter has none."
+detail = """
+The exporter has no escalation paths. The ci-deployer has four: it can create pods, which can mount any secret or service account token in the namespace, it can create role bindings, bind roles it does not hold, and edit roles to add permissions it does not hold.
+It cannot read secrets directly, but it can create a pod that mounts them. So "create pods" is as powerful as "read secrets", and "bind" or "escalate" is as powerful as owning the namespace.
+"""
+speech = """
+Third demo: ways to become more powerful. [[slnc 400]] The exporter has none. [[slnc 600]]
+The deploy pipeline has four. [[slnc 300]] It can create pods. [[slnc 300]] It can create role bindings. [[slnc 300]] It can bind roles it does not hold. [[slnc 300]] And it can edit roles. [[slnc 600]]
+It cannot read secrets directly. [[slnc 300]] But it can create a pod that mounts them. [[slnc 600]]
+So create pods is as powerful as read secrets.
+"""
+rows = { escalate = "active wrong" }
+console = [
+    ["exporter: 0 escalation paths", "ok"],
+    ["ci-deployer: 4 escalation paths", "bad"],
+    ["can create pods, which can mount any secret or service account token in the namespace", "amber"],
+    ["can create role bindings; can bind roles it does not hold; can edit roles to add permissions it does not hold", "amber"],
+    ["the deploy pipeline can read secrets directly: false, and it can create a pod that mounts them: true", "amber"],
+]
+
+[[act]]
+title = "A cluster-wide role through a namespaced binding"
+summary = "The support agent holds a ClusterRole through a RoleBinding, so it works in shop and not in warehouse, while a ClusterRoleBinding ignores namespaces."
+detail = """
+The role shop-viewer is a ClusterRole, and the support agent holds it through a RoleBinding in the shop namespace. The agent can list pods in shop, cannot list pods in warehouse, and cannot delete pods in shop.
+The cluster-admin job can list pods in warehouse because a cluster binding ignores namespaces. The binding decides the reach, not the role.
+"""
+speech = """
+Fourth demo: scope. [[slnc 400]] The support agent holds a cluster wide role through a binding in one namespace. [[slnc 600]]
+It can list pods in shop. [[slnc 300]] It cannot list pods in warehouse. [[slnc 300]] And it cannot delete anything. [[slnc 600]]
+A cluster binding ignores namespaces. [[slnc 300]] The binding decides the reach, not the role.
+"""
+rows = { scope = "active ok" }
+console = [
+    ["the support agent can list pods in shop: true", "ok"],
+    ["the support agent can list pods in warehouse: false", "ok"],
+    ["the support agent can delete pods in shop: false", "ok"],
+    ["the cluster-admin job can list pods in warehouse: true  <- A CLUSTER BINDING IGNORES NAMESPACES", "bad"],
+]
+
+[[act]]
+title = "A linter for the habits that cause incidents"
+summary = "The linter finds 6 problems in the shop manifests: a cluster-admin binding, a wildcard, two escalation verbs and two auto-mounted tokens."
+detail = """
+The linter finds six problems in the shop manifests: a binding to cluster-admin, a wildcard on resources, the escalate and bind verbs, and two service accounts whose token is mounted into every pod. A linter finds wildcards and cluster-admin, not a role that is too wide but spelled out in full,
+so ask the cluster too, with kubectl auth can-i --list.
+"""
+speech = """
+Fifth demo: a linter. [[slnc 400]] It finds six problems. [[slnc 300]] A binding to cluster admin. [[slnc 300]] A wildcard on resources. [[slnc 300]] Two escalation verbs. [[slnc 300]] And two service accounts whose token is mounted into every pod. [[slnc 600]]
+A linter finds wildcards. [[slnc 300]] It does not find a role that is too wide but spelled out in full. [[slnc 300]] So ask the cluster as well.
+"""
+rows = { lint = "active amber" }
+console = [
+    ["findings in the shop manifests: 6", "amber"],
+    ["nightly-export-is-admin: binds cluster-admin", "bad"],
+    ["report-reader: wildcard resources", "amber"],
+    ["deployer: escalation verb escalate; deployer: escalation verb bind", "amber"],
+    ["default: token is mounted into every pod; nightly-export-admin: token is mounted into every pod", "amber"],
+    ["ask the cluster too: kubectl auth can-i --list --as=system:serviceaccount:shop:exporter -n shop", "muted"],
+]
+
+[animation]
+subtitle = "An online store's service accounts, from cluster-admin to a role that names exactly what a job needs."
+boxes = [
+    ["admin", "cluster-admin", "reaches everything, everywhere"],
+    ["scoped", "A scoped role", "two actions and one named object"],
+    ["wildcard", "The wildcard trap", "read everything includes secrets"],
+    ["escalate", "Escalation", "create pods, bind, escalate"],
+    ["scope", "Binding scope", "the binding sets the reach"],
+    ["lint", "A linter", "finds the common habits"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses one Java library for reading YAML, and three local tools, only for the integration tests.
+"""
+what = [
+    ["SnakeYAML Engine", "reads the Kubernetes manifests into plain maps and lists. It is a YAML 1.2 parser and has no object construction from tags, which suits untrusted manifests."],
+    ["Docker", "runs the kind node."],
+    ["kind", "makes a real Kubernetes cluster inside a Docker container. The tests name it uniquely and always delete it."],
+    ["kubectl", "asks the cluster `auth can-i` as each service account, to check the Java evaluator."],
+]
+why = """
+The Java evaluator teaches how rules combine. A real cluster, asked in a different way by a tool other people wrote, is the proof that the model matches reality.
+"""
+install_note = "A JDK for the demo and the ordinary tests. For the integration tests, Docker, kind and kubectl on the PATH. The versions in use are:"
+versions = [
+    ["SnakeYAML Engine", "3.2"],
+    ["kind", "0.33.0"],
+    ["kubectl (client)", "1.27.2"],
+    ["Kubernetes (kindest/node image)", "1.37.0"],
+    ["Java", "25"],
+    ["JUnit", "6.1.3"],
+]
+costs = [
+    "The integration tests take about three minutes, because a cluster starts and kubectl is called 490 times.",
+    "The kubectl client is older than the cluster by more than the supported skew, which prints a warning but works for these questions.",
+    "The tests need Docker, kind and kubectl installed.",
+]
+
+[docs.problem]
+scenario = """
+An online store runs its jobs in Kubernetes. Each job has a service account whose token can be stolen from a pod, a log or a backup. The store wants to know how much each stolen token could do, and to keep that small.
+"""
+naive = """
+Give a job cluster-admin, or a wildcard role, because it fixes the permission error quickly.
+"""
+deliver = [
+    "Real RBAC manifests for five identities, from cluster-admin to a role that names one config map.",
+    "An evaluator that answers `kubectl auth can-i` from the manifests, with the blast radius counted.",
+    "The escalation paths of create pods, create role bindings, bind and escalate.",
+    "A demonstration that a namespaced binding keeps a cluster-wide role inside its namespace.",
+    "A linter for cluster-admin bindings, wildcards, escalation verbs and automounted tokens.",
+    "A check against a real kind cluster.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "A rough idea of what a pod, a namespace and a service account are",
+]
+not_required = [
+    "A running Kubernetes cluster: the demo reads manifests",
+    "Docker, unless you run the integration tests",
+]
+install = ["Docker, kind and kubectl for the integration tests only"]
+
+[docs.session]
+objectives = [
+    "explain deny by default and how roles and bindings combine",
+    "count the blast radius of a service account",
+    "name three verbs that allow escalation",
+    "say why the binding, not the role, sets the scope",
+]
+walkthrough = """
+Start with the master key analogy. Run the demo one act at a time and open `infra/rbac/shop.yaml` beside it. After act two, ask what else "everything" would include in a cluster that has custom resources. After act three, ask how to let a pipeline deploy without giving it the power to read secrets.
+"""
+exercises = [
+    "Change the reporter's role to name pods and services only, and check its blast radius.",
+    "Add a RoleBinding that gives the support agent shop-viewer in warehouse and see act four change.",
+    "Run `kubectl auth can-i --list` as the exporter in a kind cluster and compare it with the manifest.",
+    "Add a lint rule for ClusterRoleBindings that name the default service account.",
+]
+
+[docs.explained]
+sentence = """
+RBAC allows only what a rule says, so the harm from a stolen token is the sum of its rules, and the common mistakes are cluster-admin, wildcards, and the verbs that let an identity grant itself more.
+"""
+verdict = """
+One service account per workload, bound in one namespace, with rules that name resources and, where possible, objects. Turn off token mounting where the pod does not call the API. Review any binding to cluster-admin and any use of create pods, bind, escalate or impersonate, and check with `kubectl auth can-i --list`.
+"""
+recognise = [
+    "`cluster-admin` bindings in install guides.",
+    "`resources: [\"*\"]` in Helm charts.",
+    "`automountServiceAccountToken: false` in hardened manifests.",
+    "Policy tools that fail a build on cluster-admin.",
+]
+
+[spec]
+purpose = """
+Teach least privilege on Kubernetes by reading real RBAC manifests, answering what each identity may do, counting the blast radius and escalation paths, linting, and checking the answers against a real kind cluster.
+"""
+nongoals = [
+    "Admission control, network policies and pod security standards.",
+    "Groups, users, aggregated roles and non-resource URLs.",
+    "Cloud identity mapping.",
+]
+problem = """
+Learners see RBAC as YAML to copy. They need to see what the rules add up to, and what a stolen token could do.
+"""
+roles = [["Reading manifests", "`Manifests`"], ["Answering can-i", "`Rbac`"], ["Finding bad habits", "`Linter`"], ["Entry point", "`LeastPrivilegeK8sDemo`"], ["Real cluster check", "`KubectlInteropTest`"]]
+requirements = [
+    "The evaluator denies by default and matches verbs, resources and resource names.",
+    "A namespaced binding applies only in its namespace, even to a ClusterRole.",
+    "Blast radius and escalation paths are computed for each identity.",
+    "The linter finds the six problems in the shop manifests.",
+    "A real kind cluster answers like the evaluator for 490 combinations.",
+    "The demo needs no cluster and prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "How RBAC grants a permission"
+caption = "An identity gets a permission only through a binding to a role with a rule that allows it."
+nodes = [
+    { id = "sa", label = "Service account", sub = "a job's identity and token", col = 0, row = 0, colour = "client" },
+    { id = "binding", label = "Binding", sub = "RoleBinding or ClusterRoleBinding", col = 1, row = 0, colour = "amber" },
+    { id = "role", label = "Role", sub = "rules: verbs, resources, names", col = 2, row = 0, colour = "accent" },
+    { id = "api", label = "API request", sub = "allowed only if a rule matches", col = 3, row = 0, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "sa", to = "binding", label = "named in" },
+    { from = "binding", to = "role", label = "points at" },
+    { from = "role", to = "api", label = "allows" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Manifests holds what was read; Rbac and Linter only read it."
+nodes = [
+    { id = "manifests", label = "Manifests", sub = ["parse(yaml)", "roles, bindings, accounts"], col = 0, row = 0, colour = "green" },
+    { id = "rbac", label = "Rbac", sub = ["can(user, verb, resource, namespace)", "blastRadius(user, namespace)", "escalationPaths(user, namespace)"], col = 1, row = 0, colour = "accent" },
+    { id = "linter", label = "Linter", sub = ["check(manifests)"], col = 2, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "rbac", to = "manifests", label = "reads" },
+    { from = "linter", to = "manifests", label = "reads" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "Blast radius of a stolen token"
+caption = "Count the verb and resource pairs the identity may use."
+nodes = [
+    { id = "token", label = "Stolen token", sub = "from a pod, a log or a backup", col = 0, row = 0, colour = "red" },
+    { id = "admin", label = "cluster-admin", sub = "56 of 56", col = 1, row = 0, colour = "red" },
+    { id = "report", label = "Wildcard role", sub = "16 of 56, including secrets", col = 1, row = 1, colour = "amber" },
+    { id = "export", label = "Scoped role", sub = "2 of 56", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "token", to = "admin" },
+    { from = "token", to = "report" },
+    { from = "token", to = "export" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Asking whether an identity may act: who calls whom, in order"
+participants = ["Caller", "Rbac", "Manifests"]
+steps = [
+    ["Caller", "Rbac", "can(exporter, get, secrets, shop)"],
+    ["Rbac", "Manifests", "bindings that name the exporter"],
+    ["Manifests", "Rbac", "exporter-reads, in shop", "reply"],
+    ["Rbac", "Manifests", "the role it points at"],
+    ["note", "Rbac", "no rule allows get on secrets"],
+    ["Rbac", "Caller", "false: denied by default", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Checking the Java evaluator against a real cluster"
+caption = "The same manifests are applied to kind and kubectl is asked."
+participants = ["Test", "kind", "kubectl", "Rbac"]
+steps = [
+    ["Test", "kind", "create a cluster with a unique name"],
+    ["Test", "kubectl", "apply infra/rbac/shop.yaml"],
+    ["Test", "kubectl", "auth can-i verb resource --as=service account"],
+    ["kubectl", "Test", "yes or no", "reply"],
+    ["Test", "Rbac", "can(...)"],
+    ["note", "Test", "the two answers must be equal"],
+    ["Test", "kind", "delete the cluster"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Privilege escalation through create pods"
+caption = "A pod can mount any secret in its namespace, so creating one is a way to read them."
+participants = ["Pipeline", "API server", "Secret"]
+steps = [
+    ["Pipeline", "API server", "get secrets"],
+    ["API server", "Pipeline", "forbidden", "reply"],
+    ["Pipeline", "API server", "create a pod that mounts the secret"],
+    ["API server", "Secret", "mount it into the pod"],
+    ["note", "Pipeline", "the pod prints the secret: the permission was only a detour"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The cluster", nodes = ["api", "rbac", "pod"], colour = "green" },
+    { label = "Manifests and pipeline", nodes = ["repo", "ci"], colour = "amber" },
+    { label = "Outside", nodes = ["thief"], colour = "red" },
+]
+nodes = [
+    { id = "api", label = "API server", sub = "checks every request", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T2"] },
+    { id = "rbac", label = "RBAC rules", sub = "deny by default", col = 0, row = 1, colour = "accent", shape = "store", threats = ["T1", "T3"] },
+    { id = "pod", label = "Pod with a token", sub = "service account token", col = 1, row = 0, colour = "amber", threats = ["T4"] },
+    { id = "repo", label = "Manifests in git", sub = "reviewed or not", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T1", "T5"] },
+    { id = "ci", label = "Deploy pipeline", sub = "can create pods and bindings", col = 2, row = 0, colour = "amber", threats = ["T2"] },
+    { id = "thief", label = "Attacker", sub = "steals a token or a pipeline", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T4"] },
+]
+edges = [
+    { from = "pod", to = "api", label = "calls with a token" },
+    { from = "api", to = "rbac", label = "asks" },
+    { from = "repo", to = "ci" },
+    { from = "thief", to = "pod", label = "steals the token", colour = "red", dashed = true, threats = ["T4"] },
+    { from = "thief", to = "ci", label = "uses create pods", colour = "red", dashed = true, threats = ["T2"] },
+]
+
+[poster]
+headline = [["LEAST PRIVILEGE", "text"], ["KUBERNETES RBAC", "accent"]]
+taglines = [["Give each identity only what its job needs", "gold"]]
+before = { code = "cluster-admin", note = "56 of 56 if stolen", tag = "BEFORE" }
+after = { code = "Role: get, list pods", note = "2 of 56 if stolen", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Least Privilege with Kubernetes RBAC"
+narration = """Hello, and welcome. [[slnc 400]] This video explains least privilege with Kubernetes R B A C, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Every program in a cluster has an identity and a token. [[slnc 300]] R B A C decides what each identity may do, and it allows nothing until a rule says so. [[slnc 600]] Think of the keys of a shop. [[slnc 300]] A master key given to the night cleaner opens the till, the stockroom and the office. [[slnc 300]] A key cut for the cleaner's cupboard opens one door. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how to count what a stolen token could do. [[slnc 300]] Why read everything is not harmless. [[slnc 300]] Which verbs let an identity grant itself more. [[slnc 300]] And how to check it all against a real cluster."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store runs jobs in Kubernetes.", "", "A nightly export has cluster-admin.", "A report job can read everything.", "The deploy pipeline can create pods.", "", "What could each stolen token do?"]
+narration = """Here is the scenario. [[slnc 400]] An online store runs its jobs in Kubernetes. [[slnc 500]] A nightly export was given cluster admin. [[slnc 300]] A report job can read everything. [[slnc 300]] The deploy pipeline can create pods. [[slnc 600]] What could each stolen token do?"""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Service account: a job's identity", "Role: rules in one namespace", "ClusterRole: rules for the whole cluster", "Binding: gives a role to an identity", "Blast radius: what a stolen token can reach"]
+narration = """Before the demos, the words. [[slnc 500]] A service account is a job's identity. [[slnc 500]] A role is a set of rules in one namespace. [[slnc 500]] A cluster role is a set of rules for the whole cluster. [[slnc 500]] A binding gives a role to an identity. [[slnc 500]] And the blast radius is what a stolen token can reach."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "From Broad to Narrow"
+body = ["cluster-admin: everything, everywhere", "Wildcards: more than they say", "Verbs that grant: create pods, bind, escalate", "A named role in one namespace: only the job", "The binding sets the reach."]
+narration = """Let's put it side by side, broad to narrow. [[slnc 400]] Cluster admin. Everything, everywhere. [[slnc 500]] Wildcards. More than they say. [[slnc 500]] Verbs that grant. Create pods, bind, and escalate. [[slnc 500]] A named role in one namespace. Only the job. [[slnc 600]] And remember, the binding sets the reach, not the role."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Manifests: reads the YAML", "Rbac: can this identity do this?", "Linter: finds the common habits", "infra/rbac: the real manifests", "KubectlInteropTest: asks a real cluster"]
+narration = """Here is who does what in the code. [[slnc 400]] The manifests class reads the Y A M L. [[slnc 500]] The R B A C class answers whether an identity can do something, counts the blast radius and finds the escalation paths. [[slnc 500]] The linter finds the common bad habits. [[slnc 500]] The infra folder holds the real manifests. [[slnc 300]] And the interop test asks a real cluster the same questions."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["cluster-admin in install guides", "resources: * in charts", "automountServiceAccountToken: false", "kubectl auth can-i"]
+narration = """You have probably met this already. [[slnc 400]] Cluster admin appears in install guides, and is copied into production. [[slnc 500]] A star for resources appears in charts. [[slnc 500]] Automount service account token false appears in hardened manifests. [[slnc 500]] And kubectl auth can i is how you ask the cluster what an identity may do."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["One service account per workload", "Bind in one namespace", "Name resources, not wildcards", "Watch create pods, bind, escalate", "Check with kubectl auth can-i --list"]
+narration = """So, how do you use it? [[slnc 400]] Give each workload its own service account. [[slnc 500]] Bind it in one namespace. [[slnc 500]] Name resources, instead of using wildcards. [[slnc 500]] Treat create pods, bind, and escalate as powerful as the things they can reach. [[slnc 500]] And check with kubectl auth can i, with the list option."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Name the resources", "in the reporter's role and count again."]
+narration = """That's least privilege with Kubernetes R B A C. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A token can do exactly what its rules add up to, so write the rules to add up to the job and nothing else. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] The demo runs with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Name the resources in the reporter's role, and count the blast radius again. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The RBAC configuration of a Kubernetes cluster that runs an online store's jobs: service accounts, roles, bindings, and the pipeline that applies them. It covers an attacker who steals a service account token or takes over a pipeline. It does not cover the nodes, the network, admission control or the applications' own authorization.
+"""
+assets = [
+    "Secrets in the cluster, such as payment keys and database passwords.",
+    "The ability to create workloads and bindings.",
+    "Service account tokens.",
+    "The manifests that define the rules.",
+]
+actors = [
+    "Jobs and pipelines running as service accounts.",
+    "An attacker who steals a token or takes over a job.",
+    "A developer who writes or reviews the manifests.",
+]
+boundaries = [
+    "Pod to API server: the token is the only proof of identity.",
+    "Git repository to cluster: whatever is applied becomes the rules.",
+    "Namespace to namespace: only bindings set the boundary.",
+]
+assumptions = [
+    "The API server enforces RBAC correctly and the nodes are not compromised.",
+    "Manifests are reviewed before they are applied.",
+    "In the demo, names, passwords and keys are demo values, and the cluster is a throwaway kind cluster.",
+]
+out_of_scope = [
+    "Admission control, pod security standards and network policies.",
+    "Cloud identity mapping.",
+    "Runtime detection.",
+]
+tests = [
+    "`RbacTest` checks deny by default, cluster-admin, resource names, wildcards, binding scope, subresources and escalation paths.",
+    "`ManifestsAndLinterTest` checks YAML parsing and the six lint findings.",
+    "`KubectlInteropTest` (integration) makes a real kind cluster and compares 490 kubectl answers, the bind, escalate and exec verbs, and a named config map with the Java evaluator.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+This is the last project in the safe-habits track so far. The later projects return to identity and add a real identity provider.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A job is bound to cluster-admin or a wildcard role, so a stolen token controls the cluster"
+where = "`nightly-export-is-admin`, `report-reader`"
+control = "One service account per workload, scoped roles that name resources, and a linter that fails on cluster-admin and wildcards"
+residual = "Roles still need review as features grow"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "An identity that can create pods or bindings makes itself more powerful"
+where = "`deployer`, `ci-deployer`"
+control = "Treat create pods, bind and escalate as the permissions they can reach, and limit them with admission policy"
+residual = "RBAC alone cannot stop a pod from mounting the secrets of its namespace"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A role is edited to grant more, and nobody notices"
+where = "the RBAC rules"
+control = "Keep manifests in git with review, and diff `kubectl auth can-i --list` over time"
+residual = "Someone with escalate can change roles without review"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "A service account token is read from a pod, a log or a backup"
+where = "the pod's mounted token"
+control = "Turn off automounting where the pod does not call the API, and use short-lived bound tokens"
+residual = "A token used by a running pod can still be read from that pod"
+
+[[threat]]
+id = "T5"
+stride = "R"
+threat = "Nobody can tell who applied a permission change, or why"
+where = "the manifests repository"
+control = "Review in git, and enable the API server's audit log"
+residual = "Audit logs have to be kept and read"

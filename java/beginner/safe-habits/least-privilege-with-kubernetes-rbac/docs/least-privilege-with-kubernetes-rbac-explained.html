@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Least Privilege with Kubernetes RBAC, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Least Privilege with Kubernetes RBAC, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>RBAC allows only what a rule says, so the harm from a stolen token is the sum of its rules, and the common mistakes are cluster-admin, wildcards, and the verbs that let an identity grant itself more.</p>
+<h2>The 5 acts</h2>
+<h3>1. The nightly job that was given cluster-admin</h3>
+<p>The shop's namespace has 56 things a token could be used for: 7 verbs on 8 kinds of object. If the nightly-export-admin token is stolen it reaches all 56, and the whole cluster as well. If the exporter token is stolen it reaches 2 of 56: get and list pods.
+It can also read one config map by name, export-settings, but not another one, payment-keys, and it cannot read secrets.</p>
+<h3>2. The wildcard trap: read everything</h3>
+<p>The reporter's role says get and list on all resources, which sounds read-only and harmless. But the reporter can read secrets, every password and key in the namespace. It reaches 16 of 56, and "everything" also includes things that did not exist when the role was written.
+A rule that names its resources keeps meaning what it said.</p>
+<h3>3. Ways to become more powerful</h3>
+<p>The exporter has no escalation paths. The ci-deployer has four: it can create pods, which can mount any secret or service account token in the namespace, it can create role bindings, bind roles it does not hold, and edit roles to add permissions it does not hold.
+It cannot read secrets directly, but it can create a pod that mounts them. So "create pods" is as powerful as "read secrets", and "bind" or "escalate" is as powerful as owning the namespace.</p>
+<h3>4. A cluster-wide role through a namespaced binding</h3>
+<p>The role shop-viewer is a ClusterRole, and the support agent holds it through a RoleBinding in the shop namespace. The agent can list pods in shop, cannot list pods in warehouse, and cannot delete pods in shop.
+The cluster-admin job can list pods in warehouse because a cluster binding ignores namespaces. The binding decides the reach, not the role.</p>
+<h3>5. A linter for the habits that cause incidents</h3>
+<p>The linter finds six problems in the shop manifests: a binding to cluster-admin, a wildcard on resources, the escalate and bind verbs, and two service accounts whose token is mounted into every pod. A linter finds wildcards and cluster-admin, not a role that is too wide but spelled out in full,
+so ask the cluster too, with kubectl auth can-i --list.</p>
+<h2>The verdict</h2>
+<p>One service account per workload, bound in one namespace, with rules that name resources and, where possible, objects. Turn off token mounting where the pod does not call the API. Review any binding to cluster-admin and any use of create pods, bind, escalate or impersonate, and check with <code>kubectl auth can-i --list</code>.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>cluster-admin</code> bindings in install guides.</li>
+<li><code>resources: ["*"]</code> in Helm charts.</li>
+<li><code>automountServiceAccountToken: false</code> in hardened manifests.</li>
+<li>Policy tools that fail a build on cluster-admin.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>cluster-admin</code> in tutorials, copied into production.</li>
+<li><code>kubectl auth can-i</code> and <code>kubectl auth can-i --list</code>.</li>
+<li>Cloud kubernetes services that map cloud identities onto service accounts.</li>
+<li>Reports that begin "a pod's service account token was stolen".</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,178 @@
+# The online store's identities and what each may do. Applied to a kind cluster by the integration tests,
+# and read by the Java evaluator in the demo. Everything here is a demo value.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: warehouse
+---
+# The default service account of the namespace: its token is mounted into every pod unless turned off.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: shop
+---
+# The mistake: a nightly export job that was given cluster-admin "to make it work".
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nightly-export-admin
+  namespace: shop
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nightly-export-is-admin
+subjects:
+  - kind: ServiceAccount
+    name: nightly-export-admin
+    namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
+# The fix: only what the export needs, in one namespace, with a named config map.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exporter
+  namespace: shop
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: order-exporter
+  namespace: shop
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["export-settings"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exporter-reads
+  namespace: shop
+subjects:
+  - kind: ServiceAccount
+    name: exporter
+    namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: order-exporter
+---
+# The wildcard trap: "get and list everything" sounds read-only and harmless, and it includes secrets.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reporter
+  namespace: shop
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: report-reader
+  namespace: shop
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: reporter-reads-everything
+  namespace: shop
+subjects:
+  - kind: ServiceAccount
+    name: reporter
+    namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: report-reader
+---
+# The escalation paths: a deploy pipeline that can create pods and role bindings.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-deployer
+  namespace: shop
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+  namespace: shop
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["create"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles"]
+    verbs: ["bind", "escalate"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer-deploys
+  namespace: shop
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: deployer
+---
+# A cluster-wide role used through a namespaced binding: the grant stays inside the namespace of the binding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: shop-viewer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: support-agent
+  namespace: shop
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: support-agent-views-shop
+  namespace: shop
+subjects:
+  - kind: ServiceAccount
+    name: support-agent
+    namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: shop-viewer
