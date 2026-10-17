@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Password Attacks and Defences with nginx</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Password Attacks and Defences with nginx</h1>
+<pre><code>src/main/java/com/jk/explore/security/attacksnginx/
+├── Attacker.java          Sends login attempts to the nginx login, one after another as fast as it can, and counts the answers
+├── Nginx.java             One nginx container with a given configuration, started for a demo and stopped afterwards
+├── NginxAttacksDemo.java  Runs the online bank story in five numbered acts against real nginx containers and prints repeatable results
+├── NginxConfig.java       Writes the nginx configuration for one version of the login
+└── Tally.java             How many attempts were answered by the login (401) and how many were turned away by the limit (429)
+</code></pre>
+<p><strong>nginx can rate-limit a login before it reaches the application, but the limit is only as good as the key it counts, and a key the attacker can choose is no limit at all.</strong></p>
+<p>The plain version of this lesson modelled a bank's login with a clock made of ticks. This project puts a real piece of software in
+front of the login: <strong>nginx</strong>, a web server that is very often the first thing a request meets. Its <code>limit_req</code> directive keeps a count
+of requests for each <strong>key</strong> and turns away those that arrive too fast, answering 429 (Too Many Requests). The key is a choice, and
+the choice matters more than the numbers. Count by the connection's real address and an attacker with one address is held to
+the limit. Count by a header the client writes itself, such as <code>X-Forwarded-For</code>, and the attacker simply writes a new value
+for every attempt.</p>
+<p>The demo starts a real nginx in a Docker container for each act, sends twenty guesses at a login with a plain Java client, and
+counts what came back. The login itself is a stub that answers 401 to every password, so only the limit decides what the attacker sees.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a door guard at a bank who allows each visitor six entries an hour. If the guard recognises visitors by their
+face, a thief is held to six. If the guard asks visitors for their name and trusts what they say, the thief says a
+new name each time and walks in twenty times. The rule was fine. What the guard counted was wrong.</p>
+<h2>The scenario</h2>
+<p>An online bank's login sits behind nginx. Twenty guesses at Dana's account arrive from one machine, as fast as it can send
+them. The bank tries five arrangements: no limit, a limit on the client address, a limit on a header, the same limit on the
+real address, and a limit per username. In each, the attacker's twenty guesses and what happens to them are counted. The rate is one request
+a minute with a burst of five, so the limit's effect shows within a moment and does not depend on timing.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. nginx in front of the login, with no limit</td>
+<td>With no limit, all 20 guesses at Dana's login are answered with 401.</td>
+</tr>
+<tr>
+<td>2. limit_req on the client's address: 1r/m, burst 5</td>
+<td>Keyed on the connection address, the limit lets 6 guesses through, 1 plus the burst of 5, and refuses the other 14 with a 429.</td>
+</tr>
+<tr>
+<td>3. The same limit, but counted on the X-Forwarded-For header</td>
+<td>Keyed on a header the client writes, the attacker sends a different value each time and all 20 guesses are answered.</td>
+</tr>
+<tr>
+<td>4. The same limit, counted on the real connection address</td>
+<td>Keyed on the real address, changing the header buys nothing: 6 answered and 14 refused again.</td>
+</tr>
+<tr>
+<td>5. The bill: a limit per username</td>
+<td>Keyed on the username, the limit holds an attack on Dana to 6 but also turns Dana away, and a spray of 20 usernames is never limited.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>NginxConfigTest</code>, <code>NginxContainerTest</code>, <code>ReferenceConfigTest</code>. The unit tests (<code>./gradlew test</code>) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged <code>docker</code> and run with <code>./gradlew integrationTest</code>.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The login is a stub inside the same nginx, answering 401 to every password, because the lesson is about the limit and not
+about checking passwords. The rate is one request a minute with a burst of five: nginx's limit counts in real time, so
+the demo chooses a rate so slow that the whole run takes a few seconds and the counts are the same every time. Real limits use rates such as
+five a second, and need more care. The demo cannot send requests from different real addresses, so the difference between the
+connection address and a client-written header is shown by changing the header only.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/password-attacks-and-defences-with-nginx-explained.html">Password Attacks and Defences with nginx, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The attacker's guesses meet nginx first. The limit zone counts them by a key, and only those within the limit reach the login stub.</p>
+<p><img alt="A login behind nginx" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The configuration is generated from a Key; the container runs it; the attacker counts the answers.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>nginx takes the key from the request, looks up its bucket, and lets the request through or answers 429.</p>
+<p><img alt="How one request is decided" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Twenty guesses meeting the address limit" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/password-attacks-and-defences-with-nginx-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Counting the wrong thing makes the limit useless.</strong> A limit keyed on <code>X-Forwarded-For</code> or any other client-written header is bypassed by changing it. Behind a proxy or load balancer, the real address must be taken from a header only the trusted proxy sets.</li>
+<li><strong>A limit per username locks the owner out too.</strong> While the bucket for Dana is full, Dana's own login is turned away, from any address.</li>
+<li><strong>A limit per username misses a spray.</strong> One guess at each of many usernames never fills any bucket.</li>
+<li><strong>Shared addresses are punished together.</strong> Many customers behind one office or mobile network address share one bucket.</li>
+<li><strong>Docker is a dependency of the demo.</strong> The container has to start, and the image has to be present.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A site with no accounts does not need a login limit. For one that does, a limit at the front door is cheap and worth having. nginx is
+only one place to put it, and the same ideas apply to any reverse proxy, load balancer or cloud gateway: choose the key carefully, return 429,
+and combine the limit with the lockout, second factor and breach check from the plain project.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A "429 Too Many Requests" page, sometimes with a "try again later" message.</li>
+<li><code>limit_req_zone</code> and <code>limit_req</code> lines in an nginx configuration.</li>
+<li>An API that documents its rate limits in a response header.</li>
+<li>Advice to "never trust X-Forwarded-For" in a security review.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the fourth in <a href="..">passwords-and-mfa</a>, the nginx version of <a href="../password-attacks-and-defences">password-attacks-and-defences</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

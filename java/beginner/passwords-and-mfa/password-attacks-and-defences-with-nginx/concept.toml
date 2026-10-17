@@ -1,0 +1,572 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# Written for a beginner: plain words, short sentences, every term explained the first time.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "password-attacks-and-defences-with-nginx"
+module = "passwords-and-mfa"
+title = "Password Attacks and Defences with nginx"
+short_title = "Password Attacks and Defences with nginx"
+package = "attacksnginx"
+main_class = "NginxAttacksDemo"
+tagline = "A real rate limit, and the key that decides it"
+bold = "nginx can rate-limit a login before it reaches the application, but the limit is only as good as the key it counts, and a key the attacker can choose is no limit at all."
+domain = "an online bank"
+domain_note = ""
+youtube_description = """Password attacks and defences with nginx, in Java: a rate limit is a bouncer at the door, and what it counts decides whether it works. Explained with an online bank's login behind a real nginx container, like a door guard who counts visitors by their face and not by the name they give. We send twenty guesses at the login with no limit, then with limit_req keyed on the client's address, then keyed on an X-Forwarded-For header the attacker writes, then on the real address again, and finish with the bill: a limit per username locks the owner out too, and a spray of different usernames never reaches it."""
+thumb_lines = ["RATE LIMITING", "WITH NGINX"]
+thumb_code = "limit_req zone=login"
+youtube_title = "Rate Limiting a Login with nginx"
+youtube_tags = ["nginx", "rate limiting", "limit_req", "brute force", "x-forwarded-for", "password attacks", "docker", "java", "cybersecurity for beginners"]
+
+[readme]
+intro = """
+The plain version of this lesson modelled a bank's login with a clock made of ticks. This project puts a real piece of software in
+front of the login: **nginx**, a web server that is very often the first thing a request meets. Its `limit_req` directive keeps a count
+of requests for each **key** and turns away those that arrive too fast, answering 429 (Too Many Requests). The key is a choice, and
+the choice matters more than the numbers. Count by the connection's real address and an attacker with one address is held to
+the limit. Count by a header the client writes itself, such as `X-Forwarded-For`, and the attacker simply writes a new value
+for every attempt.
+
+The demo starts a real nginx in a Docker container for each act, sends twenty guesses at a login with a plain Java client, and
+counts what came back. The login itself is a stub that answers 401 to every password, so only the limit decides what the attacker sees.
+"""
+analogy = """
+Think of a door guard at a bank who allows each visitor six entries an hour. If the guard recognises visitors by their
+face, a thief is held to six. If the guard asks visitors for their name and trusts what they say, the thief says a
+new name each time and walks in twenty times. The rule was fine. What the guard counted was wrong.
+"""
+scenario = """
+An online bank's login sits behind nginx. Twenty guesses at Dana's account arrive from one machine, as fast as it can send
+them. The bank tries five arrangements: no limit, a limit on the client address, a limit on a header, the same limit on the
+real address, and a limit per username. In each, the attacker's twenty guesses and what happens to them are counted. The rate is one request
+a minute with a burst of five, so the limit's effect shows within a moment and does not depend on timing.
+"""
+costs = [
+    "**Counting the wrong thing makes the limit useless.** A limit keyed on `X-Forwarded-For` or any other client-written header is bypassed by changing it. Behind a proxy or load balancer, the real address must be taken from a header only the trusted proxy sets.",
+    "**A limit per username locks the owner out too.** While the bucket for Dana is full, Dana's own login is turned away, from any address.",
+    "**A limit per username misses a spray.** One guess at each of many usernames never fills any bucket.",
+    "**Shared addresses are punished together.** Many customers behind one office or mobile network address share one bucket.",
+    "**Docker is a dependency of the demo.** The container has to start, and the image has to be present.",
+]
+too_much = """
+A site with no accounts does not need a login limit. For one that does, a limit at the front door is cheap and worth having. nginx is
+only one place to put it, and the same ideas apply to any reverse proxy, load balancer or cloud gateway: choose the key carefully, return 429,
+and combine the limit with the lockout, second factor and breach check from the plain project.
+"""
+met_before = [
+    "A \"429 Too Many Requests\" page, sometimes with a \"try again later\" message.",
+    "`limit_req_zone` and `limit_req` lines in an nginx configuration.",
+    "An API that documents its rate limits in a response header.",
+    "Advice to \"never trust X-Forwarded-For\" in a security review.",
+]
+where = """
+This project is the fourth in [passwords-and-mfa](..), the nginx version of [password-attacks-and-defences](../password-attacks-and-defences).
+"""
+twin = """
+The login is a stub inside the same nginx, answering 401 to every password, because the lesson is about the limit and not
+about checking passwords. The rate is one request a minute with a burst of five: nginx's limit counts in real time, so
+the demo chooses a rate so slow that the whole run takes a few seconds and the counts are the same every time. Real limits use rates such as
+five a second, and need more care. The demo cannot send requests from different real addresses, so the difference between the
+connection address and a client-written header is shown by changing the header only.
+"""
+test_note = "The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`."
+
+[[act]]
+title = "nginx in front of the login, with no limit"
+summary = "With no limit, all 20 guesses at Dana's login are answered with 401."
+detail = """
+nginx sits in front of the login, which is a stub that says 401 to every password. With no limit configured, nginx
+passes every request through. Twenty guesses at Dana's account are all answered: 20 answered, 0 refused. Anyone
+can keep guessing for as long as they like.
+"""
+speech = """
+First demo: nginx in front of the login, with no limit. [[slnc 400]] nginx is a web server that very often sits in front of an application. [[slnc 300]] The login behind it is a stub, which says four oh one to every password. [[slnc 600]]
+The attacker sends twenty guesses at Dana's account. [[slnc 300]] All twenty are answered. [[slnc 300]] Nothing refused. [[slnc 600]]
+Anyone can keep guessing, for as long as they like.
+"""
+rows = { nginx = "active wrong" }
+console = [
+    ["20 guesses at dana's login: 20 answered, 0 refused with 429  <- ANYONE CAN KEEP GUESSING", "bad"],
+]
+
+[[act]]
+title = "limit_req on the client's address: 1r/m, burst 5"
+summary = "Keyed on the connection address, the limit lets 6 guesses through, 1 plus the burst of 5, and refuses the other 14 with a 429."
+detail = """
+The configuration now has a zone that counts requests per client address, at one request a minute, and the login
+location uses it with a burst of five. The first request is allowed. The burst lets five more through at once. That is six answered. The
+remaining fourteen get 429. The rate is deliberately slow, so the count does not depend on how fast the demo runs.
+"""
+speech = """
+Second demo: a limit on the client's address. [[slnc 400]] nginx keeps a count of requests for each address, in a zone. [[slnc 300]] The rate is one a minute, with a burst of five. [[slnc 600]]
+The first request is allowed. [[slnc 300]] The burst lets five more through at once. [[slnc 300]] That is six answered. [[slnc 600]]
+The other fourteen are turned away with a four twenty nine, which means, too many requests. [[slnc 600]]
+The rate is deliberately slow, so the count does not depend on how fast the demo runs.
+"""
+rows = { nginx = "active ok", zone = "active ok" }
+console = [
+    ["20 guesses at dana's login: 6 answered, 14 refused with 429", "ok"],
+    ["the first 6 get through (1 plus the burst of 5), the rest are turned away", "ok"],
+]
+
+[[act]]
+title = "The same limit, but counted on the X-Forwarded-For header"
+summary = "Keyed on a header the client writes, the attacker sends a different value each time and all 20 guesses are answered."
+detail = """
+Many setups sit behind a proxy and take the client's address from the `X-Forwarded-For` header. Here the zone is
+keyed on that header, and the attacker simply sends a different value with every guess. Each value has its own,
+empty bucket, so all 20 guesses are answered: 20 answered, 0 refused. The limit is in place and does nothing, because
+the attacker chose the key.
+"""
+speech = """
+Third demo: the same limit, counted on a header. [[slnc 400]] Many setups sit behind a proxy, and take the client's address from a header called X Forwarded For. [[slnc 600]]
+Here the zone is keyed on that header. [[slnc 300]] And the attacker sends a different value, with every guess. [[slnc 300]] Each value gets its own, empty bucket. [[slnc 600]]
+All twenty guesses are answered. [[slnc 300]] The limit is in place, and does nothing. [[slnc 300]] The attacker chose the key.
+"""
+rows = { header = "active wrong", zone = "active wrong" }
+console = [
+    ["20 guesses, each with a different X-Forwarded-For value: 20 answered, 0 refused with 429  <- THE ATTACKER CHOSE ITS OWN KEY", "bad"],
+]
+
+[[act]]
+title = "The same limit, counted on the real connection address"
+summary = "Keyed on the real address, changing the header buys nothing: 6 answered and 14 refused again."
+detail = """
+The zone is keyed on the address of the connection itself, which the client cannot choose. The attacker sends the same different header values
+as before, and nginx ignores them. The result is back to 6 answered and 14 refused. Behind a trusted proxy, the real client
+address must be taken from a header that only that proxy sets, and the proxy must overwrite whatever the client sent.
+"""
+speech = """
+Fourth demo: the same limit, counted on the real connection address. [[slnc 400]] The client cannot choose that one. [[slnc 600]]
+The attacker sends the same different header values as before. [[slnc 300]] nginx ignores them. [[slnc 300]] Six answered. [[slnc 300]] Fourteen refused. [[slnc 600]]
+Behind a trusted proxy, the real address must come from a header that only that proxy sets. [[slnc 300]] And the proxy must overwrite whatever the client sent.
+"""
+rows = { nginx = "active ok", zone = "active ok", header = "active ok" }
+console = [
+    ["20 guesses with different X-Forwarded-For values: 6 answered, 14 refused with 429", "ok"],
+    ["the header is ignored, so changing it buys nothing", "ok"],
+]
+
+[[act]]
+title = "The bill: a limit per username"
+summary = "Keyed on the username, the limit holds an attack on Dana to 6 but also turns Dana away, and a spray of 20 usernames is never limited."
+detail = """
+A limit per username seems natural: protect each account. An attack on Dana is held to 6 answered and 14 refused.
+But the bucket for Dana is now full, and when Dana herself tries from another address, she gets 429: the
+limit locks the owner out too. And a spray, with one guess at each of 20 usernames, fills no bucket at all: 20 answered, 0 refused.
+A per-username limit is a lockout with the same two weaknesses as in the plain project. It belongs beside a limit per address, not in place of it.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] A limit per username seems natural. [[slnc 300]] Protect each account. [[slnc 600]]
+An attack on Dana is held to six answered, and fourteen refused. [[slnc 300]] But Dana's bucket is now full. [[slnc 300]] When Dana herself tries, from another address, she is turned away too. [[slnc 600]]
+And a spray, with one guess at each of twenty usernames, fills no bucket at all. [[slnc 300]] All twenty are answered. [[slnc 600]]
+A limit per username is a lockout, with the same two weaknesses as before. [[slnc 300]] It belongs beside a limit per address. [[slnc 300]] Not instead of it.
+"""
+rows = { zone = "active amber", nginx = "active amber" }
+console = [
+    ["20 guesses at dana: 6 answered, 14 refused with 429", "ok"],
+    ["dana herself tries from another address: 429  <- THE LIMIT LOCKS THE OWNER OUT TOO", "bad"],
+    ["one guess at each of 20 usernames: 20 answered, 0 refused with 429  <- A SPRAY NEVER REACHES THE LIMIT", "bad"],
+]
+
+[animation]
+subtitle = "A real nginx in front of a bank's login: what it counts decides whether a rate limit works."
+boxes = [
+    ["nginx", "nginx", "a web server in front of the login, in a Docker container"],
+    ["zone", "Limit zone", "a count of requests for each key, at a set rate"],
+    ["header", "X-Forwarded-For", "a header the client can write, so a key it can choose"],
+    ["login", "Login stub", "answers 401 to every password, so only the limit decides"],
+]
+
+[docs.dependencies]
+intro = """
+This project needs Docker, and uses one container image. The Java code is the plain JDK only.
+"""
+what = [
+    ["Docker", "a tool that runs programs in isolated containers. The demo starts one container for each act and stops it afterwards. Docker must be installed and running."],
+    ["nginx", "a very widely used web server and reverse proxy. A reverse proxy sits in front of an application and passes requests to it, which makes it a natural place for a rate limit. `limit_req` is nginx's rate limit."],
+]
+why = """
+The plain project models a login's defences in Java, with a clock made of ticks. A real limit lives in a real piece of software, uses real time, and has choices, such as the key, that the model could only describe. Running the real nginx lets the demo show the mistake that matters most: a key the attacker can choose.
+"""
+install_note = "A JDK and a running Docker. Gradle downloads the Java side, Docker pulls the nginx image the first time, and the versions are pinned:"
+versions = [
+    ["nginx image", "nginx:1.31.6-alpine"],
+    ["Docker", "any recent Docker Engine or Docker Desktop"],
+    ["Java", "25"],
+    ["JUnit", "5.10.2"],
+]
+costs = [
+    "The demo and the tagged tests need Docker; the default `./gradlew test` does not.",
+    "A container takes a second or two to start, so the demo is slower than the plain version.",
+    "Real-time rates make exact counts depend on timing, which is why the demo uses a very slow rate.",
+]
+
+[docs.problem]
+scenario = """
+An online bank's login is behind nginx. Guessing at it is cheap and fast, and the bank wants to hold an attacker to a few attempts without
+turning away real customers.
+"""
+naive = """
+Pass every request to the application and rely on the application to count failures. That means every guess reaches
+the password check, and a limit written in the application cannot protect the application from the cost of being asked.
+"""
+deliver = [
+    "A real nginx, started in Docker for each act, with a configuration generated from Java.",
+    "A client that sends twenty guesses as fast as it can and counts the answers.",
+    "A limit on the client address that holds the attacker to one plus the burst.",
+    "The same limit keyed on a client-written header, and the bypass it allows.",
+    "A limit per username, its effect on the owner, and its blindness to a spray.",
+    "Unit tests that need no Docker, and container tests that do.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain password-attacks-and-defences project, or at least the ideas of a rate limit and a lockout",
+    "A running Docker, to run the demo and the integration tests",
+]
+not_required = [
+    "Knowing nginx: every line of the configuration is explained in the project",
+    "Docker experience beyond having it installed",
+    "A web framework",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what limit_req counts, and what the key is",
+    "explain why a client-written header is a bad key",
+    "explain why a limit per username locks the owner out and misses a spray",
+    "say what a reverse proxy must do with X-Forwarded-For",
+]
+walkthrough = """
+Start with the door guard analogy. Read `infra/nginx-limit-by-address.conf` aloud first and ask the group what each line does. Then run the demo
+one act at a time. After act two, ask what the six means. After act three, ask what the attacker did, before showing the answer. In act five, ask whether
+a limit per username could ever be right, and when.
+"""
+exercises = [
+    "Change the burst to 2 and predict the counts before running the demo.",
+    "Add a key made of the address and the username together. Which attacks does that stop, and which does it miss?",
+    "Change limit_req_status to 503 and see what changes in the output.",
+    "Write the nginx lines that overwrite X-Forwarded-For with the real address, and test them.",
+]
+
+[docs.explained]
+sentence = """
+nginx's limit_req counts requests for each key and answers 429 to those that arrive too fast, so a login behind it is protected only as well as the key is chosen: the real connection address holds an attacker to the limit, a client-written header does not, and a per-username key locks the owner out and misses a spray.
+"""
+verdict = """
+Rate limit the login at the front door, on the real connection address, and take that address from a header only your
+own proxy can set. Add a gentle limit per account if you must, knowing it can be used against the owner, and keep the
+lockout, second factor and breach check from the plain project behind it.
+"""
+recognise = [
+    "`limit_req_zone` and `limit_req` in an nginx configuration.",
+    "A 429 response and a `Retry-After` header.",
+    "A proxy configuration that sets `X-Forwarded-For` itself and discards what the client sent.",
+    "A rate limit written in an API gateway's settings.",
+]
+
+[spec]
+purpose = """
+Teach how a real rate limit works and where it fails, by putting a bank's login behind a real nginx container and counting what twenty guesses achieve with five different keys.
+"""
+nongoals = [
+    "A production nginx configuration: TLS, timeouts and logging are left out.",
+    "Real-time rates: the rate is deliberately slow so counts are repeatable.",
+    "Distributed attackers: the client is one machine.",
+]
+problem = """
+Learners know a rate limit is good but not that what it counts decides whether it works.
+"""
+roles = [["The configuration", "`NginxConfig`"], ["The container", "`Nginx`"], ["The attacker", "`Attacker` and `Tally`"], ["Entry point", "`NginxAttacksDemo`"]]
+requirements = [
+    "The unit tests need no Docker; the container tests are tagged `docker`.",
+    "Every nginx configuration is generated from `NginxConfig`, and `infra/nginx-limit-by-address.conf` equals its output.",
+    "The nginx image is pinned to an exact version.",
+    "The demo output equals `docs/expected-output.txt` on every run.",
+    "A client-written header is never the key of the address limit.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A login behind nginx"
+caption = "The attacker's guesses meet nginx first. The limit zone counts them by a key, and only those within the limit reach the login stub."
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "20 guesses, as fast as possible", col = 0, row = 0, colour = "red" },
+    { id = "nginx", label = "nginx", sub = "limit_req zone=login", col = 1, row = 0, colour = "green" },
+    { id = "zone", label = "Limit zone", sub = "a count for each key", col = 1, row = 1, colour = "accent", shape = "store" },
+    { id = "login", label = "Login stub", sub = "401 to every password", col = 2, row = 0, colour = "accent" },
+    { id = "refused", label = "429", sub = "too many requests", col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "attacker", to = "nginx", label = "POST /login" },
+    { from = "nginx", to = "zone", label = "count by key" },
+    { from = "nginx", to = "login", label = "within the limit" },
+    { from = "nginx", to = "refused", label = "over the limit", colour = "amber" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The configuration is generated from a Key; the container runs it; the attacker counts the answers."
+nodes = [
+    { id = "config", label = "NginxConfig", sub = ["text(key, rate, burst)", "Key: NONE, ADDRESS,", "FORWARDED_HEADER, USERNAME"], col = 0, row = 0, colour = "green" },
+    { id = "nginx", label = "Nginx", sub = ["start(configText)", "port()", "close()"], col = 1, row = 0, colour = "accent" },
+    { id = "attacker", label = "Attacker", sub = ["attempt(user, forwardedFor)", "run(count, user, forwardedFor)"], col = 2, row = 0, colour = "red" },
+    { id = "tally", label = "Tally", sub = ["answered", "refused"], col = 2, row = 1, colour = "client" },
+    { id = "demo", label = "NginxAttacksDemo", sub = ["run()"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "demo", to = "config", label = "builds" },
+    { from = "demo", to = "nginx", label = "starts" },
+    { from = "demo", to = "attacker", label = "runs" },
+    { from = "attacker", to = "tally", label = "returns" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "How one request is decided"
+caption = "nginx takes the key from the request, looks up its bucket, and lets the request through or answers 429."
+nodes = [
+    { id = "req", label = "Request", sub = "address, headers, ?user=", col = 0, row = 0, colour = "client" },
+    { id = "key", label = "Key", sub = "address, header or username", col = 1, row = 0, colour = "green" },
+    { id = "bucket", label = "Bucket for the key", sub = "1 request a minute, burst 5", col = 2, row = 0, colour = "accent", shape = "store" },
+    { id = "decide", label = "Room left?", sub = "", col = 3, row = 0, colour = "green", shape = "ellipse" },
+    { id = "answer", label = "401 or 429", sub = "", col = 4, row = 0, colour = "accent" },
+]
+edges = [
+    { from = "req", to = "key" },
+    { from = "key", to = "bucket", label = "look up" },
+    { from = "bucket", to = "decide" },
+    { from = "decide", to = "answer" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Twenty guesses meeting the address limit"
+participants = ["Attacker", "nginx", "Login stub"]
+steps = [
+    ["Attacker", "nginx", "guess 1"],
+    ["nginx", "Login stub", "proxy_pass"],
+    ["Login stub", "Attacker", "401", "reply"],
+    ["note", "nginx", "guesses 2 to 6 use the burst"],
+    ["Attacker", "nginx", "guess 7"],
+    ["nginx", "Attacker", "429, never reaches the stub", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Bypassing a limit keyed on a header"
+caption = "Every guess carries a new X-Forwarded-For value, so every guess finds an empty bucket."
+participants = ["Attacker", "nginx", "Bucket 10.0.0.1", "Bucket 10.0.0.2"]
+steps = [
+    ["Attacker", "nginx", "guess 1, X-Forwarded-For: 10.0.0.1"],
+    ["nginx", "Bucket 10.0.0.1", "count"],
+    ["nginx", "Attacker", "401", "reply"],
+    ["Attacker", "nginx", "guess 2, X-Forwarded-For: 10.0.0.2"],
+    ["nginx", "Bucket 10.0.0.2", "count"],
+    ["nginx", "Attacker", "401", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A limit per username locks the owner out"
+caption = "Dana's bucket was filled by the attacker, and Dana's own login uses the same bucket."
+participants = ["Attacker", "nginx", "Dana"]
+steps = [
+    ["Attacker", "nginx", "20 guesses at dana"],
+    ["note", "nginx", "dana's bucket is full"],
+    ["Dana", "nginx", "login as dana, from her phone"],
+    ["nginx", "Dana", "429", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["customer", "attacker"], colour = "red" },
+    { label = "The front door: nginx", nodes = ["nginx", "zone"], colour = "amber" },
+    { label = "The application", nodes = ["login"], colour = "accent" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "right password, own address", col = 0, row = 0, colour = "client", threats = ["T4"] },
+    { id = "attacker", label = "Attacker", sub = "writes headers, many usernames", col = 0, row = 1, colour = "red", threats = ["T1", "T3"] },
+    { id = "nginx", label = "nginx", sub = "limit_req", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T2"] },
+    { id = "zone", label = "Limit zone", sub = "bucket per key", col = 1, row = 1, colour = "accent", shape = "store", threats = ["T5"] },
+    { id = "login", label = "Login", sub = "checks the password", col = 2, row = 0, colour = "accent", shape = "ellipse", threats = ["T6"] },
+]
+edges = [
+    { from = "customer", to = "nginx", label = "login" },
+    { from = "nginx", to = "zone", label = "count" },
+    { from = "nginx", to = "login", label = "allowed" },
+    { from = "attacker", to = "nginx", label = "guesses, forged headers", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+]
+
+[poster]
+headline = [["RATE LIMITING", "text"], ["WITH NGINX", "accent"]]
+taglines = [["A real limit, and the key that decides it", "gold"]]
+before = { code = "key = X-Forwarded-For", note = "the attacker picks the key", tag = "BEFORE" }
+after = { code = "key = $binary_remote_addr", note = "the real address decides", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Password Attacks and Defences with nginx"
+narration = """Hello, and welcome. [[slnc 400]] This video explains rate limiting a login with nginx, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A rate limit turns away requests that arrive too fast. [[slnc 300]] nginx is a web server that often sits in front of an application, and can do this before the request reaches the application. [[slnc 300]] It counts requests for each key, and answers four twenty nine, too many requests, when a key is over its limit. [[slnc 600]] Think of a door guard at a bank. [[slnc 300]] The guard allows each visitor six entries an hour. [[slnc 300]] If the guard recognises visitors by their face, a thief is held to six. [[slnc 300]] If the guard asks for a name and trusts the answer, the thief gives a new name every time, and walks in twenty times. [[slnc 300]] The rule was fine. [[slnc 300]] What the guard counted was wrong. [[slnc 700]] In this video, the domain is an online bank. [[slnc 300]] Its login runs behind a real nginx, inside a Docker container. [[slnc 500]] By the end, you will hear what a limit counts, which counts work, and which do not."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank's login, behind nginx.", "", "Twenty guesses at Dana's account.", "Sent as fast as one machine can.", "", "Five ways to count them."]
+narration = """Here is the scenario. [[slnc 400]] An online bank's login sits behind nginx. [[slnc 500]] Twenty guesses at Dana's account arrive from one machine, as fast as it can send them. [[slnc 500]] The login itself is a stub, that says four oh one to every password. [[slnc 300]] So only the limit decides what the attacker sees. [[slnc 600]] The bank tries five ways of counting."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["limit_req: nginx's rate limit", "Zone: a count of requests for each key", "Key: what the count is kept for", "Burst: extra requests allowed at once", "429: too many requests"]
+narration = """Before the demos, the words. [[slnc 500]] Limit req is nginx's rate limit. [[slnc 500]] A zone is a count of requests for each key. [[slnc 500]] The key is what the count is kept for. [[slnc 300]] An address, a header, or a username. [[slnc 500]] The burst is how many extra requests are allowed at once. [[slnc 500]] And four twenty nine is the answer that means, too many requests."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-keys"
+kind = "bullets"
+title = "Choosing the Key"
+body = ["Real connection address: the client cannot choose it", "A client-written header: the client chooses it", "Username: locks the owner, misses a spray", "", "Layer them. Take the address from your own proxy."]
+narration = """Let's put the keys side by side. [[slnc 400]] The real connection address is a good key, because the client cannot choose it. [[slnc 500]] A header the client writes is a bad key, because the client chooses it. [[slnc 500]] The username locks the owner out, and misses a spray. [[slnc 600]] So, count the real address, and add a gentle limit per username only with care. [[slnc 300]] And behind a proxy, take the address from a header that only your own proxy sets."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["NginxConfig: writes the configuration", "Nginx: starts and stops the container", "Attacker: sends guesses, counts answers", "Tally: answered and refused", "Login stub: always says 401"]
+narration = """Here is who does what in the code. [[slnc 400]] Nginx config writes the configuration for each act. [[slnc 500]] Nginx starts a container with that configuration, and stops it afterwards. [[slnc 500]] The attacker sends guesses, and counts the answers. [[slnc 500]] The tally holds how many were answered and how many refused. [[slnc 300]] And the login stub inside nginx says four oh one to every password."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A 429 Too Many Requests page", "limit_req_zone in a config", "Rate limits in API documentation", "Never trust X-Forwarded-For"]
+narration = """You have probably met these already. [[slnc 400]] A page that says too many requests, with a note to try again later, is a four twenty nine. [[slnc 500]] The lines limit req zone and limit req appear in many nginx configurations. [[slnc 500]] Many programming interfaces document their rate limits. [[slnc 500]] And the advice, never trust X Forwarded For, is the third demo."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Limit at the front door", "Key: the real connection address", "Overwrite X-Forwarded-For at your own proxy", "Keep lockout, second factor, breach check"]
+narration = """So, how do you use it? [[slnc 400]] Put a rate limit at the front door. [[slnc 500]] Key it on the real connection address. [[slnc 500]] Make your own proxy overwrite the forwarded header, instead of passing on what the client sent. [[slnc 500]] And keep the lockout, the second factor, and the breach check behind it, from the earlier video."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Change the burst to two", "and predict the counts first."]
+narration = """That's rate limiting a login with nginx. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rate limit is only as good as the key it counts, and a key the attacker can choose is no limit at all. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It needs a Java development kit, and a running Docker. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the burst to two, and predict the counts before you run the demo. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The front door of an online bank's login: an nginx container with a request limit, and the login stub behind it. It covers
+which key the limit counts, how an attacker can avoid the limit, and what the limit does to a real customer. It does not cover the password check itself, TLS
+or the rest of the bank.
+"""
+assets = [
+    "Customers' accounts, which guessing targets.",
+    "The availability of login to the real customer.",
+    "The login service, which should not be asked more often than needed.",
+    "The limit's own state: the count for each key.",
+]
+actors = [
+    "An attacker with one machine, sending guesses as fast as possible.",
+    "An attacker who writes request headers and chooses usernames.",
+    "A real customer, logging in from their own address.",
+    "The operator, who writes the nginx configuration.",
+]
+boundaries = [
+    "Internet to nginx: the line where the limit decides.",
+    "nginx to the login: only requests within the limit cross it.",
+    "Client-written headers to the key: a header must not become a key unless a trusted proxy set it.",
+]
+assumptions = [
+    "nginx sees the real client address. In the demo it sees the Docker network's address, which stands for one attacker.",
+    "In a real deployment behind a trusted proxy, only that proxy can set the forwarded header, and it overwrites what clients send.",
+    "The rate is deliberately slow here, so counts are repeatable.",
+]
+out_of_scope = [
+    "TLS, timeouts, logging and the rest of a production nginx configuration.",
+    "Distributed attackers with many real addresses.",
+    "Checking the password: the plain password-attacks-and-defences project does that.",
+]
+tests = [
+    "`NginxConfigTest` checks the generated configurations, including the key, the burst and that `limit_req` sits beside `proxy_pass`.",
+    "`ReferenceConfigTest` checks that `infra/nginx-limit-by-address.conf` is what the code generates.",
+    "`NginxContainerTest` (tagged `docker`) starts real containers and checks the counts for all five keys and the golden output.",
+]
+next = """
+The next project, totp-multi-factor, builds the second factor that makes a guessed password not enough.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "Guessing at the login with no limit"
+where = "nginx in act one"
+control = "limit_req keyed on the real connection address: one plus the burst gets through"
+residual = "An attacker with many real addresses has many buckets"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "The limit is bypassed by changing a header the limit counts"
+where = "`NginxConfig.Key.FORWARDED_HEADER`"
+control = "Key on the connection address; behind a proxy, take it from a header only that proxy sets"
+residual = "A misconfigured proxy can bring the problem back"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A spray of many usernames never fills a per-username bucket"
+where = "`NginxConfig.Key.USERNAME`"
+control = "Add a limit per address beside it"
+residual = "A spray from many addresses still gets through"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "A per-username limit turns away the real owner while an attacker fills the bucket"
+where = "`NginxConfig.Key.USERNAME`"
+control = "Prefer the address key, or accept the cost knowingly"
+residual = "Any key that an outsider can fill can be used to deny service"
+
+[[threat]]
+id = "T5"
+stride = "D"
+threat = "Many customers behind one shared address share one bucket"
+where = "the limit zone"
+control = "None here"
+residual = "Tune the rate to the traffic, or key on a combination of signals"
+
+[[threat]]
+id = "T6"
+stride = "E"
+threat = "The login is reachable without passing the limit"
+where = "the port of the login stub"
+control = "The stub listens inside the container only; the demo publishes only port 80"
+residual = "In a real system the application must not be directly reachable from outside nginx"

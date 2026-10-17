@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Password Attacks and Defences with nginx</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Password Attacks and Defences with nginx</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>The front door of an online bank's login: an nginx container with a request limit, and the login stub behind it. It covers
+which key the limit counts, how an attacker can avoid the limit, and what the limit does to a real customer. It does not cover the password check itself, TLS
+or the rest of the bank.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Customers' accounts, which guessing targets.</li>
+<li>The availability of login to the real customer.</li>
+<li>The login service, which should not be asked more often than needed.</li>
+<li>The limit's own state: the count for each key.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>An attacker with one machine, sending guesses as fast as possible.</li>
+<li>An attacker who writes request headers and chooses usernames.</li>
+<li>A real customer, logging in from their own address.</li>
+<li>The operator, who writes the nginx configuration.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Internet to nginx: the line where the limit decides.</li>
+<li>nginx to the login: only requests within the limit cross it.</li>
+<li>Client-written headers to the key: a header must not become a key unless a trusted proxy set it.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Spoofing</td>
+<td>Guessing at the login with no limit</td>
+<td>nginx in act one</td>
+<td>limit_req keyed on the real connection address: one plus the burst gets through</td>
+<td>An attacker with many real addresses has many buckets</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>The limit is bypassed by changing a header the limit counts</td>
+<td><code>NginxConfig.Key.FORWARDED_HEADER</code></td>
+<td>Key on the connection address; behind a proxy, take it from a header only that proxy sets</td>
+<td>A misconfigured proxy can bring the problem back</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Spoofing</td>
+<td>A spray of many usernames never fills a per-username bucket</td>
+<td><code>NginxConfig.Key.USERNAME</code></td>
+<td>Add a limit per address beside it</td>
+<td>A spray from many addresses still gets through</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>A per-username limit turns away the real owner while an attacker fills the bucket</td>
+<td><code>NginxConfig.Key.USERNAME</code></td>
+<td>Prefer the address key, or accept the cost knowingly</td>
+<td>Any key that an outsider can fill can be used to deny service</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Denial of service</td>
+<td>Many customers behind one shared address share one bucket</td>
+<td>the limit zone</td>
+<td>None here</td>
+<td>Tune the rate to the traffic, or key on a combination of signals</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Elevation of privilege</td>
+<td>The login is reachable without passing the limit</td>
+<td>the port of the login stub</td>
+<td>The stub listens inside the container only; the demo publishes only port 80</td>
+<td>In a real system the application must not be directly reachable from outside nginx</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>nginx sees the real client address. In the demo it sees the Docker network's address, which stands for one attacker.</li>
+<li>In a real deployment behind a trusted proxy, only that proxy can set the forwarded header, and it overwrites what clients send.</li>
+<li>The rate is deliberately slow here, so counts are repeatable.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>TLS, timeouts, logging and the rest of a production nginx configuration.</li>
+<li>Distributed attackers with many real addresses.</li>
+<li>Checking the password: the plain password-attacks-and-defences project does that.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>NginxConfigTest</code> checks the generated configurations, including the key, the burst and that <code>limit_req</code> sits beside <code>proxy_pass</code>.</li>
+<li><code>ReferenceConfigTest</code> checks that <code>infra/nginx-limit-by-address.conf</code> is what the code generates.</li>
+<li><code>NginxContainerTest</code> (tagged <code>docker</code>) starts real containers and checks the counts for all five keys and the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, totp-multi-factor, builds the second factor that makes a guessed password not enough.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
