@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTP Basics and Security Headers with Spring Boot</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>HTTP Basics and Security Headers with Spring Boot</h1>
+<pre><code>src/main/java/com/jk/explore/security/httpspring/
+├── Cookie.java          A Set-Cookie header, parsed, and a judgement of whether it is safe for a login session
+├── HeaderAudit.java     Scores a response against five security headers, one point each
+├── HttpSpringDemo.java  Runs the online store story in five numbered acts against a real Spring Boot server on the loopback interface
+├── Shop.java            Two versions of the same store: one with the headers switched off, and one hardened
+├── ShopController.java  The store's three endpoints: a page, a cart that starts a session, and a search that puts the customer's text in a header
+└── Wire.java            Talks to a running store over the loopback interface: with the JDK's HTTP client, and with raw bytes for requests a client would never send
+</code></pre>
+<p><strong>Spring Boot and Spring Security write the security headers, harden the session cookie and bound the request size with a few lines of configuration, and the container refuses a line break in a header, but the defaults still need a decision from you.</strong></p>
+<p>The plain version of this lesson wrote an HTTP parser, a cookie judge and a header auditor by hand. Real stores use a framework. <strong>Spring Boot</strong> starts a real web server (<strong>Tomcat</strong>) inside the program, and <strong>Spring Security</strong> puts a chain of filters
+in front of every request, one of which writes the <strong>security headers</strong>. A few lines of configuration choose which headers, a few <strong>properties</strong> harden the session cookie and bound the size of a request, and the container itself refuses a line
+break in a header, which is how <strong>header injection</strong> is attacked.</p>
+<p>The demo starts two real servers on the loopback interface, one with the headers switched off and one hardened, and scores their real responses with the same five-header audit as before. It then shows why one header appears only over HTTPS, hardens a cookie, tries to inject a header and sends an oversized one.</p>
+<h2>The idea in everyday terms</h2>
+<p>The earlier project was forging your own door locks, to learn how locks work. This one fits standard locks that a locksmith has tested. You still choose which doors get locks and which key to use, and you still have to
+check that the locks are fitted, which is why the demo scores the real doors and does not trust the plan.</p>
+<h2>The scenario</h2>
+<p>An online store runs a small Spring Boot application with a products page, a cart that starts a session, and a search that puts the customer's text in a header. The demo runs it twice, bare and hardened, and attacks both.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The same page, with and without header writers</td>
+<td>With headers switched off the store scores 0 of 5; the hardened store scores 4 of 5, because Strict-Transport-Security is left out on plain HTTP on purpose.</td>
+</tr>
+<tr>
+<td>2. The same page behind a proxy that ends HTTPS</td>
+<td>With X-Forwarded-Proto: https the hardened store scores 5 of 5 and sends Strict-Transport-Security; trusting that header is safe only if nobody but the proxy can reach the store.</td>
+</tr>
+<tr>
+<td>3. The cookie that carries the cart's session</td>
+<td>The default session cookie has 2 problems, no Secure and no SameSite; three properties give the hardened store a cookie with none.</td>
+</tr>
+<tr>
+<td>4. A line break inside a header</td>
+<td>The search text with a line break and a second header is refused by the container with status 500, no X-Echo and no second header; a header name with a space gets 400.</td>
+</tr>
+<tr>
+<td>5. Limits on the size of a request</td>
+<td>A 4000-character header is accepted by the default store with 200 and refused by the hardened store, whose limit is 1KB, with 400.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>18 tests in <code>CookieAndAuditTest</code>, <code>DemoRunsTest</code>, <code>MockMvcHeadersTest</code>, <code>RealServerTest</code>. Real servers are started on free ports and closed after every test, and the demo prints only facts that do not depend on ports, dates or session ids, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Both servers are real Spring Boot applications started on free ports on the loopback interface, so nothing needs installing except a JDK. The demo prints only facts that do not depend on the port, the date or the session id. Tests also use MockMvc, which
+sends a request through the whole filter chain in memory. HTTPS itself is not used; the transport-security module covers it, and the demo shows the effect of a proxy that ends HTTPS by sending the X-Forwarded-Proto header.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>4.1.1</td>
+<td>the latest stable release; its dependency list pins the Spring and Tomcat versions below, and it starts the real web server</td>
+</tr>
+<tr>
+<td>Spring Framework (Spring MVC)</td>
+<td>7.0.9</td>
+<td>maps web addresses to Java methods; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Spring Security</td>
+<td>7.1.1</td>
+<td>writes the security headers and sits in front of every request; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Apache Tomcat (embedded)</td>
+<td>11.0.24</td>
+<td>the web server inside the application; it parses requests and enforces size limits; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/http-basics-and-headers-with-spring-boot-explained.html">HTTP Basics and Security Headers with Spring Boot, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Tomcat reads the request, Spring Security's filters run, and the headers are written on the way out.</p>
+<p><img alt="A request through the store" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Two configurations of the same store, and the helpers that judge their responses.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Three kinds of setting: filter configuration, container properties, and the proxy.</p>
+<p><img alt="Where the hardening comes from" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Scoring a real response: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/http-basics-and-headers-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A framework is a large dependency.</strong> Boot, Spring Security and Tomcat bring many jars, and their versions have to be updated together as new releases fix vulnerabilities.</li>
+<li><strong>The defaults are a start.</strong> Spring Security writes some headers by default, and the policy that matters, such as the Content-Security-Policy, is yours to write and test against your pages.</li>
+<li><strong>Trusting a forwarded header is a decision.</strong> <code>server.forward-headers-strategy=native</code> believes X-Forwarded-Proto from trusted proxies. If the application is reachable without the proxy, a customer can send the header and change what the application believes.</li>
+<li><strong>A small request limit can break real customers.</strong> Cookies and long addresses need room, so the limit has to be set from real traffic.</li>
+<li><strong>A header check on the demo is not a check on production.</strong> The demo scores one page over plain HTTP on this machine: the real check is on the real site, over HTTPS.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For any real web application, use the framework's header support and test the result. Writing headers by hand is for learning, and for cases the framework does not cover.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>http.headers(...)</code> in a Spring Security configuration class.</li>
+<li><code>server.servlet.session.cookie.*</code> properties in <code>application.properties</code>.</li>
+<li>Security scanners that give a site a grade for its headers.</li>
+<li><code>server.max-http-request-header-size</code> and its relatives in hardening guides.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../http-basics-and-headers">http-basics-and-headers</a> and is the sixth in <a href="..">networking</a>. The same five-header audit and cookie judge are used here, on a real framework's responses.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
