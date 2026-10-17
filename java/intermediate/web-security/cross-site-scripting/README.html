@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-Site Scripting: Output Encoding and CSP</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cross-Site Scripting: Output Encoding and CSP</h1>
+<pre><code>src/main/java/com/jk/explore/security/xss/
+├── ContentSecurityPolicy.java  A strict Content-Security-Policy with a fresh nonce for every response, and an evaluator that answers what a browser would: may this inline script run?
+├── Encode.java                 Contextual output encoding: the same text needs a different encoding in each place it is written
+├── Markup.java                 A small model of how a browser would read a page: which elements it contains, and what an attribute's value is
+├── NaiveFilter.java            The tempting fix that is not one: cleaning input on the way in by deleting characters
+├── Review.java                 A customer's review of a product: the author's name, a short note about fit, and the text
+├── ReviewPage.java             The product page of the online store, with its reviews
+├── ShopServer.java             The product page served for real on the loopback interface, with a fresh nonce, a strict policy and an HttpOnly session cookie per response
+└── XssDemo.java                Runs the online store story in five numbered acts and prints exact, repeatable results
+</code></pre>
+<p><strong>Cross-site scripting happens when text from a user is read by the browser as part of the page; the fix is to encode every value for the place it is written, with a strict, nonce-based Content-Security-Policy as the second line of defence.</strong></p>
+<p><strong>Cross-site scripting</strong> (XSS) is what happens when text that came from a user is read by the browser as part of the page. A product review is meant to be shown as
+words; if it is pasted into the HTML as it is, any markup in it becomes the shop's markup, and any script in it runs with the shop's authority, in the signed-in
+customer's browser. It sits under <strong>Injection (A05)</strong> in the OWASP Top 10 (2025) and is <strong>CWE-79</strong>. The OWASP ASVS covers it in its chapter on encoding and sanitization.</p>
+<p>The fix is not to clean the input. It is <strong>contextual output encoding</strong>: every value is encoded for the exact place it is written, which is different between tags, inside an
+attribute, in a URL and inside a script. A strict <strong>Content-Security-Policy</strong> with a fresh random <strong>nonce</strong> for every response is the second line of defence: the browser runs only
+the scripts that carry that response's nonce. The demo shows the problem once, then builds each defence and checks it.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a shop's notice board. Customers pin up notes, and the shop pins up its own signs. If a customer's note looks exactly like a shop sign, other customers will follow it.
+Encoding is putting every customer note behind glass with a "customer note" label: it can say anything, and nobody will mistake it for the shop. The policy is the staff knowing
+the shop's own stamp, so an unstamped sign is ignored even if it got onto the board.</p>
+<h2>The scenario</h2>
+<p>An online store shows product reviews. Each review has an author, a short note about fit, and the text, and all three are untrusted. The demo writes them into the product
+page unsafely, then encoded for each context, compares encoding with an input filter, and serves the page from a real local server with a strict policy and an HttpOnly cookie.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A review that changes the page</td>
+<td>Ana's review, pasted into the page as it is, adds a bold element the shop never wrote: the review became part of the page.</td>
+</tr>
+<tr>
+<td>2. Encoding for the place the text goes</td>
+<td>One encoder per context: between tags, in a quoted attribute, in a URL parameter and in a script string; the encoded page has no bold element and Ben's fit note reads back whole.</td>
+</tr>
+<tr>
+<td>3. Why filtering input is not the fix</td>
+<td>A filter that deletes &lt; and &gt; changes an honest review and still lets a quote end Ben's attribute early; encoding shows the text exactly.</td>
+</tr>
+<tr>
+<td>4. A strict Content-Security-Policy, with a fresh nonce for every page</td>
+<td>A real page carries a policy naming a 24-character random nonce that changes every response; the shop's script may run, a script without the nonce may not, and the session cookie is HttpOnly.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Four kinds of output context each need their own encoder, the policy needs care, the nonce must be new every time, and a template engine that encodes by default is the practical answer.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>17 tests in <code>ContentSecurityPolicyTest</code>, <code>DemoRunsTest</code>, <code>EncodeTest</code>, <code>PageAndFilterTest</code>. The encoders are tested per context, including round trips and a different locale. The policy evaluator is tested against the browser rules it models, including 'unsafe-inline' being ignored when a nonce is present. The real server is tested for a fresh nonce and an HttpOnly cookie on every response. Nonces are random, so the demo prints only facts about them and the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The pages are built and read in memory by a small model of how a browser parses elements and attributes, and the one real page is served on the loopback interface of the machine
+running the demo. Nonces are random, so the demo prints only facts about them: their length, that they change, and whether a script is allowed. The policy is evaluated in Java with
+the rules browsers apply, so no browser is needed. The problem is shown with a harmless bold tag; the project contains no attack payloads.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cross-site-scripting-explained.html">Cross-Site Scripting: Output Encoding and CSP, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Encoding keeps text as text; the policy stops any script that slips through anyway.</p>
+<p><img alt="Two lines of defence" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>ReviewPage uses Encode for every value; ShopServer adds the policy; Markup and the evaluator check the result.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The same text needs a different encoding in each place it is written.</p>
+<p><img alt="One value, four encodings" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Serving the product page: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/cross-site-scripting-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every output context needs its encoder.</strong> Between tags, inside an attribute, in a URL and in a script are four different encodings, and one forgotten place is enough.</li>
+<li><strong>A policy needs maintenance.</strong> Every inline script must carry the nonce, and every new script source must be added on purpose; a policy loosened to <code>'unsafe-inline'</code> with no nonce protects nothing.</li>
+<li><strong>The nonce must be new for every response.</strong> A cached or reused nonce gives an attacker the key.</li>
+<li><strong>Encoding by hand does not scale.</strong> A template engine that escapes by default is the practical answer, with a reviewed escape hatch for the rare raw HTML; see the tools version.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a page that shows no user text, encoding has nothing to do, but a strict policy is still cheap insurance. For any page that shows text from users, partners or other systems,
+both are the baseline. Rich text that must allow some HTML needs a dedicated, maintained sanitizer with an allow-list, which this project does not build.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>&amp;lt;</code> and <code>&amp;amp;</code> in a page's source, which are encoding at work.</li>
+<li><code>Content-Security-Policy</code> headers in the browser's developer tools.</li>
+<li><code>HttpOnly</code> on session cookies.</li>
+<li>Bug-bounty reports and advisories that say "stored XSS" or "reflected XSS".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">web-security</a>, the first module of the intermediate track. It builds on <a href="../../../beginner/networking/http-basics-and-headers">http-basics-and-headers</a>, which audited the
+Content-Security-Policy header from outside; here the policy is generated and checked from inside the application.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

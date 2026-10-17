@@ -1,0 +1,528 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "cross-site-scripting"
+level = "intermediate"
+module = "web-security"
+title = "Cross-Site Scripting: Output Encoding and CSP"
+short_title = "Cross-Site Scripting"
+package = "xss"
+main_class = "XssDemo"
+tagline = "Text from a customer must stay text"
+bold = "Cross-site scripting happens when text from a user is read by the browser as part of the page; the fix is to encode every value for the place it is written, with a strict, nonce-based Content-Security-Policy as the second line of defence."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Cross-site scripting (XSS) explained in Java, with the defences that work: contextual output encoding and a strict Content-Security-Policy. Explained with an online store's product reviews, like a shop notice board where anyone's note could be mistaken for the shop's own sign. We see a review change the page, write an encoder for each place text goes (between tags, in an attribute, in a URL, in a script), see why filtering input is not the fix, serve a page with a fresh nonce and a strict policy that refuses any script without it, and finish with the bill: every output context needs its encoder, and the policy needs care."""
+thumb_lines = ["CROSS-SITE SCRIPTING", "ENCODING + CSP"]
+thumb_code = "Content-Security-Policy: script-src 'nonce-...'"
+youtube_title = "Cross-Site Scripting (XSS) in Java: Output Encoding and a Strict CSP"
+youtube_tags = ["xss", "cross-site scripting", "output encoding", "content security policy", "csp nonce", "owasp top 10", "web security", "java", "application security"]
+
+[readme]
+intro = """
+**Cross-site scripting** (XSS) is what happens when text that came from a user is read by the browser as part of the page. A product review is meant to be shown as
+words; if it is pasted into the HTML as it is, any markup in it becomes the shop's markup, and any script in it runs with the shop's authority, in the signed-in
+customer's browser. It sits under **Injection (A05)** in the OWASP Top 10 (2025) and is **CWE-79**. The OWASP ASVS covers it in its chapter on encoding and sanitization.
+
+The fix is not to clean the input. It is **contextual output encoding**: every value is encoded for the exact place it is written, which is different between tags, inside an
+attribute, in a URL and inside a script. A strict **Content-Security-Policy** with a fresh random **nonce** for every response is the second line of defence: the browser runs only
+the scripts that carry that response's nonce. The demo shows the problem once, then builds each defence and checks it.
+"""
+analogy = """
+Think of a shop's notice board. Customers pin up notes, and the shop pins up its own signs. If a customer's note looks exactly like a shop sign, other customers will follow it.
+Encoding is putting every customer note behind glass with a "customer note" label: it can say anything, and nobody will mistake it for the shop. The policy is the staff knowing
+the shop's own stamp, so an unstamped sign is ignored even if it got onto the board.
+"""
+scenario = """
+An online store shows product reviews. Each review has an author, a short note about fit, and the text, and all three are untrusted. The demo writes them into the product
+page unsafely, then encoded for each context, compares encoding with an input filter, and serves the page from a real local server with a strict policy and an HttpOnly cookie.
+"""
+costs = [
+    "**Every output context needs its encoder.** Between tags, inside an attribute, in a URL and in a script are four different encodings, and one forgotten place is enough.",
+    "**A policy needs maintenance.** Every inline script must carry the nonce, and every new script source must be added on purpose; a policy loosened to `'unsafe-inline'` with no nonce protects nothing.",
+    "**The nonce must be new for every response.** A cached or reused nonce gives an attacker the key.",
+    "**Encoding by hand does not scale.** A template engine that escapes by default is the practical answer, with a reviewed escape hatch for the rare raw HTML; see the tools version.",
+]
+too_much = """
+For a page that shows no user text, encoding has nothing to do, but a strict policy is still cheap insurance. For any page that shows text from users, partners or other systems,
+both are the baseline. Rich text that must allow some HTML needs a dedicated, maintained sanitizer with an allow-list, which this project does not build.
+"""
+met_before = [
+    "`&lt;` and `&amp;` in a page's source, which are encoding at work.",
+    "`Content-Security-Policy` headers in the browser's developer tools.",
+    "`HttpOnly` on session cookies.",
+    "Bug-bounty reports and advisories that say \"stored XSS\" or \"reflected XSS\".",
+]
+where = """
+This project is in [web-security](..), the first module of the intermediate track. It builds on [http-basics-and-headers](../../../beginner/networking/http-basics-and-headers), which audited the
+Content-Security-Policy header from outside; here the policy is generated and checked from inside the application.
+"""
+twin = """
+The pages are built and read in memory by a small model of how a browser parses elements and attributes, and the one real page is served on the loopback interface of the machine
+running the demo. Nonces are random, so the demo prints only facts about them: their length, that they change, and whether a script is allowed. The policy is evaluated in Java with
+the rules browsers apply, so no browser is needed. The problem is shown with a harmless bold tag; the project contains no attack payloads.
+"""
+test_note = "The encoders are tested per context, including round trips and a different locale. The policy evaluator is tested against the browser rules it models, including 'unsafe-inline' being ignored when a nonce is present. The real server is tested for a fresh nonce and an HttpOnly cookie on every response. Nonces are random, so the demo prints only facts about them and the golden output is the same on every run."
+
+[[act]]
+title = "A review that changes the page"
+summary = "Ana's review, pasted into the page as it is, adds a bold element the shop never wrote: the review became part of the page."
+detail = """
+Ana's review is the text <b>Great boots</b>, pasted into the page as it is. The page now has a bold element, and the shop wrote none: the review became part of the page. The browser cannot tell the shop's markup from the customer's,
+so a script in a review would run as the shop's own: it could read the page, act as the signed-in customer, and send what it finds elsewhere.
+"""
+speech = """
+First demo: a review that changes the page. [[slnc 400]] Ana writes a review, with a bold tag in it. [[slnc 600]]
+The shop pastes the review into the page as it is. [[slnc 300]] The page now has a bold element, that the shop never wrote. [[slnc 300]] The review became part of the page. [[slnc 600]]
+The browser cannot tell the shop's markup from the customer's. [[slnc 300]] So a script in a review would run as if the shop wrote it. [[slnc 300]] It could read the page, and act as the signed in customer.
+"""
+rows = { unsafe = "active wrong" }
+console = [
+    ["Ana's review is the text <b>Great boots</b>, pasted into the page as it is", "muted"],
+    ["bold elements on the page: 1, and the shop wrote none  <- THE REVIEW BECAME PART OF THE PAGE", "bad"],
+    ["the browser cannot tell the shop's markup from the customer's, so a script in a review would run as the shop's own", "amber"],
+    ["that script could read the page, act as the signed-in customer, and send what it finds elsewhere", "amber"],
+]
+
+[[act]]
+title = "Encoding for the place the text goes"
+summary = "One encoder per context: between tags, in a quoted attribute, in a URL parameter and in a script string; the encoded page has no bold element and Ben's fit note reads back whole."
+detail = """
+Between tags, <b>Great boots</b> becomes &lt;b&gt;Great boots&lt;/b&gt;. In a quoted attribute, Fits 5" boots becomes Fits 5&quot; boots. In a URL parameter, size 5 & up becomes size%205%20%26%20up. In a script string, the quotes become \\u0027 and \\u0022.
+The encoded page has no bold element, and Ben's fit note reads back whole. Every value shows as the text the customer typed, and none of it is read as markup.
+"""
+speech = """
+Second demo: encoding for the place the text goes. [[slnc 400]] Between tags, the angle brackets become entities, so the bold tag is shown as text. [[slnc 600]]
+Inside a quoted attribute, the quote mark is encoded, so it cannot end the attribute. [[slnc 300]] In a link, the value is percent encoded. [[slnc 300]] Inside a script, every risky character becomes a unicode escape. [[slnc 600]]
+The encoded page has no bold element. [[slnc 300]] Ben's fit note reads back whole. [[slnc 300]] Every value shows as what the customer typed, and none of it is markup.
+"""
+rows = { encode = "active ok" }
+console = [
+    ["between tags: &lt;b&gt;Great boots&lt;/b&gt;", "ok"],
+    ["in a quoted attribute: Fits 5&quot; boots", "ok"],
+    ["in a URL parameter: size%205%20%26%20up", "ok"],
+    ["in a script string: It\\u0027s \\u0022great\\u0022", "ok"],
+    ["the encoded page: bold elements 0, and Ben's fit note reads back whole: Fits 5\" boots", "ok"],
+]
+
+[[act]]
+title = "Why filtering input is not the fix"
+summary = "A filter that deletes < and > changes an honest review and still lets a quote end Ben's attribute early; encoding shows the text exactly."
+detail = """
+An honest review says Warm & dry, price < 20 & > 10. A filter that deletes < and > turns it into Warm & dry, price 20 & 10: the customer's words are changed. Encoded instead, the page shows it exactly. The same filter keeps the quote in Ben's fit note,
+so the attribute ends early and reads only Fits 5: the filter did not know the context. A filter guesses at every place text will go; an encoder is chosen for the one place it does go.
+"""
+speech = """
+Third demo: why filtering input is not the fix. [[slnc 400]] An honest review says, price less than twenty, and more than ten. [[slnc 600]]
+A filter that deletes angle brackets changes the customer's words. [[slnc 300]] Encoding shows them exactly. [[slnc 600]]
+And the same filter keeps the quote mark in Ben's fit note. [[slnc 300]] So the attribute ends early, and reads only, fits five. [[slnc 600]]
+A filter guesses at every place the text might go. [[slnc 300]] An encoder is chosen for the one place it does go.
+"""
+rows = { filter = "active amber" }
+console = [
+    ["an honest review: Warm & dry, price < 20 & > 10", "muted"],
+    ["after a filter that deletes < and >: Warm & dry, price  20 &  10  <- THE CUSTOMER'S WORDS ARE CHANGED", "bad"],
+    ["encoded instead, the page shows it exactly: true", "ok"],
+    ["the filter keeps the quote in Ben's fit note, so the attribute ends early and reads: Fits 5  <- THE FILTER DID NOT KNOW THE CONTEXT", "bad"],
+    ["a filter guesses at every place text will go; an encoder is chosen for the one place it does go", "amber"],
+]
+
+[[act]]
+title = "A strict Content-Security-Policy, with a fresh nonce for every page"
+summary = "A real page carries a policy naming a 24-character random nonce that changes every response; the shop's script may run, a script without the nonce may not, and the session cookie is HttpOnly."
+detail = """
+The product page, served for real on this machine, answers 200 with a policy. The policy names a nonce, and the shop's own script carries it. The nonce is 24 characters of random text, and the next page has a different one. The shop's script may run;
+a script that slipped in without the nonce may not, which is a second line of defence. With no policy, the same script would run, and a policy with 'unsafe-inline' and no nonce protects nothing. The session cookie is HttpOnly, so a script cannot read it.
+"""
+speech = """
+Fourth demo: a strict content security policy. [[slnc 400]] The product page is served for real, on this machine. [[slnc 600]]
+Its policy names a nonce: a random value, new for every page. [[slnc 300]] The shop's own script carries it. [[slnc 600]]
+So the shop's script may run. [[slnc 300]] A script that slipped in without the nonce may not. [[slnc 300]] That is a second line of defence. [[slnc 600]]
+With no policy, or with a policy that allows any inline script, the same script would run. [[slnc 300]] And the session cookie is marked H T T P only, so no script can read it.
+"""
+rows = { policy = "active ok" }
+console = [
+    ["the product page answers 200 with a policy: true", "muted"],
+    ["the policy names a nonce, and the shop's own script carries it: true", "ok"],
+    ["the nonce is 24 characters of random text, and the next page has a different one: true", "ok"],
+    ["the shop's script may run: true", "ok"],
+    ["a script that slipped in without the nonce may run: false  <- A SECOND LINE OF DEFENCE", "ok"],
+    ["a policy with 'unsafe-inline' and no nonce: true, so it protects nothing", "amber"],
+    ["the session cookie is HttpOnly, so a script cannot read it: true", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "Four kinds of output context each need their own encoder, the policy needs care, the nonce must be new every time, and a template engine that encodes by default is the practical answer."
+detail = """
+This one page writes untrusted text into 4 kinds of place, and each needs its own encoder; one forgotten place is enough. The policy needs care: every inline script must carry the nonce, and every new source must be added on purpose. The nonce must be new for
+every response, or a page from yesterday hands an attacker today's key. In practice, a template engine that encodes by default does the first part: see the tools version of this project.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] This one page writes untrusted text into four kinds of place. [[slnc 300]] Each needs its own encoder, and one forgotten place is enough. [[slnc 600]]
+The policy needs care. [[slnc 300]] Every inline script must carry the nonce, and every new source is added on purpose. [[slnc 600]]
+The nonce must be new for every response. [[slnc 600]]
+And in practice, a template engine that encodes by default does most of this work, as the tools version shows.
+"""
+rows = { unsafe = "active amber", policy = "active amber" }
+console = [
+    ["this one page writes untrusted text into 4 kinds of place, and each needs its own encoder; one forgotten place is enough", "amber"],
+    ["the policy needs care: every inline script must carry the nonce, and every new source must be added on purpose", "amber"],
+    ["the nonce must be new for every response, or a page from yesterday hands an attacker today's key", "amber"],
+    ["in practice, a template engine that encodes by default does the first part: see the tools version of this project", "ok"],
+]
+
+[animation]
+subtitle = "An online store's product reviews: text from customers must stay text."
+boxes = [
+    ["unsafe", "Pasted as it is", "the review becomes part of the page"],
+    ["encode", "Encoded per context", "tags, attributes, URLs, scripts"],
+    ["filter", "Filtered input", "changes honest text, misses contexts"],
+    ["policy", "Strict CSP", "only scripts with this page's nonce run"],
+]
+
+[docs.problem]
+scenario = """
+An online store shows reviews written by customers. Anyone can write one, and every visitor's browser reads the product page, including visitors who are signed in.
+"""
+naive = """
+Paste the review into the page, or delete the characters that look dangerous on the way in and paste the rest.
+"""
+deliver = [
+    "A demonstration, with a harmless bold tag, that unencoded text becomes part of the page.",
+    "An encoder for each output context: between tags, in a quoted attribute, in a URL parameter and in a script string, each tested.",
+    "A comparison with an input filter, which changes honest text and misses the attribute context.",
+    "A real page with a fresh nonce, a strict policy and an HttpOnly session cookie, and an evaluator that decides which scripts may run.",
+    "The same facts printed on every run, though the nonces are random.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The http-basics-and-headers project, or an idea of what an HTML page, an attribute and an HTTP header are",
+]
+not_required = [
+    "A browser: the page model and the policy evaluator stand in for one",
+    "JavaScript",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why text from a user can become part of a page",
+    "choose the right encoding for text between tags, in an attribute, in a URL and in a script",
+    "explain why input filtering is not a fix for cross-site scripting",
+    "write a strict, nonce-based Content-Security-Policy and say what it does and does not stop",
+]
+walkthrough = """
+Start with the notice board. Run the demo one act at a time. After act one, ask what else a script running as the shop could do. In act two, ask the group to pick the encoder before
+showing it. In act three, ask what the filter would need to know to work, and lead to the answer that only the place the text is written knows. In act four, ask what happens if
+the nonce is cached with the page.
+"""
+exercises = [
+    "Add a fifth context, a CSS value in a style attribute, and decide whether to encode it or refuse it.",
+    "Make the review page show a star rating from a number, and decide which encoder, if any, it needs.",
+    "Change the policy to allow one script from a fixed address, and check the evaluator still refuses scripts without the nonce.",
+    "Find every place in the page where untrusted text is written, and write a test that fails if one is not encoded.",
+]
+
+[docs.explained]
+sentence = """
+Cross-site scripting happens when untrusted text is read by the browser as part of the page; contextual output encoding keeps the text as text in every place it is written, and a strict, nonce-based Content-Security-Policy stops scripts that slip through anyway.
+"""
+verdict = """
+Encode on output, for the context, every time. Prefer a template engine that does it by default and review every escape hatch. Add a strict, nonce-based policy with a fresh nonce per
+response, mark session cookies HttpOnly, and never treat input filtering as the fix.
+"""
+recognise = [
+    "`th:text` against `th:utext`, or `{{ }}` against `{{{ }}}`, in templates.",
+    "A `Content-Security-Policy` header with `'nonce-...'` and `'strict-dynamic'`.",
+    "`innerHTML` in front-end code, the browser-side form of the same mistake.",
+    "Advisories that mention CWE-79.",
+]
+
+[spec]
+purpose = """
+Teach how cross-site scripting arises and how it is prevented, by showing one review change a page and then building contextual encoders, a comparison with input filtering, and a strict, nonce-based policy on a real local page.
+"""
+nongoals = [
+    "Attack payloads and filter evasion: the problem is shown with a harmless bold tag.",
+    "HTML sanitizers for rich text.",
+    "Template engines: the tools version.",
+]
+problem = """
+Developers often know XSS by name and fix it by filtering input, which breaks honest text and leaves contexts open.
+"""
+roles = [["Contextual encoders", "`Encode`"], ["A model of how a browser reads the page", "`Markup`"], ["The product page, unsafe and safe", "`ReviewPage`"], ["The tempting filter", "`NaiveFilter`"], ["Nonces, the policy and its evaluator", "`ContentSecurityPolicy`"], ["The real local page", "`ShopServer`"], ["Entry point", "`XssDemo`"]]
+requirements = [
+    "Unencoded review text adds an element to the page; encoded text adds none and reads back exactly.",
+    "Each encoder keeps its value from ending its context, and is the same in every locale.",
+    "The input filter changes honest text and misses the attribute context.",
+    "Only a script with the response's nonce is allowed; 'unsafe-inline' is ignored when a nonce is listed.",
+    "Every real response has a fresh nonce and an HttpOnly session cookie.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two lines of defence"
+caption = "Encoding keeps text as text; the policy stops any script that slips through anyway."
+nodes = [
+    { id = "review", label = "Customer review", sub = "untrusted text", col = 0, row = 0, colour = "client" },
+    { id = "encode", label = "Encoder for the context", sub = "tags, attribute, URL, script", col = 1, row = 0, colour = "green" },
+    { id = "page", label = "Product page", sub = "only the shop's markup", col = 2, row = 0, colour = "accent" },
+    { id = "browser", label = "Browser", sub = "runs only scripts with the nonce", col = 3, row = 0, colour = "green" },
+    { id = "policy", label = "Content-Security-Policy", sub = "fresh nonce per response", col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "review", to = "encode" },
+    { from = "encode", to = "page" },
+    { from = "page", to = "browser" },
+    { from = "policy", to = "browser", label = "header", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "ReviewPage uses Encode for every value; ShopServer adds the policy; Markup and the evaluator check the result."
+nodes = [
+    { id = "encode", label = "Encode", sub = ["htmlBody(text)", "attribute(text)", "urlParameter(text)", "javaScriptString(text)"], col = 0, row = 0, colour = "green" },
+    { id = "page", label = "ReviewPage", sub = ["unsafe(reviews)", "safe(reviews, nonce)"], col = 1, row = 0, colour = "accent" },
+    { id = "csp", label = "ContentSecurityPolicy", sub = ["newNonce()", "strict(nonce)", "allowsInlineScript(policy, nonce)"], col = 2, row = 0, colour = "amber" },
+    { id = "markup", label = "Markup", sub = ["elements(html)", "attribute(html, element, name)", "scriptNonces(html)"], col = 0, row = 1, colour = "client" },
+    { id = "server", label = "ShopServer", sub = ["get()"], col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "page", to = "encode", label = "uses" },
+    { from = "server", to = "page", label = "serves" },
+    { from = "server", to = "csp", label = "adds" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "One value, four encodings"
+caption = "The same text needs a different encoding in each place it is written."
+nodes = [
+    { id = "body", label = "Between tags", sub = "&lt; &gt; &amp; &quot; &#39;", col = 0, row = 0, colour = "green" },
+    { id = "attr", label = "Quoted attribute", sub = "quotes encoded too", col = 1, row = 0, colour = "green" },
+    { id = "url", label = "URL parameter", sub = "percent encoding", col = 2, row = 0, colour = "green" },
+    { id = "js", label = "Script string", sub = "\\u escapes", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "body", to = "attr" },
+    { from = "attr", to = "url" },
+    { from = "url", to = "js" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Serving the product page: who does what, in order"
+participants = ["Browser", "ShopServer", "ReviewPage"]
+steps = [
+    ["Browser", "ShopServer", "GET /product"],
+    ["ShopServer", "ShopServer", "make a fresh nonce"],
+    ["ShopServer", "ReviewPage", "safe(reviews, nonce)"],
+    ["ReviewPage", "ShopServer", "encoded page, script with the nonce", "reply"],
+    ["ShopServer", "Browser", "page, Content-Security-Policy, HttpOnly cookie", "reply"],
+    ["note", "Browser", "runs only the script with the nonce"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A value that slips through"
+caption = "Even if one place was not encoded, a script without the nonce does not run."
+participants = ["Review", "Page", "Browser"]
+steps = [
+    ["Review", "Page", "text pasted where an encoder was forgotten"],
+    ["Page", "Browser", "page with an extra script, without the nonce"],
+    ["note", "Browser", "the policy allows only the nonce: the script is blocked"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Why the filter fails"
+caption = "The filter does not know where the text will be written."
+participants = ["Review", "Filter", "Page"]
+steps = [
+    ["Review", "Filter", "Fits 5\" boots"],
+    ["Filter", "Page", "unchanged: no angle brackets to delete"],
+    ["note", "Page", "the quote ends the attribute early"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["server", "reviews"], colour = "green" },
+    { label = "The visitor's browser", nodes = ["browser", "cookie"], colour = "amber" },
+    { label = "Outside", nodes = ["author"], colour = "red" },
+]
+nodes = [
+    { id = "author", label = "Review author", sub = "anyone", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "reviews", label = "Stored reviews", sub = "untrusted text", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T1"] },
+    { id = "server", label = "Product page", sub = "encodes, sets the policy", col = 1, row = 1, colour = "green", shape = "ellipse", threats = ["T2", "T4"] },
+    { id = "browser", label = "Visitor's browser", sub = "signed in", col = 2, row = 0, colour = "client", threats = ["T1", "T2"] },
+    { id = "cookie", label = "Session cookie", sub = "HttpOnly", col = 2, row = 1, colour = "accent", shape = "store", threats = ["T5"] },
+]
+edges = [
+    { from = "author", to = "reviews", label = "writes", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "reviews", to = "server" },
+    { from = "server", to = "browser", label = "page and policy" },
+    { from = "browser", to = "cookie" },
+]
+
+[poster]
+headline = [["CROSS-SITE SCRIPTING", "text"], ["ENCODING + CSP", "accent"]]
+taglines = [["Text from a customer must stay text", "gold"]]
+before = { code = "html + review.text()", note = "the review becomes the page", tag = "BEFORE" }
+after = { code = "Encode.htmlBody(text) + nonce CSP", note = "text stays text", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Cross-Site Scripting: Output Encoding and CSP"
+narration = """Hello, and welcome. [[slnc 400]] This video explains cross site scripting, and the defences that work, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Cross site scripting happens when text from a user is read by the browser as part of the page. [[slnc 600]] Think of a shop's notice board. [[slnc 300]] Customers pin up notes, and the shop pins up signs. [[slnc 300]] If a customer's note looks exactly like a shop sign, people follow it. [[slnc 300]] Encoding puts every customer note behind glass, with a label. [[slnc 700]] In this video, the domain is an online store, and its product reviews. [[slnc 500]] By the end, you will hear how a review can change a page. [[slnc 300]] How to encode text for each place it goes. [[slnc 300]] Why filtering input is not the fix. [[slnc 300]] And how a strict content security policy adds a second line of defence."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store shows product reviews.", "", "The author, a fit note and the text", "all come from customers.", "", "Every visitor's browser reads the page."]
+narration = """Here is the scenario. [[slnc 400]] An online store shows product reviews. [[slnc 500]] The author's name, a short note about fit, and the text, all come from customers. [[slnc 500]] And every visitor's browser reads the page, including visitors who are signed in."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Cross-site scripting: user text read as page code", "Output encoding: text made safe for one place", "Context: between tags, attribute, URL, script", "Content-Security-Policy: which scripts may run", "Nonce: a random value, new for every page"]
+narration = """Before the demos, the words. [[slnc 500]] Cross site scripting means text from a user is read as part of the page. [[slnc 500]] Output encoding makes text safe for the one place it is written. [[slnc 500]] The context is that place: between tags, in an attribute, in a link, or in a script. [[slnc 500]] A content security policy tells the browser which scripts may run. [[slnc 500]] And a nonce is a random value, new for every page."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Fixes, Weakest First"
+body = ["Filtering input: changes text, misses places", "Encoding by hand: works, easy to forget", "Templates that encode by default", "Plus a strict, nonce-based policy", "Plus HttpOnly session cookies"]
+narration = """Let's put the fixes side by side, weakest first. [[slnc 400]] Filtering input changes honest text, and misses places. [[slnc 500]] Encoding by hand works, but one forgotten place is enough. [[slnc 500]] Templates that encode by default make the safe way the easy way. [[slnc 500]] A strict policy with a nonce stops what slips through. [[slnc 500]] And H T T P only cookies keep the session out of any script's reach."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Encode: one encoder per context", "ReviewPage: unsafe and safe pages", "Markup: how a browser reads the page", "ContentSecurityPolicy: nonce and evaluator", "ShopServer: the real local page"]
+narration = """Here is who does what in the code. [[slnc 400]] The encode class has one encoder for each context. [[slnc 500]] The review page builds the page, unsafely and safely. [[slnc 500]] The markup class reads the page the way a browser would. [[slnc 500]] The content security policy class makes nonces, writes the policy, and decides which scripts may run. [[slnc 300]] And the shop server serves the page for real, on this machine."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["&lt; and &amp; in page source", "CSP headers in developer tools", "HttpOnly on session cookies", "Advisories that say CWE-79"]
+narration = """You have probably met this already. [[slnc 400]] The codes for less than and ampersand in a page's source are encoding at work. [[slnc 500]] Content security policy headers appear in the browser's developer tools. [[slnc 500]] Session cookies are often marked H T T P only. [[slnc 500]] And security advisories that mention C W E seventy nine are about this problem."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Encode on output, for the context", "Prefer templates that encode by default", "Strict CSP with a fresh nonce", "HttpOnly session cookies", "Never rely on input filtering"]
+narration = """So, how do you use it? [[slnc 400]] Encode on output, for the context, every time. [[slnc 500]] Prefer templates that encode by default. [[slnc 500]] Add a strict policy, with a fresh nonce for every response. [[slnc 500]] Mark session cookies H T T P only. [[slnc 500]] And never rely on filtering input as the fix."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a fifth context", "and decide how to encode it."]
+narration = """That's cross site scripting, and its defences. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Text from a user must stay text, so encode it for the place it goes, and back that up with a strict policy. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a fifth context, a style value, and decide how to encode it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+How an online store's product page shows reviews written by customers: storing them, writing them into the page in four contexts, the policy that limits scripts, and the session cookie.
+It covers anyone who can write a review, and signed-in visitors who read it. It does not cover rich-text sanitizing, front-end frameworks, or other injection kinds.
+"""
+assets = [
+    "Visitors' sessions and what they can do while signed in.",
+    "The integrity of the product page.",
+    "The trust customers place in what the page shows.",
+]
+actors = [
+    "Customers who write reviews, any of whom may be hostile.",
+    "Signed-in visitors who read the page.",
+    "The store's developers, who add new places that show user text.",
+]
+boundaries = [
+    "Customer to stored review: anything can be written.",
+    "Stored review to page: the point where text must be encoded for its context.",
+    "Server to browser: the policy and cookie flags travel with the response.",
+]
+assumptions = [
+    "Every place that writes user text uses the encoder for its context.",
+    "The nonce comes from a secure random source and is new for every response, and pages carrying it are not cached and shared.",
+    "In the demo, the problem is shown with a harmless bold tag and the policy is evaluated in Java.",
+]
+out_of_scope = [
+    "Rich text that must allow some HTML, which needs a maintained sanitizer.",
+    "Front-end code that writes HTML in the browser.",
+    "SQL and other injection: other projects in this module.",
+]
+tests = [
+    "`EncodeTest` checks each encoder, round trips, and that no value can end its context, in any locale.",
+    "`PageAndFilterTest` checks the unsafe and safe pages and the filter's two failures.",
+    "`ContentSecurityPolicyTest` checks the evaluator's rules, the nonces, and the real server's policy and cookie.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The tools version shows the same defences in Spring Boot, with a template engine that encodes by default and nonces from Spring Security. The next project in this module is cross-site-request-forgery.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "A review's text is read as markup or script, changing the page or running in visitors' browsers"
+where = "`ReviewPage.unsafe`"
+control = "Contextual output encoding for every value"
+residual = "A place added later without its encoder; caught by the policy and by tests that look for unencoded output"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A script that slips through runs with the page's authority"
+where = "the browser"
+control = "A strict policy that allows only scripts carrying this response's nonce"
+residual = "Scripts the shop itself loads are trusted, so their sources must be controlled"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "Input filtering changes honest reviews and misses contexts it was not designed for"
+where = "`NaiveFilter`"
+control = "Store text as written and encode on output"
+residual = "None, once the filter is removed"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "A reused or predictable nonce lets injected content carry it"
+where = "`ContentSecurityPolicy.newNonce`"
+control = "128 random bits from a secure source, new for every response"
+residual = "A shared cache that stores a page with its nonce, so such pages must not be cached publicly"
+
+[[threat]]
+id = "T5"
+stride = "I"
+threat = "A script reads the session cookie and sends it away"
+where = "the session cookie"
+control = "HttpOnly, Secure and SameSite on the session cookie"
+residual = "A script can still act as the visitor while the page is open, which is why encoding comes first"
