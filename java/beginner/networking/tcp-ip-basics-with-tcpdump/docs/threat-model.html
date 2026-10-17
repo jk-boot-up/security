@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — TCP/IP Basics with tcpdump and Python</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — TCP/IP Basics with tcpdump and Python</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The handling of packet capture files by an analyst at an online store: recording, reading with tcpdump and scripts, storing and sharing. It does not cover live capture, the network that is being captured, or the content of any protocol above TCP.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The capture file, which holds every byte that crossed the wire unencrypted.</li>
+<li>The analyst's machine, which parses the file.</li>
+<li>The places where captures are stored or attached.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>An analyst who records and reads captures.</li>
+<li>A thief or colleague who finds a capture.</li>
+<li>An attacker who can influence a capture file's contents.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Capture file to the people who can read it: a file moves from a restricted machine to tickets and shared drives.</li>
+<li>Capture file to the parser: a file from outside is untrusted input.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A capture file with card numbers or cookies is found, attached to a ticket or left on a shared drive</td>
+<td><code>Traffic</code>, <code>Capture.containsText</code></td>
+<td>Capture briefly and with filters, store securely, delete when done, and use TLS so the content is encrypted</td>
+<td>Metadata such as addresses, sizes and timing remains visible even with TLS</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Elevation of privilege</td>
+<td>A crafted capture file exploits a flaw in the tool that reads it</td>
+<td><code>PcapFile.read</code></td>
+<td>The reader checks every length and rejects truncated or unexpected files</td>
+<td>Keep tcpdump and Wireshark up to date, and open files from outside in a disposable environment</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>A damaged or forged packet is trusted because only the application logs were read</td>
+<td><code>Capture.damagedCount</code></td>
+<td>Recompute checksums when reading a capture</td>
+<td>A forged packet with a correct checksum is still accepted, so a checksum is not authentication</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Repudiation</td>
+<td>Nobody can show who recorded a capture, or whether it was changed afterwards</td>
+<td>the capture file</td>
+<td>None in pcap: record who captured it and when, and store a hash or signature with it</td>
+<td>Without signatures a capture is weak evidence</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>Captures are made with permission and a clear purpose.</li>
+<li>The analyst works on a copy, on a machine that is kept up to date.</li>
+<li>In the demo, all addresses are documentation addresses and the card number is a test value.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Live capture and the privileges it needs.</li>
+<li>Decrypting TLS captures.</li>
+<li>Intrusion detection.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>CaptureTest</code> checks the pcap layout, round trips, truncated files, line format, the flood sources, the damaged packet, and the card number in the capture.</li>
+<li><code>ToolsInteropTest</code> (integration) checks that the real tcpdump prints the same lines, that tcpdump -v marks the bad checksum, and that the Python script finds the same sources.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, dns-basics, looks at how names become addresses, and how that answer too can be forged.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

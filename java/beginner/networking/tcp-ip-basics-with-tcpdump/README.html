@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TCP/IP Basics with tcpdump and Python</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>TCP/IP Basics with tcpdump and Python</h1>
+<pre><code>src/main/java/com/jk/explore/security/tcpipdump/
+├── Address.java             IPv4 addresses as four bytes packed into an int
+├── BadPacketException.java  A packet or segment that is too short, malformed or fails its checksum
+├── Capture.java             Reads a capture: prints each packet in the style of `tcpdump -nn -t -S`, counts damaged packets, and finds sources that started a connection and never finished it
+├── Checksum.java            The Internet checksum of RFC 1071: the ones' complement of the ones' complement sum of 16-bit words
+├── Ipv4Packet.java          An IPv4 packet with a 20-byte header (no options) carrying a TCP segment
+├── PcapFile.java            The classic libpcap capture file format, which tcpdump and Wireshark read: a 24-byte file header, then for each packet a 16-byte record header and the packet's bytes
+├── TcpSegment.java          A TCP segment with a 20-byte header (no options)
+├── TcpdumpDemo.java         Runs the online store story in five numbered acts: record traffic to a capture file, read it back, find a flood, find a damaged packet, and see what a capture reveals
+└── Traffic.java             The traffic the demo records: one real customer's purchase, then a SYN flood, then one damaged packet
+</code></pre>
+<p><strong>A capture file shows what really arrived, damaged, forged or readable, and tcpdump and a short Python script can read the same file the Java code writes, but a capture is as sensitive as the traffic it holds.</strong></p>
+<p>The plain version of this lesson built packets in memory. Real investigations start from a <strong>capture</strong>: a file of the packets that crossed a network interface. The standard format is <strong>pcap</strong>, a 24-byte file header and then, for each packet, a
+16-byte record header and the packet's bytes. <strong>tcpdump</strong> is the classic command-line tool that records and prints captures, and Wireshark is its graphical cousin. Because pcap is a standard, this project writes a capture from Java
+and lets tcpdump read it, and a short independent <strong>Python</strong> script finds the half-open handshakes of a SYN flood in the same file.</p>
+<p>The demo records a customer's purchase, reads it back in tcpdump's format, finds a flood and a damaged packet, and ends with the cost: the capture holds the card number in the clear.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a security camera at the shop door. What the guards remember is one thing, what the tape shows is another. Reading the tape afterwards tells you who came in, in what order, and whether anyone was loitering, and the tape is
+exactly as valuable to a thief as the shop's own secrets, so it is kept in a locked room.</p>
+<h2>The scenario</h2>
+<p>An online store records the traffic of one customer's purchase, then of a SYN flood. The demo writes the capture, prints it as tcpdump would, finds the sources that never finished a handshake, and finds a packet whose checksum is wrong.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Recording traffic to a capture file</td>
+<td>A purchase of 5 packets, 234 bytes, becomes a 338-byte pcap file: a 24-byte file header and 16 bytes of header for each packet.</td>
+</tr>
+<tr>
+<td>2. Reading it back, in the style of tcpdump</td>
+<td>Each packet is printed with its addresses, ports, flags, sequence numbers and length, and the lines are the same as the real tcpdump prints.</td>
+</tr>
+<tr>
+<td>3. Finding a SYN flood in a capture</td>
+<td>Of 14 packets, 9 sources sent a SYN and never finished the handshake; the real customer is not among them.</td>
+</tr>
+<tr>
+<td>4. Finding a damaged packet</td>
+<td>One packet has a wrong checksum; plain tcpdump shows it like any other, and tcpdump -v marks the checksum incorrect.</td>
+</tr>
+<tr>
+<td>5. What a capture reveals</td>
+<td>The capture contains the card number in the clear, so a capture file is as sensitive as the traffic; only TLS makes it useless to a thief.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>13 tests in <code>CaptureTest</code>, <code>DemoRunsTest</code>, <code>ToolsInteropTest</code>. The capture file is written with fixed timestamps and packets, so it is identical every time. The ordinary tests need only a JDK; the integration tests (tagged tools) compare tcpdump's real output and a Python script's answer with the Java code's.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The capture is written by Java with fixed timestamps, addresses and sequence numbers, so the file is identical every time. tcpdump and Python are used only by the integration tests, which compare their output with the Java code's. The demo itself
+needs no tool, so it is the same on every machine. Live capture is not used.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>tcpdump</td>
+<td>4.99.1 (libpcap 1.10.1)</td>
+<td>the independent check that prints the capture the Java code writes; needed for the integration tests</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>3.14</td>
+<td>runs the independent flood detector in python/; standard library only</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tcp-ip-basics-with-tcpdump-explained.html">TCP/IP Basics with tcpdump and Python, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>One capture file, three readers: the Java code, the real tcpdump and the Python script.</p>
+<p><img alt="From traffic to understanding" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>PcapFile reads and writes the format; Capture analyses it; Traffic makes the packets.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A file header, then a record header and the packet bytes for each packet.</p>
+<p><img alt="The layout of a pcap file" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Checking the Java reader against tcpdump: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tcp-ip-basics-with-tcpdump-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A capture is sensitive data.</strong> It holds whatever crossed the wire, such as card numbers and cookies when TLS is not used, so it needs the same protection as the traffic.</li>
+<li><strong>Live capture needs privileges.</strong> Reading from a network interface needs root, so work from recorded files, on a copy.</li>
+<li><strong>Captures grow fast.</strong> A busy server can fill a disk in minutes, so capture filters and short captures are the habit.</li>
+<li><strong>A capture shows the wire, not the application.</strong> With TLS you see sizes and timing, not content, which is the point of TLS.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For understanding, a small capture and tcpdump are always worth it. For a production incident, use captures sparingly, with filters, for a short time, and store them securely, because the capture itself is a copy of every secret that crossed the wire.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>tcpdump</code> and Wireshark in every network troubleshooting guide.</li>
+<li><code>.pcap</code> and <code>.pcapng</code> files attached to incident reports.</li>
+<li>Intrusion detection systems, which analyse traffic in the same way.</li>
+<li>Cloud "traffic mirroring" and "flow logs", which are captures with less detail.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../tcp-ip-basics">tcp-ip-basics</a> and is the second in <a href="..">networking</a>. It adds a tool for looking at what that project modelled.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
