@@ -17,6 +17,73 @@ JAVA = "25"
 VOICE = "Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice)"
 
 
+
+# --------------------------------------------------------- tech stack ----
+
+ROLES = {
+    "org.springframework:spring-webmvc": "Spring MVC: maps web addresses to controller methods",
+    "org.springframework:spring-test": "MockMvc, which sends requests through the real filter chain without a network port",
+    "org.springframework:spring-core": "Spring's utility classes and logging, which the crypto module expects the application to supply",
+    "org.springframework.security:spring-security-web": "Spring Security's filter chain",
+    "org.springframework.security:spring-security-config": "Spring Security's configuration, `@EnableMethodSecurity` and `HttpSecurity`",
+    "org.springframework.security:spring-security-crypto": "password encoders: bcrypt, PBKDF2, scrypt, Argon2",
+    "jakarta.servlet:jakarta.servlet-api": "the servlet API that Spring MVC and Spring Security are written against",
+    "com.google.crypto.tink:tink": "Google Tink: safe cryptographic primitives",
+    "org.bouncycastle:bcprov-jdk18on": "Bouncy Castle: algorithms and providers the JDK lacks",
+    "org.bouncycastle:bcpkix-jdk18on": "Bouncy Castle PKIX: PEM, X.509 certificates and CMS",
+    "com.eatthepath:java-otp": "java-otp: HOTP and TOTP one-time codes",
+    "commons-codec:commons-codec": "Apache Commons Codec: Base32 and other encoders",
+    "org.junit.jupiter:junit-jupiter": "JUnit 5: the tests",
+    "org.junit.jupiter:junit-jupiter-params": "JUnit 5: parameterized tests",
+    "org.junit.platform:junit-platform-launcher": "JUnit platform launcher, which Gradle needs to run the tests",
+}
+
+
+def _coords(text):
+    """Dependencies and platforms from a build.gradle: (kind, group, artifact, version or None)."""
+    found = []
+    for kind, coord in re.findall(r"(platform|implementation|testImplementation|testRuntimeOnly|compileOnly|runtimeOnly)\s*\(?\s*'([^']+)'", text):
+        parts = coord.split(":")
+        found.append((kind, parts[0], parts[1], parts[2] if len(parts) > 2 else None))
+    return found
+
+
+def stack_rows(pdir, d):
+    """The tech stack of a project, read from its own build files, as rows of [name, version, role]."""
+    gradle = (pdir / "build.gradle").read_text()
+    java = re.search(r"JavaLanguageVersion\.of\((\d+)\)", gradle)
+    rows = [["Java", java.group(1) if java else JAVA, "the language and runtime; a Gradle toolchain finds or downloads the JDK"],
+            ["Gradle", gradle_version(pdir) + " (wrapper)", "build and run; nothing to install, the wrapper downloads it"]]
+    found = _coords(gradle)
+    boms = {a: v for k, g, a, v in found if k == "platform" and v}
+    bom_by_group = {"org.springframework": "spring-framework-bom", "org.springframework.security": "spring-security-bom",
+                    "org.springframework.boot": "spring-boot-dependencies", "org.junit.jupiter": "junit-bom", "org.junit.platform": "junit-bom"}
+
+    def bom_for(group, artifact):
+        name = bom_by_group.get(group)
+        return (name, boms[name]) if name in boms else None
+    for kind, group, artifact, version in found:
+        if kind == "platform":
+            continue
+        role = ROLES.get("%s:%s" % (group, artifact), "library the code uses")
+        label = "%s:%s" % (group, artifact)
+        if version is None:
+            via = bom_for(group, artifact)
+            version = ("%s, set by %s" % (via[1], via[0])) if via else "set by the build"
+        if kind in ("testImplementation", "testRuntimeOnly"):
+            role = role + " (tests only)"
+        rows.append([label, version, role])
+    for t in d.get("readme", {}).get("technologies", []):
+        rows.append(list(t))
+    rows.append(["videokit", "repository tool (`tools/videokit`)", "the narrated video and animation: " + VOICE])
+    return rows
+
+
+def stack_table(pdir, d):
+    lines = ["| Technology | Version | Used for |", "| --- | --- | --- |"]
+    lines += ["| %s | %s | %s |" % tuple(r) for r in stack_rows(pdir, d)]
+    return lines
+
 # ------------------------------------------------------------ helpers ----
 
 def load(project_dir):
@@ -93,14 +160,9 @@ def readme(d, pdir):
                                           "clock, so every run gives the same result.").split()), "",
             *(["## What the simulation got right, and what it left out", "", para(r["twin"])] if r.get("twin") else []),
             "## Technologies and versions", "",
-            "| Technology | Version | Used for |", "| --- | --- | --- |",
-            "| Java | %s | the code (toolchain set in `build.gradle`; Gradle finds or downloads the JDK) |" % JAVA,
-            "| Gradle | %s (wrapper) | build and run, nothing to install |" % gradle_version(pdir),
-            "| JUnit | %s | the tests |" % JUNIT]
-    for t in r.get("technologies", []):
-        out.append("| %s | %s | %s |" % tuple(t))
-    out += ["| videokit | repository tool (`tools/videokit`) | the narrated video and animation: %s |" % VOICE, "",
-            "## Learning Material", "",
+            "Every version below is pinned in the project's build files and was the latest stable release when the project was built.", "",
+            *stack_table(pdir, d)]
+    out += ["", "## Learning Material", "",
             "| Document | What it is for |", "| --- | --- |",
             *(["| [Dependencies](docs/dependencies.md) | what the framework and infrastructure are, and why they are here |"]
               if "dependencies" in d.get("docs", {}) else []),
@@ -139,14 +201,17 @@ def problem(d):
                       "## What this project must deliver", "", ul(x["deliver"]), ""])
 
 
-def prerequisites(d):
+def prerequisites(d, pdir):
     x = d["docs"]["prerequisites"]
     return "\n".join(["# Prerequisites", "", "## Required", "", ul(x["required"]), "",
                       "## Explicitly not required", "", ul(x["not_required"]), "",
                       "## What you will need", "",
                       "- A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.",
                       *(["- " + n for n in x.get("install", [])]),
-                      "- About an hour for the session guide.", ""])
+                      "- About an hour for the session guide.", "",
+                      "## Tech stack and versions", "",
+                      "Pinned in the project's build files, and the latest stable releases when the project was built.", "",
+                      *stack_table(pdir, d), ""])
 
 
 def session(d):
@@ -353,7 +418,7 @@ def all_docs(pdir):
     docs.mkdir(exist_ok=True)
     (pdir / "README.md").write_text(readme(d, pdir))
     (docs / "problem-statement.md").write_text(problem(d))
-    (docs / "prerequisites.md").write_text(prerequisites(d))
+    (docs / "prerequisites.md").write_text(prerequisites(d, pdir))
     (docs / "session.md").write_text(session(d))
     (docs / ("%s-explained.md" % slug)).write_text(explained(d))
     if "dependencies" in d.get("docs", {}):

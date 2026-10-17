@@ -26,6 +26,8 @@ from . import generate, publish_docs, site
 REPO = Path(__file__).resolve().parents[3]
 VIDEOKIT = REPO / "tools" / "videokit" / "videokit.sh"
 
+GRADLE_VERSION = "9.8.1"   # the latest stable Gradle when the new projects were scaffolded
+
 VOICE_TOML = """# The voice (amy-slow): Piper, open source (MIT), US female,
 # slower than normal with longer pauses, for beginners listening without a screen.
 [voice]
@@ -65,7 +67,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation platform('org.junit:junit-bom:6.1.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -76,6 +78,11 @@ application {
 
 test {
     useJUnitPlatform()
+}
+
+// No deprecated or to-be-removed API is allowed in any project: a warning fails the build.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(['-Xlint:deprecation', '-Xlint:removal', '-Werror'])
 }
 """
 
@@ -100,6 +107,8 @@ def scaffold(module, name, package, main_class):
     for f in ("gradlew", "gradlew.bat"):
         shutil.copy2(template / f, p / f)
     shutil.copytree(template / "gradle", p / "gradle")
+    props = p / "gradle" / "wrapper" / "gradle-wrapper.properties"
+    props.write_text(re.sub(r"gradle-[\d.]+-bin\.zip", "gradle-%s-bin.zip" % GRADLE_VERSION, props.read_text()))
     (p / "settings.gradle").write_text(SETTINGS_GRADLE % name)
     (p / "build.gradle").write_text(BUILD_GRADLE % (package, main_class))
     ensure_video_files(p)
