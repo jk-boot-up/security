@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTP Basics and Security Headers with nginx</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>HTTP Basics and Security Headers with nginx</h1>
+<pre><code>src/main/java/com/jk/explore/security/httpnginx/
+├── HeaderAudit.java    Scores a response against five security headers, one point each
+├── HttpNginxDemo.java  Runs the online store story in five numbered acts against real nginx containers and prints repeatable results
+├── Nginx.java          One nginx container with a given configuration, started for a demo and stopped afterwards
+├── NginxConfig.java    Writes the nginx configuration for each version of the online store's front door
+└── Probe.java          Sends raw bytes to a port and reads the whole answer, so malformed requests can be sent that an HTTP client library would never send
+</code></pre>
+<p><strong>nginx can add the security headers and refuse ambiguous requests before the application sees them, but a header added without always vanishes from error pages, a nested add_header silently drops the rest, and hiding a version is a speed bump and not a lock.</strong></p>
+<p>The plain version of this lesson built an HTTP parser and a header auditor in Java. In production the <strong>security headers</strong> are usually added by the web server in front of the application, and <strong>nginx</strong>
+is very often that server. The directive is <code>add_header</code>. It looks simple and has three traps. Without the word <strong><code>always</code></strong>, nginx adds the header only to successful answers, so error pages go out bare.
+<strong>Inheritance</strong> is all or nothing: a <code>location</code> that has even one <code>add_header</code> of its own drops every <code>add_header</code> from the level above. And what the application behind the proxy says about itself, such as
+<code>X-Powered-By</code>, is passed along unless <code>proxy_hide_header</code> removes it. nginx also refuses requests that are ambiguous, such as one with both <code>Content-Length</code> and <code>Transfer-Encoding</code>, which is the shape of a <strong>request smuggling</strong> attack.</p>
+<p>The demo starts a real nginx in a Docker container for each act, sends requests with a raw socket so that malformed ones can be sent too, and scores each answer with the same five-header auditor as the plain project.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a doorman who hands every visitor the house rules on the way in. If he hands them out only to guests who arrive properly, a visitor who is turned away at the side gate never gets the rules. If each side room has its own
+notice board, the main rules are not copied there unless someone writes them again. And a parcel that says it is four kilos and also says it is five is sent back, not argued over.</p>
+<h2>The scenario</h2>
+<p>An online store has nginx at its front door. The demo sets the five security headers, checks error pages and a side location, applies limits to bodies and header lines, sends the ambiguous requests of a smuggling attack, and puts nginx in front of
+an application that reveals its technology.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. nginx in front of the shop, as it comes</td>
+<td>Out of the box a request scores 0 of 5 on the security headers and the Server header shows the exact nginx version.</td>
+</tr>
+<tr>
+<td>2. add_header, and the word always</td>
+<td>Without always the home page scores 5 of 5 but the 404 page scores 0; with always both score 5, and server_tokens off hides the version.</td>
+</tr>
+<tr>
+<td>3. The inheritance trap</td>
+<td>A location that adds its own Cache-Control drops all five server-level headers and scores 0 of 5; repeating them there scores 5 of 5.</td>
+</tr>
+<tr>
+<td>4. Limits, and requests that are ambiguous</td>
+<td>A body over 1k gets 413, a header line of 4000 characters gets 400, and both Content-Length with Transfer-Encoding and two different Content-Lengths get 400.</td>
+</tr>
+<tr>
+<td>5. Hiding what the application gives away, and the bill</td>
+<td>A proxy passes X-Powered-By and X-AspNet-Version along unless proxy_hide_header removes them; hiding is a speed bump, and the configuration needs tests.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>25 tests in <code>ConfigAndAuditTest</code>, <code>NginxContainerTest</code>, <code>ReferenceConfigTest</code>. The default tests need no Docker: they check the generated configurations, the auditor and the reply parser. The tests tagged docker start real nginx containers, check every claim in the demo and that no container is left running, and compare the demo with the golden output.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>nginx runs in a container on a random local port, and the demo prints only facts that do not depend on the port or on timing: scores, status codes and which headers are present. The version number is pinned in the image name.
+Raw sockets are used so the demo can send requests that no HTTP client library would send.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>nginx (container image)</td>
+<td>nginx:1.31.7-alpine</td>
+<td>the web server and reverse proxy in front of the store, pinned to an exact version</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>any recent Docker Engine or Docker Desktop</td>
+<td>runs the nginx container for the demo and the container tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/http-basics-and-headers-with-nginx-explained.html">HTTP Basics and Security Headers with nginx, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Headers and limits are decided by nginx; the application behind it is only trusted to answer.</p>
+<p><img alt="nginx at the front door" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>NginxConfig writes the configuration; Nginx runs it; Probe talks to it; HeaderAudit judges it.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A level that has any add_header replaces all the add_header lines of the level above.</p>
+<p><img alt="Which add_header applies" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A smuggling attempt: who sends what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/http-basics-and-headers-with-nginx-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Headers describe the page.</strong> A Content-Security-Policy that is wrong for the real site breaks the site, so the policy has to be tested with the real pages.</li>
+<li><strong>Configuration is easy to get subtly wrong.</strong> The <code>always</code> and inheritance rules are not obvious, so the configuration needs tests like the ones in this project.</li>
+<li><strong>Hiding is a speed bump.</strong> Removing a version number does not remove the hole, and attackers probe anyway. The fix is to keep software up to date.</li>
+<li><strong>Limits need tuning.</strong> A body limit that is too small refuses real uploads, and one that is too large invites abuse.</li>
+<li><strong>Docker is needed.</strong> The demo and the container tests need a running Docker; the default tests do not.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Setting the five headers and <code>server_tokens off</code> is cheap and always worth doing. The refusals of ambiguous requests are on by default in current nginx, and the value of this project is knowing that and checking it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>add_header</code> lines in almost every nginx configuration, and <code>always</code> copied from a snippet nobody explained.</li>
+<li>Scanners such as securityheaders.com that give a site a letter grade.</li>
+<li>Include files such as <code>security-headers.conf</code> repeated in each <code>location</code>.</li>
+<li>Advisories about request smuggling between a proxy and an application server.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../http-basics-and-headers">http-basics-and-headers</a> and is a tools counterpart in <a href="..">networking</a>, next to <a href="../http-basics-and-headers-with-spring-boot">the Spring Boot version</a>. It uses Docker in the same way as <a href="../../passwords-and-mfa/password-attacks-and-defences-with-nginx">password-attacks-and-defences-with-nginx</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
