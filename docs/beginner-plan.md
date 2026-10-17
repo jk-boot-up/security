@@ -37,10 +37,13 @@ without the internet once those are in place.
   describes the flow in order.
 - **Show it broken first.** Each project runs the naive or insecure version, shows exactly how it
   fails, then the fix, then what the fix costs and where it is not enough.
-- **Each topic picks the domain that teaches it best.** A small online store is the fallback
-  because learners can carry it from topic to topic, but a clinic, a bank, a library or anything
-  else is used where it makes the idea clearer. The chosen domain is named in the topic's
-  `concept.toml` and README, and every language uses the same one. Analogies may come from anywhere.
+- **Only two domains are used, in every security project: an online store (e-commerce) or a bank
+  (banking).** Each topic picks whichever of the two teaches it better: the store for orders,
+  carts, customers, staff roles and traffic spikes; the bank for accounts, transfers, statements
+  and money-sensitive trust. A project never uses a third domain. The chosen domain is named in the
+  topic's `concept.toml` and README, and every language uses the same one. Analogies in the narration
+  may come from anywhere (a vault, a hotel key card), but the code and the worked example stay in
+  the store or the bank.
 - **Deterministic.** Fixed seeds, fixed clocks, no `Thread.sleep`, no real internet at run time.
   Every run prints the same numbers, and tests assert every number the demo prints. Tool versions
   and container images are pinned to exact versions.
@@ -146,9 +149,9 @@ Legend: **P** = plain JDK, **T** = with tools (frameworks, libraries or local in
 
 ### Module 1: Foundations
 
-| # | Project | Scenario (domain in brackets; the store is the fallback) | P | T |
+| # | Project | Scenario (domain in brackets: online store or bank) | P | T |
 | ---: | --- | --- | :---: | :---: |
-| 1 | `cia-triad` | [clinic] A patient record is leaked, silently changed, and made unavailable. Each breaks one property; a control restores it | P | – |
+| 1 | `cia-triad` | [online store] An order record is leaked, silently changed, and made unavailable. Each breaks one property; a control restores it | P | – |
 | 2 | `threats-and-risk` | [online store] List the shop's endpoints as an attack surface, score threat × likelihood × impact, rank the risks | P | – |
 
 ### Module 2: Identity
@@ -232,7 +235,7 @@ thumbnails and playlists. They are written once and shared by every language.
   1. what the video is: "This video explains X, in Java.";
   2. the credit;
   3. a plain definition;
-  4. the same idea taught in the topic's own domain.
+  4. the same idea taught in the topic's domain, the online store or the bank.
 - **Closing:** one-sentence lesson, the repository, a like and a subscribe, thanks. Never name
   the next video.
 - **Length:** about 14 scenes per video.
