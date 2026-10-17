@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Least Privilege with Terraform and LocalStack</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Least Privilege with Terraform and LocalStack</h1>
+<pre><code>src/main/java/com/jk/explore/security/leastprivilegetf/
+├── Catalogue.java                    The fixed list of (action, resource) pairs the online store's account offers
+├── Evaluator.java                    AWS-style evaluation for one identity: an explicit Deny in any policy wins; otherwise the request needs an Allow in the identity's policies and, if a permissions boundary is set, an Allow in the boundary too; otherwise it is denied by default
+├── Fixtures.java                     The five policy documents the Terraform code in infra/terraform writes, saved as the JSON that OpenTofu emitted for them
+├── Glob.java                         IAM-style wildcard matching: ` ` matches any run of characters (including none) and `?` matches exactly one
+├── LeastPrivilegeTerraformDemo.java  Runs the online store story in five numbered acts and prints exact, repeatable results
+├── Linter.java                       Reads the text of a policy, not its effect, and flags the shapes that go wrong: wildcards, NotAction and ways to grow one's own power
+├── PolicyDocument.java               An IAM policy document as the Terraform data source `aws_iam_policy_document` writes it
+└── PolicyNames.java                  The policies the Terraform code defines, in the order the lesson uses them
+</code></pre>
+<p><strong>Write permissions as infrastructure code so that they can be read, counted and linted before they are applied: scope each policy, let an explicit deny and a boundary narrow it further, and watch for the shapes that quietly grant more power.</strong></p>
+<p>In a cloud account, <strong>permissions are written as policies</strong>: JSON documents that list which <strong>actions</strong> (such as <code>s3:GetObject</code>) may be done on which <strong>resources</strong> (such as one bucket). Tools such as <strong>Terraform</strong> and its open-source fork <strong>OpenTofu</strong> let you
+write those policies as code, review them in a pull request and apply them in one step. Because they are code, they can also be <strong>read by a program</strong>. This project writes five policies in Terraform for an online store, applies them with OpenTofu to a <strong>local AWS emulator</strong>
+(LocalStack in Docker, so no cloud account), and reads the same JSON back in Java, where an evaluator follows AWS's rules: deny by default, an explicit deny always wins, and a <strong>permissions boundary</strong> limits what any policy can grant.</p>
+<p>The demo counts each identity's <strong>blast radius</strong>, how many of 25 things it could do if its key were stolen, and a <strong>linter</strong> reads the text of a policy for wildcards and for ways to grow one's own power.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a key cabinet in the shop. The nightly export gets a key to one drawer and not the master key. A note on the cabinet says "nobody takes the key to the safe", and that note beats any other permission slip. A sign on the staff door says "visitors may go no further than the shop floor, whatever slip
+they hold". The notes are written down in a book anyone can read, so before a key is handed out, someone can count which doors it opens.</p>
+<h2>The scenario</h2>
+<p>An online store's account has 25 things that can be done: reading and writing reports, querying orders and customers, changing who may do what, decrypting with a key, and deploying a function. The demo writes five policies, from a wildcard shortcut to a scoped export role, and
+counts, matches and lints them.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Policies written as code</td>
+<td>The account offers 25 things to do; the wildcard policy allows all 25, the nightly export needs 3, and a deploy policy that looks small also allows 3.</td>
+</tr>
+<tr>
+<td>2. How a request is matched</td>
+<td>The exporter may read a report file and list the reports bucket, but not the secret file, and not the bucket as if it were a file; action names ignore case, and anything not allowed is denied.</td>
+</tr>
+<tr>
+<td>3. A deny beats every allow</td>
+<td>Admin with a deny on secrets can do 20 of 25 against 25 without it; the secret file is explicitly denied, and the order of statements does not matter.</td>
+</tr>
+<tr>
+<td>4. A permissions boundary</td>
+<td>The wildcard policy alone allows 25 of 25 and under the boundary 8 of 25; the boundary alone grants 0; admin with a deny under the boundary is also 8.</td>
+</tr>
+<tr>
+<td>5. A linter, and the way to more power</td>
+<td>The linter flags the wildcard policies and finds iam:PassRole on every role in the deployer policy, which counts as only 3 of 25 and is still dangerous.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>25 tests in <code>DemoRunsTest</code>, <code>EvaluatorTest</code>, <code>FixturesAndLinterTest</code>, <code>GlobTest</code>, <code>TerraformInteropTest</code>. The demo reads fixtures, so it needs only a JDK. The integration tests (tagged terraform) start a LocalStack container, apply the Terraform code with OpenTofu, and compare the stored policies with the fixtures the Java evaluator uses; the container is always removed.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The five policies are the JSON that OpenTofu emitted when it applied the Terraform code in <code>infra/terraform</code>, saved as fixtures, so the demo needs no tool and prints the same on every run. The integration tests start LocalStack in Docker, apply the code with OpenTofu,
+and check that what the emulator stores equals the fixtures. The emulator is local, with test credentials, and is always removed afterwards.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.2.3</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>OpenTofu</td>
+<td>1.13.1</td>
+<td>applies the Terraform code in the integration tests; Terraform itself also works and is used if OpenTofu is missing</td>
+</tr>
+<tr>
+<td>Terraform AWS provider</td>
+<td>6.69.1</td>
+<td>talks to the emulator's IAM service</td>
+</tr>
+<tr>
+<td>LocalStack (community image)</td>
+<td>4.14.0</td>
+<td>a local AWS emulator in Docker; the last community tag that starts without an account token</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>required for the integration tests</td>
+<td>runs the emulator</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/least-privilege-with-terraform-explained.html">Least Privilege with Terraform and LocalStack, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The same policy JSON is stored by the emulator and read by the Java evaluator.</p>
+<p><img alt="From Terraform to a number" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>PolicyDocument reads the JSON, Evaluator decides, Catalogue counts and Linter reads the text.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A deny anywhere wins; otherwise the identity and the boundary must both allow.</p>
+<p><img alt="How a request is decided" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Applying the code and reading it back: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/least-privilege-with-terraform-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The emulator does not enforce the policies.</strong> The free LocalStack image stores IAM policies but does not enforce them, so the Java evaluator is checked against what Terraform writes and the emulator stores, and not against a real denial. Enforcement needs a real account or a paid emulator.</li>
+<li><strong>The evaluator is a model.</strong> It handles actions, resources, deny, boundaries and NotAction, and refuses conditions. Real AWS also has resource policies, organisation rules, session policies and conditions.</li>
+<li><strong>Counting hides escalation.</strong> An identity with a small count can still be dangerous, such as one that may pass any role to a new function, so the policy has to be read as well as counted.</li>
+<li><strong>Code review only helps if someone reviews.</strong> Policies as code make the review possible, not automatic.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a personal project, one or two scoped policies are enough. In a team, writing every permission as code and linting it in the pipeline is cheap and catches the common mistakes before they reach an account.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>aws_iam_policy_document</code> and <code>aws_iam_policy</code> in Terraform repositories.</li>
+<li>IAM Access Analyzer and "policy validation" findings in cloud consoles.</li>
+<li><code>"Action": "*"</code> and <code>"Resource": "*"</code> in blog posts, and in breach reports.</li>
+<li>Terraform plans reviewed in pull requests.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../least-privilege">least-privilege</a>, <a href="../least-privilege-with-spring-security">least-privilege-with-spring-security</a> and <a href="../least-privilege-with-kubernetes-rbac">least-privilege-with-kubernetes-rbac</a>, and is the last in <a href="..">safe-habits</a> for least privilege.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
