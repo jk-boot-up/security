@@ -36,7 +36,7 @@ Learners know a rate limit is good but not that what it counts decides whether i
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
+| Tests | 13, all passing |
 | Demo output | 14 lines, identical on every run |
 | Acts | 5 |
 | Video | 08:25, 1920×1080, narrated in the amy-slow voice |

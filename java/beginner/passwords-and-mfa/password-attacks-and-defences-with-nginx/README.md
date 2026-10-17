@@ -56,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`.
+13 tests in `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`.
 
 ## What the simulation got right, and what it left out
 

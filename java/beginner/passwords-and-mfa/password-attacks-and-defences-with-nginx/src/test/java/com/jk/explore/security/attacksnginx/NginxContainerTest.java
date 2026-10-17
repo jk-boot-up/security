@@ -55,6 +55,14 @@ class NginxContainerTest {
     }
 
     @Test
+    void closingTheContainerStopsIt() throws Exception {
+        Nginx nginx = Nginx.start(NginxConfig.text(NginxConfig.Key.NONE, "1r/m", 5));
+        int port = nginx.port();
+        nginx.close();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> new Attacker(port).attempt("dana", null));
+    }
+
+    @Test
     void demoOutputMatchesTheGoldenFile() throws Exception {
         assertEquals(Files.readString(Path.of("docs", "expected-output.txt")), NginxAttacksDemo.run());
     }

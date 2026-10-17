@@ -17,11 +17,12 @@ public class Nginx implements AutoCloseable {
     /** The image is pinned to an exact version, so every run uses the same nginx. */
     public static final String IMAGE = "nginx:1.31.6-alpine";
 
-    private final String name = "attacks-nginx-" + UUID.randomUUID().toString().substring(0, 8);
+    private final String name;
     private final Path config;
     private final int port;
 
-    private Nginx(Path config, int port) {
+    private Nginx(String name, Path config, int port) {
+        this.name = name;
         this.config = config;
         this.port = port;
     }
@@ -35,12 +36,12 @@ public class Nginx implements AutoCloseable {
         Path dir = Files.createTempDirectory("nginx-demo");
         Path conf = dir.resolve("nginx.conf");
         Files.writeString(conf, configText);
-        Nginx unstarted = new Nginx(conf, 0);
-        run(List.of("docker", "run", "-d", "--rm", "--name", unstarted.name, "-p", "127.0.0.1::80",
+        String name = "attacks-nginx-" + UUID.randomUUID().toString().substring(0, 8);
+        run(List.of("docker", "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::80",
                 "-v", conf + ":/etc/nginx/nginx.conf:ro", IMAGE));
-        String mapping = run(List.of("docker", "port", unstarted.name, "80/tcp")).trim();
+        String mapping = run(List.of("docker", "port", name, "80/tcp")).trim();
         int port = Integer.parseInt(mapping.substring(mapping.lastIndexOf(':') + 1).trim());
-        Nginx nginx = new Nginx(conf, port);
+        Nginx nginx = new Nginx(name, conf, port);
         nginx.awaitReady();
         return nginx;
     }
