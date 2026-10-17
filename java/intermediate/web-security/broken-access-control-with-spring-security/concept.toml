@@ -1,0 +1,601 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "broken-access-control-with-spring-security"
+level = "intermediate"
+module = "web-security"
+title = "Broken Access Control with Spring Security"
+short_title = "Access Control with Spring Security"
+package = "accesscontrolspring"
+main_class = "AccessControlSpringDemo"
+tagline = "A framework enforces exactly the rules it is given"
+bold = "Spring Security enforces every rule it is given and nothing else: a sign-in rule where an ownership rule was needed, a pattern that misses a sub-path, and a permitAll() at the end let seven of nine attacks through. Deny by default, the owner in the query, method security, a denial log and a route inventory test close all nine."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Broken access control with Spring Security, OWASP A01, in Java. Explained with an online store, like a building with a good lock on every door the architect drew, and no lock on the doors added later. A real Spring Boot 4 store with three common mistakes lets seven of nine attacks through: a sign-in rule where an ownership rule was needed, a pattern that covers /admin/users but not /admin/users/ben, and permitAll() at the end. Then it is fixed with deny by default in the filter chain, the owner in the query, @PreAuthorize and @PostAuthorize compared, a log of every refusal from AuthorizationDeniedEvent, and a route inventory test that reads Spring MVC's own handler mapping and fails the build when a route has no rule."""
+thumb_lines = ["ACCESS CONTROL", "SPRING SECURITY"]
+thumb_code = "anyRequest().denyAll()"
+youtube_title = "Broken Access Control with Spring Security (Deny by Default, BOLA, Route Inventory) - OWASP A01"
+youtube_tags = ["spring security", "broken access control", "idor", "bola", "owasp top 10", "authorization", "spring boot", "java", "application security"]
+
+[readme]
+technologies = [
+    ["Spring Boot", "4.1.1", "the store's web server and wiring; its BOM pins the Spring versions below"],
+    ["Spring Security", "7.1.1", "the filter chain, method security and authorization events"],
+    ["Spring Framework", "7.0.9", "Spring MVC, whose handler mapping the route inventory reads"],
+]
+intro = """
+The plain version of this lesson built access control by hand. Real Java services usually get it from **Spring Security**, which is very good at enforcing rules,
+and enforces exactly the rules it is given. This project starts a real **Spring Boot 4** store twice. The first time it has three common configuration
+mistakes, and seven of the plain project's nine attacks still succeed. The second time it is fixed with the framework's own tools:
+
+- **deny by default** in `authorizeHttpRequests`, with one rule per method and path and `anyRequest().denyAll()` last;
+- **object-level checks in the query** (`findByIdAndOwner`), so another customer's order is simply not found;
+- **method security**: `@PreAuthorize` on the refund service, and `@PostAuthorize` compared with the query-level check;
+- **a log of every refusal**, from Spring Security's `AuthorizationDeniedEvent`;
+- **a route inventory test**, which reads Spring MVC's own handler mapping and fails the build when a route has no rule.
+
+It maps to **OWASP Top 10 (2025) A01, Broken Access Control**; **OWASP API Security Top 10 (2023) API1**, broken object level authorization, and **API5**,
+broken function level authorization; **CWE-639**, **CWE-862** and **CWE-285**; and the **Authorization** chapter of **OWASP ASVS 5.0**.
+"""
+analogy = """
+Think of a building with a good lock on every door the architect drew. The locks are excellent. But a door added later has no lock until someone fits one, a lock that only checks
+for a staff badge cannot tell whose office it is, and a sign saying "all other doors: open" undoes the rest. The fix is a building where every door starts locked, every
+office lock checks the name on the door, and someone walks the corridors with the floor plan to find doors that are not on it.
+"""
+scenario = """
+An online store's API serves orders, delivery addresses, refunds, user management and a sales report, with Spring Boot and Spring Security. The demo attacks the store
+as a customer called ana, first with a configuration that has three common mistakes, then with one that uses deny by default, ownership in the query and method security.
+"""
+costs = [
+    "**Rules live in two places.** URL rules in the filter chain and annotations on methods are both needed, and both must be read to know who may do what. The route inventory test keeps the URL rules complete.",
+    "**Ownership needs the owner in the query.** `findByIdAndOwner` costs nothing extra when it is the query; checking afterwards with `@PostAuthorize` runs the work first and answers 403, which tells the caller the order exists.",
+    "**Deny by default refuses honest mistakes too.** A new route answers 403 until someone writes its rule, which is the point, and is a surprise the first time.",
+    "**The framework does not know the business.** No configuration can say that an order belongs to ana; that rule is code the store must write and test.",
+]
+too_much = """
+For a single-page tool with one user, a filter chain with one rule is enough. For any store with customers and staff, all of this is the minimum,
+and the route inventory test is the cheapest part: it runs in the normal test suite and needs no maintenance until a route is added.
+"""
+met_before = [
+    "`authorizeHttpRequests` with `anyRequest().denyAll()` or `anyRequest().authenticated()` at the end of a `SecurityFilterChain`.",
+    "`@PreAuthorize` and `@PostAuthorize` on service methods, switched on by `@EnableMethodSecurity`.",
+    "Spring Data methods such as `findByIdAndOwner(id, owner)`.",
+    "Pen-test findings titled IDOR, BOLA or BFLA in a Spring application.",
+]
+where = """
+This is the tools version of [broken-access-control](../broken-access-control), in [web-security](..). It uses Spring Security as the beginner project
+[least-privilege-with-spring-security](../../../beginner/safe-habits/least-privilege-with-spring-security) did, and applies it to object-level access.
+"""
+twin = """
+Each act starts a real Spring Boot server on a free port on the loopback address and sends real HTTP requests, so every rule is the framework's own. The users,
+orders and requests are fixed, and only status codes and counts are printed, so the output is the same on every run. Every attack targets only this project's own code.
+"""
+test_note = "Every test starts a real Spring Boot server on a free loopback port and checks only status codes, counts and log lines, so the results are exact on every run."
+
+[[act]]
+title = "A Spring store with three common mistakes"
+summary = "A sign-in rule where ownership was needed, a pattern that misses /admin/users/ben, and permitAll() at the end let seven of nine attacks through."
+detail = """
+The first store's rules are: /account and /orders/** need a sign-in, /admin/users needs the admin role, and anyRequest().permitAll() covers the rest. Ana reads her own order 1001 and gets 200, and ben's order 1002 and also gets 200:
+the rule said signed in, not whose order. Someone signed out reads /admin/reports and gets 200: permitAll let through a route nobody listed. Ana gets 403 for GET /admin/users, but 200 for DELETE /admin/users/ben, because the
+pattern /admin/users does not cover /admin/users/ben, and ben's account is gone. Of the plain project's nine attacks, seven succeed; the one handler written carefully refuses ana with 403. The page hid the admin links from ana, which protected nothing.
+"""
+speech = """
+First demo: a Spring store with three common mistakes. [[slnc 400]] Its rules say: orders need a sign in, the user list needs an admin, and everything else is permitted. [[slnc 600]]
+Ana reads ben's order. [[slnc 300]] Two hundred. [[slnc 300]] The rule said signed in, not whose order. [[slnc 600]]
+Someone signed out reads the sales report. [[slnc 300]] Two hundred. [[slnc 300]] Permit all let through a route nobody listed. [[slnc 600]]
+Ana is refused the user list, but deleting ben's account works. [[slnc 300]] The pattern for the list does not cover the path below it. [[slnc 600]]
+Seven of the nine attacks succeed, against a real Spring Security configuration.
+"""
+rows = { chain = "active wrong" }
+console = [
+    ["its rules: /account and /orders/** need a sign-in, /admin/users needs ADMIN, and anyRequest().permitAll() for the rest", "muted"],
+    ["ana reads ben's order 1002: 200  <- THE RULE SAID SIGNED IN, NOT WHOSE ORDER", "bad"],
+    ["someone signed out reads /admin/reports: 200  <- permitAll() LET THROUGH A ROUTE NOBODY LISTED", "bad"],
+    ["ana: GET /admin/users 403, DELETE /admin/users/ben 200  <- THE PATTERN /admin/users DOES NOT COVER /admin/users/ben", "bad"],
+    ["ben's account still exists: false", "bad"],
+    ["the nine attacks of the plain project: 7 of 9 succeed; the one handler written carefully refused ana: 403", "amber"],
+]
+
+[[act]]
+title = "Deny by default in the filter chain"
+summary = "One rule per method and path, with denyAll() last: signed out gets 401, the wrong role 403, and a method or path with no rule 403, even for an admin."
+detail = """
+The guarded store builds its filter chain from one list of rules, one per method and path, and anyRequest().denyAll() is the last rule. Someone signed out reading /admin/reports gets 401; ana gets 403 for the report, the refund,
+the user list and the account deletion. A PUT that nobody wrote a rule for gets 403, and so does dave the admin asking for /admin/debug, a path nobody wrote. But the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is.
+"""
+speech = """
+Second demo: deny by default. [[slnc 400]] Every route has a rule, by method and path, and the last rule denies everything else. [[slnc 600]]
+Signed out, the sales report answers four oh one. [[slnc 300]] Ana gets four oh three for the report, the refund, the user list and the deletion. [[slnc 600]]
+A method nobody wrote a rule for is refused. [[slnc 300]] Even the admin is refused a path nobody wrote. [[slnc 600]]
+But a URL rule can only say signed in. [[slnc 300]] It cannot know whose order is behind the number.
+"""
+rows = { chain = "active ok" }
+console = [
+    ["every route has a rule by method and path, and anyRequest().denyAll() is the last rule", "muted"],
+    ["someone signed out reads /admin/reports: 401  <- WHO ARE YOU?", "ok"],
+    ["ana reads /admin/reports: 403; ana refunds order 1002: 403", "ok"],
+    ["ana: GET /admin/users 403, DELETE /admin/users/ben 403", "ok"],
+    ["ana sends PUT /orders/1001, a method nobody wrote a rule for: 403  <- NO RULE, NO ACCESS", "ok"],
+    ["but the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is", "amber"],
+]
+
+[[act]]
+title = "The object-level check, in the query"
+summary = "findByIdAndOwner makes ben's order 404 for ana in all four object attacks; @PostAuthorize instead answers 403 after the lookup has run; 0 of 9 attacks succeed, 6 of 6 honest requests work."
+detail = """
+Ana's four attempts on ben's orders, reading order 1002, reading his gift order from a leaked link, sending it to her address and cancelling it, all answer 404: the lookup is findByIdAndOwner(id, ana), so ben's order is not found, like a missing order.
+Sam from support reads order 1002 with 200, because staff may read any order. The same check written with @PostAuthorize instead answers ana's gift link with 403, and the lookup ran: the 403 confirms the order exists, and the work was already done. Ben opens his own link with 200.
+Against the guarded store, 0 of the 9 attacks succeed, and all 6 honest requests still work.
+"""
+speech = """
+Third demo: the object level check, in the query. [[slnc 400]] Ana's four attempts on ben's orders all answer four oh four. [[slnc 600]]
+The lookup asks for the order with this number and this owner, so ben's order is simply not found. [[slnc 300]] Exactly like a missing one. [[slnc 600]]
+Support staff may still read any order. [[slnc 600]]
+The same check written as a post authorize rule answers four oh three, after the lookup has run. [[slnc 300]] That confirms the order exists, and the work is already done. [[slnc 600]]
+None of the nine attacks succeed now. [[slnc 300]] All six honest requests still work.
+"""
+rows = { objects = "active ok" }
+console = [
+    ["ana reads ben's order 1002: 404; his gift order: 404; moves it: 404; cancels it: 404", "ok"],
+    ["the lookup is findByIdAndOwner(id, ana), so ben's order is not found: 404, like a missing order", "ok"],
+    ["sam from support reads order 1002: 200, staff may read any order", "muted"],
+    ["with @PostAuthorize instead: ana opens ben's gift link: 403, and the lookup ran: true  <- 403 CONFIRMS THE ORDER EXISTS", "amber"],
+    ["attacks that succeed: 0 of 9; honest requests that still work: 6 of 6", "ok"],
+]
+
+[[act]]
+title = "Method security, and a log of every refusal"
+summary = "@PreAuthorize on the refund service refuses a nightly job running as ana with no URL in between; 22 refusals are logged with who and what, and none contains a password or header."
+detail = """
+RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"), so the rule travels with the method. A nightly job running as ana that calls the refund service directly, with no URL in between, is refused; the same job running as sam is recorded.
+By now 22 refusals are logged, such as "DENY someone signed out GET /admin/reports", "DENY ana DELETE /admin/users/ben", "DENY ana GET /orders/{id}: order 1002 is not theirs" and "DENY ana RefundService.refund". No password or Authorization header appears in the log.
+The filter chain and method security publish an AuthorizationDeniedEvent for their refusals; the store logs its object-level refusals itself.
+"""
+speech = """
+Fourth demo: method security, and a log. [[slnc 400]] The refund service carries its own rule: support or admin only. [[slnc 600]]
+A nightly job running as ana calls the service directly, with no web address in between. [[slnc 300]] It is refused. [[slnc 300]] The same job running as sam works. [[slnc 600]]
+Every refusal so far is logged, twenty two of them, with who asked and for what. [[slnc 300]] No password and no credentials header appears in the log. [[slnc 600]]
+Spring Security publishes an event for each refusal it makes, and the store logs the refusals it makes itself.
+"""
+rows = { methods = "active ok", log = "active ok" }
+console = [
+    ["a nightly job running as ana calls the refund service directly, with no URL in between: refused", "ok"],
+    ["the same job running as sam: recorded", "muted"],
+    ["refusals logged so far: 22, for example:", "muted"],
+    ["  DENY ana DELETE /admin/users/ben", "muted"],
+    ["  DENY ana GET /orders/{id}: order 1002 is not theirs", "muted"],
+    ["  DENY ana RefundService.refund", "muted"],
+    ["a password or an Authorization header appears in the log: false", "ok"],
+]
+
+[[act]]
+title = "The route inventory, and the bill"
+summary = "The inventory reads 11 routes from Spring MVC's handler mapping and reports GET /admin/export, added without a rule, which even the admin is refused."
+detail = """
+The route inventory reads every route the controllers serve from Spring MVC's own handler mapping: 11. A developer has added GET /admin/export and forgot its rule, so the routes without a rule are [GET /admin/export], and the route inventory test fails the build.
+Until it has one, even dave the admin is refused with 403, denied by default. The bill: rules now live in two places, the route list and the method annotations, and the inventory test keeps the first complete; and every object-level check needs the owner in the query,
+with @PostAuthorize as a fallback for when it cannot be there.
+"""
+speech = """
+Fifth demo: the route inventory, and the bill. [[slnc 400]] A test reads every route the controllers serve, straight from Spring's own handler mapping. [[slnc 300]] Eleven routes. [[slnc 600]]
+A developer adds an export route and forgets its rule. [[slnc 300]] The test names it, and fails the build. [[slnc 300]] Until it has a rule, even the admin is refused. [[slnc 600]]
+And the bill. [[slnc 300]] Rules now live in two places, the route list and the method annotations. [[slnc 300]] And every ownership check needs the owner in the query, with post authorize only as a fallback.
+"""
+rows = { inventory = "active ok" }
+console = [
+    ["routes the controllers serve, read from Spring MVC's handler mapping: 11", "muted"],
+    ["a developer has added GET /admin/export and forgot its rule; routes without a rule: [GET /admin/export]  <- THE ROUTE INVENTORY TEST FAILS THE BUILD", "bad"],
+    ["until it has one, even dave the admin is refused: 403, denied by default", "ok"],
+    ["the bill: rules now live in two places, the route list and the method annotations", "amber"],
+    ["every object-level check needs the owner in the query, and @PostAuthorize is a fallback", "amber"],
+]
+
+[animation]
+subtitle = "A real Spring Boot store is broken by three configuration mistakes, then fixed with deny by default, ownership in the query and method security."
+boxes = [
+    ["chain", "Filter chain", "one rule per route, denyAll() last"],
+    ["objects", "Ownership", "findByIdAndOwner"],
+    ["methods", "Method security", "@PreAuthorize on the service"],
+    ["log", "Denial log", "AuthorizationDeniedEvent"],
+    ["inventory", "Route inventory", "every mapped route has a rule"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses Spring Boot, which brings Spring Framework, Spring MVC on Tomcat, and Spring Security.
+"""
+what = [
+    ["Spring Boot", "starts the store as a real web server on a free loopback port and wires its parts together. Its bill of materials pins every Spring version."],
+    ["Spring Security", "the filter chain (`authorizeHttpRequests`), HTTP Basic sign-in, method security (`@PreAuthorize`, `@PostAuthorize`) and the `AuthorizationDeniedEvent` the denial log listens to."],
+    ["Spring MVC", "the controllers, and the `RequestMappingHandlerMapping` that the route inventory reads to list every route really served."],
+]
+why = """
+The plain project showed access control built by hand. Most Java services use Spring Security, and most access-control bugs in them are configuration mistakes the framework enforces faithfully.
+This project shows those mistakes and the framework's own tools for preventing them.
+"""
+install_note = "A JDK. Gradle downloads the libraries, and the versions are pinned:"
+versions = [
+    ["Spring Boot", "4.1.1"],
+    ["Spring Framework", "7.0.9"],
+    ["Spring Security", "7.1.1"],
+    ["Tomcat (embedded)", "11.0.24"],
+    ["Java", "25"],
+    ["JUnit", "6.1.3"],
+]
+costs = [
+    "A framework of tens of megabytes for an API of eleven routes.",
+    "Rules split between the filter chain and annotations, which must both be read.",
+    "Each run starts real servers, so the demo and tests take seconds rather than milliseconds.",
+]
+
+[docs.problem]
+scenario = """
+An online store's Spring Boot API serves orders, delivery addresses, refunds, user management and a sales report to customers, support staff and admins.
+"""
+naive = """
+Write a few URL rules for the paths that seem sensitive, end with permitAll() or authenticated(), look orders up by id, and trust the framework to do the rest.
+"""
+deliver = [
+    "A naive Spring Security configuration with three common mistakes, and the attacks that pass it.",
+    "A guarded configuration built from one rule list, with denyAll() last.",
+    "Ownership in the query, and @PostAuthorize compared with it.",
+    "Method security on the refund service, which holds for callers with no URL.",
+    "A denial log from AuthorizationDeniedEvent, with no credentials.",
+    "A route inventory test that reads Spring MVC's handler mapping.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain project broken-access-control, or what IDOR, horizontal and vertical escalation mean",
+]
+not_required = [
+    "Earlier Spring experience: the configuration is small and explained",
+    "A database: orders are kept in memory, looked up the way a Spring Data repository would",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "read a SecurityFilterChain and find the rule a request matches",
+    "explain why deny by default must be the last rule",
+    "put ownership into the query rather than after it",
+    "use method security for rules that must hold for every caller",
+    "keep URL rules complete with a route inventory test",
+]
+walkthrough = """
+Start with the building and its locks. Show the naive configuration and ask the group which requests it lets through before running act one. After act two, ask what the filter chain cannot know.
+After act three, compare the 404 and the 403 and ask what each tells an attacker. Finish by adding a route without a rule and running the tests.
+"""
+exercises = [
+    "Add a support-only route for refund notes: write its rule first, watch the inventory test pass, then remove the rule and watch it fail.",
+    "Move the staff check out of OrderAccess into a @PreAuthorize expression and compare the two.",
+    "Make the route inventory test also fail when a rule exists for a route that no longer exists.",
+    "Replace HTTP Basic with a bearer token and check that every status stays the same.",
+]
+
+[docs.explained]
+sentence = """
+Spring Security enforces exactly the rules it is given, so broken access control in a Spring application is usually a missing or too-broad rule; the fix is deny by default in the filter chain, ownership in the query, method security for rules that must hold everywhere, and a test that every mapped route has a rule.
+"""
+verdict = """
+End every SecurityFilterChain with anyRequest().denyAll(). Write one rule per method and path, from one list. Look objects up with the owner in the query. Put rules that must hold for every caller on the service method with @PreAuthorize,
+and use @PostAuthorize only when the check cannot be in the query. Publish refusals as events and log them without secrets. Read the handler mapping in a test, and fail the build when a route has no rule.
+"""
+recognise = [
+    "`anyRequest().permitAll()` at the end of a configuration: the first thing to look for in a review.",
+    "`requestMatchers(\"/admin/users\")` where `/admin/users/**` was meant.",
+    "`findById(id)` in a controller that serves customers.",
+    "`@EnableMethodSecurity` and `@PreAuthorize` on services.",
+]
+
+[spec]
+purpose = """
+Teach broken access control in Spring by attacking a real Spring Boot store with three common configuration mistakes and fixing it with deny by default, ownership in the query, method security, a denial log and a route inventory test.
+"""
+nongoals = [
+    "Authentication methods: the beginner identity module and the intermediate identity module.",
+    "Cross-site request forgery: its own project (CSRF is off here because the API is stateless with credentials in a header).",
+    "Spring Data and a real database: the orders are in memory, looked up the same way.",
+]
+problem = """
+Most access-control bugs in Spring applications are configuration mistakes that the framework enforces faithfully, and they pass every test that does not try another user's data.
+"""
+roles = [["The rule list", "`AccessRules`"], ["The fixed filter chain", "`GuardedSecurity`"], ["The mistaken filter chain", "`NaiveSecurity`"], ["Who may see which order", "`OrderAccess`"], ["Orders, by id and by owner", "`Orders`"], ["Refunds with method security", "`RefundService`"], ["The denial log", "`DenialLog`"], ["The route inventory", "`RouteInventory`"], ["Entry point", "`AccessControlSpringDemo`"]]
+requirements = [
+    "The naive store lets exactly seven of the nine attacks through.",
+    "The guarded store refuses all nine attacks and serves all six honest requests.",
+    "Someone else's order answers 404, signed out answers 401, the wrong role and any route without a rule 403.",
+    "The refund service refuses a caller without the role even with no URL in between.",
+    "Every refusal is logged, and no log line contains a password or an Authorization header.",
+    "The route inventory reports a route without a rule, read from Spring MVC's handler mapping.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Three walls between a request and an order"
+caption = "The filter chain decides by route, the query decides by owner, and method security decides by role on the service itself."
+nodes = [
+    { id = "req", label = "Request", sub = "ana: GET /orders/1002", col = 0, row = 0, colour = "client" },
+    { id = "chain", label = "Filter chain", sub = "one rule per route, denyAll() last", col = 1, row = 0, colour = "green" },
+    { id = "ctrl", label = "Controller", sub = "no rules of its own", col = 2, row = 0, colour = "accent" },
+    { id = "access", label = "OrderAccess", sub = "findByIdAndOwner", col = 3, row = 0, colour = "green" },
+    { id = "refund", label = "RefundService", sub = "@PreAuthorize", col = 3, row = 1, colour = "green" },
+    { id = "log", label = "Denial log", sub = "who, what, never credentials", col = 1, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "req", to = "chain" },
+    { from = "chain", to = "ctrl", label = "allowed" },
+    { from = "ctrl", to = "access" },
+    { from = "ctrl", to = "refund" },
+    { from = "chain", to = "log", label = "refused", dashed = true },
+    { from = "refund", to = "log", label = "refused", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "One list of rules feeds both the filter chain and the inventory test."
+nodes = [
+    { id = "rules", label = "AccessRules", sub = ["RULES", "apply(registry)", "covers(method, pattern)"], col = 0, row = 0, colour = "green" },
+    { id = "guarded", label = "GuardedSecurity", sub = ["chain(http)"], col = 1, row = 0, colour = "green" },
+    { id = "inventory", label = "RouteInventory", sub = ["routes(context)", "withoutRule(context)"], col = 2, row = 0, colour = "accent" },
+    { id = "access", label = "OrderAccess", sub = ["readable(id, who)", "changeable(id, who)", "byLink(id) @PostAuthorize"], col = 0, row = 1, colour = "green" },
+    { id = "orders", label = "Orders", sub = ["findById(id)", "findByIdAndOwner(id, owner)"], col = 1, row = 1, colour = "amber" },
+    { id = "log", label = "DenialLog", sub = ["onDenied(event)", "objectDenied(...)"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "guarded", to = "rules", label = "built from" },
+    { from = "inventory", to = "rules", label = "checks against" },
+    { from = "access", to = "orders", label = "looks up" },
+    { from = "access", to = "log", label = "reports to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "How the guarded filter chain decides"
+caption = "Rules are tried in order; a request that matches none of them reaches denyAll()."
+nodes = [
+    { id = "in", label = "Request", sub = "method and path", col = 0, row = 0, colour = "client" },
+    { id = "match", label = "First matching rule", sub = "from AccessRules", col = 1, row = 0, colour = "accent" },
+    { id = "allow", label = "Allowed", sub = "permitAll, authenticated or role", col = 2, row = 0, colour = "green" },
+    { id = "deny", label = "denyAll()", sub = "no rule matched", col = 2, row = 1, colour = "red" },
+]
+edges = [
+    { from = "in", to = "match" },
+    { from = "match", to = "allow", label = "rule passes" },
+    { from = "match", to = "deny", label = "no rule", dashed = true },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Ana asks for ben's order: who checks what, in order"
+participants = ["ana", "Filter chain", "OrderAccess", "Orders"]
+steps = [
+    ["ana", "Filter chain", "GET /orders/1002"],
+    ["note", "Filter chain", "rule: signed in, passes"],
+    ["Filter chain", "OrderAccess", "readable(1002, ana)"],
+    ["OrderAccess", "Orders", "findByIdAndOwner(1002, ana)"],
+    ["Orders", "OrderAccess", "nothing", "reply"],
+    ["OrderAccess", "ana", "404, and a DENY line in the log", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "@PostAuthorize: the work is done before the refusal"
+caption = "The lookup runs, then the rule reads the result and refuses with 403."
+participants = ["ana", "Method security", "OrderAccess.byLink"]
+steps = [
+    ["ana", "Method security", "GET /orders/by-link/gift"],
+    ["Method security", "OrderAccess.byLink", "run the lookup"],
+    ["OrderAccess.byLink", "Method security", "ben's gift order", "reply"],
+    ["note", "Method security", "returnObject.owner is not ana"],
+    ["Method security", "ana", "403", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A route without a rule"
+caption = "The inventory test reads the handler mapping and fails; at run time the route is denied by default."
+participants = ["Test", "Handler mapping", "AccessRules"]
+steps = [
+    ["Test", "Handler mapping", "list every route"],
+    ["Handler mapping", "Test", "11 routes, including GET /admin/export", "reply"],
+    ["Test", "AccessRules", "covers(GET, /admin/export)?"],
+    ["AccessRules", "Test", "no", "reply"],
+    ["note", "Test", "the build fails"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["chain", "service", "orders"], colour = "green" },
+    { label = "Operations", nodes = ["log"], colour = "amber" },
+    { label = "Outside", nodes = ["customer", "outsider"], colour = "red" },
+]
+nodes = [
+    { id = "chain", label = "Filter chain", sub = "route rules, denyAll() last", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T2", "T3", "T5"] },
+    { id = "service", label = "Services", sub = "OrderAccess, RefundService", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T4"] },
+    { id = "orders", label = "Orders", sub = "looked up by owner", col = 2, row = 1, colour = "accent", shape = "store", threats = ["T1"] },
+    { id = "log", label = "Denial log", sub = "who and what", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T6"] },
+    { id = "customer", label = "Customer", sub = "signed in as ana", col = 0, row = 0, colour = "red", threats = ["T1", "T3", "T4"] },
+    { id = "outsider", label = "Someone signed out", sub = "no credentials", col = 0, row = 1, colour = "red", threats = ["T2"] },
+]
+edges = [
+    { from = "customer", to = "chain", label = "requests" },
+    { from = "outsider", to = "chain", label = "requests", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "chain", to = "service", label = "allowed" },
+    { from = "service", to = "orders" },
+    { from = "chain", to = "log", label = "refusals", dashed = true },
+]
+
+[poster]
+headline = [["ACCESS CONTROL", "text"], ["SPRING SECURITY", "accent"]]
+taglines = [["A framework enforces exactly the rules it is given", "gold"]]
+before = { code = "anyRequest().permitAll()", note = "7 of 9 attacks succeed", tag = "BEFORE" }
+after = { code = "anyRequest().denyAll()", note = "0 of 9, and a route inventory test", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Broken Access Control with Spring Security"
+narration = """Hello, and welcome. [[slnc 400]] This video explains broken access control with Spring Security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Spring Security enforces every access rule it is given. [[slnc 300]] And nothing else. [[slnc 600]] Think of a building with a good lock on every door the architect drew. [[slnc 300]] A door added later has no lock. [[slnc 300]] A lock that checks for a staff badge cannot tell whose office it is. [[slnc 300]] And a sign saying, all other doors open, undoes the rest. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear three common configuration mistakes. [[slnc 300]] How deny by default closes them. [[slnc 300]] Why ownership belongs in the query. [[slnc 300]] And how a test finds a route with no rule."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store on Spring Boot.", "", "Orders, addresses, refunds,", "users and a sales report.", "", "A customer called ana", "tries what she should not."]
+narration = """Here is the scenario. [[slnc 400]] An online store runs on Spring Boot and Spring Security. [[slnc 500]] It serves orders, delivery addresses, refunds, user management and a sales report. [[slnc 500]] A customer called ana tries everything she should not be able to do."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Filter chain: rules by route", "denyAll(): refuse what no rule allows", "Object level: whose record is it?", "Method security: rules on the service", "Route inventory: every route has a rule"]
+narration = """Before the demos, the words. [[slnc 500]] The filter chain holds the rules for each route. [[slnc 500]] Deny all, as the last rule, refuses whatever no rule allows. [[slnc 500]] The object level asks whose record it is. [[slnc 500]] Method security puts rules on the service methods themselves. [[slnc 500]] And a route inventory checks that every route has a rule."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Three Walls"
+body = ["The filter chain: may this person use this route?", "The query: is this record theirs?", "Method security: may this caller do this, from anywhere?", "", "Each catches what the others cannot."]
+narration = """Let's put the walls side by side. [[slnc 400]] The filter chain asks whether this person may use this route. [[slnc 500]] The query asks whether this record is theirs. [[slnc 500]] Method security asks whether this caller may do this, wherever the call comes from. [[slnc 600]] Each one catches what the others cannot see."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["AccessRules: one list of route rules", "GuardedSecurity: the chain, denyAll() last", "OrderAccess and Orders: ownership", "RefundService: @PreAuthorize", "RouteInventory and DenialLog"]
+narration = """Here is who does what in the code. [[slnc 400]] The access rules class is one list of route rules. [[slnc 500]] The guarded security class builds the filter chain from it, with deny all last. [[slnc 500]] The order access and orders classes decide ownership in the lookup. [[slnc 500]] The refund service carries its own rule. [[slnc 300]] And the route inventory and the denial log keep everything visible."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["anyRequest().permitAll() in a review", "requestMatchers(\"/admin/users\") without /**", "findById in a customer's controller", "Pen-test findings: IDOR, BOLA, BFLA"]
+narration = """You have probably met this already. [[slnc 400]] Permit all at the end of a configuration is the first thing a reviewer looks for. [[slnc 500]] A pattern for a path, where the path and everything below it was meant. [[slnc 500]] Find by id, in a controller that serves customers. [[slnc 500]] And pen test reports with names like I D O R and B O L A."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["End the chain with denyAll()", "One rule per method and path", "Owner in the query", "@PreAuthorize on services", "Fail the build on a route without a rule"]
+narration = """So, how do you use it? [[slnc 400]] End every filter chain with deny all. [[slnc 500]] Write one rule per method and path, from one list. [[slnc 500]] Put the owner in the query. [[slnc 500]] Put rules that must hold everywhere on the service methods. [[slnc 500]] And fail the build when a route has no rule."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a route,", "and watch the inventory test fail."]
+narration = """That's broken access control with Spring Security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The framework enforces exactly the rules it is given, so deny by default, and put the owner in the query. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a route without a rule, and watch the inventory test fail. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+Access control in an online store's Spring Boot API: the filter chain's route rules, the ownership checks on orders, method security on refunds, the denial log and the route inventory. It covers a signed-in customer reaching other customers'
+data or staff functions, and someone signed out reaching any route. It does not cover authentication strength, CSRF, or the storage of orders.
+"""
+assets = [
+    "Customers' orders and delivery addresses.",
+    "Staff functions: refunds, user management and the sales report.",
+    "Customer accounts.",
+    "The denial log.",
+]
+actors = [
+    "Customers, who should reach only their own orders.",
+    "Support staff and admins, with wider rights.",
+    "Someone signed out.",
+    "Developers adding routes later.",
+]
+boundaries = [
+    "Internet to the filter chain: every request crosses it.",
+    "Controller to service: the method security boundary, which also guards callers with no URL.",
+    "Service to the order store: where ownership is decided.",
+]
+assumptions = [
+    "Authentication is sound: a signed-in name is the real person.",
+    "Every controller is in the store's own package, so the inventory sees it.",
+    "In the demo, every account has the demo password, and every attack targets only this project's own code.",
+]
+out_of_scope = [
+    "Authentication: the identity modules.",
+    "Cross-site request forgery: its own project.",
+    "Database-level row security: the advanced track.",
+]
+tests = [
+    "`GuardedStoreTest` checks twenty requests' statuses, all nine attacks failing, six honest requests working, @PostAuthorize, the denial log and the route inventory.",
+    "`NaiveAndLaterStoreTest` checks the three naive mistakes, and that a later route without a rule is reported and refused.",
+    "`OrdersTest` checks that ownership is part of the lookup and that the rule list has no duplicates.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in web-security, cross-site-scripting, moves from who may act to what the store sends back to the browser.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A customer reads or changes another customer's order by changing its number (IDOR, BOLA)"
+where = "`OrderAccess`, `Orders`"
+control = "The owner is part of the query (findByIdAndOwner), so someone else's order is not found"
+residual = "Every new lookup must use the owner too; a findById in a customer path brings the problem back"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A route nobody listed is reachable by anyone, through permitAll() at the end of the chain"
+where = "`NaiveSecurity`"
+control = "anyRequest().denyAll() is the last rule of the guarded chain"
+residual = "A rule that is too broad, such as permitAll on /**, still opens everything below it"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A pattern covers a path but not the paths below it, so DELETE /admin/users/ben is unchecked"
+where = "`NaiveSecurity`"
+control = "One rule per method and exact pattern, and deny by default for anything else"
+residual = "Pattern syntax must be read carefully in review; tests per route catch it"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "A staff function is called from somewhere with no URL rule, such as a job or a new controller"
+where = "`RefundService`"
+control = "@PreAuthorize on the service method holds for every caller"
+residual = "Code that skips the Spring proxy, such as a call from inside the same class, is not checked"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "A new route is added without a rule"
+where = "`AccessRules`, `RouteInventory`"
+control = "Denied by default at run time, and the route inventory test fails the build"
+residual = "Controllers outside the store's package are not inventoried"
+
+[[threat]]
+id = "T6"
+stride = "R"
+threat = "Attacks go unnoticed, or credentials end up in the logs"
+where = "`DenialLog`"
+control = "Every refusal is logged with who and what, from AuthorizationDeniedEvent and from the store; no credentials or headers are logged"
+residual = "Someone must read the log and alert on it: the detection module"

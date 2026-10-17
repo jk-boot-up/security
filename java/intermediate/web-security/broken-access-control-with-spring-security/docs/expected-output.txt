@@ -1,0 +1,45 @@
+ONE. A Spring store with three common mistakes.
+  its rules: /account and /orders/** need a sign-in, /admin/users needs ADMIN, and anyRequest().permitAll() for the rest
+  ana reads her own order 1001: 200
+  ana reads ben's order 1002: 200  <- THE RULE SAID SIGNED IN, NOT WHOSE ORDER
+  someone signed out reads /admin/reports: 200  <- permitAll() LET THROUGH A ROUTE NOBODY LISTED
+  ana: GET /admin/users 403, DELETE /admin/users/ben 200  <- THE PATTERN /admin/users DOES NOT COVER /admin/users/ben
+  ben's account still exists: false
+  the nine attacks of the plain project: 7 of 9 succeed; the one handler written carefully, DELETE /orders/{id}, refused ana: 403
+  the page hid the admin links from ana: links shown: orders, account (the admin links are hidden)
+TWO. Deny by default in the filter chain.
+  every route has a rule by method and path, and anyRequest().denyAll() is the last rule
+  someone signed out reads /admin/reports: 401  <- WHO ARE YOU?
+  ana reads /admin/reports: 403
+  ana refunds order 1002: 403
+  ana: GET /admin/users 403, DELETE /admin/users/ben 403
+  ana sends PUT /orders/1001, a method nobody wrote a rule for: 403  <- NO RULE, NO ACCESS
+  dave the admin asks for /admin/debug, a path nobody wrote: 403
+  but the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is
+THREE. The object-level check, in the query.
+  ana reads ben's order 1002 (object level, horizontal): 404
+  ana reads ben's gift order from a leaked link: 404
+  ana sends ben's order 1002 to her address (horizontal): 404
+  ana cancels ben's order 1002: 404
+  the lookup is findByIdAndOwner(id, ana), so ben's order is not found: 404, like a missing order
+  sam from support reads order 1002: 200, staff may read any order
+  the same check with @PostAuthorize instead: ana opens ben's gift link: 403, and the lookup ran: true  <- 403 CONFIRMS THE ORDER EXISTS, AND THE WORK WAS ALREADY DONE
+  ben opens his own gift link: 200
+  attacks that succeed: 0 of 9; honest requests that still work: 6 of 6
+FOUR. Method security, and a log of every refusal.
+  RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"), so the rule travels with the method
+  a nightly job running as ana calls the refund service directly, with no URL in between: refused
+  the same job running as sam: recorded
+  refusals logged so far: 22, for example:
+    DENY someone signed out GET /admin/reports
+    DENY ana DELETE /admin/users/ben
+    DENY ana GET /orders/{id}: order 1002 is not theirs
+    DENY ana RefundService.refund
+  a password or an Authorization header appears in the log: false
+  the filter chain and method security publish an AuthorizationDeniedEvent; the store logs the object-level refusals itself
+FIVE. The route inventory, and the bill.
+  routes the controllers serve, read from Spring MVC's handler mapping: 11
+  a developer has added GET /admin/export and forgot its rule; routes without a rule: [GET /admin/export]  <- THE ROUTE INVENTORY TEST FAILS THE BUILD
+  until it has one, even dave the admin is refused: 403, denied by default
+  the bill: rules now live in two places, the route list and the method annotations, and the inventory test keeps the first complete
+  every object-level check needs the owner in the query, and @PostAuthorize is a fallback for when it cannot be there

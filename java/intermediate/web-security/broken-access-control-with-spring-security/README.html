@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broken Access Control with Spring Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Broken Access Control with Spring Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/accesscontrolspring/
+├── AccessControlSpringDemo.java  Runs the online store story in five numbered acts against real Spring Boot servers on the loopback interface
+├── AccessRules.java              Every route rule of the guarded store in one list, by method and path
+├── Catalogue.java                The store's people and orders: the same story as the plain project
+├── DenialLog.java                Every refusal, as one line: who asked and for what
+├── ExportController.java         A route a developer adds later and forgets to give a rule
+├── GuardedController.java        The guarded store's routes
+├── GuardedSecurity.java          The guarded store's filter chain: one rule per route from {@link AccessRules}, and everything else refused
+├── NaiveController.java          The naive store's routes: orders looked up by id alone, the refund service bypassed, and one handler, cancelling an order, written carefully
+├── NaiveSecurity.java            The naive store's filter chain, with three common mistakes: a sign-in rule where an ownership rule is needed, a pattern that covers {@code /admin/users} but not {@code /admin/users/ben}, and {@code anyRequest().permitAll()} at the end &quot;until it is locked down&quot;
+├── Order.java                    An order in the store
+├── OrderAccess.java              Who may see or change which order, in one place
+├── Orders.java                   The orders, held in memory
+├── Pages.java                    What the store's page shows each person: the admin links are hidden from everyone else, which is presentation, not protection
+├── RefundService.java            Refunds
+├── RouteInventory.java           Lists every route the store's controllers really serve, read from Spring MVC's own handler mapping, and reports each one that has no entry in {@link AccessRules}
+├── Shop.java                     The online store
+└── Wire.java                     A tiny HTTP client for the demo: one request, signed in with the demo password or not signed in at all
+</code></pre>
+<p><strong>Spring Security enforces every rule it is given and nothing else: a sign-in rule where an ownership rule was needed, a pattern that misses a sub-path, and a permitAll() at the end let seven of nine attacks through. Deny by default, the owner in the query, method security, a denial log and a route inventory test close all nine.</strong></p>
+<p>The plain version of this lesson built access control by hand. Real Java services usually get it from <strong>Spring Security</strong>, which is very good at enforcing rules,
+and enforces exactly the rules it is given. This project starts a real <strong>Spring Boot 4</strong> store twice. The first time it has three common configuration
+mistakes, and seven of the plain project's nine attacks still succeed. The second time it is fixed with the framework's own tools:</p>
+<ul>
+<li><strong>deny by default</strong> in <code>authorizeHttpRequests</code>, with one rule per method and path and <code>anyRequest().denyAll()</code> last;</li>
+<li><strong>object-level checks in the query</strong> (<code>findByIdAndOwner</code>), so another customer's order is simply not found;</li>
+<li><strong>method security</strong>: <code>@PreAuthorize</code> on the refund service, and <code>@PostAuthorize</code> compared with the query-level check;</li>
+<li><strong>a log of every refusal</strong>, from Spring Security's <code>AuthorizationDeniedEvent</code>;</li>
+<li><strong>a route inventory test</strong>, which reads Spring MVC's own handler mapping and fails the build when a route has no rule.</li>
+</ul>
+<p>It maps to <strong>OWASP Top 10 (2025) A01, Broken Access Control</strong>; <strong>OWASP API Security Top 10 (2023) API1</strong>, broken object level authorization, and <strong>API5</strong>,
+broken function level authorization; <strong>CWE-639</strong>, <strong>CWE-862</strong> and <strong>CWE-285</strong>; and the <strong>Authorization</strong> chapter of <strong>OWASP ASVS 5.0</strong>.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a building with a good lock on every door the architect drew. The locks are excellent. But a door added later has no lock until someone fits one, a lock that only checks
+for a staff badge cannot tell whose office it is, and a sign saying "all other doors: open" undoes the rest. The fix is a building where every door starts locked, every
+office lock checks the name on the door, and someone walks the corridors with the floor plan to find doors that are not on it.</p>
+<h2>The scenario</h2>
+<p>An online store's API serves orders, delivery addresses, refunds, user management and a sales report, with Spring Boot and Spring Security. The demo attacks the store
+as a customer called ana, first with a configuration that has three common mistakes, then with one that uses deny by default, ownership in the query and method security.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A Spring store with three common mistakes</td>
+<td>A sign-in rule where ownership was needed, a pattern that misses /admin/users/ben, and permitAll() at the end let seven of nine attacks through.</td>
+</tr>
+<tr>
+<td>2. Deny by default in the filter chain</td>
+<td>One rule per method and path, with denyAll() last: signed out gets 401, the wrong role 403, and a method or path with no rule 403, even for an admin.</td>
+</tr>
+<tr>
+<td>3. The object-level check, in the query</td>
+<td>findByIdAndOwner makes ben's order 404 for ana in all four object attacks; @PostAuthorize instead answers 403 after the lookup has run; 0 of 9 attacks succeed, 6 of 6 honest requests work.</td>
+</tr>
+<tr>
+<td>4. Method security, and a log of every refusal</td>
+<td>@PreAuthorize on the refund service refuses a nightly job running as ana with no URL in between; 22 refusals are logged with who and what, and none contains a password or header.</td>
+</tr>
+<tr>
+<td>5. The route inventory, and the bill</td>
+<td>The inventory reads 11 routes from Spring MVC's handler mapping and reports GET /admin/export, added without a rule, which even the admin is refused.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>GuardedStoreTest</code>, <code>NaiveAndLaterStoreTest</code>, <code>OrdersTest</code>. Every test starts a real Spring Boot server on a free loopback port and checks only status codes, counts and log lines, so the results are exact on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Each act starts a real Spring Boot server on a free port on the loopback address and sends real HTTP requests, so every rule is the framework's own. The users,
+orders and requests are fixed, and only status codes and counts are printed, so the output is the same on every run. Every attack targets only this project's own code.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>4.1.1</td>
+<td>the store's web server and wiring; its BOM pins the Spring versions below</td>
+</tr>
+<tr>
+<td>Spring Security</td>
+<td>7.1.1</td>
+<td>the filter chain, method security and authorization events</td>
+</tr>
+<tr>
+<td>Spring Framework</td>
+<td>7.0.9</td>
+<td>Spring MVC, whose handler mapping the route inventory reads</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/broken-access-control-with-spring-security-explained.html">Broken Access Control with Spring Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The filter chain decides by route, the query decides by owner, and method security decides by role on the service itself.</p>
+<p><img alt="Three walls between a request and an order" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>One list of rules feeds both the filter chain and the inventory test.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Rules are tried in order; a request that matches none of them reaches denyAll().</p>
+<p><img alt="How the guarded filter chain decides" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Ana asks for ben's order: who checks what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/broken-access-control-with-spring-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Rules live in two places.</strong> URL rules in the filter chain and annotations on methods are both needed, and both must be read to know who may do what. The route inventory test keeps the URL rules complete.</li>
+<li><strong>Ownership needs the owner in the query.</strong> <code>findByIdAndOwner</code> costs nothing extra when it is the query; checking afterwards with <code>@PostAuthorize</code> runs the work first and answers 403, which tells the caller the order exists.</li>
+<li><strong>Deny by default refuses honest mistakes too.</strong> A new route answers 403 until someone writes its rule, which is the point, and is a surprise the first time.</li>
+<li><strong>The framework does not know the business.</strong> No configuration can say that an order belongs to ana; that rule is code the store must write and test.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a single-page tool with one user, a filter chain with one rule is enough. For any store with customers and staff, all of this is the minimum,
+and the route inventory test is the cheapest part: it runs in the normal test suite and needs no maintenance until a route is added.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>authorizeHttpRequests</code> with <code>anyRequest().denyAll()</code> or <code>anyRequest().authenticated()</code> at the end of a <code>SecurityFilterChain</code>.</li>
+<li><code>@PreAuthorize</code> and <code>@PostAuthorize</code> on service methods, switched on by <code>@EnableMethodSecurity</code>.</li>
+<li>Spring Data methods such as <code>findByIdAndOwner(id, owner)</code>.</li>
+<li>Pen-test findings titled IDOR, BOLA or BFLA in a Spring application.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../broken-access-control">broken-access-control</a>, in <a href="..">web-security</a>. It uses Spring Security as the beginner project
+<a href="../../../beginner/safe-habits/least-privilege-with-spring-security">least-privilege-with-spring-security</a> did, and applies it to object-level access.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broken Access Control with Spring Security, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Broken Access Control with Spring Security, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Spring Security enforces exactly the rules it is given, so broken access control in a Spring application is usually a missing or too-broad rule; the fix is deny by default in the filter chain, ownership in the query, method security for rules that must hold everywhere, and a test that every mapped route has a rule.</p>
+<h2>The 5 acts</h2>
+<h3>1. A Spring store with three common mistakes</h3>
+<p>The first store's rules are: /account and /orders/** need a sign-in, /admin/users needs the admin role, and anyRequest().permitAll() covers the rest. Ana reads her own order 1001 and gets 200, and ben's order 1002 and also gets 200:
+the rule said signed in, not whose order. Someone signed out reads /admin/reports and gets 200: permitAll let through a route nobody listed. Ana gets 403 for GET /admin/users, but 200 for DELETE /admin/users/ben, because the
+pattern /admin/users does not cover /admin/users/ben, and ben's account is gone. Of the plain project's nine attacks, seven succeed; the one handler written carefully refuses ana with 403. The page hid the admin links from ana, which protected nothing.</p>
+<h3>2. Deny by default in the filter chain</h3>
+<p>The guarded store builds its filter chain from one list of rules, one per method and path, and anyRequest().denyAll() is the last rule. Someone signed out reading /admin/reports gets 401; ana gets 403 for the report, the refund,
+the user list and the account deletion. A PUT that nobody wrote a rule for gets 403, and so does dave the admin asking for /admin/debug, a path nobody wrote. But the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is.</p>
+<h3>3. The object-level check, in the query</h3>
+<p>Ana's four attempts on ben's orders, reading order 1002, reading his gift order from a leaked link, sending it to her address and cancelling it, all answer 404: the lookup is findByIdAndOwner(id, ana), so ben's order is not found, like a missing order.
+Sam from support reads order 1002 with 200, because staff may read any order. The same check written with @PostAuthorize instead answers ana's gift link with 403, and the lookup ran: the 403 confirms the order exists, and the work was already done. Ben opens his own link with 200.
+Against the guarded store, 0 of the 9 attacks succeed, and all 6 honest requests still work.</p>
+<h3>4. Method security, and a log of every refusal</h3>
+<p>RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"), so the rule travels with the method. A nightly job running as ana that calls the refund service directly, with no URL in between, is refused; the same job running as sam is recorded.
+By now 22 refusals are logged, such as "DENY someone signed out GET /admin/reports", "DENY ana DELETE /admin/users/ben", "DENY ana GET /orders/{id}: order 1002 is not theirs" and "DENY ana RefundService.refund". No password or Authorization header appears in the log.
+The filter chain and method security publish an AuthorizationDeniedEvent for their refusals; the store logs its object-level refusals itself.</p>
+<h3>5. The route inventory, and the bill</h3>
+<p>The route inventory reads every route the controllers serve from Spring MVC's own handler mapping: 11. A developer has added GET /admin/export and forgot its rule, so the routes without a rule are [GET /admin/export], and the route inventory test fails the build.
+Until it has one, even dave the admin is refused with 403, denied by default. The bill: rules now live in two places, the route list and the method annotations, and the inventory test keeps the first complete; and every object-level check needs the owner in the query,
+with @PostAuthorize as a fallback for when it cannot be there.</p>
+<h2>The verdict</h2>
+<p>End every SecurityFilterChain with anyRequest().denyAll(). Write one rule per method and path, from one list. Look objects up with the owner in the query. Put rules that must hold for every caller on the service method with @PreAuthorize,
+and use @PostAuthorize only when the check cannot be in the query. Publish refusals as events and log them without secrets. Read the handler mapping in a test, and fail the build when a route has no rule.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>anyRequest().permitAll()</code> at the end of a configuration: the first thing to look for in a review.</li>
+<li><code>requestMatchers("/admin/users")</code> where <code>/admin/users/**</code> was meant.</li>
+<li><code>findById(id)</code> in a controller that serves customers.</li>
+<li><code>@EnableMethodSecurity</code> and <code>@PreAuthorize</code> on services.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>authorizeHttpRequests</code> with <code>anyRequest().denyAll()</code> or <code>anyRequest().authenticated()</code> at the end of a <code>SecurityFilterChain</code>.</li>
+<li><code>@PreAuthorize</code> and <code>@PostAuthorize</code> on service methods, switched on by <code>@EnableMethodSecurity</code>.</li>
+<li>Spring Data methods such as <code>findByIdAndOwner(id, owner)</code>.</li>
+<li>Pen-test findings titled IDOR, BOLA or BFLA in a Spring application.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
