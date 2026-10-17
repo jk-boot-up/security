@@ -1,0 +1,534 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "certificates-and-chain-of-trust"
+module = "transport-security"
+title = "Certificates and the Chain of Trust"
+short_title = "Certificates and Trust"
+package = "certs"
+main_class = "CertsDemo"
+tagline = "Who vouches for a key, and who vouches for them"
+bold = "A certificate ties a name to a public key with an issuer's signature, and a chain of them leads back to a root that the client already trusts, but a chain proves who signed, not that the name is the one you meant, and one stolen authority key breaks everything below it."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Certificates and the chain of trust in Java: how a browser knows that a public key really belongs to shop.example. Explained with an online store, like a passport signed by an office whose stamp is signed by a ministry you already trust. We build a root, an intermediate and a server certificate by writing their encoding byte by byte, validate the chain with the JDK, then watch it refuse an expired certificate, a certificate from an authority nobody trusts, a changed certificate, and a server certificate that tries to issue others. We check the host name as the separate step it is, and finish with the bill: revocation, and what a stolen authority key allows."""
+thumb_lines = ["CERTIFICATES AND", "THE CHAIN OF TRUST"]
+thumb_code = "CertPathValidator PKIX"
+youtube_title = "Certificates and the Chain of Trust in Java (X.509, PKIX, Revocation)"
+youtube_tags = ["certificates", "x509", "chain of trust", "pki", "certificate authority", "revocation", "pkix", "java", "cybersecurity for beginners"]
+
+[readme]
+intro = """
+A public key is useful only if you know whose it is. A **certificate** answers that: it holds a name, a public key, a validity period and rules about what the key may do, and it carries the **signature** of an **issuer**, so
+anyone with the issuer's public key can check it. The issuer's own key comes in a certificate signed by a higher issuer, and so on up to a **root** that the client was shipped with and trusts without proof. The list from the server's certificate
+up to the root is the **chain of trust**.
+
+The demo builds that chain for an online store, writing the X.509 encoding byte by byte, since the JDK reads and validates certificates but has no public API to make them. It validates the chain with the JDK's own PKIX validator
+and then breaks it in five ways.
+"""
+analogy = """
+Think of a passport. The passport carries your photo and your name, and a stamp from the passport office. You do not know the officer, but you know the office's stamp is certified by a ministry, and you already trust the ministry. A forged
+passport can look identical in every way except that its stamp was not made by an office the ministry certified. And a valid passport is still no use if it belongs to someone else, so you also compare the name.
+"""
+scenario = """
+An online store's customers connect to shop.example. The store's server presents a certificate issued by an intermediate authority, which was issued by a root authority that the customer's browser trusts. The demo builds the chain,
+validates it on a fixed date, and tries an expired certificate, a certificate from an unknown authority, a changed certificate, a server key that signs other certificates, a revoked certificate and a stolen authority key.
+"""
+costs = [
+    "**Trust is concentrated.** A root may vouch for any name, so the root store is a security decision and a stolen authority key breaks everything below it.",
+    "**Revocation is hard.** A list only works if the client has the latest one. Real systems use CRLs, OCSP, short lifetimes, or all three.",
+    "**Certificates expire.** They must be renewed before the end date, and an expired certificate on a production server is an outage.",
+    "**The demo builds certificates by hand.** The encoding is a minimal subset, for teaching: use a certificate authority, keytool or a library for real work, as the next project does.",
+]
+too_much = """
+Never build your own certificates for production by hand. The point of this project is to see what a certificate is made of and what a validator checks, so the failures in real systems become readable.
+"""
+met_before = [
+    "The padlock in the browser, and the \"your connection is not private\" warning.",
+    "`cacerts`, the Java file listing the roots the JDK trusts, and the roots in your operating system.",
+    "Let's Encrypt and other certificate authorities, and their 90-day certificates.",
+    "Certificate-expiry outages in the news.",
+]
+where = """
+This project follows [tls-handshake](../tls-handshake) and is in [transport-security](..). The next steps are a version with Bouncy Castle and an OpenSSL certificate authority, and then a working HTTPS server.
+"""
+twin = """
+The keys are random, so the demo prints only facts that do not depend on them: who signed what, whether a chain is accepted and the JDK's reason when it is not. All checks run on a fixed date, 2026-01-01, never on the real clock.
+The encoding is checked against published object identifier encodings, and the JDK itself parses and validates every certificate the builder makes.
+"""
+test_note = "The keys are random, so the demo prints only facts that do not depend on them, and every check runs on a fixed date rather than the real clock. The DER encodings are checked against published values, and the JDK parses and validates every certificate the builder makes."
+
+[[act]]
+title = "A chain of three certificates"
+summary = "A root signs itself, an intermediate is signed by the root and may issue certificates, and the server certificate for shop.example is signed by the intermediate and may not."
+detail = """
+The root, Example Root CA, is signed by itself. The intermediate, Example Issuing CA, is signed by the root and may issue certificates. The server certificate, for shop.example, is signed by the intermediate and may not issue certificates.
+Each certificate holds its owner's public key and the issuer's signature over it, both as plain data. The signature algorithm is SHA256 with ECDSA, and anyone can check it with the issuer's public key.
+"""
+speech = """
+First demo: a chain of three certificates. [[slnc 400]] The root signs itself. [[slnc 600]]
+The intermediate is signed by the root, and may issue certificates. [[slnc 600]]
+The server certificate, for the shop, is signed by the intermediate, and may not issue any. [[slnc 600]]
+Each one holds its owner's public key, and the issuer's signature over it. [[slnc 300]] Anyone can check the signature with the issuer's public key.
+"""
+rows = { chain = "active ok" }
+console = [
+    ["root: CN=Example Root CA, signed by itself: true", "muted"],
+    ["intermediate: CN=Example Issuing CA, signed by CN=Example Root CA, may issue certificates: true", "muted"],
+    ["server: CN=shop.example, signed by CN=Example Issuing CA, may issue certificates: false", "muted"],
+    ["the signature algorithm is SHA256withECDSA, and anyone can check it with the issuer's public key", "ok"],
+]
+
+[[act]]
+title = "The browser's check"
+summary = "The server sends its certificate and the intermediate; the browser trusts the root, so the chain is accepted, and the name shop.example matches but evil.example does not."
+detail = """
+The server sends its own certificate and the intermediate. The browser already trusts the root, so the chain is accepted. The certificate is for shop.example and not for evil.example. A wildcard such as star dot example stands for exactly one label.
+"""
+speech = """
+Second demo: the browser's check. [[slnc 400]] The server sends its own certificate, and the intermediate. [[slnc 300]] The browser already trusts the root. [[slnc 600]]
+The chain is accepted. [[slnc 600]]
+The certificate is for the shop. [[slnc 300]] It is not for any other name. [[slnc 600]]
+A wildcard stands for exactly one label, not more.
+"""
+rows = { check = "active ok" }
+console = [
+    ["the server sends its own certificate and the intermediate; the browser already trusts the root", "muted"],
+    ["the chain is accepted: true", "ok"],
+    ["the certificate is for shop.example: true", "ok"],
+    ["the certificate is for evil.example: false", "ok"],
+    ["a wildcard *.example stands for exactly one label: shop.example true, a.b.example false", "muted"],
+]
+
+[[act]]
+title = "Three reasons to refuse"
+summary = "An expired certificate is refused with reason EXPIRED, a certificate from an unknown authority with the same name is refused because its signature does not match, and a valid chain still needs a separate name check."
+detail = """
+A certificate that ended on 2024-12-31, checked on 2026-01-01, is refused with the reason expired. A certificate for shop.example from an authority the browser does not trust is refused, even though the rogue root has the same name as the real one:
+names prove nothing, only keys do. The same valid chain shown to a visitor who meant evil.example is accepted as a chain, and the name does not match. A client must check the chain and the name, and they are separate checks.
+"""
+speech = """
+Third demo: three reasons to refuse. [[slnc 400]] A certificate that has ended is refused. [[slnc 600]]
+A certificate from an authority the browser does not trust is refused. [[slnc 300]] Even if that authority has the same name as the real one. [[slnc 300]] Names prove nothing. Only keys do. [[slnc 600]]
+And a valid chain still has to match the name. [[slnc 300]] The chain check and the name check are separate.
+"""
+rows = { refuse = "active amber" }
+console = [
+    ["a certificate that ended on 2024-12-31, checked on 2026-01-01: accepted false, reason EXPIRED", "ok"],
+    ["a certificate for shop.example from an authority the browser does not trust: accepted false, reason INVALID_SIGNATURE", "ok"],
+    ["the rogue root has the same name as the real one: true, so names prove nothing, only keys do", "amber"],
+    ["the same valid chain, shown to a visitor who meant evil.example: chain accepted true, name matches: false", "amber"],
+    ["so a client must check the chain and the name, and both are separate checks", "muted"],
+]
+
+[[act]]
+title = "Changed certificates, and certificates that overstep"
+summary = "One changed letter in the name still parses but fails the signature, and a server certificate that signs another certificate is refused because it is not allowed to."
+detail = """
+One letter of the name is changed. The certificate still parses, and it is refused because the signature no longer matches. Then the shop's server key signs a certificate for other.example. It is refused: a server certificate says it is not a certificate authority,
+so what it signs is not trusted. The intermediate has a path length of zero, so it may not have further authorities below it.
+"""
+speech = """
+Fourth demo: changed certificates. [[slnc 400]] One letter of the name is changed. [[slnc 300]] The certificate still reads as a certificate. [[slnc 300]] It is refused, because the signature no longer matches. [[slnc 600]]
+Then the shop's server key signs a certificate for another name. [[slnc 300]] It is refused. [[slnc 300]] A server certificate says it is not an authority, so what it signs is not trusted. [[slnc 600]]
+The intermediate has a path length of zero, so it may not have any more authorities below it.
+"""
+rows = { overstep = "active ok" }
+console = [
+    ["one letter of the name changed (CN=shop.examplE): it still parses, accepted false, reason INVALID_SIGNATURE", "ok"],
+    ["the shop's server key signs a certificate for other.example: accepted false, reason INVALID_KEY_USAGE", "ok"],
+    ["a server certificate says it is not a CA, so what it signs is not trusted", "muted"],
+    ["the intermediate's limit on further authorities below it (path length): 0", "muted"],
+]
+
+[[act]]
+title = "Revocation, and the bill"
+summary = "A stolen intermediate key forges a certificate that is accepted until the intermediate is revoked; revocation only works if clients have the latest list."
+detail = """
+Someone steals the intermediate's private key and issues their own certificate for shop.example. The forged chain is accepted: a stolen authority key breaks everything below it. Putting the shop's own certificate on the revocation list gets it refused with the reason revoked.
+Putting the intermediate on the list refuses both the shop's chain and the forged one. A list only works if the client gets the latest one, so real clients use CRLs, OCSP, short lifetimes, or all three.
+Trusting a root is a decision, because it may vouch for any name: keep the store small and keep authority keys offline or in hardware.
+"""
+speech = """
+Fifth demo: revocation, and the bill. [[slnc 400]] Someone steals the intermediate's private key. [[slnc 300]] They issue their own certificate for the shop. [[slnc 600]]
+The forged chain is accepted. [[slnc 300]] A stolen authority key breaks everything below it. [[slnc 600]]
+Put the intermediate on the revocation list, and both chains are refused. [[slnc 600]]
+But a list only works if the client has the latest one. [[slnc 300]] Real clients use lists, online checks, short lifetimes, or all three. [[slnc 600]]
+And trusting a root is a decision. [[slnc 300]] Keep the store small, and keep authority keys offline.
+"""
+rows = { revoke = "active wrong" }
+console = [
+    ["someone steals the intermediate's private key and issues their own certificate for shop.example", "muted"],
+    ["the forged chain is accepted: true  <- A STOLEN CA KEY BREAKS EVERYTHING BELOW IT", "bad"],
+    ["the shop's own certificate put on the revocation list: accepted false, reason REVOKED", "ok"],
+    ["the intermediate put on the list: the shop's chain accepted false, the forged chain accepted false", "ok"],
+    ["but a list only works if the client gets the latest one: real clients use CRLs, OCSP, short lifetimes, or all three", "amber"],
+    ["trusting a root is a decision: it may vouch for any name, so keep the store small and keep CA keys offline or in hardware", "amber"],
+]
+
+[animation]
+subtitle = "An online store's certificate is checked back to a root the browser trusts, then broken in five ways."
+boxes = [
+    ["chain", "The chain", "root, intermediate, server"],
+    ["check", "The check", "signatures, dates, name"],
+    ["refuse", "Refusals", "expired, unknown root, wrong name"],
+    ["overstep", "Overstepping", "changed, or not allowed to issue"],
+    ["revoke", "Revocation", "and a stolen authority key"],
+]
+
+[docs.problem]
+scenario = """
+A customer's browser connects to shop.example and receives a public key. The browser has no way to know, from the key alone, whether it belongs to the store or to someone sitting on the path.
+"""
+naive = """
+Trust whatever key the server presents, or trust a certificate because it is well formed.
+"""
+deliver = [
+    "X.509 certificates built byte by byte, parsed and checked by the JDK.",
+    "A chain of root, intermediate and server certificates validated with the JDK's PKIX validator on a fixed date.",
+    "Refusals for expired, unknown-root, changed and overstepping certificates, each with the JDK's reason.",
+    "A separate host name check, with wildcard rules.",
+    "A revocation list, and a stolen-authority-key forgery that it stops.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The digital-signatures project, or an idea of what signing and verifying are",
+]
+not_required = [
+    "ASN.1 or DER knowledge: the builder explains the few pieces it uses",
+    "OpenSSL, keytool or any certificate authority",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "say what a certificate contains and what it proves",
+    "follow a chain from a server to a trusted root",
+    "list what a validator checks, and what it does not",
+    "explain why the host name is a separate check",
+    "describe what revocation is for, and its limits",
+]
+walkthrough = """
+Start with the passport. Run the demo one act at a time. After act two, ask what the browser needed to know in advance. After act three, ask why the rogue root's matching name does not help the attacker.
+In act five, ask who should be allowed to hold the intermediate's key, and where.
+"""
+exercises = [
+    "Add a subject alternative name for www.shop.example and check both names match.",
+    "Issue a certificate valid from a future date and see the reason the validator gives.",
+    "Add a second intermediate and a path length of one, and find where the validator stops.",
+    "Make the revocation list a signed document, and have the validator check its signature.",
+]
+
+[docs.explained]
+sentence = """
+A certificate is an issuer's signature over a name and a public key, a chain of them leads to a root the client trusts without proof, and a client must also check dates, permissions, revocation and the host name.
+"""
+verdict = """
+Rely on a real certificate authority and the platform's validator. Check the host name every time. Keep the trusted root list small, issue short-lived certificates, keep authority keys offline or in hardware, and have a way to revoke.
+"""
+recognise = [
+    "The browser's certificate viewer, showing the chain.",
+    "`keytool -list` and the `cacerts` file.",
+    "ACME clients renewing certificates automatically.",
+    "Certificate transparency logs that record every certificate issued.",
+]
+
+[spec]
+purpose = """
+Teach what a certificate and a chain of trust are by building X.509 certificates, validating a chain with the JDK, and showing each way validation can fail.
+"""
+nongoals = [
+    "Running a real certificate authority.",
+    "Certificate formats such as PEM and PKCS12: the next project and the keystore project.",
+    "OCSP and CRL protocols.",
+]
+problem = """
+Learners see the padlock but not what stands behind it, so certificate errors and outages are mysteries.
+"""
+roles = [["DER encoding", "`Der`"], ["Certificate issuing", "`CertBuilder`"], ["The store's certificates", "`Pki`"], ["Chain validation", "`ChainValidator`"], ["Host names", "`HostName`"], ["Revocation", "`RevocationList`"], ["Entry point", "`CertsDemo`"]]
+requirements = [
+    "The DER encodings match published values and the JDK parses every certificate made.",
+    "A good chain is accepted, and an expired, unknown-root, changed or overstepping chain is refused with the JDK's reason.",
+    "The host name check handles exact names and one-label wildcards.",
+    "A revoked serial is refused, and a stolen authority key is shown to forge accepted certificates until revoked.",
+    "The demo prints the same output on every run although its keys are random.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The chain of trust"
+caption = "Each certificate is signed by the one above; the client trusts only the root."
+nodes = [
+    { id = "root", label = "Root CA", sub = "trusted by the browser, signs itself", col = 0, row = 0, colour = "accent", shape = "store" },
+    { id = "mid", label = "Intermediate CA", sub = "signed by the root", col = 1, row = 0, colour = "green" },
+    { id = "leaf", label = "shop.example", sub = "signed by the intermediate", col = 2, row = 0, colour = "client" },
+    { id = "browser", label = "Browser", sub = "checks the chain, dates, name", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "root", to = "mid", label = "signs" },
+    { from = "mid", to = "leaf", label = "signs" },
+    { from = "leaf", to = "browser", label = "presented to" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "CertBuilder makes certificates with Der; ChainValidator checks them; HostName is a separate check."
+nodes = [
+    { id = "der", label = "Der", sub = ["tlv, sequence, oid, integer", "utcTime, bitString"], col = 0, row = 0, colour = "accent" },
+    { id = "builder", label = "CertBuilder", sub = ["issue(request, keys, issuer)", "parse(der)"], col = 1, row = 0, colour = "green" },
+    { id = "pki", label = "Pki", sub = ["root, intermediate, server", "expiredServer(), rogue()"], col = 2, row = 0, colour = "client" },
+    { id = "validator", label = "ChainValidator", sub = ["validate(chain, when)"], col = 0, row = 1, colour = "amber" },
+    { id = "revocation", label = "RevocationList", sub = ["check(certificate)"], col = 1, row = 1, colour = "red" },
+    { id = "host", label = "HostName", sub = ["matches(certificate, host)"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "builder", to = "der", label = "encodes with" },
+    { from = "pki", to = "builder", label = "uses" },
+    { from = "validator", to = "revocation", label = "adds as a check" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What is inside a certificate"
+caption = "The signature covers everything before it."
+nodes = [
+    { id = "names", label = "Subject and issuer", sub = "who it is for, who signed it", col = 0, row = 0, colour = "client" },
+    { id = "key", label = "Public key", sub = "the subject's", col = 1, row = 0, colour = "green" },
+    { id = "dates", label = "Validity", sub = "not before, not after", col = 2, row = 0, colour = "amber" },
+    { id = "ext", label = "Extensions", sub = "may issue? key usage, alternative names", col = 3, row = 0, colour = "accent" },
+    { id = "sig", label = "Signature", sub = "by the issuer, over all of it", col = 4, row = 0, colour = "red" },
+]
+edges = [
+    { from = "names", to = "key" },
+    { from = "key", to = "dates" },
+    { from = "dates", to = "ext" },
+    { from = "ext", to = "sig", label = "signed" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "The browser validates a chain: who checks what, in order"
+participants = ["Server", "Browser", "Root store"]
+steps = [
+    ["Server", "Browser", "certificate and intermediate"],
+    ["Browser", "Browser", "check dates, key usage, path length"],
+    ["Browser", "Browser", "check the server's signature with the intermediate's key"],
+    ["Browser", "Root store", "is the root trusted?"],
+    ["Root store", "Browser", "yes: the signature checks out", "reply"],
+    ["note", "Browser", "then compare the host name with the certificate's names"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A stolen authority key"
+caption = "The attacker's certificate chains correctly, so the browser accepts it."
+participants = ["Attacker", "Browser"]
+steps = [
+    ["note", "Attacker", "holds the intermediate's private key"],
+    ["Attacker", "Attacker", "issues a certificate for shop.example with their own key"],
+    ["Attacker", "Browser", "the forged certificate and the real intermediate"],
+    ["note", "Browser", "the signatures check out: accepted"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Revocation stops the forgery"
+caption = "The intermediate's serial is on the list, so every chain through it is refused."
+participants = ["Browser", "Revocation list"]
+steps = [
+    ["Browser", "Revocation list", "is serial 2 revoked?"],
+    ["Revocation list", "Browser", "yes", "reply"],
+    ["note", "Browser", "both the real and the forged chain are refused"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The client", nodes = ["browser", "store"], colour = "green" },
+    { label = "The authority", nodes = ["ca"], colour = "amber" },
+    { label = "Outside", nodes = ["attacker", "server"], colour = "red" },
+]
+nodes = [
+    { id = "browser", label = "Browser", sub = "validates chains", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T3", "T5"] },
+    { id = "store", label = "Root store", sub = "the trust decision", col = 0, row = 1, colour = "amber", shape = "store", threats = ["T6"] },
+    { id = "ca", label = "Issuing CA", sub = "its private key", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T2", "T4"] },
+    { id = "server", label = "shop.example", sub = "presents its chain", col = 2, row = 0, colour = "client" },
+    { id = "attacker", label = "Attacker", sub = "forges, steals, replays old certificates", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4", "T5", "T6"] },
+]
+edges = [
+    { from = "server", to = "browser", label = "chain" },
+    { from = "browser", to = "store", label = "asks if the root is trusted" },
+    { from = "attacker", to = "ca", label = "steals the key", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "attacker", to = "browser", label = "presents a forged chain", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "attacker", to = "store", label = "adds a root", colour = "red", dashed = true, threats = ["T6"] },
+]
+
+[poster]
+headline = [["CERTIFICATES AND", "text"], ["THE CHAIN OF TRUST", "accent"]]
+taglines = [["Who vouches for a key, and who vouches for them", "gold"]]
+before = { code = "trust the key presented", note = "anyone can present one", tag = "BEFORE" }
+after = { code = "chain + dates + name", note = "back to a trusted root", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Certificates and the Chain of Trust"
+narration = """Hello, and welcome. [[slnc 400]] This video explains certificates and the chain of trust, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A certificate ties a name to a public key, with the signature of an issuer. [[slnc 300]] A chain of them leads back to a root that the client already trusts. [[slnc 600]] Think of a passport. [[slnc 300]] It carries a stamp from an office. [[slnc 300]] The office's stamp is certified by a ministry that you already trust. [[slnc 300]] A forged passport can look identical, except that its stamp was not certified. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how a chain is built. [[slnc 300]] How it is checked. [[slnc 300]] Five ways it fails. [[slnc 300]] And what a stolen authority key allows."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A customer's browser connects to the shop.", "", "It receives a public key.", "", "How does it know the key belongs", "to the store and not to someone", "on the path?"]
+narration = """Here is the scenario. [[slnc 400]] A customer's browser connects to the shop. [[slnc 500]] It receives a public key. [[slnc 600]] How does it know the key belongs to the store, and not to someone on the path?"""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Certificate: a name, a key, and a signature", "Issuer: who signed it", "Root: a certificate trusted without proof", "Chain: server, intermediate, root", "Revocation: withdrawing a certificate early"]
+narration = """Before the demos, the words. [[slnc 500]] A certificate holds a name, a key, and a signature. [[slnc 500]] The issuer is who signed it. [[slnc 500]] A root is a certificate trusted without proof. [[slnc 500]] A chain runs from the server, through intermediates, to a root. [[slnc 500]] And revocation withdraws a certificate before it expires."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "What a Validator Checks"
+body = ["Each signature, up to a trusted root", "Dates: not before, not after", "May this certificate issue others?", "Is any certificate revoked?", "Separately: does the name match?"]
+narration = """Let's put the checks side by side. [[slnc 400]] Each signature, up to a trusted root. [[slnc 500]] The dates. [[slnc 500]] Whether each certificate is allowed to issue others. [[slnc 500]] Whether any of them is revoked. [[slnc 600]] And separately, whether the name matches the site you meant."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Der: the byte encoding", "CertBuilder: issues a certificate", "ChainValidator: the JDK's PKIX check", "HostName: the separate name check", "RevocationList: serial numbers refused"]
+narration = """Here is who does what in the code. [[slnc 400]] The Der class writes the byte encoding. [[slnc 500]] The cert builder issues a certificate, signed by its issuer. [[slnc 500]] The chain validator wraps the J D K's P K I X check. [[slnc 500]] The host name class is the separate name check. [[slnc 300]] And the revocation list refuses certain serial numbers."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["The padlock and the warning page", "cacerts and the system root store", "Let's Encrypt and short certificates", "Expiry outages in the news"]
+narration = """You have probably met this already. [[slnc 400]] The padlock in the browser, and the warning page when a check fails. [[slnc 500]] The cacerts file, and your system's list of roots. [[slnc 500]] Let's Encrypt, and its short lived certificates. [[slnc 500]] And news stories about outages, because a certificate expired."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Use a real CA and the platform validator", "Always check the host name", "Keep the root store small", "Short lifetimes; automate renewal", "Keep CA keys offline; plan revocation"]
+narration = """So, how do you use it? [[slnc 400]] Use a real certificate authority, and the platform's validator. [[slnc 500]] Always check the host name. [[slnc 500]] Keep the list of trusted roots small. [[slnc 500]] Use short lifetimes, and automate renewal. [[slnc 500]] Keep authority keys offline, and plan how to revoke."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a second intermediate", "and find where the validator stops."]
+narration = """That's certificates and the chain of trust. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A certificate is an issuer's signature over a name and a key, and a client must still check the dates, the permissions, the revocation, and the host name. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second intermediate, and find where the validator stops. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+How a client decides that a public key belongs to shop.example: the chain of certificates the server presents, the client's list of trusted roots, the authorities' private keys and the revocation information. It covers a forger, a thief of authority keys and
+a careless root store. It does not cover the TLS handshake itself, or the web application.
+"""
+assets = [
+    "The issuing authority's private key.",
+    "The client's list of trusted roots.",
+    "The server's private key.",
+    "The customer's belief that they are talking to the shop.",
+]
+actors = [
+    "The customer's browser, which validates chains.",
+    "The certificate authorities.",
+    "An attacker on the path who can present any chain.",
+    "An attacker who can steal an authority's key, or add a root to a store.",
+]
+boundaries = [
+    "Server to client: the chain crosses the internet and none of it is trusted until validated.",
+    "Authority to the world: the authority's private key is the line that keeps every issued certificate meaningful.",
+    "Root store to everything else: the store is the client's trust decision.",
+]
+assumptions = [
+    "The client has the right root certificates, put there by the operating system or platform.",
+    "The client's clock is correct.",
+    "In the demo, keys are generated at run time and the date is fixed at 2026-01-01.",
+]
+out_of_scope = [
+    "The TLS handshake: the tls-handshake project.",
+    "Running a real certificate authority.",
+    "Certificate transparency monitoring.",
+]
+tests = [
+    "`DerTest` checks the encodings against published object identifier encodings and length rules.",
+    "`ChainTest` checks parsing, a good chain, expiry, not-yet-valid, an unknown root with a matching name, a missing intermediate, a changed certificate, overstepping, path length, revocation and a stolen authority key.",
+    "`HostNameTest` checks exact names, case and one-label wildcards.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, https-server, brings the certificate, the handshake and the web together in a working server.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "An attacker presents a certificate for shop.example from an authority the client does not trust"
+where = "`ChainValidator`"
+control = "Validate the chain to a trusted root; a rogue root with the same name still fails the signature check"
+residual = "Depends on the root store being right"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "An authority's private key is stolen and used to issue certificates for any name below it"
+where = "`CertBuilder.issue`, the issuing CA"
+control = "Keep authority keys offline or in hardware, use short-lived intermediates, and revoke at once if stolen"
+residual = "Until revocation reaches clients, forged certificates are accepted"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A certificate is changed after it was issued"
+where = "`Tamper`, `ChainValidator`"
+control = "The issuer's signature covers every field, so any change fails validation"
+residual = "None for the signed fields"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "A server certificate, or too deep an intermediate, is used to issue further certificates"
+where = "`ChainValidator`"
+control = "Basic constraints and key usage are enforced, with a path length limit"
+residual = "A badly configured authority can still issue a CA certificate it should not"
+
+[[threat]]
+id = "T5"
+stride = "S"
+threat = "A valid chain for a different site is accepted for shop.example"
+where = "`HostName`"
+control = "Check the host name against the certificate's names on every connection"
+residual = "Clients that skip the name check are open to this"
+
+[[threat]]
+id = "T6"
+stride = "T"
+threat = "A malicious or careless root is added to the client's root store"
+where = "the root store"
+control = "Keep the store small, controlled and audited"
+residual = "Every root in the store can vouch for any name"

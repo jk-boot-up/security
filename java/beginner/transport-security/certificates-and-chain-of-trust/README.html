@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Certificates and the Chain of Trust</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Certificates and the Chain of Trust</h1>
+<pre><code>src/main/java/com/jk/explore/security/certs/
+├── CertBuilder.java     Builds X.509 version 3 certificates by writing their DER encoding directly and signing it with the JDK
+├── CertsDemo.java       Runs the online store story in five numbered acts and prints exact, repeatable results
+├── ChainValidator.java  Validates a certificate chain with the JDK's PKIX implementation, on a date the caller chooses, against the roots the caller trusts
+├── Der.java             The small part of DER (the binary encoding behind X.509) that a certificate needs: tag, length, value
+├── HostName.java        Does the certificate vouch for this host name?
+├── Issued.java          A certificate together with the key pair of its subject
+├── Pki.java             The online store's certificates, built fresh for each run: a root, an intermediate under it, and the server certificate for shop.example
+├── RevocationList.java  An explicit list of revoked serial numbers, plugged into the JDK's path validation as an extra check
+└── Tamper.java          Changes one letter inside the signed part of a certificate, as an attacker or a bit error would
+</code></pre>
+<p><strong>A certificate ties a name to a public key with an issuer's signature, and a chain of them leads back to a root that the client already trusts, but a chain proves who signed, not that the name is the one you meant, and one stolen authority key breaks everything below it.</strong></p>
+<p>A public key is useful only if you know whose it is. A <strong>certificate</strong> answers that: it holds a name, a public key, a validity period and rules about what the key may do, and it carries the <strong>signature</strong> of an <strong>issuer</strong>, so
+anyone with the issuer's public key can check it. The issuer's own key comes in a certificate signed by a higher issuer, and so on up to a <strong>root</strong> that the client was shipped with and trusts without proof. The list from the server's certificate
+up to the root is the <strong>chain of trust</strong>.</p>
+<p>The demo builds that chain for an online store, writing the X.509 encoding byte by byte, since the JDK reads and validates certificates but has no public API to make them. It validates the chain with the JDK's own PKIX validator
+and then breaks it in five ways.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a passport. The passport carries your photo and your name, and a stamp from the passport office. You do not know the officer, but you know the office's stamp is certified by a ministry, and you already trust the ministry. A forged
+passport can look identical in every way except that its stamp was not made by an office the ministry certified. And a valid passport is still no use if it belongs to someone else, so you also compare the name.</p>
+<h2>The scenario</h2>
+<p>An online store's customers connect to shop.example. The store's server presents a certificate issued by an intermediate authority, which was issued by a root authority that the customer's browser trusts. The demo builds the chain,
+validates it on a fixed date, and tries an expired certificate, a certificate from an unknown authority, a changed certificate, a server key that signs other certificates, a revoked certificate and a stolen authority key.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A chain of three certificates</td>
+<td>A root signs itself, an intermediate is signed by the root and may issue certificates, and the server certificate for shop.example is signed by the intermediate and may not.</td>
+</tr>
+<tr>
+<td>2. The browser's check</td>
+<td>The server sends its certificate and the intermediate; the browser trusts the root, so the chain is accepted, and the name shop.example matches but evil.example does not.</td>
+</tr>
+<tr>
+<td>3. Three reasons to refuse</td>
+<td>An expired certificate is refused with reason EXPIRED, a certificate from an unknown authority with the same name is refused because its signature does not match, and a valid chain still needs a separate name check.</td>
+</tr>
+<tr>
+<td>4. Changed certificates, and certificates that overstep</td>
+<td>One changed letter in the name still parses but fails the signature, and a server certificate that signs another certificate is refused because it is not allowed to.</td>
+</tr>
+<tr>
+<td>5. Revocation, and the bill</td>
+<td>A stolen intermediate key forges a certificate that is accepted until the intermediate is revoked; revocation only works if clients have the latest list.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>21 tests in <code>ChainTest</code>, <code>DemoRunsTest</code>, <code>DerTest</code>, <code>HostNameTest</code>. The keys are random, so the demo prints only facts that do not depend on them, and every check runs on a fixed date rather than the real clock. The DER encodings are checked against published values, and the JDK parses and validates every certificate the builder makes.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The keys are random, so the demo prints only facts that do not depend on them: who signed what, whether a chain is accepted and the JDK's reason when it is not. All checks run on a fixed date, 2026-01-01, never on the real clock.
+The encoding is checked against published object identifier encodings, and the JDK itself parses and validates every certificate the builder makes.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/certificates-and-chain-of-trust-explained.html">Certificates and the Chain of Trust, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Each certificate is signed by the one above; the client trusts only the root.</p>
+<p><img alt="The chain of trust" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>CertBuilder makes certificates with Der; ChainValidator checks them; HostName is a separate check.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The signature covers everything before it.</p>
+<p><img alt="What is inside a certificate" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The browser validates a chain: who checks what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/certificates-and-chain-of-trust-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Trust is concentrated.</strong> A root may vouch for any name, so the root store is a security decision and a stolen authority key breaks everything below it.</li>
+<li><strong>Revocation is hard.</strong> A list only works if the client has the latest one. Real systems use CRLs, OCSP, short lifetimes, or all three.</li>
+<li><strong>Certificates expire.</strong> They must be renewed before the end date, and an expired certificate on a production server is an outage.</li>
+<li><strong>The demo builds certificates by hand.</strong> The encoding is a minimal subset, for teaching: use a certificate authority, keytool or a library for real work, as the next project does.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Never build your own certificates for production by hand. The point of this project is to see what a certificate is made of and what a validator checks, so the failures in real systems become readable.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The padlock in the browser, and the "your connection is not private" warning.</li>
+<li><code>cacerts</code>, the Java file listing the roots the JDK trusts, and the roots in your operating system.</li>
+<li>Let's Encrypt and other certificate authorities, and their 90-day certificates.</li>
+<li>Certificate-expiry outages in the news.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../tls-handshake">tls-handshake</a> and is in <a href="..">transport-security</a>. The next steps are a version with Bouncy Castle and an OpenSSL certificate authority, and then a working HTTPS server.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
