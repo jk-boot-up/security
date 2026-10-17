@@ -137,7 +137,7 @@ security/
 | Code | the insecure version, the secure version and a demo `main` that runs the numbered acts. Java: `src/main/java`, `src/test/java` (JUnit 5). Go: package files plus `_test.go`. C++: `src/`, `tests/` |
 | Build | Gradle wrapper (or `go.mod`, or CMake), so the project runs with one command |
 | `README.md` + `README.html` | what it is, the analogy, the scenario, how to run and test, the technologies and versions, the diagrams, the costs, when it is not enough |
-| `docs/` | `problem-statement`, `prerequisites`, `session` (one-hour guide with exercises), `<concept>-explained`, class, sequence and data-flow diagrams, `spec`, `expected-output.txt`, `youtube.md`, `thumbnail.png`, `animation.html`, `images/` |
+| `docs/` | `problem-statement`, `prerequisites`, `session` (one-hour guide with exercises), `<concept>-explained`, class, sequence, data-flow and threat-model diagrams, `threat-model` (STRIDE table, assumptions, out of scope), `spec`, `expected-output.txt`, `youtube.md`, `thumbnail.png`, `animation.html`, `images/` |
 | `infra/` | only where the project uses local tooling |
 | `concept.toml` | the single content file: scenario, analogy, acts with their exact numbers, README prose, diagram descriptions, animation steps and video scenes |
 | `video/` | `scenes.py`, `videokit.toml` (voice settings) |
@@ -360,18 +360,20 @@ nothing (for example Spring Security has no Go twin; the Go project would use `x
 
 ## 11. Checklist
 
+Status: projects 1 to 9 are built with their tool versions where one is planned, and project 10, digital-signatures, is built as its plain version. ✅ is done, ◐ is partly done (authentication-vs-authorization has its Spring Security version, and its Keycloak version is still planned), – means no tool version is planned, and ☐ is not done. **Nothing has been uploaded.**
+
 | # | Project | Plain code | With-tools code | Docs | Animation | Video | Uploaded |
 | ---: | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| 1 | cia-triad | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 2 | threats-and-risk | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 3 | authentication-vs-authorization | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 4 | password-hashing | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 5 | password-attacks-and-defences | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 6 | totp-multi-factor | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 7 | hashing-and-integrity | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 8 | symmetric-encryption | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 9 | asymmetric-encryption | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 10 | digital-signatures | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| 1 | cia-triad | ✅ | – | ✅ | ✅ | ✅ | ☐ |
+| 2 | threats-and-risk | ✅ | – | ✅ | ✅ | ✅ | ☐ |
+| 3 | authentication-vs-authorization | ✅ | ◐ | ✅ | ✅ | ✅ | ☐ |
+| 4 | password-hashing | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 5 | password-attacks-and-defences | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 6 | totp-multi-factor | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 7 | hashing-and-integrity | ✅ | – | ✅ | ✅ | ✅ | ☐ |
+| 8 | symmetric-encryption | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 9 | asymmetric-encryption | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 10 | digital-signatures | ✅ | ☐ | ✅ | ✅ | ✅ | ☐ |
 | 11 | keystore-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |
 | 12 | tcp-ip-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |
 | 13 | dns-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |

@@ -1,7 +1,7 @@
 # Foundations: implementation plan
 
 1. **cia-triad** (built): the three promises, an online store, five acts.
-2. **threats-and-risk**: list a shop's endpoints as an attack surface, score each threat by likelihood and impact, and
+2. **threats-and-risk** (built): list a shop's endpoints as an attack surface, score each threat by likelihood and impact, and
    rank the risks.
 
 ## Rules for building each project

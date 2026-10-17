@@ -6,17 +6,17 @@ narrated video. Every project runs on your own machine, with no cloud account.
 
 Read the modules in order:
 
-| Module | Covers |
-| --- | --- |
-| [foundations](foundations) | the CIA triad, threats and risk |
-| identity | authentication and authorization |
-| passwords-and-mfa | password hashing, password attacks, one-time codes |
-| cryptography | hashing, encryption, signatures, keystores |
-| networking | TCP/IP, DNS, HTTP |
-| transport-security | the TLS handshake, certificates, HTTPS |
-| safe-habits | least privilege, patching, backups |
+| Module | Projects built | Covers |
+| --- | ---: | --- |
+| [foundations](foundations) | 2 | the CIA triad, threats and risk |
+| [identity](identity) | 2 | authentication and authorization |
+| [passwords-and-mfa](passwords-and-mfa) | 6 | password hashing, password attacks, one-time codes |
+| [cryptography](cryptography) | 6 | hashing, encryption, signatures |
+| networking | 0 | TCP/IP, DNS, HTTP |
+| transport-security | 0 | the TLS handshake, certificates, HTTPS |
+| safe-habits | 0 | least privilege, patching, backups |
 
-Only `foundations` exists so far. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
+Four modules exist so far, with 16 projects. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
 
 ## Run a project
 

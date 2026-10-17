@@ -8,9 +8,9 @@ from whom?
 | # | Project | Scenario |
 | --- | --- | --- |
 | 1 | [cia-triad](cia-triad) | An online store's orders fail confidentiality, integrity and availability, one control at a time |
-| 2 | threats-and-risk | not built yet |
+| 2 | [threats-and-risk](threats-and-risk) | An online store's attack surface, seven scored risks, a budgeted plan, and why a score is a judgment |
 
-Each project builds on the one before. Project 1 introduces the three promises; project 2 will use them to rank what
+Each project builds on the one before. Project 1 introduces the three promises; project 2 uses them to rank what
 could go wrong.
 
 ## How the module is judged
