@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Least Privilege with Spring Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Least Privilege with Spring Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/leastprivilegespring/
+├── BlastRadius.java               What a stolen credential can do: ask Spring Security's own authorization manager about every action in the store
+├── Catalogue.java                 Everything that can be done in the online store, and who holds what
+├── GrantAuthorization.java        A custom rule: the request is allowed for someone who holds the permission, or who has an active time-limited grant for it
+├── Grants.java                    Access that expires by itself: a permission given to one person for a window of time, judged by an injected clock
+├── LeastPrivilegeSpringDemo.java  Runs the online store story in five numbered acts against a real Spring Boot server on the loopback interface
+├── RefundRules.java               Separation of duties, named so that an expression can call it: {@code @refundRules.differentPerson(#id, authentication)}
+├── Refunds.java                   Refunds, guarded by method security: who may create one, who may approve one, and who may read one
+├── Shop.java                      The online store with least privilege: scoped authorities, deny by default, a role hierarchy, method security and time-limited grants
+├── ShopController.java            The store's endpoints
+├── SimulatedClock.java            A clock that moves only when the demo says so: tick N is N seconds after the epoch
+└── Wire.java                      A tiny HTTP client for the demo: one request with optional basic credentials
+</code></pre>
+<p><strong>Spring Security can make least privilege the default: deny every path that has no rule, give accounts exact permissions instead of an admin role, keep separation of duties in one rule that no role can switch off, and let access expire by itself.</strong></p>
+<p>The plain version of this lesson modelled <strong>least privilege</strong> by hand: every account gets only the permissions its job needs, so that a stolen credential, a mistake or a bad day can do only so much harm. <strong>Spring Security</strong> is the framework most Java
+stores use for this, and it has a place for each idea. A request rule can say <strong>deny anything not listed</strong>. A <strong>method security</strong> annotation, <code>@PreAuthorize</code>, puts the rule next to the code it guards. A <strong>role hierarchy</strong> says that an admin includes the other jobs.
+A custom <strong>AuthorizationManager</strong> can hold any rule at all, such as a grant that expires. This project starts a real Spring Boot server and checks each of them with real requests.</p>
+<p>The demo ends with the number that matters: what a stolen token can reach, for an admin account and for a scoped service account.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a hotel. The easy way to run it is to give every employee the master key. Least privilege gives the cleaner the keys for the rooms on their floor, the night porter the front door, and the manager a key that cannot open the safe without a second person.
+A key that stops working at checkout time is better than one that someone has to remember to take back.</p>
+<h2>The scenario</h2>
+<p>An online store has support staff, warehouse staff, finance staff, an admin and a nightly export job. The demo starts the store with Spring Boot and asks, with real requests, who may do what: reading orders, creating and approving refunds, and writing a payment.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Deny by default: every path needs a rule</td>
+<td>No credentials gets 401, alice gets 200 for orders and 403 for reports, and an admin asking for a path nobody wrote a rule for also gets 403.</td>
+</tr>
+<tr>
+<td>2. Method security: the rule sits next to the code</td>
+<td>Bob cannot create a refund, alice can; bob cannot read alice's refund, but the method ran before the answer was withheld, which is what PostAuthorize does.</td>
+</tr>
+<tr>
+<td>3. Separation of duties: two people for a refund</td>
+<td>Alice cannot approve her own refund, dave the admin cannot approve his own, carol approves alice's, and dave may approve alice's other request.</td>
+</tr>
+<tr>
+<td>4. A role hierarchy, and what a stolen credential can reach</td>
+<td>An admin includes support, finance does not; a stolen admin token reaches 15 of 15 actions, a stolen exporter token reaches 2 of 15.</td>
+</tr>
+<tr>
+<td>5. Access that expires by itself</td>
+<td>Carol is granted payments:write for ticks 10 to 12 and gets 403 at tick 9, 200 at ticks 10 and 12, and 403 at tick 13; alice never had it.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>AccessRulesTest</code>, <code>DemoRunsTest</code>. The store runs on a free loopback port and the demo prints only status codes and facts that do not depend on the port. Time is a simulated clock, the password hashes use random salts but are never printed, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The store runs on a free port on the loopback interface, and the demo prints only status codes and facts that do not depend on the port. Passwords are one demo value, hashed with Spring Security's default encoder at start-up. Time is a simulated clock.
+The blast radius is computed by asking Spring Security's authorization manager about every action, not by a separate list.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>4.1.1</td>
+<td>the latest stable release; its dependency list pins the Spring and Tomcat versions below, and it starts the real web server</td>
+</tr>
+<tr>
+<td>Spring Framework (Spring MVC)</td>
+<td>7.0.9</td>
+<td>maps web addresses to Java methods; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Spring Security</td>
+<td>7.1.1</td>
+<td>authorization rules for requests and methods, a role hierarchy and custom authorization managers; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Apache Tomcat (embedded)</td>
+<td>11.0.24</td>
+<td>the web server inside the application; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/least-privilege-with-spring-security-explained.html">Least Privilege with Spring Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The request chain decides by path, method security decides by action, and the grant rule asks a clock.</p>
+<p><img alt="Where each rule sits" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Shop wires the rules, Refunds holds the guarded methods, and Grants and the clock hold time-limited access.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each stage can say no, and the last request rule says no to everything unlisted.</p>
+<p><img alt="What a request passes through" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Dave tries to approve his own refund: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/least-privilege-with-spring-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>More accounts and more rules.</strong> Scoped accounts need to be created, named and reviewed. Spring Security makes the rules short, and someone still has to decide them.</li>
+<li><strong>Rules in annotations are easy to forget.</strong> A method with no annotation is open to anyone who can call it, so the request rules end with <code>denyAll</code> and tests call each endpoint as each account.</li>
+<li><strong><code>@PostAuthorize</code> runs the method first.</strong> It withholds the answer, it does not stop the work, so a method with side effects needs <code>@PreAuthorize</code>.</li>
+<li><strong>A role hierarchy can hide how much power a role has.</strong> Keep it small and print what each role reaches, as the demo does.</li>
+<li><strong>Time-limited grants need a clock you can trust.</strong> The demo injects a clock so tests control time; in production the clock and the grant store are things an attacker would like to change.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a small internal tool with three users, a couple of roles and a deny-by-default chain is plenty. The full set, scoped authorities, separation of duties and expiring grants, belongs where money moves or personal data lives, and anywhere one stolen credential would be a headline.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@PreAuthorize("hasRole('ADMIN')")</code> on controller methods in most Spring tutorials.</li>
+<li><code>anyRequest().authenticated()</code> at the end of a security configuration, which is one step weaker than <code>denyAll</code>.</li>
+<li>Cloud IAM policies with "allow only these actions" and temporary credentials.</li>
+<li>Approval workflows where the person who asked cannot approve.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../least-privilege">least-privilege</a> and is the second in <a href="..">safe-habits</a>. It reuses the ideas of <a href="../../identity/authentication-vs-authorization-with-spring-security">authentication-vs-authorization-with-spring-security</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

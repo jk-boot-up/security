@@ -1,0 +1,36 @@
+ONE. Deny by default: every path needs a rule.
+  no credentials, GET /orders: 401  <- WHO ARE YOU?
+  alice (support) with a wrong password: 401
+  alice (support) GET /orders: 200
+  alice (support) GET /reports: 403  <- KNOWN, BUT NOT ALLOWED
+  dave (admin) GET /admin/debug, a path nobody wrote a rule for: 403  <- NO RULE MEANS NO, EVEN FOR AN ADMIN
+  the last rule is anyRequest().denyAll(), so a forgotten endpoint stays closed
+TWO. Method security: the rule sits next to the code it guards.
+  bob (warehouse) POST /refunds: 403  <- NO refunds:create
+  alice (support) POST /refunds: 200, the new refund is R-1
+  alice GET /refunds/R-1: 200, her own request
+  carol (finance) GET /refunds/R-1: 200, an approver may read any
+  bob GET /refunds/R-1: 403, someone else's request
+  the method ran for bob before the answer was withheld: true  <- @PostAuthorize JUDGES THE RESULT, SO KEEP SIDE EFFECTS OUT OF SUCH METHODS
+  @PreAuthorize stops a call before it runs, and @PostAuthorize judges it after it has run
+THREE. Separation of duties: two people for a refund.
+  alice approves her own refund R-1: 403  <- NO refunds:approve
+  dave (admin) creates refund R-2 and then approves it himself: 403  <- ADMIN POWER DOES NOT REMOVE THE RULE
+  carol (finance) approves R-1: approved by carol
+  alice creates R-3 and dave approves it: approved by dave  <- AN ADMIN MAY APPROVE SOMEONE ELSE'S REQUEST
+  the rule is in one place, a bean that the annotation calls, and no role can switch it off
+FOUR. A role hierarchy, and what a stolen credential can reach.
+  the staff queue needs the support role. alice (support): 200, dave (admin, which includes support): 200, carol (finance): 403, exporter: 403
+  the nightly order export runs as dave, because that was quick: a stolen token reaches 15 of 15  <- EVERYTHING
+  the same job as the exporter service account: a stolen token reaches 2 of 15
+  alice reaches 3 of 15, bob 3, carol 3
+  the exporter can read orders: 200, and cannot reach the secrets: 403
+  the numbers come from asking Spring Security's own authorization manager about each action, not from a separate list
+FIVE. Access that expires by itself.
+  carol (finance) is granted payments:write for ticks 10 to 12, for a month-end fix
+  at tick 9 PUT /payments/P-1: 403
+  at tick 10 PUT /payments/P-1: 200
+  at tick 12 PUT /payments/P-1: 200
+  at tick 13 PUT /payments/P-1: 403
+  alice, who never had a grant, at tick 11: 403
+  the rule is a custom AuthorizationManager that asks an injected clock, so the demo and the tests control time

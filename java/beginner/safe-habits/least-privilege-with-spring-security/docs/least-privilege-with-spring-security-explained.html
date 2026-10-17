@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Least Privilege with Spring Security, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Least Privilege with Spring Security, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Least privilege means every account holds only the actions its job needs, and Spring Security can enforce it by denying every path without a rule, guarding methods by authority, keeping separation of duties in one rule that no role can switch off, and letting grants expire by themselves.</p>
+<h2>The 5 acts</h2>
+<h3>1. Deny by default: every path needs a rule</h3>
+<p>With no credentials, a request for orders gets 401: who are you? Alice, from support, with a wrong password also gets 401. With the right one she gets orders, and 403 for reports, because she is known but not allowed. Dave, an admin, asks for a path nobody wrote a rule for, and gets 403 too.
+The last rule is <code>anyRequest().denyAll()</code>, so a forgotten endpoint stays closed.</p>
+<h3>2. Method security: the rule sits next to the code</h3>
+<p>Bob, from the warehouse, tries to create a refund and gets 403: he has no refunds:create. Alice creates refund R-1. She can read her own, and carol, an approver, can read any. Bob cannot read someone else's request. But the method ran for bob before the answer was withheld,
+because <code>@PostAuthorize</code> judges the result. <code>@PreAuthorize</code> stops a call before it runs, so a method with side effects needs that one.</p>
+<h3>3. Separation of duties: two people for a refund</h3>
+<p>Alice cannot approve her own refund: she has no refunds:approve. Dave, an admin, creates refund R-2 and tries to approve it himself, and is refused: admin power does not remove the rule. Carol approves R-1. Alice creates R-3 and Dave approves it, because an admin may approve someone
+else's request. The rule is a bean that the annotation calls, in one place, and no role can switch it off.</p>
+<h3>4. A role hierarchy, and what a stolen credential can reach</h3>
+<p>With a role hierarchy, an admin includes support, so the staff queue lets alice and dave in and keeps carol from finance and the exporter out. Then the number that matters. The nightly order export ran as dave because that was quick: a stolen token reaches 15 of 15 actions.
+The same job as the exporter service account reaches 2 of 15. Alice, bob and carol reach 3 each. The numbers come from asking Spring Security's own authorization manager about each action.</p>
+<h3>5. Access that expires by itself</h3>
+<p>Carol, in finance, is granted payments:write for ticks 10 to 12, for a month-end fix. At tick 9 the answer is 403, at ticks 10 and 12 it is 200, and at tick 13 it is 403 again. Nobody had to remember to remove it. Alice, who never had a grant, gets 403 even inside the window.
+The rule is a custom AuthorizationManager that asks an injected clock, so the demo and the tests control time.</p>
+<h2>The verdict</h2>
+<p>End every rule chain with deny. Give accounts exact authorities and use roles only to name jobs. Put separation of duties in code that roles cannot bypass. Give service accounts their own, smaller authorities, and measure what a stolen token reaches. Prefer grants that expire.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>@PreAuthorize</code> and <code>@EnableMethodSecurity</code> in Spring applications.</li>
+<li><code>anyRequest().authenticated()</code> at the end of a configuration, which should usually be <code>denyAll()</code>.</li>
+<li>Service accounts named <code>admin</code> or <code>root</code>.</li>
+<li>Temporary access in cloud consoles that expires.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@PreAuthorize("hasRole('ADMIN')")</code> on controller methods in most Spring tutorials.</li>
+<li><code>anyRequest().authenticated()</code> at the end of a security configuration, which is one step weaker than <code>denyAll</code>.</li>
+<li>Cloud IAM policies with "allow only these actions" and temporary credentials.</li>
+<li>Approval workflows where the person who asked cannot approve.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
