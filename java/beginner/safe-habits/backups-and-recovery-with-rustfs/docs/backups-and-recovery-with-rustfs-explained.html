@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backups and Recovery with RustFS, an S3-Compatible Object Store, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Backups and Recovery with RustFS, an S3-Compatible Object Store, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Backups survive ransomware when old versions are kept, when locks stop anyone from deleting them before a date, and when the job that writes them can do nothing but add objects.</p>
+<h2>The 5 acts</h2>
+<h3>1. Versioning: an overwrite does not destroy the old data</h3>
+<p>The shop stores orders.csv and ransomware overwrites it with scrambled bytes. Two versions are kept. A normal read returns the scrambled file, but the original is still there as an older version. Restoring is writing the older version back as the newest.
+The scrambled version stays in the history as evidence. A plain delete only adds a delete marker: reading the key fails, the data is not gone. But an attacker with the right to delete versions could still remove every version, which is what the next act stops.</p>
+<h3>2. Object Lock: nobody can delete a locked version</h3>
+<p>A backup is stored with COMPLIANCE retention for a day. Deleting that version is refused. Deleting it while asking to bypass governance is refused. Shortening the retention is refused. A plain delete is allowed but only adds a marker, and the locked version is still readable.
+GOVERNANCE is softer: deleting is refused, but with the special bypass permission it can be lifted. COMPLIANCE cannot be lifted by anyone until the date, so choose it with care.</p>
+<h3>3. The backup job gets an identity that can only add objects</h3>
+<p>The backup job gets its own identity with a policy that has one action, adding objects to one bucket. It can write a backup. It cannot read one back, list versions, delete, delete a version, or write to the orders bucket.
+So a thief who steals the backup job's key can add data but cannot read it, change history or destroy backups. It can still add junk, so quotas and alerts on unusual uploads matter.</p>
+<h3>4. A checksum catches a damaged backup</h3>
+<p>Uploading with the SHA-256 of the data is allowed. Uploading bytes whose SHA-256 does not match the one sent is refused, and leaves nothing behind. What was stored for the good upload hashes to the same value.
+The store checks bytes in transit and at upload; a restore test is still needed to know that a backup is usable.</p>
+<h3>5. Keeping history without keeping it for ever, and the cost</h3>
+<p>A lifecycle rule on the orders bucket removes old versions 30 days after they are replaced. Every version is stored in full, so storage grows with every overwrite until the rule removes them. A COMPLIANCE lock cannot be undone. The root account is the real key, so keep it out of daily use.
+Object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too.</p>
+<h2>The verdict</h2>
+<p>Use a versioned bucket, a write-only identity for the backup job, a lifecycle rule and, for the backups that matter most, Object Lock with a retention you can afford. Test restores regularly, protect the root account, and keep a copy outside the account.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>S3 Versioning, Object Lock and bucket policies in cloud consoles.</li>
+<li><code>mc admin policy</code> and <code>mc retention</code> in guides for S3-compatible stores.</li>
+<li>Backup software settings called "immutable backups" or "WORM".</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Amazon S3 Versioning and Object Lock, Azure immutable blob storage, Google Cloud bucket lock.</li>
+<li>Backup tools such as restic and Veeam, which can write to S3 buckets with locks.</li>
+<li>The advice "keep an immutable copy" in every ransomware guide.</li>
+<li>RustFS, Ceph and other S3-compatible stores in on-premises and home-lab backups.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

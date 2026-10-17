@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Backups and Recovery with RustFS, an S3-Compatible Object Store</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Backups and Recovery with RustFS, an S3-Compatible Object Store</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The backups of an online store held in an S3-compatible object store: the objects and their versions, the locks, the identity that writes backups, and the root account. It covers ransomware on the application servers and a thief who steals a key.
+It does not cover the store's disks, the network between the servers and the store, or the contents of the backups.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The backup objects and their older versions.</li>
+<li>The write-only key of the backup job.</li>
+<li>The root credentials of the store.</li>
+<li>The retention settings.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The shop's application and backup job.</li>
+<li>Ransomware running with the application's rights.</li>
+<li>A thief who has stolen the backup job's key.</li>
+<li>An administrator who holds the root account.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Application servers to the object store: only the write-only identity crosses it.</li>
+<li>The backup identity to the root account: the root account can change any policy.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Tampering</td>
+<td>Ransomware overwrites or deletes the backups using the application's access</td>
+<td>the bucket</td>
+<td>Versioning keeps the old data, and Object Lock refuses deletes of locked versions</td>
+<td>Versions cost storage, and a lock protects only until its date</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Elevation of privilege</td>
+<td>A thief with the backup job's key reads or destroys the backups</td>
+<td><code>ObjectStoreContainer.createWriteOnlyUser</code></td>
+<td>The policy has one action, PutObject, on one bucket</td>
+<td>The thief can still add junk, so quotas and alerts on unusual uploads are needed</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>A backup is damaged in transit or at upload</td>
+<td><code>Store.put</code></td>
+<td>A SHA-256 checksum is sent and verified by the store</td>
+<td>Only a restore test shows that the backup is usable</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Repudiation</td>
+<td>Nobody can say who uploaded or removed a backup</td>
+<td>the backup job</td>
+<td>A separate identity for the job makes its actions attributable</td>
+<td>Audit logging of the store has to be switched on and kept elsewhere</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Elevation of privilege</td>
+<td>The root account is stolen, and policies, users and governance locks are changed</td>
+<td>the root account</td>
+<td>COMPLIANCE locks cannot be lifted even by the root account</td>
+<td>GOVERNANCE locks can, new users can be added, and the store's disks are outside the lock, so keep the root credentials out of daily use and keep a copy elsewhere</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The root credentials are kept out of the application servers.</li>
+<li>The store's disks and the account itself are not attacked.</li>
+<li>In the demo, the store is local and its credentials are fixed demo values.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Replication to another site or provider.</li>
+<li>Encryption keys and key management.</li>
+<li>The correctness of the backup's contents: the plain project's restore test.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>ObjectStoreTest</code> (integration, Docker) checks versions, delete markers, both lock modes, the write-only identity, checksums, the lifecycle rule, and that nothing is left running.</li>
+<li><code>StoreUnitTest</code> checks the SHA-256 helper against the published value, the wording of refusals, and that the policy has one action.</li>
+<li><code>DemoRunsTest</code> (integration) compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The safe-habits module is finished with this project. The track continues with the tool versions of the earlier projects and then the intermediate level.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
