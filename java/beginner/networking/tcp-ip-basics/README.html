@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TCP/IP Basics for Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>TCP/IP Basics for Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/tcpip/
+├── Address.java             IPv4 addresses as four bytes packed into an int
+├── BadPacketException.java  A packet or segment that is too short, malformed or fails its checksum
+├── Checksum.java            The Internet checksum of RFC 1071: the ones' complement of the ones' complement sum of 16-bit words
+├── Ipv4Packet.java          An IPv4 packet with a 20-byte header (no options) carrying a TCP segment
+├── Listener.java            The server side of the three-way handshake, as a state machine
+├── PlaintextTap.java        A real TCP connection on the loopback interface, with a tap that records what crosses it, as a sniffer on the wire would
+├── SequenceNumbers.java     Where a connection's first sequence number comes from
+├── TcpIpDemo.java           Runs the online store story in five numbered acts and prints exact, repeatable results
+└── TcpSegment.java          A TCP segment with a 20-byte header (no options)
+</code></pre>
+<p><strong>TCP/IP delivers bytes reliably, but it does not say who sent them, it does not hide them, and its handshake can be filled up: security has to be added on top.</strong></p>
+<p>Almost everything on the internet rides on <strong>IP</strong>, which moves packets from one address to another, and <strong>TCP</strong>, which turns those packets into a reliable, ordered stream of bytes.
+Both were designed for cooperation, not defence. A packet's <strong>source address</strong> is only a field the sender fills in. A <strong>checksum</strong> catches accidents and has no key. A <strong>connection</strong> begins with a
+three-way <strong>handshake</strong>, and the server must remember each half-finished handshake, which is what a <strong>SYN flood</strong> abuses. And the stream TCP delivers is not hidden from anyone on the path.</p>
+<p>The demo builds an IPv4 packet and a TCP segment byte by byte, runs the handshake as a state machine, floods it, defends it with SYN cookies, forges a connection by guessing numbers, and sends a card number over a real connection.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of the postal system. Each envelope carries a return address that anyone can write, whatever is true. A smudge check on the envelope catches rain damage, not a forger. Starting a conversation by post means three letters:
+"are you there?", "yes, are you?", "yes". A shop that must reserve a chair for everyone who sends the first letter can be emptied of chairs by someone sending thousands of first letters from fake addresses.</p>
+<h2>The scenario</h2>
+<p>An online store's web server receives connections from customers. The demo shows what a packet contains, what its checksum does not protect, how a connection begins, how the store's connection table is filled by an attacker,
+how a connection is forged by guessing numbers, and what an observer sees of a real connection.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Layers: a packet inside a packet</td>
+<td>A TCP segment is 20 bytes and inside an IP packet it is 40 bytes; the packet decodes again, but nothing in it says who the sender really is.</td>
+</tr>
+<tr>
+<td>2. A checksum catches accidents, not attackers</td>
+<td>A changed byte is refused, but the same change made by someone who recomputes the checksum is accepted, because the checksum has no key.</td>
+</tr>
+<tr>
+<td>3. The three-way handshake</td>
+<td>SYN with sequence 1000, SYN-ACK acknowledging 1001 and one half-open entry, ACK establishes the connection; an ACK with no SYN before it is refused.</td>
+</tr>
+<tr>
+<td>4. A SYN flood</td>
+<td>Eight SYNs that never answer fill a table of eight, so a real customer is refused; SYN cookies keep no entry and the customer still connects.</td>
+</tr>
+<tr>
+<td>5. Guessable numbers, and a stream anyone can read</td>
+<td>A counter that adds 64000 lets an attacker forge a connection as the admin machine; a keyed hash does not; and a real connection shows the card number to anyone watching.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>19 tests in <code>DemoRunsTest</code>, <code>ListenerTest</code>, <code>PacketsTest</code>. The checksum is checked against the RFC 1071 example. Packets are built and read in memory, the handshake is a state machine with fixed addresses, and the one real connection prints only facts that do not depend on port numbers, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>All packets are built and read in memory, so the demo is exact. The one real connection is on the loopback interface of the machine running it, and the demo prints only facts that do not depend on port numbers.
+The checksum is checked against the example in RFC 1071.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tcp-ip-basics-explained.html">TCP/IP Basics for Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Each layer wraps the one above; none of them proves who sent it.</p>
+<p><img alt="Layers of a packet" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Packets and segments are values; Listener is the state machine; SequenceNumbers decides what the server's first number is.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The server must remember the middle step, and that memory is what a SYN flood fills.</p>
+<p><img alt="The three-way handshake" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A connection is established: who sends what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tcp-ip-basics-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>SYN cookies are for emergencies.</strong> They drop TCP options and cost a hash for every SYN, so servers switch them on only when the table is full.</li>
+<li><strong>Keyed sequence numbers need a good secret.</strong> The secret must be unpredictable, and replaced from time to time.</li>
+<li><strong>Filtering by address helps only near the source.</strong> Spoofed packets are stopped by ingress filtering at the networks they come from, which the store does not control.</li>
+<li><strong>The demo is a model.</strong> It builds packets and a state machine in memory, with no options, no retransmission and no real IP stack, so it teaches the ideas and not the full protocol.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For most applications, TCP/IP is something to understand and leave alone: the operating system implements it. The knowledge matters when something goes wrong or something is attacked,
+and when choosing where to put defences: rate limits, firewalls, SYN cookies, and above all TLS.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>netstat</code> and <code>ss</code>, which list connections and their states, such as SYN_RECV and ESTABLISHED.</li>
+<li><code>tcpdump</code> and Wireshark, which show packets with their flags.</li>
+<li>Firewall rules that say "drop packets from this source".</li>
+<li>News stories about SYN floods and denial-of-service attacks.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the first in <a href="..">networking</a> and builds on <a href="../../identity/authentication-vs-authorization">authentication-vs-authorization</a>: knowing who is on the other end of a connection is the problem that the later projects solve.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

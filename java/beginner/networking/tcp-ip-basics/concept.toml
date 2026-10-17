@@ -1,0 +1,522 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "tcp-ip-basics"
+module = "networking"
+title = "TCP/IP Basics for Security"
+short_title = "TCP/IP Basics"
+package = "tcpip"
+main_class = "TcpIpDemo"
+tagline = "Every attack on the network starts with how packets really work"
+bold = "TCP/IP delivers bytes reliably, but it does not say who sent them, it does not hide them, and its handshake can be filled up: security has to be added on top."
+domain = "an online store"
+domain_note = ""
+youtube_description = """TCP/IP basics for security in Java: packets, checksums, the three-way handshake, SYN floods and guessable sequence numbers. Explained with an online store. We build an IPv4 packet and a TCP segment byte by byte, see that a checksum catches accidents but not attackers, run the three-way handshake as a state machine, fill its table with a SYN flood and defend with SYN cookies, forge a connection by guessing sequence numbers, and watch a real connection carry a card number in the clear."""
+thumb_lines = ["TCP/IP BASICS", "FOR SECURITY"]
+thumb_code = "SYN -> SYN-ACK -> ACK"
+youtube_title = "TCP/IP Basics for Security in Java (Handshake, SYN Flood, Sequence Numbers)"
+youtube_tags = ["tcp", "ip", "three-way handshake", "syn flood", "syn cookies", "sequence numbers", "networking", "java", "cybersecurity for beginners"]
+
+[readme]
+intro = """
+Almost everything on the internet rides on **IP**, which moves packets from one address to another, and **TCP**, which turns those packets into a reliable, ordered stream of bytes.
+Both were designed for cooperation, not defence. A packet's **source address** is only a field the sender fills in. A **checksum** catches accidents and has no key. A **connection** begins with a
+three-way **handshake**, and the server must remember each half-finished handshake, which is what a **SYN flood** abuses. And the stream TCP delivers is not hidden from anyone on the path.
+
+The demo builds an IPv4 packet and a TCP segment byte by byte, runs the handshake as a state machine, floods it, defends it with SYN cookies, forges a connection by guessing numbers, and sends a card number over a real connection.
+"""
+analogy = """
+Think of the postal system. Each envelope carries a return address that anyone can write, whatever is true. A smudge check on the envelope catches rain damage, not a forger. Starting a conversation by post means three letters:
+"are you there?", "yes, are you?", "yes". A shop that must reserve a chair for everyone who sends the first letter can be emptied of chairs by someone sending thousands of first letters from fake addresses.
+"""
+scenario = """
+An online store's web server receives connections from customers. The demo shows what a packet contains, what its checksum does not protect, how a connection begins, how the store's connection table is filled by an attacker,
+how a connection is forged by guessing numbers, and what an observer sees of a real connection.
+"""
+costs = [
+    "**SYN cookies are for emergencies.** They drop TCP options and cost a hash for every SYN, so servers switch them on only when the table is full.",
+    "**Keyed sequence numbers need a good secret.** The secret must be unpredictable, and replaced from time to time.",
+    "**Filtering by address helps only near the source.** Spoofed packets are stopped by ingress filtering at the networks they come from, which the store does not control.",
+    "**The demo is a model.** It builds packets and a state machine in memory, with no options, no retransmission and no real IP stack, so it teaches the ideas and not the full protocol.",
+]
+too_much = """
+For most applications, TCP/IP is something to understand and leave alone: the operating system implements it. The knowledge matters when something goes wrong or something is attacked,
+and when choosing where to put defences: rate limits, firewalls, SYN cookies, and above all TLS.
+"""
+met_before = [
+    "`netstat` and `ss`, which list connections and their states, such as SYN_RECV and ESTABLISHED.",
+    "`tcpdump` and Wireshark, which show packets with their flags.",
+    "Firewall rules that say \"drop packets from this source\".",
+    "News stories about SYN floods and denial-of-service attacks.",
+]
+where = """
+This project is the first in [networking](..) and builds on [authentication-vs-authorization](../../identity/authentication-vs-authorization): knowing who is on the other end of a connection is the problem that the later projects solve.
+"""
+twin = """
+All packets are built and read in memory, so the demo is exact. The one real connection is on the loopback interface of the machine running it, and the demo prints only facts that do not depend on port numbers.
+The checksum is checked against the example in RFC 1071.
+"""
+test_note = "The checksum is checked against the RFC 1071 example. Packets are built and read in memory, the handshake is a state machine with fixed addresses, and the one real connection prints only facts that do not depend on port numbers, so the golden output is the same on every run."
+
+[[act]]
+title = "Layers: a packet inside a packet"
+summary = "A TCP segment is 20 bytes and inside an IP packet it is 40 bytes; the packet decodes again, but nothing in it says who the sender really is."
+detail = """
+A customer's browser sends a SYN to the store's port 443. The TCP segment is 20 bytes, and inside an IP packet it is 40 bytes. Decoded again, it says from 198.51.100.7 to 203.0.113.10, ports 51000 to 443, with the SYN flag set.
+Nothing in either header says who the sender really is: the source address is just a field.
+"""
+speech = """
+First demo: layers. [[slnc 400]] A customer's browser sends a first packet to the store. [[slnc 600]]
+The T C P segment is twenty bytes. [[slnc 300]] Inside an I P packet, it is forty bytes. [[slnc 600]]
+Decoded again, it says who it is from, who it is to, the ports, and that it is a SYN. [[slnc 600]]
+But nothing in either header says who the sender really is. [[slnc 300]] The source address is just a field.
+"""
+rows = { layers = "active ok" }
+console = [
+    ["a customer's browser sends a SYN from 198.51.100.7 to the shop 203.0.113.10 port 443", "muted"],
+    ["the TCP segment is 20 bytes, and inside an IP packet it is 40 bytes", "muted"],
+    ["decoded again: from 198.51.100.7 to 203.0.113.10, ports 51000 to 443, SYN flag: true", "ok"],
+    ["nothing in either header says who the sender really is: the source address is just a field", "amber"],
+]
+
+[[act]]
+title = "A checksum catches accidents, not attackers"
+summary = "A changed byte is refused, but the same change made by someone who recomputes the checksum is accepted, because the checksum has no key."
+detail = """
+One byte changed in transit, the time to live, is refused because the header checksum does not match. The same change made by someone who recomputes the checksum is accepted. The checksum has no key, so anyone can make it match,
+and it is no protection against an attacker.
+"""
+speech = """
+Second demo: the checksum. [[slnc 400]] Change one byte in transit, and the packet is refused. [[slnc 600]]
+But the same change, made by someone who recomputes the checksum, is accepted. [[slnc 600]]
+The checksum has no key. [[slnc 300]] So anyone can make it match. [[slnc 300]] It catches accidents, not attackers.
+"""
+rows = { checksum = "active amber" }
+console = [
+    ["one byte changed in transit (the time to live): refused (IPv4 header checksum does not match)", "ok"],
+    ["the same change made by someone who recomputes the checksum: accepted", "bad"],
+    ["the checksum has no key, so anyone can make it match: it is not protection against an attacker", "amber"],
+]
+
+[[act]]
+title = "The three-way handshake"
+summary = "SYN with sequence 1000, SYN-ACK acknowledging 1001 and one half-open entry, ACK establishes the connection; an ACK with no SYN before it is refused."
+detail = """
+The customer sends SYN with sequence number 1000. The store answers SYN-ACK acknowledging 1001, and now holds a half-open entry. The customer answers ACK and the connection is established, with no half-open entries left.
+An ACK with no SYN before it does not establish anything.
+"""
+speech = """
+Third demo: the three way handshake. [[slnc 400]] The customer sends a SYN, with a sequence number. [[slnc 600]]
+The store answers with a SYN ACK, and keeps a half open entry. [[slnc 600]]
+The customer answers with an ACK, and the connection is established. [[slnc 600]]
+An ACK with no SYN before it establishes nothing.
+"""
+rows = { handshake = "active ok" }
+console = [
+    ["the customer sends SYN with sequence number 1000", "muted"],
+    ["the shop answers SYN-ACK, acknowledging 1001, and now holds a half-open entry: 1", "muted"],
+    ["the customer answers ACK: connection established: true, half-open entries left: 0", "ok"],
+    ["an ACK with no SYN before it: established: false", "ok"],
+]
+
+[[act]]
+title = "A SYN flood"
+summary = "Eight SYNs that never answer fill a table of eight, so a real customer is refused; SYN cookies keep no entry and the customer still connects."
+detail = """
+Eight SYNs from addresses that never answer fill the store's table of eight half-open entries. A real customer's SYN is then not answered: the store is denying service to its customers. With SYN cookies the store keeps no entry,
+because the state is encoded in its own sequence number, and the real customer connects. The cost is that cookies carry no options and take work for every SYN.
+"""
+speech = """
+Fourth demo: a SYN flood. [[slnc 400]] Eight SYNs from addresses that never answer fill the store's table. [[slnc 600]]
+A real customer's SYN is now not answered. [[slnc 300]] The store is denying service to its own customers. [[slnc 600]]
+With SYN cookies, the store keeps no entry. [[slnc 300]] The state is encoded in its own sequence number. [[slnc 300]] The real customer connects. [[slnc 600]]
+The cost is that cookies drop options, and take work for every SYN.
+"""
+rows = { flood = "active wrong" }
+console = [
+    ["8 SYNs from addresses that never answer fill the shop's table of 8 half-open entries: 8", "amber"],
+    ["a real customer's SYN is now answered: false  <- THE SHOP IS DENYING SERVICE TO ITS CUSTOMERS", "bad"],
+    ["with SYN cookies the shop keeps no entry: half-open entries 0, and the real customer connects: true", "ok"],
+    ["the cost: cookies carry no options and take work for every SYN, so they are a defence for when the table is full", "amber"],
+]
+
+[[act]]
+title = "Guessable numbers, and a stream anyone can read"
+summary = "A counter that adds 64000 lets an attacker forge a connection as the admin machine; a keyed hash does not; and a real connection shows the card number to anyone watching."
+detail = """
+If the store picks its sequence numbers with a counter that adds 64000 each time, an attacker who sends a SYN pretending to be the admin machine guesses the next number from its own connection and is accepted as the admin: a forged connection.
+With a keyed hash the same guess fails. And on a real connection on this machine, a sniffer on the wire sees the card number: TCP delivers bytes reliably and in order, and hides nothing. Secrecy and identity come from TLS.
+"""
+speech = """
+Fifth demo: guessable numbers. [[slnc 400]] If the store picks its sequence numbers with a counter, an attacker can guess the next one from its own connection. [[slnc 600]]
+It sends a first packet pretending to be the admin machine, and is accepted as the admin. [[slnc 600]]
+With a keyed hash, the same guess fails. [[slnc 600]]
+And on a real connection, a sniffer on the wire sees the card number. [[slnc 300]] T C P hides nothing. [[slnc 300]] Secrecy and identity come from T L S.
+"""
+rows = { numbers = "active wrong", stream = "active amber" }
+console = [
+    ["a counter that adds 64000: the attacker pretending to be 10.0.0.5 is accepted as the admin: true  <- A FORGED CONNECTION", "bad"],
+    ["a keyed hash: the same guess is accepted as the admin: false", "ok"],
+    ["a real TCP connection on this machine: connected true, the server received every byte: true", "muted"],
+    ["what a sniffer on the wire sees contains the card number: true  <- TCP DOES NOT HIDE ANYTHING", "bad"],
+    ["TCP gives reliable, ordered delivery. Secrecy and identity come from TLS", "amber"],
+]
+
+[animation]
+subtitle = "An online store's web server meets TCP/IP: packets, a handshake, a flood, and numbers that can be guessed."
+boxes = [
+    ["layers", "Packets", "IP inside, TCP inside that"],
+    ["checksum", "Checksum", "catches accidents, not attackers"],
+    ["handshake", "Handshake", "SYN, SYN-ACK, ACK"],
+    ["flood", "SYN flood", "fills the table of half-open entries"],
+    ["numbers", "Sequence numbers", "guessable or keyed"],
+    ["stream", "The stream", "reliable, and readable by anyone"],
+]
+
+[docs.problem]
+scenario = """
+An online store accepts connections from customers over the internet. Anyone can send it packets claiming any source, many at once, and watch the replies pass.
+"""
+naive = """
+Assume that a connection from an address is from the owner of that address, that a checksum protects a packet, and that a stream is private because it is a connection.
+"""
+deliver = [
+    "An IPv4 packet and a TCP segment built and read byte by byte, with the RFC 1071 checksum.",
+    "A demonstration that a checksum with no key does not stop an attacker.",
+    "The handshake as a state machine, with a limited table of half-open entries.",
+    "A SYN flood and the SYN cookie defence.",
+    "A forged connection from guessable sequence numbers, and the keyed numbers that stop it.",
+    "A real connection whose content is visible to an observer.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "A rough idea of what an IP address and a port are",
+]
+not_required = [
+    "Any networking course",
+    "Root access, raw sockets or packet capture: the packets are built in memory",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "describe what an IP packet and a TCP segment contain",
+    "explain why a checksum is not a security measure",
+    "describe the three-way handshake and what a SYN flood abuses",
+    "explain why sequence numbers must be unpredictable",
+    "say what TCP does not provide",
+]
+walkthrough = """
+Start with the postal analogy. Run the demo one act at a time. After act two, ask who could recompute the checksum. After act four, ask what the store has lost besides connections.
+In act five, ask what would have to be true for a source address to be trusted, and lead to the next projects: names, the web and TLS.
+"""
+exercises = [
+    "Add the acknowledgement of data, so that a payload is delivered after the handshake, and check what a forged ACK does.",
+    "Change the table size and the number of flooding SYNs and find the point at which a real customer gets in.",
+    "Make the counter step 1 instead of 64000 and check that the forgery still works.",
+    "Add a timeout to half-open entries, in simulated ticks, and see how it changes the flood.",
+]
+
+[docs.explained]
+sentence = """
+TCP/IP carries bytes between addresses reliably, but a source address can be forged, a checksum has no key, the handshake costs the server memory, and the stream is readable by anyone on the path, so defences must be added at other layers.
+"""
+verdict = """
+Let the operating system's defences work: SYN cookies, keyed sequence numbers, ingress filtering. Rate-limit and filter at the edge. Never treat a source address as proof of identity, and never treat a TCP connection as private: use TLS.
+"""
+recognise = [
+    "`ss -tan` showing many connections in SYN_RECV.",
+    "`net.ipv4.tcp_syncookies` in kernel settings.",
+    "Firewall and cloud rules written in terms of source addresses.",
+    "Packet captures where a password or card number is readable.",
+]
+
+[spec]
+purpose = """
+Teach what TCP/IP does and does not provide by building an IPv4 packet and a TCP segment, running the handshake as a state machine, flooding it, defending it, forging a connection and watching a real connection.
+"""
+nongoals = [
+    "A full TCP implementation, with options, retransmission and congestion control.",
+    "Raw sockets and real packet capture: the tool counterpart.",
+    "Names and the web: the next projects.",
+]
+problem = """
+Learners use connections every day but do not know what is trusted in them, and so trust the wrong things.
+"""
+roles = [["Internet checksum", "`Checksum`"], ["IPv4 packet", "`Ipv4Packet`"], ["TCP segment", "`TcpSegment`"], ["The server's handshake", "`Listener`"], ["Sequence numbers", "`SequenceNumbers`"], ["A real connection and a tap", "`PlaintextTap`"], ["Entry point", "`TcpIpDemo`"]]
+requirements = [
+    "Packets round-trip, and any changed header byte is caught by the checksum.",
+    "The checksum matches the RFC 1071 example.",
+    "The handshake establishes only with the right acknowledgement, and a full table drops new SYNs.",
+    "SYN cookies keep no state and still establish connections.",
+    "Counter numbers can be guessed and keyed numbers cannot.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Layers of a packet"
+caption = "Each layer wraps the one above; none of them proves who sent it."
+nodes = [
+    { id = "app", label = "Application data", sub = "an order, a card number", col = 0, row = 0, colour = "client" },
+    { id = "tcp", label = "TCP segment", sub = "ports, sequence numbers, flags", col = 1, row = 0, colour = "accent" },
+    { id = "ip", label = "IP packet", sub = "source and destination address", col = 2, row = 0, colour = "green" },
+    { id = "wire", label = "The wire", sub = "readable by anyone on the path", col = 3, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "app", to = "tcp", label = "wrapped in" },
+    { from = "tcp", to = "ip", label = "wrapped in" },
+    { from = "ip", to = "wire", label = "sent over" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Packets and segments are values; Listener is the state machine; SequenceNumbers decides what the server's first number is."
+nodes = [
+    { id = "ip", label = "Ipv4Packet", sub = ["encode()", "decode(bytes)"], col = 0, row = 0, colour = "green" },
+    { id = "tcp", label = "TcpSegment", sub = ["encode(src, dst)", "decode(src, dst, bytes)"], col = 1, row = 0, colour = "green" },
+    { id = "sum", label = "Checksum", sub = ["sum(bytes)", "of(bytes)"], col = 2, row = 0, colour = "accent" },
+    { id = "listener", label = "Listener", sub = ["onSyn(address, port, seq)", "onAck(address, port, seq, ack)"], col = 0, row = 1, colour = "amber" },
+    { id = "numbers", label = "SequenceNumbers", sub = ["counter(start, step)", "keyed(secret)"], col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "ip", to = "sum", label = "uses" },
+    { from = "tcp", to = "sum", label = "uses" },
+    { from = "listener", to = "numbers", label = "asks for numbers" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The three-way handshake"
+caption = "The server must remember the middle step, and that memory is what a SYN flood fills."
+nodes = [
+    { id = "syn", label = "SYN", sub = "client sequence 1000", col = 0, row = 0, colour = "client" },
+    { id = "synack", label = "SYN-ACK", sub = "server sequence, acknowledges 1001", col = 1, row = 0, colour = "amber" },
+    { id = "half", label = "Half-open entry", sub = "the server's memory", col = 2, row = 0, colour = "red", shape = "store" },
+    { id = "ack", label = "ACK", sub = "acknowledges the server's number plus one", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "syn", to = "synack" },
+    { from = "synack", to = "half", label = "stored" },
+    { from = "half", to = "ack", label = "checked against" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A connection is established: who sends what, in order"
+participants = ["Customer", "Listener"]
+steps = [
+    ["Customer", "Listener", "SYN, sequence 1000"],
+    ["Listener", "Listener", "store half-open entry"],
+    ["Listener", "Customer", "SYN-ACK, acknowledges 1001", "reply"],
+    ["Customer", "Listener", "ACK, acknowledges the server's number + 1"],
+    ["note", "Listener", "entry removed, connection established"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A SYN flood"
+caption = "Spoofed addresses never answer, so the entries stay until the table is full."
+participants = ["Attacker", "Listener", "Customer"]
+steps = [
+    ["Attacker", "Listener", "SYN from fake address 1"],
+    ["Attacker", "Listener", "SYN from fake address 2 ... 8"],
+    ["note", "Listener", "table of 8 half-open entries is full"],
+    ["Customer", "Listener", "SYN"],
+    ["Listener", "Customer", "no answer", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Forging a connection by guessing"
+caption = "With a counter the next number is the last one plus 64000."
+participants = ["Attacker", "Listener"]
+steps = [
+    ["Attacker", "Listener", "SYN from the attacker's own address"],
+    ["Listener", "Attacker", "SYN-ACK with number N", "reply"],
+    ["Attacker", "Listener", "SYN pretending to be the admin machine"],
+    ["note", "Attacker", "cannot see the reply, so it guesses N + 64000"],
+    ["Attacker", "Listener", "ACK acknowledging N + 64001"],
+    ["note", "Listener", "accepted as the admin machine"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["server", "table"], colour = "green" },
+    { label = "The network", nodes = ["wire"], colour = "amber" },
+    { label = "Outside", nodes = ["customer", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "server", label = "Web server", sub = "listens on port 443", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T3"] },
+    { id = "table", label = "Half-open table", sub = "limited memory", col = 0, row = 1, colour = "amber", shape = "store", threats = ["T2"] },
+    { id = "wire", label = "The wire", sub = "readable, and writable", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T1", "T4"] },
+    { id = "customer", label = "Customer", sub = "a real connection", col = 2, row = 0, colour = "client" },
+    { id = "attacker", label = "Attacker", sub = "forges sources, floods, watches", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "customer", to = "wire", label = "sends" },
+    { from = "wire", to = "server" },
+    { from = "attacker", to = "table", label = "fills it", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "attacker", to = "wire", label = "reads and changes", colour = "red", dashed = true, threats = ["T1", "T4"] },
+    { from = "attacker", to = "server", label = "guesses numbers", colour = "red", dashed = true, threats = ["T3"] },
+]
+
+[poster]
+headline = [["TCP/IP BASICS", "text"], ["FOR SECURITY", "accent"]]
+taglines = [["Every attack on the network starts with how packets really work", "gold"]]
+before = { code = "trust the source address", note = "any sender can write it", tag = "BEFORE" }
+after = { code = "keyed numbers + TLS", note = "unguessable, and private", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "TCP/IP Basics for Security"
+narration = """Hello, and welcome. [[slnc 400]] This video explains T C P I P basics for security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] I P moves packets from one address to another. [[slnc 300]] T C P turns those packets into a reliable stream of bytes. [[slnc 600]] Think of the postal system. [[slnc 300]] Any envelope can carry any return address. [[slnc 300]] A smudge check catches rain damage, not a forger. [[slnc 300]] And a shop that reserves a chair for every first letter can be emptied of chairs by thousands of fake ones. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear what a packet contains. [[slnc 300]] Why a checksum is not protection. [[slnc 300]] How a flood works, and how it is stopped. [[slnc 300]] And why T C P hides nothing."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store accepts connections.", "", "Anyone can send it packets,", "claiming any source address,", "many at a time,", "and watch the traffic go by."]
+narration = """Here is the scenario. [[slnc 400]] An online store accepts connections from customers over the internet. [[slnc 500]] Anyone can send it packets. [[slnc 300]] Claiming any source address. [[slnc 300]] Many at a time. [[slnc 300]] And anyone on the path can watch the traffic go by."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Packet: a unit of data with addresses", "Segment: TCP's unit, with ports and numbers", "SYN, ACK: flags used to start a connection", "Sequence number: counts bytes in the stream", "Backlog: the table of half-finished handshakes"]
+narration = """Before the demos, the words. [[slnc 500]] A packet is a unit of data, with a source and a destination address. [[slnc 500]] A segment is T C P's unit, with ports and numbers. [[slnc 500]] SYN and ACK are flags used to start a connection. [[slnc 500]] A sequence number counts the bytes in the stream. [[slnc 500]] And the backlog is the table of handshakes that have started and not finished."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "What TCP/IP Gives, and Does Not"
+body = ["Gives: delivery, order, retries", "Does not give: who sent it", "Does not give: that it was not changed", "Does not give: that nobody read it", "Those come from TLS and keys."]
+narration = """Let's put it side by side. [[slnc 400]] T C P I P gives delivery, order, and retries. [[slnc 500]] It does not say who sent a packet. [[slnc 500]] It does not say that a packet was not changed on purpose. [[slnc 500]] It does not say that nobody read it. [[slnc 600]] Those come from T L S, and from keys, in the next modules."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Checksum: the RFC 1071 sum", "Ipv4Packet and TcpSegment: the headers", "Listener: the handshake state machine", "SequenceNumbers: counter or keyed", "PlaintextTap: a real connection, watched"]
+narration = """Here is who does what in the code. [[slnc 400]] The checksum class computes the standard internet checksum. [[slnc 500]] The I P packet and T C P segment classes build and read the headers. [[slnc 500]] The listener is the handshake state machine. [[slnc 500]] The sequence numbers interface picks the first number, with a counter or with a keyed hash. [[slnc 300]] And the plaintext tap sends a real connection and records what an observer would see."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["ss and netstat: SYN_RECV", "tcpdump and Wireshark", "tcp_syncookies in kernel settings", "Denial-of-service news"]
+narration = """You have probably met this already. [[slnc 400]] The commands ss and netstat show connection states, such as SYN underscore R E C V. [[slnc 500]] The tools tcpdump and Wireshark show packets and their flags. [[slnc 500]] A kernel setting called tcp syncookies turns the defence on. [[slnc 500]] And news stories about denial of service attacks often begin with a flood."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Let the operating system defend", "Rate-limit and filter at the edge", "Never trust a source address", "Never trust a stream to be private: use TLS"]
+narration = """So, how do you use it? [[slnc 400]] Let the operating system's defences do their work. [[slnc 500]] Rate limit and filter at the edge. [[slnc 500]] Never treat a source address as proof of identity. [[slnc 500]] And never treat a connection as private. Use T L S."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Change the table size", "and find when a real customer gets in."]
+narration = """That's T C P I P basics for security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] T C P delivers bytes reliably, but it does not say who sent them, and it does not hide them. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the size of the table, and find the point at which a real customer gets in. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store's web server accepting TCP connections: the packets it receives, the handshake that starts a connection, the table that remembers half-finished handshakes, the sequence numbers it chooses and the stream that follows.
+It covers an attacker who can send packets with any source address and can watch the path. It does not cover the web application on top, names, or encryption.
+"""
+assets = [
+    "The server's ability to accept connections (availability).",
+    "The identity attached to a connection, such as a trusted admin address.",
+    "The content of the stream.",
+    "The server's table of half-open connections.",
+]
+actors = [
+    "Customers making real connections.",
+    "An attacker who can send packets from any claimed address.",
+    "An observer on the network path.",
+]
+boundaries = [
+    "Internet to the store's server: every packet crosses it and none proves its sender.",
+    "Server to its half-open table: the memory a flood fills.",
+]
+assumptions = [
+    "The attacker cannot see replies sent to a spoofed address.",
+    "The server's secret for sequence numbers and cookies is unpredictable.",
+    "In the demo, addresses are documentation addresses and the secret is a fixed demo value.",
+]
+out_of_scope = [
+    "Names and the web: the next projects.",
+    "Encryption and certificates: the transport-security module.",
+    "Network-level defences such as ingress filtering and load balancers.",
+]
+tests = [
+    "`PacketsTest` checks the RFC 1071 checksum, packet round trips, and that any changed header byte is caught.",
+    "`ListenerTest` checks the handshake, full tables, SYN cookies, guessable and keyed numbers, and a real connection.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, dns-basics, looks at how names become addresses, and how that answer too can be forged.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A packet claims a source address that is not the sender's"
+where = "`Ipv4Packet`"
+control = "None in the protocol; never use a source address as identity, and filter at the edge"
+residual = "Identity needs keys: TLS and authentication"
+
+[[threat]]
+id = "T2"
+stride = "D"
+threat = "A SYN flood fills the table of half-open connections"
+where = "`Listener.onSyn`"
+control = "SYN cookies keep no state for a SYN"
+residual = "Cookies drop options and cost work, and a flood can still use up bandwidth"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A connection is forged by guessing the server's sequence number"
+where = "`SequenceNumbers`"
+control = "A keyed hash of the connection and a counter, as in RFC 6528"
+residual = "The secret must be unpredictable and replaced from time to time"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "A packet is changed on the path and its checksum recomputed"
+where = "`Checksum`"
+control = "None: the checksum has no key"
+residual = "Integrity needs a keyed code or a signature, as in TLS"
+
+[[threat]]
+id = "T5"
+stride = "I"
+threat = "An observer reads the stream"
+where = "`PlaintextTap`"
+control = "None in TCP"
+residual = "Encrypt the stream with TLS"
