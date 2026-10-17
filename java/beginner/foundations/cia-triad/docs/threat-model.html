@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — The CIA Triad</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — The CIA Triad</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The demo order system of an online store: the unprotected <code>NaiveStore</code>, the protected <code>SecureStore</code> with its
+role check, seal and emergency exception, and the <code>TickServer</code> with its <code>RateLimiter</code>. It covers what the
+three promises of the CIA triad protect inside this one system. It does not cover the network, the
+database product, or how staff sign in.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The order records: customer, item, shipping address and amount paid (confidentiality).</li>
+<li>The correctness of each amount (integrity).</li>
+<li>The checkout, which must stay usable during a sale (availability).</li>
+<li>The seal key, which makes tampering detectable.</li>
+<li>The audit log of emergency access.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Finance staff (Ana): may see and change amounts.</li>
+<li>Support staff (Raj): may see the customer and the item only.</li>
+<li>A careless or hostile insider (Mallory): has a support account, and may reach storage directly.</li>
+<li>An outside bot: floods the checkout during a sale.</li>
+<li>A real customer (Maya): wants to buy.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Internet to server: where the rate limit sits.</li>
+<li>Staff to the order system: where the role check sits.</li>
+<li>Application to storage: where the seal is checked on every read.</li>
+<li>Normal access to emergency access: where a reason is required and the use is logged.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A support agent reads an address or an amount they do not need</td>
+<td><code>SecureStore.read</code></td>
+<td>A role filter returns only the fields the role needs</td>
+<td>A finance account can still read everything, so a misused finance account is not stopped</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>An insider changes an amount through the application</td>
+<td><code>SecureStore.setAmount</code></td>
+<td>Only finance may change an amount, and the order is sealed again</td>
+<td>A finance account used wrongly is allowed; changes are not yet logged</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>Someone edits an order directly in storage</td>
+<td><code>SecureStore.storageForDemo</code> (stands in for database access)</td>
+<td>An HMAC seal is checked on every read, and a mismatch refuses the order</td>
+<td>Anyone who also has the key can reseal; the key must be protected</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>A bot floods the checkout so real customers are refused</td>
+<td><code>TickServer</code></td>
+<td><code>RateLimiter</code> allows each client a few requests per tick</td>
+<td>Many bots from many clients each stay under the limit</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Elevation of privilege</td>
+<td>Emergency access is used as a shortcut around the role check</td>
+<td><code>SecureStore.breakGlass</code></td>
+<td>A reason is required and every use is written to the audit log</td>
+<td>Reasons can be false, and the log only helps if someone reviews it</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Repudiation</td>
+<td>Someone denies they used emergency access</td>
+<td><code>SecureStore.auditLog</code></td>
+<td>Each entry records who, which order and why</td>
+<td>The demo log is in memory and could be altered; a real log is append-only and stored elsewhere</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>Spoofing</td>
+<td>Someone pretends to be a finance user</td>
+<td>the whole system (users are simply given)</td>
+<td>None in this project, by design</td>
+<td>Covered by the identity module: authentication, then passwords and one-time codes</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>Users are who they say they are. Proving it is the job of the identity module, starting with authentication-vs-authorization.</li>
+<li>The seal key is kept secret. In the demo it is a fixed value; a real system keeps it in a secrets store.</li>
+<li>An attacker may reach the stored data without going through the application (that is what act three simulates).</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Network attacks such as eavesdropping: the transport-security module covers them.</li>
+<li>Attacks on the server operating system or the database product.</li>
+<li>Distributed floods from many addresses at once.</li>
+<li>Backups and recovery: the safe-habits module covers them.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>ConfidentialityTest</code> shows support never receives the address or the amount, and only finance may change an amount.</li>
+<li><code>IntegrityTest</code> shows that a change made behind the application is refused on read.</li>
+<li><code>AvailabilityTest</code> shows one client cannot take more than its share of the server in one tick.</li>
+<li><code>BreakGlassTest</code> shows emergency access needs a reason and leaves an audit entry.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, threats-and-risk, turns a list like this into a ranked register with scores. Later modules replace
+the assumptions one by one: who the user is, how keys are kept, and how traffic is protected on the way in.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
