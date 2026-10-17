@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Keystores and Key Management Basics</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Keystores and Key Management Basics</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>Where an online bank keeps its statement key: in the code, in a key file, or in a PKCS12 keystore, how other keys are derived from passwords and master keys, and how a key is replaced. It covers a thief who has the program, a disk or a backup,
+and an operator who makes a mistake. It does not cover key management services or hardware modules, TLS keys, or the application's memory being read.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The statement key, and any key derived from it.</li>
+<li>The keystore file and its password.</li>
+<li>Every message sealed under a key that may be removed.</li>
+<li>The record of which key name each message carries.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The bank's program, which uses keys by name.</li>
+<li>A thief who has a copy of the program, a disk or a backup.</li>
+<li>A person with a login on the machine.</li>
+<li>An operator who replaces or removes keys.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Program to repository and build servers: a key in the code crosses it for good.</li>
+<li>Application to the filesystem: a key file's permissions are the only guard.</li>
+<li>Keystore file to its password: the line a thief must cross by guessing.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A key written in the code is read from the program, the repository or a build</td>
+<td><code>HardCodedKey</code></td>
+<td>Keep keys out of the code and repositories</td>
+<td>A key that was ever committed must be treated as leaked and replaced</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Information disclosure</td>
+<td>A key file is read by another user or from a backup</td>
+<td><code>KeyFile</code></td>
+<td>Owner-only permissions</td>
+<td>The file still holds the key in the clear, so backups and the owner's account must be protected too</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Information disclosure</td>
+<td>A stolen keystore file is attacked offline by guessing its password</td>
+<td><code>KeystoreVault</code></td>
+<td>The file is encrypted and integrity-protected by a key made from the password, and a wrong password is refused</td>
+<td>The file records only 10,000 rounds by default, so a strong password matters, and raised settings must be checked in the file</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Tampering</td>
+<td>A keystore file is changed</td>
+<td><code>KeystoreVault.open</code></td>
+<td>The file carries an integrity code, so a changed file is refused</td>
+<td>A deleted or replaced file is still a loss of keys, so keep a backup</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Information disclosure</td>
+<td>An opened key is read from the program's memory</td>
+<td>the running program</td>
+<td>None here</td>
+<td>A key service or hardware module keeps keys out of the program's memory</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Denial of service</td>
+<td>A key is removed before old messages are sealed again, and the data is lost</td>
+<td><code>KeystoreVault.remove</code>, <code>Messages.open</code></td>
+<td>Messages name their key, so the problem is visible, and old messages are sealed again first</td>
+<td>A runbook and a backup are still needed, because nothing stops the removal</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The keystore's password is strong and kept outside the application.</li>
+<li>The machine's memory is not read by an attacker.</li>
+<li>In the demo, keys, salts and nonces are random and never printed, and the key texts in the code are demo values.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Key management services and hardware security modules.</li>
+<li>TLS private keys and certificates: the transport-security module.</li>
+<li>Secret scanning of source history.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>HardCodedAndFileTest</code> checks the key is found in the class file, and the permissions of key files.</li>
+<li><code>KeystoreVaultTest</code> checks round trips, hidden keys and names, wrong passwords, changed files and the rounds a file records.</li>
+<li><code>DerivationTest</code> checks PBKDF2 and HKDF against published values, and separate keys for separate purposes.</li>
+<li><code>MessagesTest</code> checks key names in messages, rotation, removal and refusals.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next module, networking, looks at what travels between machines: sockets, names and the web. After it, transport security brings keys, certificates and signatures together in TLS.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

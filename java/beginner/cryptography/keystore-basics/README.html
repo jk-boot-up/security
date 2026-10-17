@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keystores and Key Management Basics</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Keystores and Key Management Basics</h1>
+<pre><code>src/main/java/com/jk/explore/security/keystore/
+├── Derivation.java     Making keys from other secrets
+├── HardCodedKey.java   The first and worst way to keep a key: write it in the source
+├── Hex.java            Small helpers for text and bytes
+├── KeyFile.java        Keeping the key in a file outside the program
+├── KeystoreDemo.java   Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── KeystoreVault.java  A PKCS12 keystore holding AES keys under aliases
+└── Messages.java       Messages sealed with AES-256-GCM under a key from the vault
+</code></pre>
+<p><strong>A strong cipher is only as safe as the key's home: not in the code, not in a file anyone can read, but in an encrypted keystore, with separate keys for separate purposes, and a plan for replacing them.</strong></p>
+<p>Every earlier project in this module used a key, and none asked where it came from. This one does. A key can live in the <strong>source code</strong>, which is the worst place:
+it is in the compiled file, in every copy of the program, and in the source history for ever. It can live in a <strong>file</strong> outside the program, which is better, but only as private as the file's
+permissions. It can live in a <strong>keystore</strong>, an encrypted file that opens with a password, such as the <strong>PKCS12</strong> format that the JDK reads and writes. Keys can also be <strong>derived</strong>: PBKDF2 turns a password and a salt into
+a key, slowly, and HKDF turns one master key into a separate key for each purpose. And because keys must be replaced, each message records the <strong>name</strong> of the key that sealed it, so old messages still open until the old key is retired.</p>
+<p>The demo follows an online bank's statement key through all of these, and ends with the costs: the keystore needs a password too, and what its file really records about its own protection.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a bank that spends a fortune on a vault door and leaves the key under the doormat. Writing the key in the code is taping it to the door. A key file with loose permissions is a
+spare key in the staff room that every employee can enter. A keystore is a locked key cabinet, whose own key is a long passphrase in someone's head. Deriving keys is cutting a different key for each door from one master pattern,
+and rotation is changing the locks while the customers' boxes are still full.</p>
+<h2>The scenario</h2>
+<p>An online bank encrypts customer statements with an AES key. The demo asks where that key should live. It first writes it into the program, then into a file, then into a PKCS12 keystore, derives keys from a password and a master key, and finally adds a second key
+to the keystore, seals new messages with it, retires the first, and counts the cost of the whole arrangement.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A key written in the source code</td>
+<td>The key's text is found inside the compiled class file, so anyone with the program has the key; it is also in the repository and every build, and changing it means shipping the program again.</td>
+</tr>
+<tr>
+<td>2. A key in a file outside the program</td>
+<td>A key file with default permissions rw-r--r-- is readable by others; owner-only rw------- is not; but either way the file holds the key in the clear.</td>
+</tr>
+<tr>
+<td>3. A PKCS12 keystore: an encrypted file of keys</td>
+<td>The keystore shows neither the key nor its name, opens only with the password, refuses a wrong one, and records 10,000 rounds of protection, with a raised setting reaching only one place.</td>
+</tr>
+<tr>
+<td>4. Making keys from other secrets</td>
+<td>PBKDF2 with 600,000 rounds turns a password and a salt into a 32-byte key, the same each time, different for another salt; HKDF makes a separate key for each purpose from one master key.</td>
+</tr>
+<tr>
+<td>5. Replacing a key, and the bill</td>
+<td>A second key is added and new messages name it while old ones name the first; both open until the first is removed, and then the old message is refused; the keystore needs a password, and its default rounds are low.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>25 tests in <code>DemoRunsTest</code>, <code>DerivationTest</code>, <code>HardCodedAndFileTest</code>, <code>KeystoreVaultTest</code>, <code>MessagesTest</code>. PBKDF2 and HKDF are checked against published values (the PBKDF2-HMAC-SHA-256 values for one and two rounds, and RFC 5869 test case one). Keys, salts and nonces are random, so the demo and its test check only facts that do not depend on them, and the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The keystore is a PKCS12 file in a temporary folder, and the keys, salts and nonces are random, so the demo prints only facts that do not depend on them: whether bytes appear in a file,
+whether an operation is refused, and which numbers the file records. A key management service or a hardware module is described, not run. PBKDF2 is checked against published test values, and HKDF
+against RFC 5869. File permissions are the POSIX ones that macOS and Linux use.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/keystore-basics-explained.html">Keystores and Key Management Basics, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>From the worst place to the best: the code, a file, a keystore, and a service or module that never lets the key leave.</p>
+<p><img alt="Four places for a key" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>KeystoreVault holds keys; Messages seals with them by name; Derivation makes keys from other secrets.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The key's name comes first, so any message can be opened by looking up the key that made it.</p>
+<p><img alt="What a stored message contains" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Opening an old message after a rotation: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/keystore-basics-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The keystore needs a password, and the password needs a home.</strong> Keystores move the problem to a smaller secret, which is the point, and it is still a secret that must be kept somewhere, ideally outside the application, in a key management service or a hardware module.</li>
+<li><strong>A lost keystore is lost data.</strong> Without the file and its password, every message sealed under its keys is gone, so the file and its password need separate, tested backups.</li>
+<li><strong>Defaults can be weaker than you expect.</strong> The file in the demo records 10,000 rounds of key derivation for its protection, against 600,000 recommended for PBKDF2 today. Raising the setting reached only one place in the file, so what the file records has to be checked, and the password has to be strong.</li>
+<li><strong>Replacing a key needs a plan.</strong> Old messages must be sealed again with the new key before the old key is removed, or they are lost.</li>
+<li><strong>Keys in memory can still be read.</strong> A keystore protects keys at rest. Once opened, the key is in the program's memory, where a heap dump or a debugger can find it.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a throwaway demo, a key in the code is fine, and so is a test key in a test file. For anything real, a keystore is the minimum, and above it a key management service or a hardware security
+module, where the key never leaves a protected boundary. How far up to go depends on what the key protects.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Java's <code>cacerts</code> file and <code>keytool</code>, which manage the certificates the JDK trusts.</li>
+<li><code>.p12</code> and <code>.pfx</code> files for TLS keys, and Spring's <code>server.ssl.key-store</code>.</li>
+<li>Cloud key management services, and hardware security modules, which hold keys that never leave them.</li>
+<li>Breach reports that begin "an API key was committed to a public repository".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the sixth in <a href="..">cryptography</a>, after <a href="../digital-signatures">digital-signatures</a>, and it leaves the question of where private keys live with a real answer.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
