@@ -23,7 +23,7 @@ Only a JDK. Gradle downloads the two libraries, and the versions are pinned:
 | java-otp | 1.0.0 |
 | Apache Commons Codec | 1.23.0 |
 | Java | 25 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 

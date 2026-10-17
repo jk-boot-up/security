@@ -29,7 +29,7 @@ Only a JDK. Gradle downloads the rest, and the versions are pinned:
 | spring-security-crypto | 7.1.1 |
 | spring-core | 7.0.9 |
 | Bouncy Castle (bcprov-jdk18on) | 1.86 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 

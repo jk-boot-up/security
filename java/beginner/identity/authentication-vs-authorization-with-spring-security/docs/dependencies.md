@@ -27,7 +27,7 @@ Only a JDK. Gradle downloads the rest, and the versions are pinned:
 | Spring Framework (spring-webmvc, spring-test) | 7.0.9 |
 | Spring Security (web, config, crypto) | 7.1.1 |
 | Jakarta Servlet API | 6.1.0 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 

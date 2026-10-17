@@ -23,7 +23,7 @@ A JDK and a running Docker. Gradle downloads the Java side, Docker pulls the ngi
 | nginx image | nginx:1.31.6-alpine |
 | Docker | any recent Docker Engine or Docker Desktop |
 | Java | 25 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 

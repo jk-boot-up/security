@@ -28,7 +28,7 @@ A JDK, and for act four and the integration tests, OpenSSL 3 on the PATH. Gradle
 | Bouncy Castle PKIX (bcpkix-jdk18on) | 1.86 |
 | OpenSSL (optional, for act four) | 3.x |
 | Java | 25 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 

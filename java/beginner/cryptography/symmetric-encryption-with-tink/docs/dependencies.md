@@ -23,7 +23,7 @@ Only a JDK. Gradle downloads Tink and its dependency, and the versions are pinne
 | Tink (com.google.crypto.tink:tink) | 1.24.0 |
 | Protocol Buffers (protobuf-java, from Tink) | 4.33.6 |
 | Java | 25 |
-| JUnit | 5.10.2 |
+| JUnit | 6.1.3 |
 
 ## What it costs
 
