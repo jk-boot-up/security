@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Symmetric Encryption with Google Tink, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Symmetric Encryption with Google Tink, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Google's Tink library makes encryption one safe call by choosing the nonce, the mode and the stored layout for you, keeping keys in a keyset with one primary key so they can be rotated, and leaving out unsafe options, while the keyset itself still needs a master key and a safe home.</p>
+<h2>The 5 acts</h2>
+<h3>1. One call, and no nonce to look after</h3>
+<p>Tink's Aead has one call to seal and one to open. The bank seals the line RENT -1200 twice, and the two results are different: Tink picked a new nonce each time, and the
+caller never saw one. The message starts with five bytes, 01000003e9: the version, 1, and the key id, 1001, so Tink knows which key to open it with. The 16-byte line becomes
+49 bytes: 5 for the key id, 12 for the nonce and 16 for the tag. Opened with the right key and account, the line comes back.</p>
+<h3>2. Any change is refused</h3>
+<p>Tink's messages are authenticated, as the plain version's were. Flip one bit of a sealed message and opening it fails. Move the message to another account, which changes the associated
+data, and it fails. Open it with a different key that has the same key id, and it fails too, because the tag does not fit. In every case the caller gets an exception, and the demo reports a refusal.</p>
+<h3>3. Replacing the key without losing the data</h3>
+<p>Keys should be replaced from time to time. In Tink, the keyset holds several keys and one is primary. The bank adds a new key and makes it primary, so the keyset holds 2 keys. A message sealed before the
+change still opens, because the old key is still in the keyset. A new message starts with a different key id. When the old key is later removed from the keyset, old messages can no longer be opened, but
+new ones can. That is why re-encrypting old messages with the new key must happen before the old key is removed.</p>
+<h3>4. Keeping the keyset itself safe</h3>
+<p>The keyset holds the keys, so it is as secret as the data. Tink can write it encrypted under a master key, which in real use lives in a key management service or a hardware module and here is another
+demo keyset. The file has an encryptedKeyset field, and the key's own bytes do not appear in it. Read back with the master key, it opens the old message. Read back with a different master key, it is refused.
+This moves the problem one step: the master key now needs the safe home.</p>
+<h3>5. The bill: what Tink decides for you, and what it does not</h3>
+<p>Tink makes the safe choice the only one on the menu. Its AEAD templates include AES128_GCM, AES256_GCM, AES128_EAX, AES256_CTR_HMAC_SHA256, CHACHA20_POLY1305, XCHACHA20_POLY1305 and AES256_GCM_SIV,
+and an ECB template is not offered. The costs are different from the plain project's. The stored format is Tink's own, so another library needs Tink, or knowledge of the layout, to read it. Tink adds a library and
+its protocol buffer dependency. The master key still has to live somewhere. And message lengths still show: every message is 33 bytes more than its content.</p>
+<h2>The verdict</h2>
+<p>Prefer a library such as Tink to hand-written AES-GCM. Use one <code>Aead</code> for each purpose, bind messages to context with associated data, rotate keys on a schedule and re-encrypt before removing old
+ones, and store keysets encrypted under a master key that lives in a key management service. Know what the library does not do: it does not guard the master key, hide lengths, or make a lost keyset recoverable.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>KeysetHandle</code>, <code>Aead</code> and <code>AeadConfig.register()</code> in Java code.</li>
+<li>A stored value whose first five bytes are a version and a key id.</li>
+<li>A key management service that talks about a primary key version and older versions.</li>
+<li>A library with no function for choosing a nonce.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Tink's <code>Aead</code> in Android and server code at Google and elsewhere, and its cousins <code>DeterministicAead</code>, <code>Mac</code> and <code>PublicKeySign</code>.</li>
+<li>Key rotation in cloud key management services, which use the same primary and old keys idea.</li>
+<li>A stored value that begins with a small version byte and a key id, before the nonce.</li>
+<li>Libraries that do not let you pick ECB, or reuse a nonce, because the API has no place to put one.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
