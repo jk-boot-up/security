@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The TLS Handshake with OpenSSL</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>The TLS Handshake with OpenSSL</h1>
+<pre><code>src/main/java/com/jk/explore/security/tlsopenssl/
+├── Connection.java        Two real TLS engines wired together in memory
+├── Pem.java               PEM text, the format every other TLS program reads: a label line, the DER bytes in Base64 with 64 characters per line, a closing label line
+├── TestCertificates.java  Two PKCS12 keystores made once with keytool: the shop's, and an impostor's that claims the same name but is not trusted
+├── TlsClient.java         A TLS client that checks the server's certificate and that its name matches the name the client asked for
+├── TlsOpenSslDemo.java    Runs the online store story in five numbered acts, over real sockets on this machine
+├── TlsServer.java         A tiny TLS server on the loopback interface
+└── Wire.java              What a sniffer sees: the bytes that cross the network, and the TLS record headers in them
+</code></pre>
+<p><strong>A TLS client or server written in Java can be checked by openssl, a program written by other people, which reports the same protocol and cipher, refuses the same wrong names and untrusted certificates, and turns away old versions, but only the checks that you switch on.</strong></p>
+<p>The plain version of this lesson wired two Java TLS engines together in memory. Here the engines meet the network, and a second implementation. <strong>openssl</strong> is a command-line toolkit written by other people, and its
+<strong>s_server</strong> and <strong>s_client</strong> commands are a TLS server and a TLS client that report what they negotiated and what they verified. If a Java client and an openssl server agree on a protocol and cipher, and an openssl client
+refuses the same impostor and the same wrong name that the Java client refuses, the Java setting is not a private idea. The two sides read the same <strong>PEM</strong> files: text files that hold a certificate or a private key as Base64.</p>
+<p>The demo runs a real TLS server and client over the loopback address, writes the PEM files, repeats the trust and version checks, and prints only facts that do not change between runs. The openssl conversations are in the integration tests.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of asking a stranger to read your map back to you. If a friend who drew the map reads it back the same way you drew it, that proves little. A stranger who reads back the same roads, refuses the same
+dead end, and agrees on the same name for the town is better evidence that the map is right, and that it is a map and not a private code.</p>
+<h2>The scenario</h2>
+<p>An online store's server presents a certificate for shop.example.test. A Java client connects to it, an impostor with the same name is tried, a wrong name is tried and old protocol versions are offered. The same server is then checked by openssl,
+and the same certificate is served by openssl to the Java client.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A real TLS server and client on this machine</td>
+<td>A Java client connects to a Java server by the name shop.example.test over TLS 1.3 with TLS_AES_256_GCM_SHA384 and gets its answer; anything that speaks TLS can take the client's place.</td>
+</tr>
+<tr>
+<td>2. Giving the certificate and key to other programs</td>
+<td>The certificate and private key are written as PEM files, which openssl reads, and the key file is owner-only and holds the key in the clear.</td>
+</tr>
+<tr>
+<td>3. Who is on the other end</td>
+<td>The client accepts the shop's own certificate, refuses an impostor with the same name, and refuses the real certificate when it asked for a different name.</td>
+</tr>
+<tr>
+<td>4. Versions: what each side offers</td>
+<td>TLS 1.2 works with a server that allows the defaults, fails against a server that allows only TLS 1.3, and TLS 1.1 fails everywhere.</td>
+</tr>
+<tr>
+<td>5. Checking from the outside, and the bill</td>
+<td>Two openssl commands check a server or serve a certificate, but a second implementation catches only the settings you pass, and openssl without -verify_return_error carries on after a problem.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>16 tests in <code>DemoRunsTest</code>, <code>OpenSsl</code>, <code>OpenSslInteropTest</code>, <code>SocketsTest</code>. The ordinary tests and the demo need only a JDK. The integration tests (tagged openssl) run a real openssl as the other end of the connection. They look for OpenSSL 3, skip cleanly without it, and always stop the processes they start.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo uses real sockets on the loopback address, with ports chosen by the system and never printed, and prints only facts that are the same every time. The test certificates are two PKCS12 files made once with keytool.
+The integration tests start openssl as a separate process on a free port, always stop it, and skip themselves if no OpenSSL 3 is found.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>OpenSSL (command-line tool)</td>
+<td>3.6.3</td>
+<td>the independent TLS peer: <code>openssl s_server</code> and <code>openssl s_client</code>; needed for the integration tests, which skip themselves without it</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tls-handshake-with-openssl-explained.html">The TLS Handshake with OpenSSL, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Java and openssl each play client and server, and read the same PEM files.</p>
+<p><img alt="Two implementations, one conversation" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>TlsServer and TlsClient are the Java ends; Pem and TestCertificates supply the files and keys.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each check can fail separately, and -verify_return_error turns a failure into an error.</p>
+<p><img alt="What openssl s_client checks" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="openssl s_client checks the Java server: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tls-handshake-with-openssl-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>openssl checks only what you ask.</strong> Without <code>-verify_return_error</code> it prints a verification problem and carries on, and a script that ignores the exit status and the verification line passes a broken setup.</li>
+<li><strong>Private keys get copied.</strong> Handing a key to another program means writing it to a file, which is one more copy to protect, with owner-only permissions at least.</li>
+<li><strong>Versions of the tool differ.</strong> macOS ships LibreSSL as <code>openssl</code>, which has different options and output, so the tests look for a real OpenSSL 3 and skip without one.</li>
+<li><strong>The test certificates are fake.</strong> They are valid for a hundred years, with a published password, and protect nothing.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a real service, check a new TLS setup from the outside once with openssl or a scanner, and then keep a regular automated check. For learning, the pairing is always worth it. A production server needs certificates from a real authority,
+which is the next project.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>openssl s_client -connect host:443</code> in almost every TLS troubleshooting guide.</li>
+<li><code>curl -v https://...</code>, which prints the same handshake information.</li>
+<li>Online TLS scanners that grade a site's protocols and ciphers.</li>
+<li><code>.pem</code>, <code>.crt</code> and <code>.key</code> files in web server configuration.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../tls-handshake">tls-handshake</a> and is the second in <a href="..">transport-security</a>. It borrows from <a href="../../cryptography/asymmetric-encryption-with-bouncy-castle">asymmetric-encryption-with-bouncy-castle</a> the habit of checking Java against OpenSSL.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
