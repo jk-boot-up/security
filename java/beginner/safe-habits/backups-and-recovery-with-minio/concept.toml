@@ -1,0 +1,563 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "backups-and-recovery-with-minio"
+module = "safe-habits"
+title = "Backups and Recovery with an S3 Object Store"
+short_title = "Backups with an Object Store"
+package = "backupsminio"
+main_class = "BackupsMinioDemo"
+tagline = "Backups the attacker cannot delete"
+bold = "An S3-compatible object store gives backups three protections that a plain folder cannot: versions that survive an overwrite, locks that survive even the root account, and a write-only identity for the backup job, at the price of storage and a lock that cannot be undone."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Backups and recovery with an S3-compatible object store in Java: the same API as MinIO and Amazon S3, run locally in Docker. Explained with an online store, like a safe deposit box where the courier can post envelopes through a slot but cannot open the box. We watch ransomware overwrite a file and restore the older version, lock a backup with Object Lock so that not even the root account can delete it, give the backup job an identity that can only add objects, catch a damaged upload with a SHA-256 checksum, and finish with the bill: storage grows with every version, a compliance lock cannot be undone, and the root account is the real key."""
+thumb_lines = ["BACKUPS WITH", "AN OBJECT STORE"]
+thumb_code = "ObjectLockMode.COMPLIANCE"
+youtube_title = "Backups and Recovery with an S3 Object Store (Versioning, Object Lock, Write-Only Keys)"
+youtube_tags = ["backups", "ransomware", "object lock", "s3", "minio", "versioning", "least privilege", "docker", "java", "cybersecurity for beginners"]
+
+[readme]
+technologies = [
+    ["RustFS (rustfs/rustfs)", "1.0.2", "the S3-compatible object store that runs in Docker; MinIO's community edition no longer publishes images, and RustFS speaks the same S3 and MinIO-style admin API"],
+    ["rc (rustfs/rc)", "v0.1.36", "the admin command-line tool that creates the backup user and its policy; the same job `mc` does for MinIO"],
+    ["Docker", "24 or later", "runs the store and the admin tool; only the integration tests and the demo need it"],
+]
+intro = """
+The plain version of this lesson kept backups in folders and simulated the ransomware. Real backups usually go to **object storage**: a service that stores objects (files with a name) in buckets and speaks the **S3** API, which Amazon S3,
+MinIO and many others share. Three of its features matter for security. **Versioning** keeps the old data when an object is overwritten or deleted. **Object Lock** makes a version impossible to delete until a date, in COMPLIANCE mode even for the root account.
+And the store has its own **identities and policies**, so the backup job can be allowed to add objects and nothing else.
+
+The demo runs a real store in Docker and talks to it with the AWS SDK for Java, as the shop, as ransomware and as the backup job.
+"""
+analogy = """
+Think of a safe deposit box with a postal slot. The courier can post envelopes through the slot but cannot open the box, read what is inside or take anything out. The box keeps every envelope ever posted, and the bank has promised, in a way that not even the manager can undo,
+that nothing posted this month will be destroyed. A thief who steals the courier's key can post junk, and nothing more.
+"""
+scenario = """
+An online store backs up its orders to an object store. Ransomware overwrites the orders file, then looks for the backups to destroy them. The demo shows what versioning, a lock and a write-only identity each stop, how a checksum catches a damaged upload, and what all of it costs.
+"""
+costs = [
+    "**Storage grows with every version.** Each overwrite keeps the old object in full until a lifecycle rule removes it.",
+    "**A COMPLIANCE lock cannot be undone.** A wrong retention date is paid for in storage until it ends, and nobody, including you, can shorten it.",
+    "**The root account is the real key.** Whoever holds it can create users and change policies, so it stays out of daily use and under its own protection.",
+    "**The lock stops the API, not the disks.** Someone who can delete the storage underneath, or the whole account, still wins, so keep a copy somewhere else too.",
+    "**It needs Docker for the lab.** The demo starts a store in a container, so it runs only where Docker is available.",
+]
+too_much = """
+For a small shop, a versioned bucket with a write-only backup identity and a lifecycle rule is a large gain for little work. Object Lock in COMPLIANCE mode is for backups whose loss would end the business, and a short retention is a sensible way to start.
+"""
+met_before = [
+    "Amazon S3 Versioning and Object Lock, Azure immutable blob storage, Google Cloud bucket lock.",
+    "Backup tools such as restic and Veeam, which can write to S3 buckets with locks.",
+    "The advice \"keep an immutable copy\" in every ransomware guide.",
+    "MinIO and S3-compatible stores in on-premises and home-lab backups.",
+]
+where = """
+This project follows [backups-and-recovery](../backups-and-recovery) and is the third project in [safe-habits](..), after [least-privilege](../least-privilege): the write-only backup identity is least privilege applied to a real service.
+"""
+twin = """
+The store runs in Docker on your machine and is thrown away after each run, with fixed demo credentials that protect nothing. The demo prints only facts that do not depend on ports, version ids or time. The retention date is a day from the moment of the run, and the demo prints only that the lock refuses.
+"""
+test_note = "The ordinary tests need only a JDK (the checksum helper, the outcome wording and the write-only policy). The integration tests and the demo start the real store in Docker and check versioning, both lock modes, the write-only identity, the checksum, the lifecycle rule, and that no container or network is left behind."
+
+[[act]]
+title = "Versioning: an overwrite does not destroy the old data"
+summary = "Ransomware overwrites orders.csv, two versions are kept, the original is restored by writing it back, and a plain delete only adds a marker."
+detail = """
+The shop stores orders.csv and ransomware overwrites it with scrambled bytes. Two versions are kept. A normal read returns the scrambled file, but the original is still there as an older version. Restoring is writing the older version back as the newest.
+The scrambled version stays in the history as evidence. A plain delete only adds a delete marker: reading the key fails, the data is not gone. But an attacker with the right to delete versions could still remove every version, which is what the next act stops.
+"""
+speech = """
+First demo: versioning. [[slnc 400]] The shop stores its orders file. [[slnc 300]] Ransomware overwrites it with scrambled bytes. [[slnc 600]]
+Two versions are kept. [[slnc 300]] A normal read returns the scrambled file. [[slnc 300]] But the original is still there, as an older version. [[slnc 600]]
+Restoring is writing the older version back as the newest. [[slnc 600]]
+A plain delete only adds a marker. [[slnc 300]] The data is not gone. [[slnc 600]]
+But an attacker who may delete versions could still destroy them all. [[slnc 300]] The next demo stops that.
+"""
+rows = { versions = "active ok" }
+console = [
+    ["the shop stores orders.csv, then ransomware overwrites it with scrambled bytes", "muted"],
+    ["versions kept for orders.csv: 2", "ok"],
+    ["what a normal read returns now is the scrambled file: true", "amber"],
+    ["the original is still there as an older version: true", "ok"],
+    ["restore = write the older version back as the newest: true", "ok"],
+    ["a plain delete only adds a delete marker (1): reading the key now fails, the data is not gone: true", "ok"],
+    ["but an attacker with delete rights on versions can still remove every version, which is what the next act stops", "amber"],
+]
+
+[[act]]
+title = "Object Lock: nobody can delete a locked version"
+summary = "A COMPLIANCE-locked backup refuses deletion, even with bypass and from the root account, and the retention cannot be shortened; GOVERNANCE can be lifted with a special permission."
+detail = """
+A backup is stored with COMPLIANCE retention for a day. Deleting that version is refused. Deleting it while asking to bypass governance is refused. Shortening the retention is refused. A plain delete is allowed but only adds a marker, and the locked version is still readable.
+GOVERNANCE is softer: deleting is refused, but with the special bypass permission it can be lifted. COMPLIANCE cannot be lifted by anyone until the date, so choose it with care.
+"""
+speech = """
+Second demo: Object Lock. [[slnc 400]] A backup is stored with a compliance lock for one day. [[slnc 600]]
+Deleting that version is refused. [[slnc 300]] Asking to bypass the lock is refused. [[slnc 300]] Shortening the lock is refused. [[slnc 600]]
+This is the root account, and it is still refused. [[slnc 600]]
+A plain delete only adds a marker. [[slnc 300]] The locked version is still readable. [[slnc 600]]
+The governance lock is softer. [[slnc 300]] It can be lifted with a special permission. [[slnc 300]] The compliance lock cannot be lifted by anyone, until the date.
+"""
+rows = { lock = "active ok" }
+console = [
+    ["a backup is stored with COMPLIANCE retention for a day", "muted"],
+    ["delete that version: refused (403 AccessDenied)", "ok"],
+    ["delete it asking to bypass governance: refused (403 AccessDenied)", "ok"],
+    ["shorten the retention: refused (403 AccessDenied)", "ok"],
+    ["a plain delete is allowed but only adds a marker: allowed", "muted"],
+    ["the locked version is still readable: true", "ok"],
+    ["GOVERNANCE is softer. Delete that version: refused (403 AccessDenied)", "muted"],
+    ["with the special bypass permission it can be lifted: allowed", "amber"],
+    ["COMPLIANCE cannot be lifted by anyone until the date, so choose it with care", "amber"],
+]
+
+[[act]]
+title = "The backup job gets an identity that can only add objects"
+summary = "The backup job's policy has one action, PutObject: it can write a backup but cannot read, list, delete, delete a version or write to another bucket."
+detail = """
+The backup job gets its own identity with a policy that has one action, adding objects to one bucket. It can write a backup. It cannot read one back, list versions, delete, delete a version, or write to the orders bucket.
+So a thief who steals the backup job's key can add data but cannot read it, change history or destroy backups. It can still add junk, so quotas and alerts on unusual uploads matter.
+"""
+speech = """
+Third demo: a write only identity. [[slnc 400]] The backup job gets its own user, whose policy has one action: add an object, to one bucket. [[slnc 600]]
+It can write a backup. [[slnc 300]] It cannot read one. [[slnc 300]] It cannot list. [[slnc 300]] It cannot delete. [[slnc 300]] It cannot delete a version. [[slnc 300]] And it cannot write to any other bucket. [[slnc 600]]
+So a thief who steals this key can add data, and nothing else. [[slnc 300]] It can still add junk, so alerts on unusual uploads still matter.
+"""
+rows = { writer = "active ok" }
+console = [
+    ["the backup job writes a backup: allowed", "ok"],
+    ["it tries to read one back: refused (403 AccessDenied)", "ok"],
+    ["it tries to list versions: refused (403 AccessDenied)", "ok"],
+    ["it tries to delete: refused (403 AccessDenied)", "ok"],
+    ["it tries to delete a version: refused (403 AccessDenied)", "ok"],
+    ["it tries to write to the orders bucket: refused (403 AccessDenied)", "ok"],
+    ["so a thief who steals the backup job's key can add data but cannot read, change history or destroy backups", "muted"],
+    ["it can still add junk, so the quota and the alerts on unusual uploads matter", "amber"],
+]
+
+[[act]]
+title = "A checksum catches a damaged backup"
+summary = "An upload with the right SHA-256 is accepted; one whose bytes do not match the checksum is refused with BadDigest and leaves nothing behind."
+detail = """
+Uploading with the SHA-256 of the data is allowed. Uploading bytes whose SHA-256 does not match the one sent is refused, and leaves nothing behind. What was stored for the good upload hashes to the same value.
+The store checks bytes in transit and at upload; a restore test is still needed to know that a backup is usable.
+"""
+speech = """
+Fourth demo: a checksum. [[slnc 400]] An upload with the right S H A two five six is accepted. [[slnc 600]]
+Bytes that do not match the checksum are refused. [[slnc 300]] And nothing is left behind. [[slnc 600]]
+The stored copy hashes to the same value. [[slnc 600]]
+But a checksum only shows the bytes arrived. [[slnc 300]] A restore test shows the backup is usable.
+"""
+rows = { checksum = "active ok" }
+console = [
+    ["upload with the SHA-256 of the data: allowed", "ok"],
+    ["upload bytes whose SHA-256 does not match the one sent: refused (400 BadDigest)", "ok"],
+    ["what was stored for the good upload hashes to the same value: true", "ok"],
+    ["the damaged upload left nothing behind: true", "ok"],
+    ["the store checks bytes in transit and at upload; a restore test is still needed to know the backup is usable", "amber"],
+]
+
+[[act]]
+title = "Keeping history without keeping it for ever, and the cost"
+summary = "A lifecycle rule removes old versions after 30 days; the bill is storage that grows, a lock that cannot be undone, a root account that is the real key, and disks that the lock does not protect."
+detail = """
+A lifecycle rule on the orders bucket removes old versions 30 days after they are replaced. Every version is stored in full, so storage grows with every overwrite until the rule removes them. A COMPLIANCE lock cannot be undone. The root account is the real key, so keep it out of daily use.
+Object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too.
+"""
+speech = """
+Fifth demo: the lifecycle, and the bill. [[slnc 400]] A lifecycle rule removes old versions thirty days after they are replaced. [[slnc 600]]
+Every version is stored in full, so storage grows with every overwrite, until the rule removes them. [[slnc 600]]
+A compliance lock cannot be undone. [[slnc 300]] A wrong date is paid for in storage. [[slnc 600]]
+The root account is the real key. [[slnc 300]] Keep it out of daily use. [[slnc 600]]
+And the lock stops the A P I from deleting backups, not someone from deleting the disks. [[slnc 300]] So keep a copy somewhere else too.
+"""
+rows = { lifecycle = "active amber" }
+console = [
+    ["a lifecycle rule on the orders bucket: 1 rule, expire-old-versions, removes old versions 30 days after they are replaced", "ok"],
+    ["every version is stored in full, so storage grows with every overwrite until the rule removes them", "amber"],
+    ["a COMPLIANCE lock cannot be undone, so a mistaken retention date is paid for in storage", "amber"],
+    ["the root account is the real key: whoever holds it can change policies and users, so keep it out of daily use", "amber"],
+    ["object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too", "amber"],
+]
+
+[animation]
+subtitle = "An online store backs up to an object store that keeps versions, locks them, and lets the backup job only add objects."
+boxes = [
+    ["versions", "Versioning", "an overwrite keeps the old data"],
+    ["lock", "Object Lock", "no delete until the date"],
+    ["writer", "Write-only identity", "the backup job can only add"],
+    ["checksum", "Checksums", "damaged uploads are refused"],
+    ["lifecycle", "Lifecycle", "old versions expire, at a cost"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses the AWS SDK for Java to talk to the store, and two Docker images: the object store and its admin tool.
+"""
+what = [
+    ["AWS SDK for Java v2 (s3, url-connection-client)", "the standard Java client for the S3 API. It works unchanged against Amazon S3, MinIO, RustFS and other S3-compatible stores; here it is pointed at the loopback address with path-style access."],
+    ["RustFS (rustfs/rustfs)", "an open-source S3-compatible object store. MinIO's community edition no longer publishes container images, so this project runs RustFS, which implements the same S3 features and a MinIO-style admin API. The lesson does not depend on which store it is."],
+    ["rc (rustfs/rc)", "the command-line admin tool of RustFS, used only to create the backup user, its policy and the attachment. It plays the role that `mc admin` plays for MinIO."],
+    ["Docker", "runs the two images. The container and its private network are removed when the run ends."],
+]
+why = """
+The earlier backup project modelled the ideas with folders. Versioning, Object Lock and policies are features of a real object store, so a real one is the only honest way to show that they behave as described, and the same code works against Amazon S3.
+"""
+install_note = "A JDK, and Docker for the demo and the integration tests. Gradle downloads the Java libraries and Docker pulls the images, and the versions are pinned:"
+versions = [
+    ["AWS SDK for Java v2", "2.56.0"],
+    ["RustFS (image)", "1.0.2"],
+    ["rc admin tool (image)", "v0.1.36"],
+    ["Java", "25"],
+    ["JUnit", "6.1.3"],
+]
+costs = [
+    "A Docker image of a few hundred megabytes on the first run.",
+    "The SDK's default checksum behaviour had to be set to \"when required\", because this store rejected the SDK's streaming checksum trailer; the explicit SHA-256 header is used instead.",
+    "The demo needs Docker, so it runs under `integrationTest`.",
+]
+
+[docs.problem]
+scenario = """
+An online store keeps its orders in a database and backs them up every night. Ransomware that reaches the servers also reaches whatever the servers can write to, and it deletes or encrypts the backups first.
+"""
+naive = """
+Put the backups on a network share or a bucket that the backup job can read, write and delete, using the same account that runs the application.
+"""
+deliver = [
+    "A versioned bucket in which an overwrite and a delete are recoverable.",
+    "A COMPLIANCE lock and a GOVERNANCE lock, and what each refuses.",
+    "A backup identity whose policy has one action, created with the store's admin tool.",
+    "An upload whose SHA-256 checksum is verified by the store.",
+    "A lifecycle rule, and an honest list of costs.",
+    "A container and network that are always removed, even when a test fails.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The backups-and-recovery project, or an idea of what a backup and a restore test are",
+    "Docker running on your machine",
+]
+not_required = [
+    "An AWS account: everything runs locally",
+    "Knowledge of S3 or MinIO",
+]
+install = ["Docker (the demo and the integration tests pull the two images on first use)"]
+
+[docs.session]
+objectives = [
+    "explain what versioning protects against, and what it does not",
+    "explain the difference between COMPLIANCE and GOVERNANCE locks",
+    "give a backup job the least privilege it needs",
+    "list the costs of immutable backups",
+]
+walkthrough = """
+Start with the safe deposit box. Run the demo one act at a time. After act one, ask what an attacker with full rights could still do. After act two, ask who should be allowed to bypass a GOVERNANCE lock. In act three, ask what the
+thief who steals the backup key can still do, and what would reveal it.
+"""
+exercises = [
+    "Change the retention to ten seconds on a GOVERNANCE lock and watch it expire, then try the same with COMPLIANCE.",
+    "Give the backup identity read access to one prefix and test what it can then reach.",
+    "Add a legal hold to an object and see what it refuses.",
+    "Set a bucket default retention and check that new objects get it without being asked.",
+]
+
+[docs.explained]
+sentence = """
+Backups survive ransomware when old versions are kept, when locks stop anyone from deleting them before a date, and when the job that writes them can do nothing but add objects.
+"""
+verdict = """
+Use a versioned bucket, a write-only identity for the backup job, a lifecycle rule and, for the backups that matter most, Object Lock with a retention you can afford. Test restores regularly, protect the root account, and keep a copy outside the account.
+"""
+recognise = [
+    "S3 Versioning, Object Lock and bucket policies in cloud consoles.",
+    "`mc admin policy` and `mc retention` in MinIO guides.",
+    "Backup software settings called \"immutable backups\" or \"WORM\".",
+]
+
+[spec]
+purpose = """
+Teach immutable, least-privilege backups by running a real S3-compatible object store in Docker and showing versioning, Object Lock, a write-only identity, checksums and lifecycle rules with the AWS SDK for Java.
+"""
+nongoals = [
+    "Backup scheduling and the contents of a backup: the plain project.",
+    "Replication across sites and regions.",
+    "Server-side encryption keys and key management services.",
+]
+problem = """
+Backups on the same account as the application are destroyed with it; learners need to see the features that prevent this working on a real store.
+"""
+roles = [["The store in Docker", "`ObjectStoreContainer`"], ["An S3 client for one identity", "`Store`"], ["Entry point", "`BackupsMinioDemo`"]]
+requirements = [
+    "An overwrite keeps the old version, and a delete only adds a marker.",
+    "A COMPLIANCE lock refuses deleting, bypassing and shortening, and a GOVERNANCE lock accepts a bypass.",
+    "The write-only identity can add objects to its bucket and nothing else.",
+    "A checksum that does not match the bytes is refused and leaves nothing behind.",
+    "No container or network is left after a run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Three protections around the backups"
+caption = "The job can only add, versions keep the history, and the lock holds the history until a date."
+nodes = [
+    { id = "job", label = "Backup job", sub = "its own identity", col = 0, row = 0, colour = "client" },
+    { id = "policy", label = "Write-only policy", sub = "PutObject on one bucket", col = 1, row = 0, colour = "green" },
+    { id = "bucket", label = "Versioned bucket", sub = "every overwrite keeps the old data", col = 2, row = 0, colour = "accent", shape = "store" },
+    { id = "lock", label = "Object Lock", sub = "no delete until the date", col = 3, row = 0, colour = "green" },
+    { id = "root", label = "Root account", sub = "the real key", col = 2, row = 1, colour = "red" },
+]
+edges = [
+    { from = "job", to = "policy", label = "checked by" },
+    { from = "policy", to = "bucket", label = "adds objects" },
+    { from = "bucket", to = "lock", label = "held by" },
+    { from = "root", to = "policy", label = "creates", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they do"
+caption = "ObjectStoreContainer starts the store and creates the user; Store makes every call as one identity."
+nodes = [
+    { id = "container", label = "ObjectStoreContainer", sub = ["start()", "admin(arguments)", "createWriteOnlyUser(user, secret, bucket)", "close()"], col = 0, row = 0, colour = "amber" },
+    { id = "store", label = "Store", sub = ["put, get, getVersion", "delete, deleteVersion", "retain(mode, until)", "expireOldVersionsAfter(days)", "outcome(call)"], col = 1, row = 0, colour = "green" },
+    { id = "demo", label = "BackupsMinioDemo", sub = ["run()"], col = 2, row = 0, colour = "accent" },
+]
+edges = [
+    { from = "demo", to = "container", label = "starts" },
+    { from = "demo", to = "store", label = "calls as root and as the writer" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What happens to an overwritten file"
+caption = "The old data stays as a version until a lifecycle rule or a retention date says otherwise."
+nodes = [
+    { id = "v1", label = "Version 1", sub = "the real orders", col = 0, row = 0, colour = "green" },
+    { id = "v2", label = "Version 2", sub = "scrambled by ransomware", col = 1, row = 0, colour = "red" },
+    { id = "v3", label = "Version 3", sub = "a copy of version 1, written back", col = 2, row = 0, colour = "green" },
+    { id = "rule", label = "Lifecycle rule", sub = "removes old versions after 30 days", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "v1", to = "v2", label = "overwritten" },
+    { from = "v2", to = "v3", label = "restored" },
+    { from = "v3", to = "rule", label = "later" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Ransomware tries to destroy a locked backup: who calls whom, in order"
+participants = ["Ransomware", "Object store"]
+steps = [
+    ["Ransomware", "Object store", "DELETE the backup version"]
+    ,["note", "Object store", "COMPLIANCE retention is still running"]
+    ,["Object store", "Ransomware", "403 AccessDenied", "reply"]
+    ,["Ransomware", "Object store", "DELETE with bypass governance"]
+    ,["Object store", "Ransomware", "403 AccessDenied", "reply"]
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Creating the write-only identity"
+caption = "The admin tool creates the user, the policy and the attachment, as the root account."
+participants = ["Setup", "rc admin tool", "Object store"]
+steps = [
+    ["Setup", "rc admin tool", "user add backup-writer"]
+    ,["rc admin tool", "Object store", "create the user"]
+    ,["Setup", "rc admin tool", "policy create (PutObject only)"]
+    ,["Setup", "rc admin tool", "policy attach to the user"]
+    ,["Object store", "Setup", "the user can now only add objects", "reply"]
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A damaged upload"
+caption = "The store hashes what it receives and compares it with the checksum sent."
+participants = ["Backup job", "Object store"]
+steps = [
+    ["Backup job", "Object store", "PUT bytes with a SHA-256 header"]
+    ,["note", "Object store", "hash the received bytes and compare"]
+    ,["Object store", "Backup job", "400 BadDigest when they differ", "reply"]
+    ,["note", "Object store", "nothing is stored"]
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The shop's servers", nodes = ["app", "job"], colour = "amber" },
+    { label = "The object store", nodes = ["bucket", "root"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "app", label = "Application servers", sub = "reached by the attacker", col = 0, row = 0, colour = "amber", shape = "ellipse", threats = ["T1"] },
+    { id = "job", label = "Backup job", sub = "holds the write-only key", col = 0, row = 1, colour = "amber", shape = "ellipse", threats = ["T2", "T4"] },
+    { id = "bucket", label = "Locked, versioned bucket", sub = "the backups", col = 1, row = 0, colour = "accent", shape = "store", threats = ["T1", "T3"] },
+    { id = "root", label = "Root account", sub = "creates users and policies", col = 1, row = 1, colour = "red", threats = ["T5"] },
+    { id = "attacker", label = "Attacker", sub = "ransomware, or a thief with a key", col = 2, row = 0, colour = "red", threats = ["T1", "T2", "T5"] },
+]
+edges = [
+    { from = "job", to = "bucket", label = "adds objects" },
+    { from = "attacker", to = "app", label = "takes over", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "bucket", label = "tries to delete", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "root", label = "wants these keys", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["BACKUPS WITH", "text"], ["AN OBJECT STORE", "accent"]]
+taglines = [["Backups the attacker cannot delete", "gold"]]
+before = { code = "share the app can delete", note = "ransomware deletes the backups too", tag = "BEFORE" }
+after = { code = "versions + lock + put-only", note = "history survives, even a stolen key", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Backups and Recovery with an S3 Object Store"
+narration = """Hello, and welcome. [[slnc 400]] This video explains backups with an object store, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] An object store keeps files, called objects, in buckets, and speaks the S three A P I. [[slnc 300]] Amazon S three, MinIO and many others use the same A P I. [[slnc 600]] Think of a safe deposit box with a postal slot. [[slnc 300]] The courier can post envelopes through the slot, but cannot open the box. [[slnc 300]] And the bank has promised that nothing posted this month will be destroyed. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how versions, locks, and a write only key protect backups. [[slnc 300]] And what they cost."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store backs up its orders.", "", "Ransomware gets onto the servers,", "overwrites the orders,", "and then looks for the backups", "to destroy them."]
+narration = """Here is the scenario. [[slnc 400]] An online store backs up its orders every night. [[slnc 500]] Ransomware gets onto the servers. [[slnc 300]] It overwrites the orders. [[slnc 300]] And then it looks for the backups, to destroy them."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Bucket: a container of objects", "Version: an older copy of an object", "Object Lock: no delete until a date", "COMPLIANCE: nobody can lift it", "Policy: what an identity may do"]
+narration = """Before the demos, the words. [[slnc 500]] A bucket is a container of objects. [[slnc 500]] A version is an older copy of an object. [[slnc 500]] Object Lock means no delete until a date. [[slnc 500]] Compliance mode means nobody can lift the lock. [[slnc 500]] And a policy says what an identity may do."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Three Protections"
+body = ["Versions: the old data stays", "Locks: it cannot be deleted before a date", "A write-only key: the job can only add", "Each stops a different attack."]
+narration = """Let's put the three side by side. [[slnc 400]] Versions keep the old data when something is overwritten. [[slnc 500]] Locks stop anyone deleting a version before a date. [[slnc 500]] A write only key means the backup job can only add. [[slnc 600]] Each one stops a different attack, and together they leave ransomware very little to destroy."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["ObjectStoreContainer: the store in Docker", "Store: one identity's S3 calls", "BackupsMinioDemo: the five acts", "rc admin tool: users and policies"]
+narration = """Here is who does what in the code. [[slnc 400]] The object store container class starts the store in Docker, and removes it afterwards. [[slnc 500]] The store class makes every call as one identity, so what each one may do is visible. [[slnc 500]] The demo class runs the five acts. [[slnc 300]] And the admin tool creates the users and their policies."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["S3 Versioning and Object Lock", "Azure immutable blobs", "Immutable or WORM backups", "MinIO in home labs"]
+narration = """You have probably met this already. [[slnc 400]] Amazon S three offers versioning and object lock. [[slnc 500]] Azure calls it immutable blob storage. [[slnc 500]] Backup products offer immutable, or worm, backups. [[slnc 500]] And MinIO and similar stores are common in home labs and on premises."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Versioned bucket, with a lifecycle rule", "A write-only identity for the job", "Object Lock for backups that matter", "Test restores; protect the root account", "Keep a copy outside the account"]
+narration = """So, how do you use it? [[slnc 400]] Use a versioned bucket, with a lifecycle rule. [[slnc 500]] Give the backup job a write only identity. [[slnc 500]] Use Object Lock for the backups that matter most. [[slnc 500]] Test restores, and protect the root account. [[slnc 500]] And keep a copy outside the account."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try a GOVERNANCE lock", "with a ten second retention."]
+narration = """That's backups with an object store. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A backup is safe when the old data is kept, when it cannot be deleted before a date, and when the job that writes it can do nothing but add. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with Docker and a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Make a governance lock with a ten second retention, and watch it expire. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The backups of an online store held in an S3-compatible object store: the objects and their versions, the locks, the identity that writes backups, and the root account. It covers ransomware on the application servers and a thief who steals a key.
+It does not cover the store's disks, the network between the servers and the store, or the contents of the backups.
+"""
+assets = [
+    "The backup objects and their older versions.",
+    "The write-only key of the backup job.",
+    "The root credentials of the store.",
+    "The retention settings.",
+]
+actors = [
+    "The shop's application and backup job.",
+    "Ransomware running with the application's rights.",
+    "A thief who has stolen the backup job's key.",
+    "An administrator who holds the root account.",
+]
+boundaries = [
+    "Application servers to the object store: only the write-only identity crosses it.",
+    "The backup identity to the root account: the root account can change any policy.",
+]
+assumptions = [
+    "The root credentials are kept out of the application servers.",
+    "The store's disks and the account itself are not attacked.",
+    "In the demo, the store is local and its credentials are fixed demo values.",
+]
+out_of_scope = [
+    "Replication to another site or provider.",
+    "Encryption keys and key management.",
+    "The correctness of the backup's contents: the plain project's restore test.",
+]
+tests = [
+    "`ObjectStoreTest` (integration, Docker) checks versions, delete markers, both lock modes, the write-only identity, checksums, the lifecycle rule, and that nothing is left running.",
+    "`StoreUnitTest` checks the SHA-256 helper against the published value, the wording of refusals, and that the policy has one action.",
+    "`DemoRunsTest` (integration) compares the whole demo with the golden output.",
+]
+next = """
+The safe-habits module is finished with this project. The track continues with the tool versions of the earlier projects and then the intermediate level.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Ransomware overwrites or deletes the backups using the application's access"
+where = "the bucket"
+control = "Versioning keeps the old data, and Object Lock refuses deletes of locked versions"
+residual = "Versions cost storage, and a lock protects only until its date"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A thief with the backup job's key reads or destroys the backups"
+where = "`ObjectStoreContainer.createWriteOnlyUser`"
+control = "The policy has one action, PutObject, on one bucket"
+residual = "The thief can still add junk, so quotas and alerts on unusual uploads are needed"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A backup is damaged in transit or at upload"
+where = "`Store.put`"
+control = "A SHA-256 checksum is sent and verified by the store"
+residual = "Only a restore test shows that the backup is usable"
+
+[[threat]]
+id = "T4"
+stride = "R"
+threat = "Nobody can say who uploaded or removed a backup"
+where = "the backup job"
+control = "A separate identity for the job makes its actions attributable"
+residual = "Audit logging of the store has to be switched on and kept elsewhere"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "The root account is stolen, and policies, users and governance locks are changed"
+where = "the root account"
+control = "COMPLIANCE locks cannot be lifted even by the root account"
+residual = "GOVERNANCE locks can, new users can be added, and the store's disks are outside the lock, so keep the root credentials out of daily use and keep a copy elsewhere"
