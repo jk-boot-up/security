@@ -40,10 +40,10 @@ Learners see HTTP through frameworks and do not know what the server receives, w
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 23, all passing |
-| Demo output | 42 lines, identical on every run |
+| Tests | 28, all passing |
+| Demo output | 43 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:48, 1920×1080, narrated in the amy-slow voice |
+| Video | 08:02, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

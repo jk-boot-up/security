@@ -41,7 +41,8 @@ The defences have costs. First, a lockout per account can be turned against the 
 account, and then Dana, logging in from her own phone with the right password, is told the account is locked. That is a denial of
 service. Locking each account-and-address pair instead lets Dana in, but an attacker with 10 addresses now gets 10 times 5, which is 50, guesses
 before any is locked. Second, messages. If an unknown name says "no account with that name" and a wrong password says "wrong password", the
-attacker can test which usernames exist. One message for both, "wrong username or password", hides it, at the price of a vaguer message for honest typing mistakes.
+attacker can test which usernames exist. One message for both, "wrong username or password", hides it, at the price of a vaguer message for honest typing mistakes. The work behind the message
+must match too: an unknown name costs the same 1 password hash as a known one, so the time a reply takes does not tell them apart either.
 
 ## The verdict
 

@@ -97,4 +97,13 @@ class ResolverTest {
         assertEquals("203.0.113.10", Address.text(result.address()));
         assertTrue(result.nameReadableOnTheWire());
     }
+
+    @Test
+    void aForgedReplyAfterTheRealAnswerCannotReplaceIt() {
+        Resolver resolver = resolver(3600);
+        Resolver.Pending pending = resolver.ask(NAME, 0).orElseThrow();
+        assertTrue(answer(resolver, pending, pending.id(), pending.port(), 300, 5));
+        assertFalse(answer(resolver, pending, pending.id(), pending.port(), 86400, 66));
+        assertEquals(5, resolver.cached(NAME, 1).orElseThrow());
+    }
 }

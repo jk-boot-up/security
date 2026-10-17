@@ -23,11 +23,11 @@ Chapters:
 03:50 Act Three — Allow each address 5 attempts in every 10 ticks
 04:24 Act Four — Credential stuffing: passwords leaked from another site
 05:24 Act Five — The bill: a lock can be used against the customer, and messages can leak
-06:24 What Stops What
-06:55 Who Does What
-07:24 Where You Have Seen It
-07:56 How To Use Them
-08:21 Thanks for Watching
+06:37 What Stops What
+07:09 Who Does What
+07:37 Where You Have Seen It
+08:09 How To Use Them
+08:34 Thanks for Watching
 ```
 
 ## Tags

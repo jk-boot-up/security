@@ -33,6 +33,7 @@ public class Bank {
     private final Map<String, Integer> failuresByKey = new HashMap<>();
     private final Map<String, Integer> lockedUntilByKey = new HashMap<>();
     private final Map<String, Integer> attemptsByWindow = new HashMap<>();
+    private int hashesComputed;
 
     public Bank(Ticker ticker, Defences defences) {
         this.ticker = ticker;
@@ -60,22 +61,25 @@ public class Bank {
             }
         }
 
-        Account account = accounts.get(username);
-        if (account == null) {
-            return new Reply(Outcome.UNKNOWN_USER, defences.genericMessages()
-                    ? "wrong username or password" : "no account with that name");
-        }
-
         String key = defences.lockScope() == LockScope.ACCOUNT ? username : username + "@" + address;
         if (defences.lockoutAfter() > 0 && now < lockedUntilByKey.getOrDefault(key, 0)) {
             return new Reply(Outcome.LOCKED, "account locked, try again later");
         }
 
-        if (!hash(username, password).equals(account.passwordHash)) {
+        // An unknown name costs the same hash as a known one, and counts toward the same lock: otherwise the time a reply
+        // takes, and which names can be locked, tell an attacker which names exist even when the message does not.
+        Account account = accounts.get(username);
+        String expected = account == null ? UNKNOWN_ACCOUNT_HASH : account.passwordHash;
+        boolean matches = hash(username, password).equals(expected) && account != null;
+        if (!matches) {
             int failures = failuresByKey.merge(key, 1, Integer::sum);
             if (defences.lockoutAfter() > 0 && failures >= defences.lockoutAfter()) {
                 lockedUntilByKey.put(key, now + 1 + defences.lockoutTicks());
                 failuresByKey.put(key, 0);
+            }
+            if (account == null) {
+                return new Reply(Outcome.UNKNOWN_USER, defences.genericMessages()
+                        ? "wrong username or password" : "no account with that name");
             }
             return new Reply(Outcome.WRONG_PASSWORD, defences.genericMessages()
                     ? "wrong username or password" : "wrong password");
@@ -91,7 +95,16 @@ public class Bank {
         return new Reply(Outcome.OK, "welcome");
     }
 
-    private static String hash(String username, String password) {
+    /** How many password hashes this bank has computed: one per login attempt that reaches the check, known name or not. */
+    public int hashesComputed() {
+        return hashesComputed;
+    }
+
+    /** Compared against for names that have no account, so that they take the same work as names that do. */
+    private static final String UNKNOWN_ACCOUNT_HASH = "0".repeat(64);
+
+    private String hash(String username, String password) {
+        hashesComputed++;
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(("demo-salt:" + username + ":" + password).getBytes(StandardCharsets.UTF_8));

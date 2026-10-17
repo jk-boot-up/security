@@ -1,9 +1,11 @@
 package com.jk.explore.security.http;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 class ParserTest {
@@ -79,5 +81,18 @@ class ParserTest {
         assertThrows(BadMessageException.class, () -> HttpResponse.ok("").with("Bad Name", "v").serialize());
         String wire = HttpResponse.redirectToSearch("shoes").serialize();
         assertEquals("HTTP/1.1 302 Found\r\nLocation: /search?q=shoes\r\nContent-Length: 0\r\n\r\n", wire);
+    }
+
+    @Test
+    void upperCaseTransferEncodingIsRefusedWhateverTheLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.of("tr"));
+            assertThrows(BadMessageException.class,
+                    () -> HttpParser.parse(BASE + "Content-Length: 4\r\nTRANSFER-ENCODING: chunked\r\n\r\nabcd"));
+            assertEquals("4", assertDoesNotThrow(() -> HttpParser.parse(BASE + "CONTENT-LENGTH: 4\r\n\r\nabcd")).header("Content-Length"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 }

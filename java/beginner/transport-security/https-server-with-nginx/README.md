@@ -53,7 +53,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-27 tests in `ConfigAndScoreTest`, `DemoRunsTest`, `NginxContainerTest`, `PkiTest`, `ProbeTest`, `ReferenceConfigTest`. The default tests need only a JDK. The tests tagged docker start real nginx containers (nginx:1.31.7-alpine) on free local ports and always remove them; a test checks that none are left behind. The demo prints no port numbers or random values, so its golden output is the same on every run.
+31 tests in `ConfigAndScoreTest`, `CspCheckTest`, `DemoRunsTest`, `NginxContainerTest`, `PkiTest`, `ProbeTest`, `ReferenceConfigTest`. The default tests need only a JDK. The tests tagged docker start real nginx containers (nginx:1.31.7-alpine) on free local ports and always remove them; a test checks that none are left behind. The demo prints no port numbers or random values, so its golden output is the same on every run. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

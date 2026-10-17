@@ -132,4 +132,4 @@ TLS is not optional: every connection that carries anything of value should use 
 
 ## Where this sits
 
-This project is the first in [transport-security](..) and uses the keys, hashes and signatures of [cryptography](../../cryptography), and the connections of [networking](../networking).
+This project is the first in [transport-security](..) and uses the keys, hashes and signatures of [cryptography](../../cryptography), and the connections of [networking](../../networking).

@@ -1,5 +1,6 @@
 package com.jk.explore.security.auth;
 
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -33,9 +34,9 @@ public class PolicyGate implements Gate {
         String user = session.get().username();
         Role role = roleSource == RoleSource.SESSION ? session.get().roleAtLogin() : directory.find(user).role();
         if (allowed(role, user, action, order)) {
-            return new Response(Status.OK, user + " may " + action.name().toLowerCase());
+            return new Response(Status.OK, user + " may " + action.name().toLowerCase(Locale.ROOT));
         }
-        return new Response(Status.FORBIDDEN, user + " may not " + action.name().toLowerCase());
+        return new Response(Status.FORBIDDEN, user + " may not " + action.name().toLowerCase(Locale.ROOT));
     }
 
     /** The rules: owners may view and cancel their own orders; support may view any and refund; admins may do all. */

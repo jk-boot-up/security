@@ -54,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-20 tests in `CertificateTest`, `CmsEnvelopeTest`, `OpenSslInteropTest`, `PemTest`. The unit tests (`./gradlew test`) need nothing installed. The tests that call `openssl`, including the golden-output comparison, are tagged `openssl` and run with `./gradlew integrationTest`, which needs openssl 3 on the PATH.
+20 tests in `CertificateTest`, `CmsEnvelopeTest`, `OpenSslInteropTest`, `PemTest`. The unit tests (`./gradlew test`) need nothing installed. The tests that call `openssl`, including the golden-output comparison, are tagged `openssl` and run with `./gradlew integrationTest`, which needs openssl 3 on the PATH. The demo's comparison with its golden output runs with the integration tests, because the demo needs OpenSSL 3: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -25,7 +26,7 @@ final class BackupVault {
 
     static final class WrongKeyException extends Exception {
         WrongKeyException() {
-            super("the archive did not open with this key");
+            super("the archive did not open with this key and this name");
         }
     }
 
@@ -75,23 +76,29 @@ final class BackupVault {
         return files;
     }
 
-    static byte[] seal(byte[] key, Map<String, byte[]> files) throws IOException, GeneralSecurityException {
+    /**
+     * Seals the files with AES-256-GCM. The archive's name (for example "nightly-2026-10-17") is bound in as associated data: it is
+     * not secret, but the archive opens only under that name, so last month's archive cannot be passed off as today's.
+     */
+    static byte[] seal(byte[] key, String name, Map<String, byte[]> files) throws IOException, GeneralSecurityException {
         byte[] nonce = new byte[12];
         new SecureRandom().nextBytes(nonce);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
+        cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
         byte[] sealed = cipher.doFinal(pack(files));
         byte[] out = Arrays.copyOf(nonce, 12 + sealed.length);
         System.arraycopy(sealed, 0, out, 12, sealed.length);
         return out;
     }
 
-    static Map<String, byte[]> open(byte[] key, byte[] archive) throws IOException, GeneralSecurityException, WrongKeyException {
+    static Map<String, byte[]> open(byte[] key, String name, byte[] archive) throws IOException, GeneralSecurityException, WrongKeyException {
         if (archive.length < 12 + 16) {
             throw new WrongKeyException();
         }
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, Arrays.copyOf(archive, 12)));
+        cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
         try {
             return unpack(cipher.doFinal(archive, 12, archive.length - 12));
         } catch (AEADBadTagException e) {

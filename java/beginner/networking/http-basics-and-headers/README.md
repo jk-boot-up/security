@@ -53,7 +53,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-23 tests in `CookieAndHeaderTest`, `DemoRunsTest`, `ParserTest`. Messages are parsed and written in memory, cookies and headers are judged by fixed rules, and the one real exchange prints only facts that do not depend on the port number, so the golden output is the same on every run.
+28 tests in `CookieAndHeaderTest`, `CspCheckTest`, `DemoRunsTest`, `ParserTest`. Messages are parsed and written in memory, cookies and headers are judged by fixed rules, and the one real exchange prints only facts that do not depend on the port number, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

@@ -45,7 +45,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 | T3 | Spoofing | Credential stuffing uses passwords reused from another site | `Attacks.stuff` | A second factor, and a check of right passwords against known breaches | Customers must change their password or enrol a device, which costs them effort |
 | T4 | Denial of service | An outsider locks a real customer out by failing on purpose | `Bank.login` with `LockScope.ACCOUNT` | Lock each account-and-address pair instead | An attacker with many addresses gets more guesses: 10 addresses give 50 |
 | T5 | Denial of service | A per-address limit blocks many honest customers behind one shared address | `Bank.login` rate limit | None here | Real systems tune limits per context and add other signals |
-| T6 | Information disclosure | Different messages reveal which usernames exist | `Bank.login` messages | One message, "wrong username or password", for both cases | Timing and other differences can still reveal it; the messages are only the first step |
+| T6 | Information disclosure | Different messages reveal which usernames exist | `Bank.login` messages | One message, "wrong username or password", for both cases, and the same hash computed for an unknown name, which also counts toward the lock | Other differences, such as a sign-up form that says a name is taken, can still reveal which names exist |
 | T7 | Repudiation | Attacks go unnoticed because nobody looks at the failures | the whole login | None in this project | Logging failures per address and per account would show spraying as many accounts failing once |
 
 ## Assumptions

@@ -50,7 +50,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-20 tests in `DemoRunsTest`, `DnsMessageTest`, `ResolverTest`. The query bytes are checked against the RFC 1035 layout and the answer's name pointer against its compression rule. The resolver uses a simulated clock and fixed secrets, and the one real exchange prints only facts that do not depend on port numbers, so the golden output is the same on every run.
+21 tests in `DemoRunsTest`, `DnsMessageTest`, `ResolverTest`. The query bytes are checked against the RFC 1035 layout and the answer's name pointer against its compression rule. The resolver uses a simulated clock and fixed secrets, and the one real exchange prints only facts that do not depend on port numbers, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

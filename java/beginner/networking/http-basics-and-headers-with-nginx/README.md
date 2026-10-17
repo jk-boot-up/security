@@ -50,7 +50,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-25 tests in `ConfigAndAuditTest`, `NginxContainerTest`, `ReferenceConfigTest`. The default tests need no Docker: they check the generated configurations, the auditor and the reply parser. The tests tagged docker start real nginx containers, check every claim in the demo and that no container is left running, and compare the demo with the golden output.
+29 tests in `ConfigAndAuditTest`, `CspCheckTest`, `NginxContainerTest`, `ReferenceConfigTest`. The default tests need no Docker: they check the generated configurations, the auditor and the reply parser. The tests tagged docker start real nginx containers, check every claim in the demo and that no container is left running, and compare the demo with the golden output. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

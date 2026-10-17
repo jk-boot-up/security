@@ -2,6 +2,7 @@ package com.jk.explore.security.http;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -46,7 +47,8 @@ final class HttpParser {
                 throw new BadMessageException("a header name with a space or odd character: '" + name + "'");
             }
             String value = line.substring(colon + 1).strip();
-            String key = name.toLowerCase();
+            // header names are ASCII: lower-case them without the machine's locale, or TRANSFER-ENCODING slips past in Turkish
+            String key = name.toLowerCase(Locale.ROOT);
             if (headers.containsKey(key)) {
                 if (key.equals("content-length") && !headers.get(key).equals(value)) {
                     throw new BadMessageException("two different Content-Length headers");

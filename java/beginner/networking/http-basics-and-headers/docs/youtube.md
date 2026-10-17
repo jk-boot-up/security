@@ -20,14 +20,14 @@ Chapters:
 01:19 The Words
 01:49 Act One — An HTTP message is just text
 02:22 Act Two — Messages that two programs could read differently
-03:05 Act Three — Header injection
-03:33 Act Four — Cookies that carry a login
-04:08 Act Five — Security headers on a real response
-04:47 Five Headers, Five Refusals
-05:29 Who Does What
-06:00 Where You Have Seen It
-06:24 How To Use It
-06:52 Thanks for Watching
+03:19 Act Three — Header injection
+03:47 Act Four — Cookies that carry a login
+04:22 Act Five — Security headers on a real response
+05:01 Five Headers, Five Refusals
+05:43 Who Does What
+06:14 Where You Have Seen It
+06:38 How To Use It
+07:06 Thanks for Watching
 ```
 
 ## Tags

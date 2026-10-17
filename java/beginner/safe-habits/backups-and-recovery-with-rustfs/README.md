@@ -46,7 +46,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-14 tests in `DemoRunsTest`, `ObjectStoreTest`, `StoreUnitTest`. The ordinary tests need only a JDK (the checksum helper, the outcome wording and the write-only policy). The integration tests and the demo start the real store in Docker and check versioning, both lock modes, the write-only identity, the checksum, the lifecycle rule, and that no container or network is left behind.
+14 tests in `DemoRunsTest`, `ObjectStoreTest`, `StoreUnitTest`. The ordinary tests need only a JDK (the checksum helper, the outcome wording and the write-only policy). The integration tests and the demo start the real store in Docker and check versioning, both lock modes, the write-only identity, the checksum, the lifecycle rule, and that no container or network is left behind. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

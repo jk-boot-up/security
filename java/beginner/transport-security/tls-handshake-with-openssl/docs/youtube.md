@@ -21,9 +21,9 @@ Chapters:
 02:02 Act One — A real TLS server and client on this machine
 02:30 Act Two — Giving the certificate and key to other programs
 02:59 Act Three — Who is on the other end
-03:28 Act Four — Versions: what each side offers
+03:29 Act Four — Versions: what each side offers
 04:02 Act Five — Checking from the outside, and the bill
-04:39 Why A Second Implementation
+04:40 Why A Second Implementation
 05:00 Who Does What
 05:30 Where You Have Seen It
 06:02 How To Use It

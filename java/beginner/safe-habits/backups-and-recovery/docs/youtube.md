@@ -23,11 +23,11 @@ Chapters:
 03:12 Act Three — The 3-2-1 rule, and how long to keep backups
 03:57 Act Four — Ransomware, and the copy it cannot change
 04:45 Act Five — How much can be lost, how long it takes, and backups as secrets
-05:39 What Makes a Backup Good
-06:05 Who Does What
-06:37 Where You Have Seen It
-07:01 How To Use It
-07:27 Thanks for Watching
+05:46 What Makes a Backup Good
+06:12 Who Does What
+06:44 Where You Have Seen It
+07:08 How To Use It
+07:34 Thanks for Watching
 ```
 
 ## Tags

@@ -1,7 +1,9 @@
 package com.jk.explore.security.dns;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 
 /**
@@ -20,6 +22,7 @@ final class Resolver {
     private final TransactionIds ids;
     private final long maxTtl;
     private final Map<String, Entry> cache = new HashMap<>();
+    private final Set<Pending> answered = new HashSet<>();
     private int upstreamQueries;
 
     Resolver(TransactionIds ids, long maxTtl) {
@@ -44,8 +47,14 @@ final class Resolver {
         return Optional.of(new Pending(name, ids.nextId(), ids.nextPort()));
     }
 
-    /** Offers a response that arrived at the given port. It is believed only if id, port and question all match. */
+    /**
+     * Offers a response that arrived at the given port. It is believed only if id, port and question all match, and only if no
+     * response to this question has been believed yet: the first good answer closes the race, so a forged one sent after it cannot replace it.
+     */
     boolean accept(Pending pending, DnsMessage response, int arrivedAtPort, long now) {
+        if (answered.contains(pending)) {
+            return false;
+        }
         if (!response.response() || response.id() != pending.id() || arrivedAtPort != pending.port()) {
             return false;
         }
@@ -54,6 +63,7 @@ final class Resolver {
         }
         DnsMessage.Answer answer = response.answers().get(0);
         cache.put(pending.name(), new Entry(answer.address(), now + Math.min(answer.ttl(), maxTtl)));
+        answered.add(pending);
         return true;
     }
 

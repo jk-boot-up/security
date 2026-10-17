@@ -26,7 +26,7 @@ Chapters:
 04:59 Three Protections
 05:24 Who Does What
 05:51 Where You Have Seen It
-06:15 How To Use It
+06:16 How To Use It
 06:39 Thanks for Watching
 ```
 

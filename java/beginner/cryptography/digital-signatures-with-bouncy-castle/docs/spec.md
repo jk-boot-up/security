@@ -44,7 +44,7 @@ Learners can sign with the JDK but not in a format that anyone else can check, a
 | Tests | 25, all passing |
 | Demo output | 33 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:35, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:34, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

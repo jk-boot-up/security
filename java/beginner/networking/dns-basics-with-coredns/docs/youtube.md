@@ -19,13 +19,13 @@ Chapters:
 01:04 The Scenario
 01:22 The Words
 01:48 Act One — A real DNS server, in a container
-02:15 Act Two — The same question over UDP and over TCP
-02:46 Act Three — Names that do not exist, names it will not answer, and a rewrite
+02:16 Act Two — The same question over UDP and over TCP
+02:47 Act Three — Names that do not exist, names it will not answer, and a rewrite
 03:16 Act Four — The cache and the countdown of the time to live
 03:43 Act Five — A zone with a wrong record
 04:32 What Protects a Name
 05:00 Who Does What
-05:28 Where You Have Seen It
+05:29 Where You Have Seen It
 05:54 How To Use It
 06:15 Thanks for Watching
 ```

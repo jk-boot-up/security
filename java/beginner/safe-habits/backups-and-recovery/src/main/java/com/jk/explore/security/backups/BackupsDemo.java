@@ -185,15 +185,21 @@ public class BackupsDemo {
             files.put(name, Files.readAllBytes(live.resolve(name)));
         }
         byte[] key = BackupVault.newKey();
-        byte[] archive = BackupVault.seal(key, files);
+        byte[] archive = BackupVault.seal(key, "nightly-day-30", files);
         line(out, "  a backup holds every customer's data, so it is sealed with AES-256-GCM");
         line(out, "  the archive shows a customer name: " + new String(archive, StandardCharsets.ISO_8859_1).contains("Ana"));
-        line(out, "  the right key opens it: " + (BackupVault.open(key, archive).size() == files.size()));
+        line(out, "  the right key opens it: " + (BackupVault.open(key, "nightly-day-30", archive).size() == files.size()));
         try {
-            BackupVault.open(BackupVault.newKey(), archive);
+            BackupVault.open(BackupVault.newKey(), "nightly-day-30", archive);
             line(out, "  another key opens it: true");
         } catch (BackupVault.WrongKeyException e) {
             line(out, "  another key: refused");
+        }
+        try {
+            BackupVault.open(key, "nightly-day-31", archive);
+            line(out, "  the same archive offered as the next night's: opens");
+        } catch (BackupVault.WrongKeyException e) {
+            line(out, "  the same archive offered as the next night's: refused, because its name is sealed in with it");
         }
         Path keyFile = dir.resolve("backup.key");
         BackupVault.writeKeyFile(keyFile, key);

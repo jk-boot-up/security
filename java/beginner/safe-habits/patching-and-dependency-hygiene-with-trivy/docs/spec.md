@@ -45,7 +45,7 @@ Teams know they should keep dependencies up to date, but not how to find out wha
 | Tests | 20, all passing |
 | Demo output | 42 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:05, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:06, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

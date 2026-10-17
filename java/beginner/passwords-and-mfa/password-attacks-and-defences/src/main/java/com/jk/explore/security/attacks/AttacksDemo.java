@@ -163,5 +163,12 @@ public class AttacksDemo {
         Bank generic = bank(new Ticker(), Defences.none().withGenericMessages(), Set.of());
         line(out, "  with one message for both: \"" + generic.login("probe", "zed", "x").message() + "\" and \""
                 + generic.login("probe", "emil", "x").message() + "\"");
+        int before = generic.hashesComputed();
+        generic.login("probe", "zed", "y");
+        int forUnknown = generic.hashesComputed() - before;
+        generic.login("probe", "emil", "y");
+        int forKnown = generic.hashesComputed() - before - forUnknown;
+        line(out, "  and the same work behind it: " + forUnknown + " password hash for zed, " + forKnown
+                + " for emil, so the time a reply takes does not tell them apart either");
     }
 }

@@ -1,6 +1,7 @@
 package com.jk.explore.security.totp;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Locale;
 
 /**
  * Base32 (RFC 4648), the text form authenticator apps use for a shared secret: upper-case letters and the digits 2 to 7,
@@ -35,7 +36,7 @@ public final class Base32 {
     }
 
     public static byte[] decode(String text) {
-        String clean = text.replace("=", "").replace(" ", "").toUpperCase();
+        String clean = text.replace("=", "").replace(" ", "").toUpperCase(Locale.ROOT);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         int buffer = 0;
         int bits = 0;

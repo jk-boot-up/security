@@ -24,10 +24,10 @@ Chapters:
 03:37 Act Four — A compact signed token: JWS
 04:07 Act Five — Text armor, and the bill
 04:42 What a Signature Does and Does Not Prove
-05:06 Who Does What
+05:05 Who Does What
 05:46 Where You Have Seen It
-06:19 How To Use It
-06:42 Thanks for Watching
+06:18 How To Use It
+06:41 Thanks for Watching
 ```
 
 ## Tags

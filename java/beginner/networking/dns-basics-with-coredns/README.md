@@ -50,7 +50,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-24 tests in `ConfigAndClientTest`, `CoreDnsContainerTest`, `DemoRunsTest`, `DnsMessageTest`. The ordinary tests need only a JDK: they check the Corefile and zone text, the pinned image, the DNS message encoding and the client against small servers written in the tests. The container tests (tagged docker) start CoreDNS and check real answers, and run with integrationTest.
+24 tests in `ConfigAndClientTest`, `CoreDnsContainerTest`, `DemoRunsTest`, `DnsMessageTest`. The ordinary tests need only a JDK: they check the Corefile and zone text, the pinned image, the DNS message encoding and the client against small servers written in the tests. The container tests (tagged docker) start CoreDNS and check real answers, and run with integrationTest. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

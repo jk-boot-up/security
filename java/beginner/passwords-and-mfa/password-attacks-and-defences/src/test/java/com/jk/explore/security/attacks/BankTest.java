@@ -102,4 +102,24 @@ class BankTest {
         assertEquals(false, open.login("a", "zed", "x").message().equals(open.login("a", "emil", "x").message()));
         assertEquals(generic.login("a", "zed", "x").message(), generic.login("a", "emil", "x").message());
     }
+
+    @Test
+    void anUnknownNameCostsTheSameHashAsAKnownOne() {
+        Bank b = bank(new Ticker(), Defences.none().withGenericMessages());
+        int start = b.hashesComputed();
+        b.login("a", "zed", "x");
+        assertEquals(start + 1, b.hashesComputed());
+        b.login("a", "emil", "x");
+        assertEquals(start + 2, b.hashesComputed());
+        assertEquals(b.login("a", "zed", "x").message(), b.login("a", "emil", "x").message());
+    }
+
+    @Test
+    void anUnknownNameIsLockedLikeAKnownOne() {
+        Bank b = bank(new Ticker(), Defences.none().withLockout(5, 10, LockScope.ACCOUNT));
+        for (int i = 0; i < 5; i++) {
+            assertEquals(Outcome.UNKNOWN_USER, b.login("a", "zed", "x" + i).outcome());
+        }
+        assertEquals(Outcome.LOCKED, b.login("a", "zed", "x").outcome());
+    }
 }

@@ -56,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`.
+13 tests in `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 
@@ -76,7 +76,7 @@ Every version below is pinned in the project's build files and was the latest st
 | Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
 | org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
-| nginx (container image) | nginx:1.31.6-alpine | the web server and rate limiter in front of the login, pinned to an exact version |
+| nginx (container image) | nginx:1.31.7-alpine | the web server and rate limiter in front of the login, pinned to an exact version |
 | Docker | any recent Docker Engine or Docker Desktop | runs the nginx container for the demo and the container tests |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 

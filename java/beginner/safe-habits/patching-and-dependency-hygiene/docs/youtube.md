@@ -24,9 +24,9 @@ Chapters:
 04:15 Act Four — Patch windows
 05:04 Act Five — Pinning, and checking what you download
 05:49 Five Questions, In Order
-06:09 Who Does What
-06:40 Where You Have Seen It
-07:18 How To Use It
+06:10 Who Does What
+06:41 Where You Have Seen It
+07:19 How To Use It
 07:47 Thanks for Watching
 ```
 

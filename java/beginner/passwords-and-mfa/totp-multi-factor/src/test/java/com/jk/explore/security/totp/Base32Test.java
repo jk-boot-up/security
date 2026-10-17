@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -33,5 +34,16 @@ class Base32Test {
     @Test
     void theDemoSecretLooksAsTheAuthenticatorAppWouldShowIt() {
         assertEquals("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", Base32.encode(DemoSecrets.RFC_KEY));
+    }
+
+    @Test
+    void lowerCaseSecretsDecodeTheSameInEveryLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.of("tr"));
+            assertArrayEquals("foobar".getBytes(StandardCharsets.US_ASCII), Base32.decode("mzxw6ytboi"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 }

@@ -66,9 +66,30 @@ public final class HeaderAudit {
         if (lower.contains("unsafe-inline") || lower.contains("unsafe-eval")) {
             return new Finding("Content-Security-Policy", false, "allows unsafe-inline or unsafe-eval");
         }
-        if (!lower.contains("default-src") && !lower.contains("script-src")) {
+        List<String> scripts = sources(lower, "script-src");
+        if (scripts == null) {
+            scripts = sources(lower, "default-src");
+        }
+        if (scripts == null) {
             return new Finding("Content-Security-Policy", false, "no default-src or script-src");
         }
+        if (scripts.stream().anyMatch(ANYWHERE::contains)) {
+            return new Finding("Content-Security-Policy", false, "lets scripts load from anywhere");
+        }
         return new Finding("Content-Security-Policy", true, "restricts where scripts load from");
+    }
+
+    /** Sources a source list would allow from any site: a policy that names one of these restricts nothing. */
+    private static final Set<String> ANYWHERE = Set.of("*", "http:", "https:", "data:", "blob:");
+
+    /** The source list of one directive, or null when the policy does not have it. */
+    private static List<String> sources(String policy, String directive) {
+        for (String part : policy.split(";")) {
+            String[] words = part.strip().split("\\s+");
+            if (words.length > 0 && words[0].equals(directive)) {
+                return List.of(words).subList(1, words.length);
+            }
+        }
+        return null;
     }
 }

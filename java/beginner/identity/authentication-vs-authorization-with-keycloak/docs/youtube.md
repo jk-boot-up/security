@@ -26,7 +26,7 @@ Chapters:
 04:54 What The Shop Checks
 05:26 Who Does What
 05:58 Where You Have Seen It
-06:23 How To Use It
+06:24 How To Use It
 06:48 Thanks for Watching
 ```
 

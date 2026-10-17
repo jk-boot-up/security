@@ -3,6 +3,7 @@ package com.jk.explore.security.authkeycloak;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,7 +54,7 @@ public class Shop {
             if (!(access instanceof Map<?, ?> map) || !(map.get("roles") instanceof List<?> list)) {
                 return List.of();
             }
-            return list.stream().<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + String.valueOf(r).toUpperCase())).toList();
+            return list.stream().<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + String.valueOf(r).toUpperCase(Locale.ROOT))).toList();
         };
         converter.setJwtGrantedAuthoritiesConverter(roles);
         converter.setPrincipalClaimName("preferred_username");

@@ -44,9 +44,9 @@ Learners know backups matter but not what makes one trustworthy, or how ransomwa
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 18, all passing |
-| Demo output | 38 lines, identical on every run |
+| Demo output | 39 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:21, 1920×1080, narrated in the amy-slow voice |
+| Video | 08:28, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

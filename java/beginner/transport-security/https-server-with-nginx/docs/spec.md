@@ -43,7 +43,7 @@ TLS is usually ended by a web server in front of the application, and copied con
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 27, all passing |
+| Tests | 31, all passing |
 | Demo output | 32 lines, identical on every run |
 | Acts | 5 |
 | Video | 08:41, 1920×1080, narrated in the amy-slow voice |

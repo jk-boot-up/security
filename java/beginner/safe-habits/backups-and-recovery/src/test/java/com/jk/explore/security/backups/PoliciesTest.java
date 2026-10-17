@@ -95,20 +95,21 @@ class PoliciesTest {
     void sealedArchiveRoundTripsAndHidesItsContent() throws Exception {
         Map<String, byte[]> files = Map.of("orders.csv", "customer Ana".getBytes(StandardCharsets.UTF_8));
         byte[] key = BackupVault.newKey();
-        byte[] archive = BackupVault.seal(key, files);
+        byte[] archive = BackupVault.seal(key, "night-1", files);
         assertFalse(new String(archive, StandardCharsets.ISO_8859_1).contains("Ana"));
-        assertArrayEquals(files.get("orders.csv"), BackupVault.open(key, archive).get("orders.csv"));
+        assertArrayEquals(files.get("orders.csv"), BackupVault.open(key, "night-1", archive).get("orders.csv"));
     }
 
     @Test
     void wrongKeyAndChangedArchiveAreRefused() throws Exception {
         byte[] key = BackupVault.newKey();
-        byte[] archive = BackupVault.seal(key, Map.of("a", new byte[] {1, 2, 3}));
-        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(BackupVault.newKey(), archive));
+        byte[] archive = BackupVault.seal(key, "night-1", Map.of("a", new byte[] {1, 2, 3}));
+        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(BackupVault.newKey(), "night-1", archive));
         byte[] changed = archive.clone();
         changed[changed.length - 1] ^= 1;
-        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(key, changed));
-        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(key, new byte[5]));
+        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(key, "night-1", changed));
+        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(key, "night-1", new byte[5]));
+        assertThrows(BackupVault.WrongKeyException.class, () -> BackupVault.open(key, "night-2", archive));
     }
 
     @Test

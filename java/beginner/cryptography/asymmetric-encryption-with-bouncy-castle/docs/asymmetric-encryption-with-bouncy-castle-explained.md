@@ -24,7 +24,7 @@ certificate names the recipient. Ana opens it with her private key. Eve tries he
 
 ### 4. A different program opens it
 
-How do we know the envelope is really in the standard format, and not just something only this library can read? We ask a different program. The bank writes the envelope, Ana's key file and her certificate to a temporary folder, and runs
+How can anyone tell the envelope is really in the standard format, and not just something only this library can read? Ask a different program. The bank writes the envelope, Ana's key file and her certificate to a temporary folder, and runs
 openssl cms -decrypt on them. OpenSSL, written by other people, opens the statement, and the bytes match the original. A format that only one library understands is a trap. A standard is one that independent programs agree on.
 
 ### 5. The bill: what Bouncy Castle costs

@@ -2,6 +2,7 @@ package com.jk.explore.security.http;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 
 /** Runs the online store story in five numbered acts and prints exact, repeatable results. */
 public class HttpDemo {
@@ -51,6 +52,15 @@ public class HttpDemo {
         String base = "POST /orders HTTP/1.1\r\nHost: shop.example\r\n";
         line(out, "  Content-Length and Transfer-Encoding together: "
                 + tryParse(base + "Content-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"));
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.of("tr"));
+            line(out, "  the same, with TRANSFER-ENCODING in capitals, on a machine set to Turkish: "
+                    + tryParse(base + "Content-Length: 4\r\nTRANSFER-ENCODING: chunked\r\n\r\n0\r\n\r\n")
+                    + "  <- HEADER NAMES ARE LOWER-CASED WITHOUT THE LOCALE");
+        } finally {
+            Locale.setDefault(original);
+        }
         line(out, "  two different Content-Length headers: " + tryParse(base + "Content-Length: 4\r\nContent-Length: 9\r\n\r\nabcd"));
         line(out, "  a space before the colon in a header name: " + tryParse(base + "Content-Length : 4\r\n\r\nabcd"));
         line(out, "  a body longer than its Content-Length, with a second request hidden after it: "

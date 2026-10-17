@@ -41,7 +41,7 @@ Learners see DNS as a lookup that just works, and need to see that a server serv
 | Tests | 24, all passing |
 | Demo output | 27 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:08, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:09, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

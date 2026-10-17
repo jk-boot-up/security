@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -67,7 +68,7 @@ class OpenSslInteropTest {
         try (TlsServer server = new TlsServer(TestCertificates.server("shop.p12"), null)) {
             OpenSsl.Result result = connect(server.port(), "another.example.test", dir.resolve("shop-cert.pem"));
             assertNotEquals(0, result.exit(), result.output());
-            assertTrue(result.output().toLowerCase().contains("hostname mismatch"), result.output());
+            assertTrue(result.output().toLowerCase(Locale.ROOT).contains("hostname mismatch"), result.output());
         }
     }
 
@@ -78,7 +79,7 @@ class OpenSslInteropTest {
             OpenSsl.Result result = connect(impostor.port(), TestCertificates.HOST, dir.resolve("shop-cert.pem"));
             assertNotEquals(0, result.exit(), result.output());
             assertFalse(result.output().contains("Verification: OK"), result.output());
-            assertTrue(result.output().toLowerCase().contains("verif"), result.output());
+            assertTrue(result.output().toLowerCase(Locale.ROOT).contains("verif"), result.output());
         }
     }
 

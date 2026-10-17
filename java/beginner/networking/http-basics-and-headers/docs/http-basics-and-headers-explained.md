@@ -13,7 +13,8 @@ Every header is only a line of text that the sender chose, so the server must ch
 
 ### 2. Messages that two programs could read differently
 
-A proxy and a server in a chain must agree where a request ends. Content-Length and Transfer-Encoding together are refused. Two different Content-Length headers are refused. A space before the colon in a header name is refused.
+A proxy and a server in a chain must agree where a request ends. Content-Length and Transfer-Encoding together are refused, and so is the same pair with TRANSFER-ENCODING in capitals on a machine set to Turkish, because header names are
+lower-cased without the machine's language rules. Two different Content-Length headers are refused. A space before the colon in a header name is refused.
 A body longer than its Content-Length, with a second request hidden after it, is refused. The same request, plain and exact, is accepted. When a proxy and a server disagree about where a request ends, the rest is read as the next customer's request.
 
 ### 3. Header injection

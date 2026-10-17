@@ -62,7 +62,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `AttacksTest`, `BankTest`, `DemoRunsTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Time is a tick counter and nothing is random, so every run gives the same result.
+23 tests in `AttacksTest`, `BankTest`, `DemoRunsTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Time is a tick counter and nothing is random, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 
@@ -128,7 +128,8 @@ An attempt can be turned away at four places before it reaches a verdict.
 - **A lockout can be used against the customer.** An attacker who fails five times on Dana's account locks Dana out. Locking each account-and-address pair on its own helps, but an attacker with many addresses gets more guesses.
 - **Rate limits slow, they do not stop.** Five attempts every ten ticks still lets a patient attacker through, and shared addresses, such as an office, can hit the limit by accident.
 - **A second factor adds friction** for every login, and for the customers who lose the device.
-- **Messages can leak.** A different message for an unknown name and a wrong password tells an attacker which usernames exist. One message for both is safer, and makes real mistakes harder to explain.
+- **Messages can leak.** A different message for an unknown name and a wrong password tells an attacker which usernames exist. One message for both is safer, and makes real mistakes harder to explain. The time a reply takes can leak the same thing, so an unknown name is made to cost the same hash as a known one.
+- **Do not store passwords the way this bank does.** To keep the lesson on what happens around the check, the bank hashes passwords with one fast round of SHA-256. Real passwords need a slow, salted hash: see [password-hashing](../password-hashing).
 
 ## When this is too much
 

@@ -22,12 +22,12 @@ Chapters:
 03:18 Act Two — A certificate for the public key
 04:06 Act Three — A standard envelope: CMS EnvelopedData
 04:44 Act Four — A different program opens it
-05:32 Act Five — The bill: what Bouncy Castle costs
-06:29 JDK, and Library
+05:31 Act Five — The bill: what Bouncy Castle costs
+06:28 JDK, and Library
 06:56 Who Does What
-07:26 Where You Have Seen It
-08:01 How To Use It
-08:27 Thanks for Watching
+07:25 Where You Have Seen It
+08:00 How To Use It
+08:26 Thanks for Watching
 ```
 
 ## Tags

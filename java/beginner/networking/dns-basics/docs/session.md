@@ -31,3 +31,4 @@ Start with directory enquiries. Run the demo one act at a time. After act three,
 2. Add a second record type (a text record) to the message codec.
 3. Add a negative cache, so that a missing name is remembered for a short time, and think about how it could be abused.
 4. Change the cap on lifetimes and find the shortest lifetime that still gives a useful cache.
+5. Compare names without regard to letter case, then add the extra defence some resolvers use: ask in a random mix of capitals (sHoP.eXaMpLe.CoM) and believe only an answer that repeats the exact mix.

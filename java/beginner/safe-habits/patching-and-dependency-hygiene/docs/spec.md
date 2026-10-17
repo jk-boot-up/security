@@ -44,7 +44,7 @@ Teams know they should patch, but cannot say what they ship, which flaws matter,
 | Tests | 37, all passing |
 | Demo output | 49 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:42, 1920×1080, narrated in the amy-slow voice |
+| Video | 08:43, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

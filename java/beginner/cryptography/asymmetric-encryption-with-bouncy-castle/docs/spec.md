@@ -41,7 +41,7 @@ Learners can do RSA with the JDK but cannot read, write or exchange the files th
 | Tests | 20, all passing |
 | Demo output | 26 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 09:24, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

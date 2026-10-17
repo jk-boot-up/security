@@ -387,6 +387,9 @@ Status: all 20 planned projects are built as plain versions, and 19 of them have
 
 ## 12. Risks
 
+- **Pinned versions age.** Container images, tools and libraries are pinned for repeatable labs, and some pins are already the last of their kind
+  (LocalStack 4.14.0 is the last community tag that starts without a token; the kind node is newer than the local kubectl). Once a year,
+  refresh every pin to the latest stable release, rerun `test` and `integrationTest`, and record any pin that must stay.
 - **Tooling is new work.** The pilot project in Phase 0 proves the whole chain before the other projects are built.
 - **Plain JDK has no public certificate-creation API.** Test keystores are made with `keytool` by
   a Gradle task, so the plain version stays dependency-free; the with-tools version uses Bouncy

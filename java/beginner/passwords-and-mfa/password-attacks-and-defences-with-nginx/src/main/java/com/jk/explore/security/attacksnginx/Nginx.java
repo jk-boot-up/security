@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 public class Nginx implements AutoCloseable {
 
     /** The image is pinned to an exact version, so every run uses the same nginx. */
-    public static final String IMAGE = "nginx:1.31.6-alpine";
+    public static final String IMAGE = "nginx:1.31.7-alpine";
 
     private final String name;
     private final Path config;

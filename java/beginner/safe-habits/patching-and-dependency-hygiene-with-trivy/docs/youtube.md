@@ -24,10 +24,10 @@ Chapters:
 03:18 Act Four — What to fix first, and to which version
 03:48 Act Five — Checking what is downloaded, and automating the updates
 04:22 What Each Tool Answers
-04:48 Who Does What
-05:18 Where You Have Seen It
-05:45 How To Use It
-06:08 Thanks for Watching
+04:49 Who Does What
+05:19 Where You Have Seen It
+05:46 How To Use It
+06:09 Thanks for Watching
 ```
 
 ## Tags

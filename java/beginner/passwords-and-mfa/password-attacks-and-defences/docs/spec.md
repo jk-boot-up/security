@@ -38,10 +38,10 @@ Learners know passwords should be strong but not how they are attacked at the lo
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 22 lines, identical on every run |
+| Tests | 23, all passing |
+| Demo output | 23 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:17, 1920×1080, narrated in the amy-slow voice |
+| Video | 09:30, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

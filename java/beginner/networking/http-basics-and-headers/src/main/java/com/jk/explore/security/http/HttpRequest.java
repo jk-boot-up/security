@@ -2,13 +2,14 @@ package com.jk.explore.security.http;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /** A parsed HTTP/1.1 request. Header names are lower case. */
 record HttpRequest(String method, String target, String version, Map<String, String> headers, byte[] body) {
 
     String header(String name) {
-        return headers.get(name.toLowerCase());
+        return headers.get(name.toLowerCase(Locale.ROOT));
     }
 
     /** Writes the request again in the wire format: a request line, headers with Content-Length, a blank line, the body. */
