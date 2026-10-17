@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authentication vs Authorization with Keycloak, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Authentication vs Authorization with Keycloak, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>With a login server the shop holds no passwords: it checks a signed token's signature, expiry, issuer and audience, and then applies its own rules to the roles inside it, remembering that those roles are a copy that can be out of date until the token expires.</p>
+<h2>The 5 acts</h2>
+<h3>1. No login in the shop, only tokens</h3>
+<p>The shop holds no passwords. With no token the answer is 401, and so it is for garbage and for a token signed with another key. A token the login server signed, good for 300 seconds, is accepted. 301 seconds later the same token is refused,
+and the shop needed no call to the login server to know: the expiry is inside the signed token.</p>
+<h3>2. Who is it, and what may they do</h3>
+<p>The roles in the token's realm_access.roles claim become authorities named ROLE_CUSTOMER, ROLE_SUPPORT and ROLE_ADMIN. Ana reads her own order A-1 with 200 and Ben's order B-2 with 403: logged in, not allowed.
+Support Sam reads Ben's order. The sales report answers 403 to customer and support and 200 to admin. 401 means the shop does not know who is asking, and 403 means it knows and the answer is no.</p>
+<h3>3. A real signature is not enough</h3>
+<p>A token can have a perfectly good signature and still not be meant for the shop. A correctly signed token from another issuer is refused. A correctly signed token meant for another API is refused too: without an audience check,
+any API's token would open this one. The shop checks the signature, the expiry, the issuer and the audience before its own rules run.</p>
+<h3>4. The roles in a token are a copy</h3>
+<p>Root, an admin, opens the sales report. Root is then demoted to customer in the login server's directory. The token root already holds still opens the report, because the shop only sees the copy of the roles inside it.
+After the token expires it is refused, and a new token carries the new roles: the report answers 403. A short lifetime is the control: the stale window is at most the lifetime of the token.</p>
+<h3>5. Ending a token early, and the bill</h3>
+<p>A revocation list can end a token at once: the admin token works, its id is put on the list, and the next request is refused. The price is that the list is consulted for every request, which is the call that tokens were meant to avoid.
+Without a list the shop makes no call at all and the token can be used until it expires. Refresh tokens give long sessions with short access tokens, and the login server can refuse to refresh. And the login server is now one more system that must be kept running, patched and backed up.</p>
+<h2>The verdict</h2>
+<p>Use a login server when several applications share logins. Keep access tokens short, check issuer and audience, map roles to authorities in one place, test the realm configuration like code, and treat the login server as critical infrastructure.
+Use PKCE for public clients, avoid the password grant, and register exact redirect addresses.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>spring.security.oauth2.resourceserver.jwt.issuer-uri</code> in an application's configuration.</li>
+<li><code>Authorization: Bearer</code> headers and <code>/.well-known/openid-configuration</code> URLs.</li>
+<li>Keycloak, Auth0, Okta, Azure AD and Amazon Cognito: login servers.</li>
+<li>A realm or tenant export checked into a repository.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Sign in with Google" and company single sign-on pages.</li>
+<li><code>Authorization: Bearer ...</code> headers in API documentation.</li>
+<li><code>.well-known/openid-configuration</code> and <code>jwks.json</code> URLs.</li>
+<li>Tokens pasted into jwt.io, with <code>exp</code> and <code>iss</code> claims.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

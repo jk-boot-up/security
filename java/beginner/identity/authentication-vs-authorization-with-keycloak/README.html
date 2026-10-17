@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authentication vs Authorization with Keycloak</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Authentication vs Authorization with Keycloak</h1>
+<pre><code>src/main/java/com/jk/explore/security/authkeycloak/
+├── Issuer.java        A stand-in for the login server in the demo: it signs tokens in the shape Keycloak produces (issuer, audience, authorized party, realm_access.roles, expiry)
+├── KeycloakDemo.java  Runs the online store story in five numbered acts against a real Spring Boot resource server on the loopback interface
+├── Revocations.java   A list of token ids that were revoked
+├── Running.java       The order API started on a free loopback port with the given token decoder
+├── Shop.java          The online store's order API as an OAuth 2 resource server: it holds no passwords and trusts only tokens the login server signed
+├── SimClock.java      A clock that only moves when told to, so token lifetimes can be shown without waiting
+└── Validators.java    The checks a resource server makes after the signature: expiry, issuer, audience, and optionally a revocation list
+</code></pre>
+<p><strong>With Keycloak the shop stops handling passwords: a login server proves who is asking and signs a token, and the shop only checks the token's signature, expiry, issuer and audience, and then its own rules, but the roles in the token are a copy that can be stale.</strong></p>
+<p>The plain version of this lesson kept passwords inside the shop. Most real shops do not. A separate <strong>login server</strong> checks the password, perhaps a second factor, and hands back a signed <strong>token</strong>. The shop then
+holds no passwords at all: it receives a token with each request and decides whether to trust it. <strong>Keycloak</strong> is the best-known open-source login server. It speaks <strong>OAuth 2</strong> and <strong>OpenID Connect</strong>, the standards behind
+"sign in with ...". Its tokens are <strong>JWTs</strong>: three parts, a header, claims such as who the user is, which roles they have and when the token expires, and a signature.</p>
+<p>A shop that accepts tokens is called a <strong>resource server</strong>. It checks the signature with the login server's public keys, then the expiry, the <strong>issuer</strong> (who made the token) and the <strong>audience</strong> (which API the token is for). Only then do its own rules run:
+no token means 401, a valid token without the right role means 403. The demo runs the real Spring Boot resource server against a stand-in login server, and the integration tests repeat the key checks against a real Keycloak.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a theatre. The box office checks your identity and sells you a ticket. The doors do not know you; they check that the ticket is real, that it is for tonight, that it is for this theatre and not the one next door,
+and which seats it covers. If the box office moves you to a cheaper seat after you bought the ticket, the door still lets you in to the old seat until the ticket's date passes. That is the stale-role problem.</p>
+<h2>The scenario</h2>
+<p>An online store's order API trusts a login server. Shoppers, support staff, an admin and a nightly job all call it with tokens. The demo shows what happens with no token, a forged token, an expired token, the wrong issuer or audience,
+a role that is taken away while the token is alive, and a token that is revoked.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. No login in the shop, only tokens</td>
+<td>No token, garbage and a token signed with another key all get 401; a signed token works; 301 seconds later the same token is expired and refused, with no call to the login server.</td>
+</tr>
+<tr>
+<td>2. Who is it, and what may they do</td>
+<td>The roles in realm_access.roles become authorities; Ana reads her own order and gets 403 for Ben's; support reads it; only admin opens the sales report.</td>
+</tr>
+<tr>
+<td>3. A real signature is not enough</td>
+<td>A correctly signed token from another issuer, and one meant for another API, are both refused; without an audience check any API's token would open this one.</td>
+</tr>
+<tr>
+<td>4. The roles in a token are a copy</td>
+<td>An admin is demoted but the token already issued still opens the report until it expires; a new token carries the new roles; a short lifetime limits the stale window.</td>
+</tr>
+<tr>
+<td>5. Ending a token early, and the bill</td>
+<td>A revocation list ends a token at once, but it is consulted on every request; without it the shop makes no call, and the login server becomes one more system to run.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>28 tests in <code>DemoRunsTest</code>, <code>Keycloak</code>, <code>KeycloakIntegrationTest</code>, <code>RealmFileTest</code>, <code>TokenRulesTest</code>. The default tests need only a JDK: the stand-in login server signs tokens with a random key and a simulated clock, so the demo prints only status codes and booleans, and the golden output is the same on every run. The integration tests (tagged docker) run the real Keycloak in Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo runs a real Spring Boot server on the loopback interface, and the tokens come from a stand-in login server in the same process, signed with a random key that is never printed. A simulated clock moves token lifetimes forward
+without waiting. The integration tests start the real Keycloak 26.8.1 in Docker with the realm in <code>infra/shop-realm.json</code>, log in through its login page with the authorization code flow and PKCE, and wait for a real token to expire.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-resource-server</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-resource-server-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Keycloak</td>
+<td>26.8.1</td>
+<td>the real login server, run in Docker by the integration tests; the demo itself uses a stand-in that signs tokens in the same shape</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>any recent</td>
+<td>runs the Keycloak container for the integration tests only</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/authentication-vs-authorization-with-keycloak-explained.html">Authentication vs Authorization with Keycloak, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The login server proves who the user is. The shop only checks what it is handed.</p>
+<p><img alt="Who does what" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Validators are the shop's checks on a token; Shop holds the rules; Issuer and SimClock stand in for the login server and time.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Any failed check is a 401. Only a token that passes all of them reaches the shop's own rules, which can answer 403.</p>
+<p><img alt="What the shop checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A request with a token: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/authentication-vs-authorization-with-keycloak-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The login server is a new critical system.</strong> If it is down, nobody can log in, and if it is breached, every shop that trusts it is breached. It needs patching, backups and monitoring like the shop itself.</li>
+<li><strong>Roles in a token are a copy.</strong> A role taken away in Keycloak still works in tokens already issued until they expire, so access tokens must be short.</li>
+<li><strong>Ending a token early costs a lookup on every request.</strong> A revocation list or introspection call per request gives up the main benefit of tokens, which is checking them with no call.</li>
+<li><strong>More moving parts to configure correctly.</strong> A missing audience mapper, a wildcard redirect URI or a long token lifetime each weaken the whole design, which is why the realm file is tested like code.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For one application with its own users, a framework's built-in login is simpler. A login server earns its place when several applications share logins, when staff sign in from a company directory, when second factors and
+account recovery must be handled in one place, or when a mobile app and a web app need the same identities.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Sign in with Google" and company single sign-on pages.</li>
+<li><code>Authorization: Bearer ...</code> headers in API documentation.</li>
+<li><code>.well-known/openid-configuration</code> and <code>jwks.json</code> URLs.</li>
+<li>Tokens pasted into jwt.io, with <code>exp</code> and <code>iss</code> claims.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the second in <a href="..">identity</a> after <a href="../authentication-vs-authorization-with-spring-security">authentication-vs-authorization-with-spring-security</a>. It builds on <a href="../authentication-vs-authorization">authentication-vs-authorization</a> and uses the 401 and 403 answers from there.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

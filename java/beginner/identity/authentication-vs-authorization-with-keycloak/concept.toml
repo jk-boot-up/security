@@ -1,0 +1,582 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# Written for a beginner: plain words, short sentences, every term explained the first time.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "authentication-vs-authorization-with-keycloak"
+module = "identity"
+title = "Authentication vs Authorization with Keycloak"
+short_title = "Authn vs Authz with Keycloak"
+package = "authkeycloak"
+main_class = "KeycloakDemo"
+tagline = "Let a login server answer who, and let the shop answer what"
+bold = "With Keycloak the shop stops handling passwords: a login server proves who is asking and signs a token, and the shop only checks the token's signature, expiry, issuer and audience, and then its own rules, but the roles in the token are a copy that can be stale."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Authentication vs authorization with Keycloak, in Java: let a login server do the logging in. Explained with an online store, like a theatre that sells tickets at one box office and only checks tickets at the doors. We see a Spring Boot resource server that holds no passwords and trusts only tokens signed by the login server, why no token gives 401 and the wrong role gives 403, how roles in a Keycloak token become authorities, why a correctly signed token still needs the right issuer and audience, what happens when a role is taken away but the token is still alive, and what it costs to end a token early. A real Keycloak in Docker repeats the checks in the integration tests."""
+thumb_lines = ["AUTHN VS AUTHZ", "WITH KEYCLOAK"]
+thumb_code = "realm_access.roles"
+youtube_title = "Authentication vs Authorization with Keycloak (Spring Boot, JWT, OAuth 2)"
+youtube_tags = ["keycloak", "oauth2", "oidc", "jwt", "spring security", "resource server", "pkce", "401 vs 403", "java", "cybersecurity for beginners"]
+
+[readme]
+technologies = [
+    ["Keycloak", "26.8.1", "the real login server, run in Docker by the integration tests; the demo itself uses a stand-in that signs tokens in the same shape"],
+    ["Docker", "any recent", "runs the Keycloak container for the integration tests only"],
+]
+intro = """
+The plain version of this lesson kept passwords inside the shop. Most real shops do not. A separate **login server** checks the password, perhaps a second factor, and hands back a signed **token**. The shop then
+holds no passwords at all: it receives a token with each request and decides whether to trust it. **Keycloak** is the best-known open-source login server. It speaks **OAuth 2** and **OpenID Connect**, the standards behind
+"sign in with ...". Its tokens are **JWTs**: three parts, a header, claims such as who the user is, which roles they have and when the token expires, and a signature.
+
+A shop that accepts tokens is called a **resource server**. It checks the signature with the login server's public keys, then the expiry, the **issuer** (who made the token) and the **audience** (which API the token is for). Only then do its own rules run:
+no token means 401, a valid token without the right role means 403. The demo runs the real Spring Boot resource server against a stand-in login server, and the integration tests repeat the key checks against a real Keycloak.
+"""
+analogy = """
+Think of a theatre. The box office checks your identity and sells you a ticket. The doors do not know you; they check that the ticket is real, that it is for tonight, that it is for this theatre and not the one next door,
+and which seats it covers. If the box office moves you to a cheaper seat after you bought the ticket, the door still lets you in to the old seat until the ticket's date passes. That is the stale-role problem.
+"""
+scenario = """
+An online store's order API trusts a login server. Shoppers, support staff, an admin and a nightly job all call it with tokens. The demo shows what happens with no token, a forged token, an expired token, the wrong issuer or audience,
+a role that is taken away while the token is alive, and a token that is revoked.
+"""
+costs = [
+    "**The login server is a new critical system.** If it is down, nobody can log in, and if it is breached, every shop that trusts it is breached. It needs patching, backups and monitoring like the shop itself.",
+    "**Roles in a token are a copy.** A role taken away in Keycloak still works in tokens already issued until they expire, so access tokens must be short.",
+    "**Ending a token early costs a lookup on every request.** A revocation list or introspection call per request gives up the main benefit of tokens, which is checking them with no call.",
+    "**More moving parts to configure correctly.** A missing audience mapper, a wildcard redirect URI or a long token lifetime each weaken the whole design, which is why the realm file is tested like code.",
+]
+too_much = """
+For one application with its own users, a framework's built-in login is simpler. A login server earns its place when several applications share logins, when staff sign in from a company directory, when second factors and
+account recovery must be handled in one place, or when a mobile app and a web app need the same identities.
+"""
+met_before = [
+    "\"Sign in with Google\" and company single sign-on pages.",
+    "`Authorization: Bearer ...` headers in API documentation.",
+    "`.well-known/openid-configuration` and `jwks.json` URLs.",
+    "Tokens pasted into jwt.io, with `exp` and `iss` claims.",
+]
+where = """
+This project is the second in [identity](..) after [authentication-vs-authorization-with-spring-security](../authentication-vs-authorization-with-spring-security). It builds on [authentication-vs-authorization](../authentication-vs-authorization) and uses the 401 and 403 answers from there.
+"""
+twin = """
+The demo runs a real Spring Boot server on the loopback interface, and the tokens come from a stand-in login server in the same process, signed with a random key that is never printed. A simulated clock moves token lifetimes forward
+without waiting. The integration tests start the real Keycloak 26.8.1 in Docker with the realm in `infra/shop-realm.json`, log in through its login page with the authorization code flow and PKCE, and wait for a real token to expire.
+"""
+test_note = "The default tests need only a JDK: the stand-in login server signs tokens with a random key and a simulated clock, so the demo prints only status codes and booleans, and the golden output is the same on every run. The integration tests (tagged docker) run the real Keycloak in Docker."
+
+[[act]]
+title = "No login in the shop, only tokens"
+summary = "No token, garbage and a token signed with another key all get 401; a signed token works; 301 seconds later the same token is expired and refused, with no call to the login server."
+detail = """
+The shop holds no passwords. With no token the answer is 401, and so it is for garbage and for a token signed with another key. A token the login server signed, good for 300 seconds, is accepted. 301 seconds later the same token is refused,
+and the shop needed no call to the login server to know: the expiry is inside the signed token.
+"""
+speech = """
+First demo: no login in the shop, only tokens. [[slnc 400]] With no token, the answer is four zero one. [[slnc 300]] So it is for garbage, and for a token signed with another key. [[slnc 600]]
+A token that the login server signed is accepted. [[slnc 600]]
+Three hundred and one seconds later, the same token is refused. [[slnc 300]] And the shop did not need to ask the login server. [[slnc 300]] The expiry is inside the signed token.
+"""
+rows = { tokens = "active ok" }
+console = [
+    ["no token: 401, garbage as a token: 401, a token signed with another key: 401", "ok"],
+    ["a token the login server signed, good for 300 seconds: 200", "ok"],
+    ["the same token 301 seconds later: 401  <- EXPIRED, AND THE SHOP NEEDED NO CALL TO THE LOGIN SERVER TO KNOW", "amber"],
+]
+
+[[act]]
+title = "Who is it, and what may they do"
+summary = "The roles in realm_access.roles become authorities; Ana reads her own order and gets 403 for Ben's; support reads it; only admin opens the sales report."
+detail = """
+The roles in the token's realm_access.roles claim become authorities named ROLE_CUSTOMER, ROLE_SUPPORT and ROLE_ADMIN. Ana reads her own order A-1 with 200 and Ben's order B-2 with 403: logged in, not allowed.
+Support Sam reads Ben's order. The sales report answers 403 to customer and support and 200 to admin. 401 means the shop does not know who is asking, and 403 means it knows and the answer is no.
+"""
+speech = """
+Second demo: who is it, and what may they do. [[slnc 400]] The roles in the token become authorities in the shop. [[slnc 600]]
+Ana reads her own order, and is allowed. [[slnc 300]] Ana reads Ben's order, and gets four zero three. [[slnc 300]] Logged in, and not allowed. [[slnc 600]]
+Support reads any order. [[slnc 300]] Only the admin opens the sales report. [[slnc 600]]
+Four zero one means the shop does not know who is asking. [[slnc 300]] Four zero three means it knows, and the answer is no.
+"""
+rows = { roles = "active ok" }
+console = [
+    ["the roles in realm_access.roles become authorities: ana [ROLE_CUSTOMER], sam [ROLE_SUPPORT], root [ROLE_ADMIN]", "muted"],
+    ["Ana reads her own order A-1: 200, and Ben's order B-2: 403  <- LOGGED IN, NOT ALLOWED", "amber"],
+    ["support Sam reads Ben's order B-2: 200", "ok"],
+    ["the sales report: customer 403, support 403, admin 200", "ok"],
+    ["401 means the shop does not know who is asking, 403 means it knows and the answer is no", "muted"],
+]
+
+[[act]]
+title = "A real signature is not enough"
+summary = "A correctly signed token from another issuer, and one meant for another API, are both refused; without an audience check any API's token would open this one."
+detail = """
+A token can have a perfectly good signature and still not be meant for the shop. A correctly signed token from another issuer is refused. A correctly signed token meant for another API is refused too: without an audience check,
+any API's token would open this one. The shop checks the signature, the expiry, the issuer and the audience before its own rules run.
+"""
+speech = """
+Third demo: a real signature is not enough. [[slnc 400]] A token from another issuer is refused, even if the signature is good. [[slnc 600]]
+A token meant for another A P I is refused too. [[slnc 300]] Without the audience check, any A P I's token would open this one. [[slnc 600]]
+The shop checks the signature, the expiry, the issuer, and the audience, before its own rules run.
+"""
+rows = { claims = "active ok" }
+console = [
+    ["a correctly signed token from another issuer: 401", "ok"],
+    ["a correctly signed token meant for another API: 401  <- WITHOUT AN AUDIENCE CHECK, ANY API'S TOKEN OPENS THIS ONE", "amber"],
+    ["the shop checks the signature, the expiry, the issuer and the audience", "muted"],
+]
+
+[[act]]
+title = "The roles in a token are a copy"
+summary = "An admin is demoted but the token already issued still opens the report until it expires; a new token carries the new roles; a short lifetime limits the stale window."
+detail = """
+Root, an admin, opens the sales report. Root is then demoted to customer in the login server's directory. The token root already holds still opens the report, because the shop only sees the copy of the roles inside it.
+After the token expires it is refused, and a new token carries the new roles: the report answers 403. A short lifetime is the control: the stale window is at most the lifetime of the token.
+"""
+speech = """
+Fourth demo: the roles in a token are a copy. [[slnc 400]] Root, an admin, opens the sales report. [[slnc 600]]
+Root is then demoted to customer, in the login server. [[slnc 600]]
+The token that root already holds still opens the report. [[slnc 300]] The shop only sees the copy. [[slnc 600]]
+After the token expires, it is refused. [[slnc 300]] A new token carries the new roles. [[slnc 600]]
+So a short lifetime is the control. [[slnc 300]] The stale window is at most the lifetime of the token.
+"""
+rows = { stale = "active wrong" }
+console = [
+    ["root, an admin, opens the sales report: 200", "ok"],
+    ["root is demoted to customer in the login server's directory", "muted"],
+    ["the token root already holds still opens the report: 200  <- THE SHOP ONLY SEES THE COPY", "bad"],
+    ["after the token expires: 401", "ok"],
+    ["a new token carries the new roles: report 403, own pages 200", "ok"],
+    ["so a short lifetime is the control: the stale window is at most the lifetime of the token", "amber"],
+]
+
+[[act]]
+title = "Ending a token early, and the bill"
+summary = "A revocation list ends a token at once, but it is consulted on every request; without it the shop makes no call, and the login server becomes one more system to run."
+detail = """
+A revocation list can end a token at once: the admin token works, its id is put on the list, and the next request is refused. The price is that the list is consulted for every request, which is the call that tokens were meant to avoid.
+Without a list the shop makes no call at all and the token can be used until it expires. Refresh tokens give long sessions with short access tokens, and the login server can refuse to refresh. And the login server is now one more system that must be kept running, patched and backed up.
+"""
+speech = """
+Fifth demo: ending a token early, and the bill. [[slnc 400]] An admin token works. [[slnc 600]]
+Its identifier is put on a revocation list, and the next request is refused at once. [[slnc 600]]
+The price is that the list is consulted for every request. [[slnc 300]] That is the call that tokens were meant to avoid. [[slnc 600]]
+Refresh tokens give long sessions with short access tokens. [[slnc 300]] And the login server can refuse to refresh. [[slnc 600]]
+And the login server is now one more system to run, to patch, and to back up.
+"""
+rows = { revoke = "active amber", server = "active amber" }
+console = [
+    ["an admin token: 200 and 200", "ok"],
+    ["its id is put on the revocation list: 401  <- ENDED AT ONCE", "ok"],
+    ["the price: the list was consulted 3 times for 3 requests, once for every request", "amber"],
+    ["without a list the shop made no call at all, and the token could be used until it expired", "muted"],
+    ["refresh tokens give long sessions with short access tokens, and the login server can refuse to refresh", "muted"],
+    ["the login server is now one more system that must be kept running, patched and backed up", "amber"],
+]
+
+[animation]
+subtitle = "An online store trusts a login server: tokens instead of passwords, and checks instead of trust."
+boxes = [
+    ["tokens", "Tokens", "signed, with an expiry inside"],
+    ["roles", "Roles", "401 or 403, from the token's claims"],
+    ["claims", "Issuer and audience", "a signature alone is not enough"],
+    ["stale", "Stale roles", "the token holds a copy"],
+    ["revoke", "Revocation", "ending a token costs a lookup"],
+    ["server", "The login server", "one more system to run"],
+]
+
+[docs.dependencies]
+intro = """
+This project uses Spring Boot's resource server support, and Keycloak as the login server in the integration tests. The demo needs no container.
+"""
+what = [
+    ["Spring Boot", "builds the order API and starts it on a free port. Boot 4.1.1 is the latest stable release, and its dependency list pins the Spring versions below."],
+    ["Spring Security (OAuth 2 resource server)", "checks the bearer token, builds the authentication from its claims and answers 401 and 403."],
+    ["Nimbus JOSE + JWT", "reads and verifies JWTs, and signs the stand-in tokens in the demo."],
+    ["Keycloak", "the open-source login server. The integration tests run it in Docker with the shop realm from `infra/shop-realm.json`."],
+    ["Docker", "runs the Keycloak container for the integration tests; the demo does not need it."],
+]
+why = """
+The plain and Spring Security projects kept users inside the shop. This project shows the design most companies actually use: the shop trusts a login server and checks what it is given.
+"""
+install_note = "A JDK for the demo and the default tests. Docker, for the integration tests. Gradle downloads the Java libraries, and the versions are pinned:"
+versions = [
+    ["Spring Boot", "4.1.1"],
+    ["Spring Framework", "7.0.9"],
+    ["Spring Security", "7.1.1"],
+    ["Nimbus JOSE + JWT", "10.9.1"],
+    ["Tomcat (embedded)", "11.0.24"],
+    ["Keycloak (Docker image)", "26.8.1"],
+    ["Java", "25"],
+    ["JUnit", "6.1.3"],
+]
+costs = [
+    "About 40 MB of Spring Boot and Tomcat libraries for a small API.",
+    "The integration tests download and start Keycloak, which takes about twenty seconds.",
+    "The Keycloak image is large (about 500 MB) and is pulled once.",
+]
+
+[docs.problem]
+scenario = """
+An online store has a web front end, a nightly batch job and staff tools, all calling one order API. Customers, support staff and an admin must each be able to do only their part, and the shop does not want to store passwords.
+"""
+naive = """
+Each application checks passwords itself, or the API accepts any token that looks like a token. Passwords spread to many places, and tokens are trusted without checking who issued them or whom they are for.
+"""
+deliver = [
+    "An order API that accepts only tokens signed by the login server's key.",
+    "401 for a missing, forged, tampered or expired token, and 403 for a valid token without the right role.",
+    "Roles read from realm_access.roles and mapped to authorities.",
+    "Issuer and audience checks, and a demonstration of what happens without the audience check.",
+    "The stale-role problem and the short-lifetime control, and a revocation list with its cost.",
+    "A realm file for Keycloak that is itself tested: public client with PKCE, no password grant, exact redirect addresses, short tokens, brute force protection.",
+    "Integration tests against a real Keycloak 26.8.1: login with PKCE, a service account, a removed role and a real expiry.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The authentication-vs-authorization project, or at least what 401 and 403 mean",
+]
+not_required = [
+    "Docker, for the demo (only the integration tests use it)",
+    "Any knowledge of OAuth 2: the project explains the parts it uses",
+]
+install = ["Docker, only to run `./gradlew integrationTest`"]
+
+[docs.session]
+objectives = [
+    "explain what a login server and a resource server each do",
+    "say what a JWT contains and which parts the shop must check",
+    "explain why no token is 401 and a wrong role is 403",
+    "explain why roles in a token can be stale, and the control for it",
+    "say what it costs to end a token early",
+]
+walkthrough = """
+Start with the theatre. Run the demo one act at a time. After act two, ask what the shop would need to store if it did its own logins. After act three, ask what an attacker would try with a token stolen from another API.
+In act four, ask how short a lifetime should be and what that costs the login server. In act five, ask whether the shop would ever want to ask the login server about every request.
+"""
+exercises = [
+    "Change the token lifetime in the demo to 60 seconds and rerun act four.",
+    "Add a new role, `auditor`, that may read every order but not the sales report.",
+    "Remove the audience check from the decoder and see which tests fail.",
+    "Start Keycloak with the realm file, open its admin console, and compare a token from the login page with the claims the shop reads.",
+]
+
+[docs.explained]
+sentence = """
+With a login server the shop holds no passwords: it checks a signed token's signature, expiry, issuer and audience, and then applies its own rules to the roles inside it, remembering that those roles are a copy that can be out of date until the token expires.
+"""
+verdict = """
+Use a login server when several applications share logins. Keep access tokens short, check issuer and audience, map roles to authorities in one place, test the realm configuration like code, and treat the login server as critical infrastructure.
+Use PKCE for public clients, avoid the password grant, and register exact redirect addresses.
+"""
+recognise = [
+    "`spring.security.oauth2.resourceserver.jwt.issuer-uri` in an application's configuration.",
+    "`Authorization: Bearer` headers and `/.well-known/openid-configuration` URLs.",
+    "Keycloak, Auth0, Okta, Azure AD and Amazon Cognito: login servers.",
+    "A realm or tenant export checked into a repository.",
+]
+
+[spec]
+purpose = """
+Teach how an online store delegates login to Keycloak by building a Spring Boot resource server that validates tokens, maps roles, and answers 401 and 403, and by showing the stale-role and revocation trade-offs.
+"""
+nongoals = [
+    "Running a login server in production: clustering, databases and hostname setup.",
+    "Writing an OAuth 2 authorization server: the Spring Authorization Server is a different project.",
+    "Browser flows, cookies and logout.",
+]
+problem = """
+Learners know passwords and sessions but not what changes when login moves to a separate server that hands out tokens.
+"""
+roles = [["The order API", "`Shop`"], ["A stand-in login server", "`Issuer`"], ["Token checks", "`Validators`, `Revocations`"], ["A simulated clock", "`SimClock`"], ["The API on a free port", "`Running`"], ["Entry point", "`KeycloakDemo`"], ["The real Keycloak (tests)", "`Keycloak`, `infra/shop-realm.json`"]]
+requirements = [
+    "No token, a forged token, a tampered token, an unsigned token and an expired token all get 401.",
+    "A valid token without the right role gets 403, and orders are visible to their owner and to staff only.",
+    "Tokens with the wrong issuer or audience get 401.",
+    "A role taken away does not affect a token already issued; a short lifetime bounds the stale window.",
+    "A revoked token is refused and every request costs a lookup.",
+    "The realm file defines a PKCE public client, a service account client, three roles, an audience mapper and short tokens.",
+    "The demo prints the same output on every run although the keys are random.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who does what"
+caption = "The login server proves who the user is. The shop only checks what it is handed."
+nodes = [
+    { id = "user", label = "Shopper", sub = "logs in at the login server", col = 0, row = 0, colour = "client" },
+    { id = "kc", label = "Keycloak", sub = "checks the password, signs a token", col = 1, row = 0, colour = "accent", shape = "store" },
+    { id = "api", label = "Order API", sub = "checks the token, then its own rules", col = 2, row = 0, colour = "green" },
+    { id = "keys", label = "Public keys", sub = "the JWKS address", col = 1, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "user", to = "kc", label = "password" },
+    { from = "kc", to = "user", label = "token" },
+    { from = "user", to = "api", label = "token in each request" },
+    { from = "api", to = "keys", label = "fetches", dashed = true },
+    { from = "keys", to = "kc", label = "published by", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Validators are the shop's checks on a token; Shop holds the rules; Issuer and SimClock stand in for the login server and time."
+nodes = [
+    { id = "shop", label = "Shop", sub = ["chain(http)", "converter()", "GET /orders/{id}", "GET /admin/report"], col = 0, row = 0, colour = "green" },
+    { id = "validators", label = "Validators", sub = ["all(issuer, audience, clock, extra)"], col = 1, row = 0, colour = "accent" },
+    { id = "revocations", label = "Revocations", sub = ["revoke(id)", "lookups()"], col = 2, row = 0, colour = "amber" },
+    { id = "issuer", label = "Issuer", sub = ["mint(user, roles, seconds, audience)", "forge(user, roles)"], col = 0, row = 1, colour = "client" },
+    { id = "clock", label = "SimClock", sub = ["advanceSeconds(n)"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "shop", to = "validators", label = "decoder uses" },
+    { from = "validators", to = "revocations", label = "may include" },
+    { from = "issuer", to = "clock", label = "stamps tokens with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the shop checks, in order"
+caption = "Any failed check is a 401. Only a token that passes all of them reaches the shop's own rules, which can answer 403."
+nodes = [
+    { id = "sig", label = "Signature", sub = "made by the login server's key", col = 0, row = 0, colour = "accent" },
+    { id = "exp", label = "Expiry", sub = "not past exp", col = 1, row = 0, colour = "accent" },
+    { id = "iss", label = "Issuer", sub = "the expected realm", col = 2, row = 0, colour = "accent" },
+    { id = "aud", label = "Audience", sub = "meant for this API", col = 3, row = 0, colour = "accent" },
+    { id = "rules", label = "Shop's rules", sub = "roles and ownership: 200 or 403", col = 4, row = 0, colour = "green" },
+]
+edges = [
+    { from = "sig", to = "exp" },
+    { from = "exp", to = "iss" },
+    { from = "iss", to = "aud" },
+    { from = "aud", to = "rules" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A request with a token: who calls whom, in order"
+participants = ["Shopper", "Order API", "Keycloak"]
+steps = [
+    ["Shopper", "Keycloak", "log in (authorization code with PKCE)"],
+    ["Keycloak", "Shopper", "access token (signed JWT)", "reply"],
+    ["Shopper", "Order API", "GET /orders/A-1 with the token"],
+    ["Order API", "Keycloak", "fetch public keys (once, then cached)"],
+    ["note", "Order API", "signature, expiry, issuer, audience"],
+    ["note", "Order API", "roles become authorities; ownership rule"],
+    ["Order API", "Shopper", "200, or 401, or 403", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The stale role"
+caption = "A role removed in the login server does not reach a token that was already issued."
+participants = ["Admin", "Keycloak", "Order API"]
+steps = [
+    ["Admin", "Order API", "GET /admin/report with token T (role: admin)"],
+    ["Order API", "Admin", "200", "reply"],
+    ["note", "Keycloak", "the admin role is removed from the user"],
+    ["Admin", "Order API", "GET /admin/report with the same token T"],
+    ["Order API", "Admin", "200, the token still says admin", "reply"],
+    ["note", "Order API", "after T expires: 401, and a new token says customer: 403"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Revoking a token"
+caption = "A revocation list ends a token at once and costs a lookup per request."
+participants = ["Operator", "Order API", "Shopper"]
+steps = [
+    ["Operator", "Order API", "revoke token id"],
+    ["Shopper", "Order API", "GET with the revoked token"],
+    ["note", "Order API", "signature and expiry pass, the revocation list does not"],
+    ["Order API", "Shopper", "401", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The shop", nodes = ["api"], colour = "green" },
+    { label = "The login server", nodes = ["kc", "keys"], colour = "amber" },
+    { label = "Outside", nodes = ["shopper", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "api", label = "Order API", sub = "resource server", col = 0, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "kc", label = "Keycloak", sub = "logins, roles, tokens", col = 1, row = 0, colour = "accent", shape = "store", threats = ["T5", "T6"] },
+    { id = "keys", label = "Signing keys", sub = "private key signs, public key published", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T1"] },
+    { id = "shopper", label = "Shopper", sub = "holds a token", col = 2, row = 0, colour = "client" },
+    { id = "attacker", label = "Attacker", sub = "forges, steals, replays", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "shopper", to = "kc", label = "logs in" },
+    { from = "shopper", to = "api", label = "sends token" },
+    { from = "api", to = "keys", label = "fetches public keys", dashed = true },
+    { from = "attacker", to = "api", label = "forged or stolen token", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "attacker", to = "kc", label = "guesses passwords", colour = "red", dashed = true, threats = ["T6"] },
+]
+
+[poster]
+headline = [["AUTHN VS AUTHZ", "text"], ["WITH KEYCLOAK", "accent"]]
+taglines = [["Let a login server answer who, and let the shop answer what", "gold"]]
+before = { code = "the shop stores passwords", note = "and checks them itself", tag = "BEFORE" }
+after = { code = "Bearer token + resource server", note = "signed, checked, short-lived", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Authentication vs Authorization with Keycloak"
+narration = """Hello, and welcome. [[slnc 400]] This video explains authentication and authorization with Keycloak, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Keycloak is a login server. [[slnc 300]] It checks the password, and gives back a signed token. [[slnc 300]] The shop checks the token, and holds no passwords at all. [[slnc 600]] Think of a theatre. [[slnc 300]] The box office checks who you are, and sells a ticket. [[slnc 300]] The doors only check the ticket: is it real, is it for tonight, is it for this theatre. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear why no token gives four zero one, and the wrong role gives four zero three. [[slnc 300]] Why a good signature is not enough. [[slnc 300]] And why the roles in a token can be out of date."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store has an order API.", "", "Shoppers, support staff, an admin", "and a nightly job all call it.", "", "Passwords stay at the login server."]
+narration = """Here is the scenario. [[slnc 400]] An online store has an order A P I. [[slnc 500]] Shoppers, support staff, an admin, and a nightly job all call it. [[slnc 600]] The shop does not want to store passwords. [[slnc 300]] So passwords stay at the login server."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Login server: checks passwords, signs tokens", "JWT: a signed token with claims", "Issuer: who made the token", "Audience: which API it is for", "Resource server: the API that checks tokens"]
+narration = """Before the demos, the words. [[slnc 500]] A login server checks passwords, and signs tokens. [[slnc 500]] A J W T is a signed token that carries claims. [[slnc 500]] The issuer says who made the token. [[slnc 500]] The audience says which A P I it is for. [[slnc 500]] And a resource server is the A P I that checks the tokens."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "What The Shop Checks"
+body = ["The signature: made by the login server", "The expiry: not in the past", "The issuer: the expected realm", "The audience: this API", "Then its own rules: roles and ownership"]
+narration = """Let's put the checks in order. [[slnc 400]] The signature. Was it made by the login server's key? [[slnc 500]] The expiry. Is it still in date? [[slnc 500]] The issuer. Is it the expected realm? [[slnc 500]] The audience. Is it meant for this A P I? [[slnc 500]] Any failure is four zero one. [[slnc 600]] Only then do the shop's own rules run, and they can say four zero three."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Shop: the order API and its rules", "Validators: expiry, issuer, audience", "Revocations: a list, and its cost", "Issuer and SimClock: a stand-in for Keycloak", "Keycloak: the real one, in the tests"]
+narration = """Here is who does what in the code. [[slnc 400]] The shop class is the order A P I and its rules. [[slnc 500]] The validators class checks expiry, issuer and audience. [[slnc 500]] The revocations class is a list of ended tokens, and counts what that costs. [[slnc 500]] The issuer and the simulated clock stand in for Keycloak in the demo. [[slnc 300]] And the real Keycloak runs in Docker in the integration tests."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["\"Sign in with Google\"", "Authorization: Bearer headers", "issuer-uri in Spring configuration", "Keycloak, Auth0, Okta, Cognito"]
+narration = """You have probably met this already. [[slnc 400]] Sign in with Google is a login server. [[slnc 500]] Authorization colon Bearer headers carry the tokens. [[slnc 500]] Spring applications name the login server with an issuer U R I setting. [[slnc 500]] And Keycloak, Auth0, Okta and Cognito are all login servers."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Short-lived access tokens", "Check issuer and audience", "Map roles to authorities in one place", "Test the realm file like code", "Run the login server like critical infrastructure"]
+narration = """So, how do you use it? [[slnc 400]] Keep access tokens short lived. [[slnc 500]] Always check the issuer and the audience. [[slnc 500]] Map roles to authorities in one place. [[slnc 500]] Test the realm configuration like code. [[slnc 500]] And run the login server like critical infrastructure, because it is."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Remove the audience check", "and see which tests fail."]
+narration = """That's authentication and authorization with Keycloak. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The shop checks the token and not the person, and the roles in the token are a copy that can be out of date until it expires. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] The demo runs with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Remove the audience check, and see which tests fail. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store's order API that accepts OAuth 2 access tokens from a Keycloak login server: token validation, role mapping, the realm configuration, token lifetime and revocation. It covers an attacker who can send requests with forged,
+stolen, tampered or replayed tokens, and who can try passwords at the login server. It does not cover the login server's host, its database, or the web front end's handling of tokens.
+"""
+assets = [
+    "The orders, and the sales report.",
+    "The login server's private signing key.",
+    "The users' passwords, held only by the login server.",
+    "The access tokens in transit and in the front end.",
+]
+actors = [
+    "Shoppers, support staff, an admin and a nightly job.",
+    "An attacker with no token, a stolen token, or a forged token.",
+    "An operator who changes roles in the login server.",
+]
+boundaries = [
+    "Internet to the order API: every request crosses it with only a token as proof.",
+    "Order API to the login server: the API trusts the keys the login server publishes.",
+    "Public client to login server: the front end has no secret and relies on PKCE.",
+]
+assumptions = [
+    "Requests reach the API over TLS, which the transport-security module covers.",
+    "The login server's signing key is protected and its host is patched.",
+    "In the demo, the stand-in issuer's key is random and never printed, and all passwords in the realm file are demo values.",
+]
+out_of_scope = [
+    "Running Keycloak in production.",
+    "Token storage in browsers, cross-site scripting and logout.",
+    "Writing an authorization server.",
+]
+tests = [
+    "`TokenRulesTest` checks 401 and 403, ownership, expiry at the exact second, forged, unsigned and tampered tokens, issuer and audience, role mapping and revocation.",
+    "`RealmFileTest` checks the realm: PKCE public client, no password grant, exact redirect addresses, audience mapper, short tokens and brute force protection.",
+    "`KeycloakIntegrationTest` (integration, Docker) logs in to the real Keycloak with PKCE, uses a service account, checks a wrong password and wrong audience, and shows a removed role working until a real token expires.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, passwords-and-mfa, looks at how the login server itself should store and check passwords and second factors.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A forged token, signed with the attacker's own key or with no signature, is accepted"
+where = "`Validators`, the decoder"
+control = "Signatures are verified against the login server's published keys, and unsigned tokens are refused"
+residual = "If the signing key leaks, forged tokens verify until the key is replaced"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A token meant for another API, or from another issuer, is accepted"
+where = "`Validators.audience`, the issuer check"
+control = "Issuer and audience are checked on every token, and Keycloak adds the audience with a mapper"
+residual = "A missing mapper makes every token fail, and a wildcard audience would make every token pass, so the realm file is tested"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A stolen token is used until it expires, or a removed role keeps working"
+where = "`Shop`, `Revocations`"
+control = "Short access token lifetimes (15 seconds in the test realm, minutes in practice), and an optional revocation list"
+residual = "The stale window is the token's lifetime, and the revocation list costs a lookup per request"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "A token's claims are changed to add a role"
+where = "the signature check"
+control = "The signature covers the claims, so any change breaks it"
+residual = "None while the signature check stays on"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "The login server is configured loosely: a wildcard redirect address, an enabled password grant or a long token lifetime"
+where = "`infra/shop-realm.json`"
+control = "Exact redirect addresses, PKCE for the public client, the password grant switched off and short tokens, all checked by a test"
+residual = "The imported file is only the starting point; changes made later in the admin console are not tested"
+
+[[threat]]
+id = "T6"
+stride = "D"
+threat = "Password guessing against the login page, or the login server going down"
+where = "Keycloak"
+control = "Brute force protection is enabled in the realm"
+residual = "If the login server is down nobody can log in; existing tokens work until they expire"
