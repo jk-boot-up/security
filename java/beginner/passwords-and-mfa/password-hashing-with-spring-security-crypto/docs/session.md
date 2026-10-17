@@ -14,7 +14,7 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Two the library marks as deprecated | 5 min |
+| 0:10 | Act 1: Two weak encoders, written out here | 5 min |
 | 0:15 | Act 2: One call: the delegating encoder | 5 min |
 | 0:20 | Act 3: Four algorithms, one interface | 5 min |
 | 0:25 | Act 4: The same attack, at two costs | 5 min |

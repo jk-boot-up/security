@@ -4,14 +4,14 @@ A threat model answers four questions: what are we protecting, who or what could
 
 ## Scope
 
-An online bank's use of Google's Tink to encrypt statement lines: the Aead primitive, the keyset with its primary key, key rotation, and the keyset stored under a master key. It covers a thief who reads a disk,
+An online bank's use of Google's Tink to encrypt statement lines: the Aead primitive, the keyset with its primary key, key rotation, and envelope encryption under a master key. It covers a thief who reads a disk,
 one who changes a message, and the loss or exposure of keys. It does not cover who may ask for a statement, or the key management service that should hold the master key.
 
 ## What we protect (assets)
 
 - The contents and integrity of each statement line.
 - The keyset: every key that can open stored messages.
-- The master key that protects the keyset on disk.
+- The master key that wraps every data key.
 - The record of which key id made which message.
 
 ## Who and what acts on the system
@@ -26,7 +26,7 @@ one who changes a message, and the loss or exposure of keys. It does not cover w
 A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.
 
 - Application to disk: messages leave as key id, nonce, cipher text and tag.
-- Application to key storage: the keyset reaches memory only after the master key opens it.
+- Application to the master key: only a 32-byte data key is ever sent to be wrapped or unwrapped.
 - Master key to key management service: the line that should hold the master key.
 
 ![Threat model diagram](images/threat-model-diagram.png)
@@ -42,7 +42,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 | T1 | Information disclosure | A thief reads statements from a disk or a backup | stored messages | Tink's AES-GCM hides the contents; the keyset is kept apart from the messages | Message lengths show, and a thief who also gets the keyset reads everything |
 | T2 | Tampering | Someone changes a message, or moves it to another account | `Bank.openOrNull` | The tag covers the cipher text and the associated data, so a change or a move is refused | A valid old message can be put back for the same account |
 | T3 | Information disclosure | A developer picks a weak mode or reuses a nonce | the `Aead` API | Tink has no place to put a nonce and offers no ECB template | A developer can still choose a weak primitive elsewhere, or build a key from a weak password |
-| T4 | Information disclosure | The keyset is read from disk or from a backup | the stored keyset | It is written encrypted under a master key | The master key now needs a safe home; Tink's own encrypted-keyset functions are deprecated in favour of a key management service |
+| T4 | Information disclosure | The keyset is read from disk or from a backup | the stored keyset | Each message has its own data key, wrapped by a master key; no keyset is stored by the application | The master key now needs a safe home in a key management service or a hardware module |
 | T5 | Denial of service | A key is removed too early, and old messages can no longer be opened | keyset rotation | Add the new key first, make it primary, re-encrypt, and only then remove the old key | A mistake in the order loses data, so the steps need a runbook and a backup |
 | T6 | Repudiation | A message cannot be traced to the key that made it | the five-byte start of each message | The key id at the start of every message names the key | It names the key, not the person or service that used it |
 
@@ -50,7 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - The attacker does not have the keyset or the master key.
 - Tink and its dependency are kept up to date.
-- In the demo, keysets are built from fixed public bytes, and the master key is another demo keyset. Real keysets come from `generateNew`.
+- In the demo, keysets are built from fixed public bytes, and the master key is another demo key. Real keysets come from `generateNew`.
 
 ## Out of scope
 

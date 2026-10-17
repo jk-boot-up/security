@@ -3,9 +3,8 @@ package com.jk.explore.security.symmetrictink;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.TinkJsonProtoKeysetFormat;
 import com.google.crypto.tink.aead.PredefinedAeadParameters;
-import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
@@ -17,6 +16,7 @@ public class TinkDemo {
     static final int KEY_ID = 1001;
     static final String KEY_TEXT = "demo-statement-key-not-for-real";
     static final byte[] ACCOUNT = "account=ANA-1".getBytes(StandardCharsets.UTF_8);
+    static final String MASTER_TEXT = "demo-master-key-standing-for-a-kms";
     static final byte[] LINE = "RENT      -1200\n".getBytes(StandardCharsets.UTF_8);
 
     public static void main(String[] args) throws Exception {
@@ -30,9 +30,9 @@ public class TinkDemo {
             act1NoNonce(out);
             act2Tamper(out);
             act3Rotation(out);
-            act4KeysetOnDisk(out);
+            act4Envelope(out);
             act5Bill(out);
-        } catch (GeneralSecurityException | IOException e) {
+        } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
         return out.toString();
@@ -87,31 +87,50 @@ public class TinkDemo {
                 + " for old messages, " + text(new Bank(onlyNew).openOrNull(ACCOUNT, fresh)) + " for new ones");
     }
 
-    /**
-     * Tink 1.24 marks its functions for writing a keyset encrypted with a master key as deprecated, steering users towards
-     * keys held in a key management service instead. They still work, and show the principle clearly, so the demo uses them.
-     */
-    @SuppressWarnings("deprecation")
-    private static void act4KeysetOnDisk(StringBuilder out) throws GeneralSecurityException, IOException {
-        line(out, "FOUR. Keeping the keyset itself safe.");
-        KeysetHandle keyset = DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT);
-        Aead master = new Bank(DemoKeysets.aes256Gcm(2001, "demo-master-key-standing-for-a-kms")).aead();
-        String json = TinkJsonProtoKeysetFormat.serializeEncryptedKeyset(keyset, master, new byte[0]);
-        line(out, "  the keyset is written encrypted with a master key: the file has an encryptedKeyset field: "
-                + json.contains("encryptedKeyset"));
-        line(out, "  the key's own bytes appear in the file: " + json.contains(DemoKeysets.keyBase64(KEY_TEXT)));
-        KeysetHandle back = TinkJsonProtoKeysetFormat.parseEncryptedKeyset(json, master, new byte[0]);
-        byte[] sealed = new Bank(keyset).seal(ACCOUNT, LINE);
-        line(out, "  read back with the master key, it opens the old message: " + text(new Bank(back).openOrNull(ACCOUNT, sealed)));
-        Aead wrongMaster = new Bank(DemoKeysets.aes256Gcm(2001, "a-different-master-key-text-here")).aead();
+    private static void act4Envelope(StringBuilder out) throws GeneralSecurityException {
+        line(out, "FOUR. Keys that stay at home: envelope encryption.");
+        CountingAead master = new CountingAead(new Bank(DemoKeysets.aes256Gcm(2001, MASTER_TEXT)).aead());
+        Aead envelope = envelope(master);
+        byte[] first = envelope.encrypt(LINE, ACCOUNT);
+        byte[] second = envelope.encrypt(LINE, ACCOUNT);
+        byte[] statement = new byte[100_000];
+        byte[] big = envelope.encrypt(statement, ACCOUNT);
+        line(out, "  each message is sealed with its own fresh data key, and only that small key goes to the master key to be wrapped");
+        line(out, "  " + LINE.length + " bytes become " + first.length + ": a length, the wrapped data key, then the cipher text");
+        line(out, "  two messages carry different wrapped keys: " + !Arrays.equals(wrappedKey(first), wrappedKey(second)));
+        line(out, "  the master key was used " + master.calls() + " times for 2 short lines and a " + statement.length
+                + "-byte statement: once each, whatever the size");
+        line(out, "  opened with the master key: " + text(envelope.decrypt(first, ACCOUNT)) + ", and " + envelope.decrypt(big, ACCOUNT).length + " bytes");
+        Aead wrong = envelope(new Bank(DemoKeysets.aes256Gcm(2001, "a-different-master-key-text-here")).aead());
         String result;
         try {
-            TinkJsonProtoKeysetFormat.parseEncryptedKeyset(json, wrongMaster, new byte[0]);
-            result = "read";
+            wrong.decrypt(first, ACCOUNT);
+            result = "opened";
         } catch (GeneralSecurityException e) {
             result = "refused";
         }
-        line(out, "  read back with a different master key: " + result);
+        line(out, "  opened with a different master key: " + result);
+        line(out, "  the master key's own bytes appear in a stored message: " + contains(first, DemoKeysets.keyBytes(MASTER_TEXT)));
+    }
+
+    /** Envelope encryption, written out with Tink primitives: a fresh data key for each message, wrapped by the master key. */
+    static Aead envelope(Aead master) {
+        return new EnvelopeAead(master);
+    }
+
+    /** The wrapped data key inside an envelope message: a 4-byte length, then that many bytes. */
+    static byte[] wrappedKey(byte[] message) {
+        int length = ByteBuffer.wrap(message).getInt();
+        return Arrays.copyOfRange(message, 4, 4 + length);
+    }
+
+    private static boolean contains(byte[] haystack, byte[] needle) {
+        for (int i = 0; i + needle.length <= haystack.length; i++) {
+            if (Arrays.equals(Arrays.copyOfRange(haystack, i, i + needle.length), needle)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void act5Bill(StringBuilder out) {

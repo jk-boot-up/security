@@ -29,4 +29,4 @@ Only a JDK. Gradle downloads Tink and its dependency, and the versions are pinne
 
 - A larger dependency than the JDK alone, and a JVM option to silence a warning on JDK 24 and later.
 - Messages and keys are in Tink's format, so moving away from Tink means converting them.
-- Some functions the demo uses are deprecated in this version, so upgrades need attention.
+- Tink 1.24 deprecates the functions for storing a whole keyset, so keys are best kept in a key management service.

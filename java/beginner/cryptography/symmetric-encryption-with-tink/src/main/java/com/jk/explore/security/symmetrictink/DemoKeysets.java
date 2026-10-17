@@ -41,13 +41,13 @@ final class DemoKeysets {
         }
     }
 
-    /** The Base64 text of the key bytes, to check that it does not appear in a keyset that was written encrypted. */
-    static String keyBase64(String keyText) {
+    /** The raw 32 key bytes, to check that they do not appear in a keyset that was stored encrypted. */
+    static byte[] keyBytes(String keyText) {
         byte[] keyBytes = new byte[32];
         byte[] text = keyText.getBytes(StandardCharsets.UTF_8);
         for (int i = 0; i < keyBytes.length; i++) {
             keyBytes[i] = text[i % text.length];
         }
-        return Base64.getEncoder().encodeToString(keyBytes);
+        return keyBytes;
     }
 }

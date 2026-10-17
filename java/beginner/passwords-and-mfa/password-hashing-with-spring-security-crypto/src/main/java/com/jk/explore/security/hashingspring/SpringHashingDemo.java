@@ -8,8 +8,6 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
-import org.springframework.security.crypto.password.MessageDigestPasswordEncoder;
-import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
 import org.springframework.security.crypto.scrypt.SCryptPasswordEncoder;
@@ -26,7 +24,7 @@ public class SpringHashingDemo {
     /** The whole demo as text, so the tests can compare it with the golden file. */
     public static String run() {
         StringBuilder out = new StringBuilder();
-        act1WarningLabels(out);
+        act1WeakEncoders(out);
         act2OneCall(out);
         act3FourAlgorithms(out);
         act4SameAttack(out);
@@ -62,19 +60,18 @@ public class SpringHashingDemo {
         return new DelegatingPasswordEncoder(idForEncode, encoders);
     }
 
-    @SuppressWarnings({"deprecation", "removal"})
-    private static void act1WarningLabels(StringBuilder out) {
-        line(out, "ONE. Two the library marks as deprecated.");
-        PasswordEncoder noop = NoOpPasswordEncoder.getInstance();
-        line(out, "  NoOpPasswordEncoder stores ana's password as: " + noop.encode("welcome1") + "  <- THE PASSWORD ITSELF");
-        PasswordEncoder sha = new MessageDigestPasswordEncoder("SHA-256");
-        String ana = sha.encode("welcome1");
-        String ben = sha.encode("welcome1");
-        line(out, "  MessageDigestPasswordEncoder, SHA-256 with a salt, gives ana and ben the same value: " + ana.equals(ben));
-        line(out, "  but it is one cheap step per guess: " + new Attacker(Customers.WORDLIST)
-                .crack(encodeAll(sha), sha).guesses() + " guesses crack "
-                + new Attacker(Customers.WORDLIST).crack(encodeAll(sha), sha).found().size() + " of "
+    private static void act1WeakEncoders(StringBuilder out) {
+        line(out, "ONE. Two weak encoders, written out here.");
+        PasswordEncoder plain = new PlainTextEncoder();
+        line(out, "  a plain-text encoder stores ana's password as: " + plain.encode("welcome1") + "  <- THE PASSWORD ITSELF");
+        PasswordEncoder fast = new FastSaltedSha256Encoder();
+        String ana = fast.encode("welcome1");
+        String ben = fast.encode("welcome1");
+        line(out, "  a fast SHA-256 encoder with a salt gives ana and ben the same value: " + ana.equals(ben));
+        line(out, "  but it is one cheap step per guess: " + new Attacker(Customers.WORDLIST).crack(encodeAll(fast), fast).guesses()
+                + " guesses crack " + new Attacker(Customers.WORDLIST).crack(encodeAll(fast), fast).found().size() + " of "
                 + Customers.PASSWORDS.size() + "  <- FAST");
+        line(out, "  the library keeps encoders like these only for old systems, and marks them deprecated");
     }
 
     private static void act2OneCall(StringBuilder out) {

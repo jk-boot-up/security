@@ -2,9 +2,11 @@
 
 ```
 src/main/java/com/jk/explore/security/hashingspring/
-├── Attacker.java           Someone with a stolen table of stored passwords, trying a list of common passwords against each account
-├── Customers.java          The five customers of the online store, with the passwords they chose, and the attacker's list of common passwords
-└── SpringHashingDemo.java  Runs the online store story in six numbered acts, with Spring Security's password encoders, and prints repeatable results
+├── Attacker.java                 Someone with a stolen table of stored passwords, trying a list of common passwords against each account
+├── Customers.java                The five customers of the online store, with the passwords they chose, and the attacker's list of common passwords
+├── FastSaltedSha256Encoder.java  A SHA-256 hash with a random salt, in the form {@code salt$hash}
+├── PlainTextEncoder.java         The worst encoder: it stores the password as it is
+└── SpringHashingDemo.java        Runs the online store story in six numbered acts, with Spring Security's password encoders, and prints repeatable results
 ```
 
 **Spring Security's password encoders store a slow, salted hash in one call, tag it with the algorithm's name, and let a shop move to a stronger algorithm without asking customers, as long as the list of algorithms it accepts is chosen on purpose.**
@@ -46,7 +48,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Two the library marks as deprecated | NoOpPasswordEncoder stores the password itself; the SHA-256 encoder adds a salt but costs one cheap step per guess, so 24 guesses crack 4 of 5. |
+| 1. Two weak encoders, written out here | A plain-text encoder stores the password itself; a fast SHA-256 encoder with a salt costs one cheap step per guess, so 24 guesses crack 4 of 5. |
 | 2. One call: the delegating encoder | The default encoder writes {bcrypt} in front of a 68-character stored text, adds a salt for you, and checks logins with matches. |
 | 3. Four algorithms, one interface | BCrypt, PBKDF2, scrypt and Argon2 each encode and match; the stored text of bcrypt shows its cost, and Argon2's shows its memory, passes and parallelism. |
 | 4. The same attack, at two costs | Bcrypt at cost 4 and at cost 10 both lose 4 of 5 accounts in 24 guesses, but each guess at cost 10 is 64 times the work. |
@@ -59,7 +61,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `AttackerTest`, `DemoRunsTest`, `EncodersTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Nothing printed depends on a random salt or on timing, so every run gives the same result.
+15 tests in `AttackerTest`, `DemoRunsTest`, `EncodersTest`, `WeakEncodersTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Nothing printed depends on a random salt or on timing, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 
@@ -71,11 +73,17 @@ used only to show the difference.
 
 ## Technologies and versions
 
+Every version below is pinned in the project's build files and was the latest stable release when the project was built.
+
 | Technology | Version | Used for |
 | --- | --- | --- |
-| Java | 25 | the code (toolchain set in `build.gradle`; Gradle finds or downloads the JDK) |
-| Gradle | 9.2.1 (wrapper) | build and run, nothing to install |
-| JUnit | 5.10.2 | the tests |
+| Java | 25 | the language and runtime; a Gradle toolchain finds or downloads the JDK |
+| Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
+| org.springframework.security:spring-security-crypto | 7.1.1, set by spring-security-bom | password encoders: bcrypt, PBKDF2, scrypt, Argon2 |
+| org.bouncycastle:bcprov-jdk18on | 1.86 | Bouncy Castle: algorithms and providers the JDK lacks |
+| org.springframework:spring-core | 7.0.9, set by spring-framework-bom | Spring's utility classes and logging, which the crypto module expects the application to supply |
+| org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
+| org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material

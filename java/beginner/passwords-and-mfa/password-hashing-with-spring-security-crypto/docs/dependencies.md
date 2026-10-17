@@ -4,7 +4,7 @@ This project uses one Spring module, plus the small libraries it expects the app
 
 ## What spring-security-crypto is
 
-the part of Spring Security that holds the password encoders: bcrypt, PBKDF2, scrypt and Argon2, the delegating encoder, and the deprecated ones. It has no web or database parts, so it can be used without the rest of Spring Security.
+the part of Spring Security that holds the password encoders: bcrypt, PBKDF2, scrypt and Argon2, the delegating encoder, and some old encoders it marks as deprecated. It has no web or database parts, so it can be used without the rest of Spring Security.
 
 ## What Bouncy Castle is
 

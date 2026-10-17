@@ -36,10 +36,10 @@ Learners know passwords should be hashed with a library but not what the library
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 31 lines, identical on every run |
 | Acts | 6 |
-| Video | 10:30, 1920×1080, narrated in the amy-slow voice |
+| Video | 10:34, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

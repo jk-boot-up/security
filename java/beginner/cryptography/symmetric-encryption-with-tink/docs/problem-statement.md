@@ -14,6 +14,6 @@ Use the JDK's AES-GCM directly in every service, each with its own nonce handlin
 - A demonstration that Tink picks a new nonce every time, with the stored layout explained.
 - A demonstration of refusal for a changed message, a moved message and a wrong key.
 - Key rotation: add a primary key, keep old messages readable, and remove the old key.
-- A keyset written encrypted under a master key, and read back.
+- Envelope encryption: a fresh data key for each message, wrapped by a master key.
 - A statement of what Tink decides for the bank and what it leaves.
 - The same output every run, checked against a golden output file.

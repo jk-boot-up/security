@@ -12,7 +12,7 @@ leaves the passwords readable or cheap to guess, and the second repeats work the
 
 ## What this project must deliver
 
-- A demonstration of the two deprecated encoders and what is wrong with each.
+- A demonstration of two weak encoders, written out in the project, and what is wrong with each.
 - The delegating encoder, with the algorithm's name in front of the stored text and a salt added for you.
 - Four algorithms behind one interface, with their visible settings.
 - The same attack as the plain project, at two bcrypt costs, with the work compared.

@@ -41,7 +41,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 | Id | Kind | Threat | Where it shows up | Control in this project | What is left |
 | --- | --- | --- | --- | --- | --- |
-| T1 | Information disclosure | The accounts table is stolen and the passwords are readable or cheap to guess | `NoOpPasswordEncoder`, `MessageDigestPasswordEncoder` | Use a slow, salted algorithm: bcrypt, PBKDF2, scrypt or Argon2 | Weak passwords on the attacker's list still fall |
+| T1 | Information disclosure | The accounts table is stolen and the passwords are readable or cheap to guess | `PlainTextEncoder`, `FastSaltedSha256Encoder` | Use a slow, salted algorithm: bcrypt, PBKDF2, scrypt or Argon2 | Weak passwords on the attacker's list still fall |
 | T2 | Elevation of privilege | A value such as {noop}letmein is planted in the table and accepted | the default `DelegatingPasswordEncoder` | Build the delegating encoder from an explicit allow-list of ids | Anyone with write access can still swap one valid hash for another; protect the table |
 | T3 | Information disclosure | Offline guessing against a stolen bcrypt or Argon2 hash | `BCryptPasswordEncoder`, `Argon2PasswordEncoder` | Cost: bcrypt cost 10 is 1,024 rounds; Argon2 uses 16 MiB, two passes | Weak passwords fall; settings must be raised as hardware improves |
 | T4 | Denial of service | Many simultaneous logins exhaust memory, because Argon2 needs 16 MiB each | `Argon2PasswordEncoder` | None here; the memory per login is shown | Rate limits and a cap on concurrent hashing are needed |

@@ -21,13 +21,13 @@ Chapters:
 02:10 Act One — One call, and no nonce to look after
 02:59 Act Two — Any change is refused
 03:33 Act Three — Replacing the key without losing the data
-04:23 Act Four — Keeping the keyset itself safe
-05:08 Act Five — The bill: what Tink decides for you, and what it does not
-05:51 Plain Version, Tink Version
-06:26 Who Does What
-06:53 Where You Have Seen It
-07:26 How To Use It
-07:57 Thanks for Watching
+04:23 Act Four — Keys that stay at home: envelope encryption
+05:33 Act Five — The bill: what Tink decides for you, and what it does not
+06:17 Plain Version, Tink Version
+06:52 Who Does What
+07:19 Where You Have Seen It
+07:52 How To Use It
+08:22 Thanks for Watching
 ```
 
 ## Tags

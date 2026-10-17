@@ -23,11 +23,13 @@ Keys should be replaced from time to time. In Tink, the keyset holds several key
 change still opens, because the old key is still in the keyset. A new message starts with a different key id. When the old key is later removed from the keyset, old messages can no longer be opened, but
 new ones can. That is why re-encrypting old messages with the new key must happen before the old key is removed.
 
-### 4. Keeping the keyset itself safe
+### 4. Keys that stay at home: envelope encryption
 
-The keyset holds the keys, so it is as secret as the data. Tink can write it encrypted under a master key, which in real use lives in a key management service or a hardware module and here is another
-demo keyset. The file has an encryptedKeyset field, and the key's own bytes do not appear in it. Read back with the master key, it opens the old message. Read back with a different master key, it is refused.
-This moves the problem one step: the master key now needs the safe home.
+The keys have to live somewhere, and the best place is one that the application never reads. In envelope encryption, each message is sealed with its own fresh data key, and only that small key goes to the master key to be wrapped.
+In a real system the master key sits in a key management service or a hardware module and never leaves it. Here it is another Tink key standing in for it. A 16-byte line becomes 113 bytes: a length, the wrapped data key,
+then the cipher text. Two messages carry different wrapped keys. The master key was used 3 times for two short lines and a 100,000-byte statement: once each, whatever the size. Opened with the master key, the messages come back.
+With a different master key, they are refused, and the master key's own bytes never appear in a stored message. Tink's functions for writing out a whole keyset are deprecated in this version, so the project wraps data keys
+instead of storing keysets.
 
 ### 5. The bill: what Tink decides for you, and what it does not
 
@@ -38,7 +40,7 @@ its protocol buffer dependency. The master key still has to live somewhere. And 
 ## The verdict
 
 Prefer a library such as Tink to hand-written AES-GCM. Use one `Aead` for each purpose, bind messages to context with associated data, rotate keys on a schedule and re-encrypt before removing old
-ones, and store keysets encrypted under a master key that lives in a key management service. Know what the library does not do: it does not guard the master key, hide lengths, or make a lost keyset recoverable.
+ones, and wrap data keys with a master key that lives in a key management service. Know what the library does not do: it does not guard the master key, hide lengths, or make a lost keyset recoverable.
 
 ## How to recognise this in code you did not write
 

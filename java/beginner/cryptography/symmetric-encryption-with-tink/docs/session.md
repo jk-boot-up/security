@@ -6,7 +6,7 @@ By the end of the session you can:
 
 - name what Tink decides for the caller that plain AES-GCM leaves to the caller
 - explain a keyset, the primary key, and how rotation works
-- explain why a keyset must be stored encrypted, and what that moves to the master key
+- explain envelope encryption, and what it moves to the master key
 - name three costs of using a library like Tink
 
 ## Timetable
@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: One call, and no nonce to look after | 7 min |
 | 0:17 | Act 2: Any change is refused | 7 min |
 | 0:24 | Act 3: Replacing the key without losing the data | 7 min |
-| 0:31 | Act 4: Keeping the keyset itself safe | 7 min |
+| 0:31 | Act 4: Keys that stay at home: envelope encryption | 7 min |
 | 0:38 | Act 5: The bill: what Tink decides for you, and what it does not | 7 min |
 | 0:45 | Exercises | 15 min |
 
@@ -32,4 +32,4 @@ should be able to read it.
 1. Switch the template from AES256_GCM to XCHACHA20_POLY1305 and rerun. What changes in the demo's numbers?
 2. Add a third key and make it primary. How many keys does the keyset hold, and which messages still open?
 3. Disable the oldest key without deleting it, and see what Tink does when an old message arrives.
-4. Write a test that fails if a keyset is ever written to a file without a master key.
+4. Make the master key wrap the data key together with the account as associated data, and test a wrapped key moved to another account.

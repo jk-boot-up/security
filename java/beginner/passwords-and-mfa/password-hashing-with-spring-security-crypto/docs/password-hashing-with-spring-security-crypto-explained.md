@@ -6,11 +6,10 @@ Spring Security's password encoders give every algorithm the same two calls, add
 
 ## The 6 acts
 
-### 1. Two the library marks as deprecated
+### 1. Two weak encoders, written out here
 
-The library still contains the two weakest choices, and marks them deprecated. NoOpPasswordEncoder stores
-the password as it is: ana's row says welcome1. MessageDigestPasswordEncoder is a plain SHA-256 hash with
-a salt, so Ana's and Ben's stored values differ. But it is one cheap step per guess, so the same eight
+The library keeps the two weakest choices only for old systems, and marks them deprecated, so this project writes equivalents out in a few lines instead of calling them. A plain-text encoder
+stores the password as it is: ana's row says welcome1. A fast SHA-256 encoder with a random salt makes Ana's and Ben's stored values differ. But it is one cheap step per guess, so the same eight
 common passwords crack 4 of the 5 accounts in 24 guesses. Both exist for old systems, not for new ones.
 
 ### 2. One call: the delegating encoder

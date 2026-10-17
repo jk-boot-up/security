@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Teach what a safe encryption library does by repeating the plain symmetric-encryption story with Google's Tink: one call, key rotation, a keyset protected by a master key, and a clear list of what is still the caller's job.
+Teach what a safe encryption library does by repeating the plain symmetric-encryption story with Google's Tink: one call, key rotation, envelope encryption under a master key, and a clear list of what is still the caller's job.
 
 ## Not in scope
 
@@ -35,10 +35,10 @@ Learners who have seen the plain version need to see how a library removes its s
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 28 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:50, 1920×1080, narrated in the amy-slow voice |
+| Video | 09:15, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -23,9 +23,11 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
 <main><h1>Symmetric Encryption with Google Tink</h1>
 <pre><code>src/main/java/com/jk/explore/security/symmetrictink/
-├── Bank.java         The bank's encryption of statement lines with Tink's AEAD primitive: Tink picks the nonce, the layout and the mode
-├── DemoKeysets.java  Keysets with fixed contents, so the demo prints the same text on every run
-└── TinkDemo.java     Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results
+├── Bank.java          The bank's encryption of statement lines with Tink's AEAD primitive: Tink picks the nonce, the layout and the mode
+├── CountingAead.java  Wraps an Aead and counts how often it is used: stands for the calls a real key management service would be asked to make
+├── DemoKeysets.java   Keysets with fixed contents, so the demo prints the same text on every run
+├── EnvelopeAead.java  Envelope encryption: each message gets its own fresh 256-bit data key and is sealed with it using Tink's AES-GCM; the data key is then wrapped by a master {@link Aead}, which in a real system lives in a key management service or a hardware module, and the wrapped key travels with the message
+└── TinkDemo.java      Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results
 </code></pre>
 <p><strong>Google's Tink library gives one safe call for encryption, picks the nonce and the layout for you, keeps keys in a keyset that can be rotated, and leaves out the unsafe choices, but the keyset still needs a safe place to live.</strong></p>
 <p>The plain version of this lesson used AES-GCM straight from the JDK, and showed how many things the caller must get right: the
@@ -34,14 +36,14 @@ mode, the nonce, the format of the stored message, and the key. <strong>Tink</st
 message, and refuses to offer unsafe modes. Its keys live in a <strong>keyset</strong>, a list of keys of which one is <em>primary</em>. New messages use the primary key, and every key in the
 keyset can still open its old messages. That makes <strong>rotation</strong> simple: add a new key, make it primary, and later remove the old one.</p>
 <p>The demo runs the same online bank as the plain project, with the same statement line, in five acts: one call and no nonce, any change refused,
-rotating the key, keeping the keyset itself safe, and what Tink does not do for you.</p>
+rotating the key, keeping the keys safe with envelope encryption, and what Tink does not do for you.</p>
 <h2>The idea in everyday terms</h2>
 <p>Think of a lock box maker who is also a careful advisor. You do not choose the lock, the combination or the seal. The maker fits a fresh combination to
 every box, stamps on it which key opens it, and does not sell the models that are known to be weak. When you want new keys, you do not rebuild the
 boxes: the maker keeps a key ring, adds a new key, and the old boxes still open with the old ones until you take them off the ring.</p>
 <h2>The scenario</h2>
 <p>The online bank from the plain project stores a statement line, <code>RENT -1200</code>, for the account ANA-1. It now encrypts with Tink. The demo seals the line twice, flips a
-bit, moves a message to another account, adds a second key to the keyset and removes the first, writes the keyset to disk under a master key, and ends by listing
+bit, moves a message to another account, adds a second key to the keyset and removes the first, wraps each message's data key with a master key, and ends by listing
 what remains the bank's job.</p>
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
@@ -68,8 +70,8 @@ what remains the bank's job.</p>
 <td>Adding a new primary key gives a keyset of 2 keys; old messages still open, new messages use the new key id, and removing the old key makes old messages unreadable.</td>
 </tr>
 <tr>
-<td>4. Keeping the keyset itself safe</td>
-<td>The keyset is written encrypted under a master key: the file has an encryptedKeyset field, the key's own bytes are not in it, it reads back with the master key and not with another.</td>
+<td>4. Keys that stay at home: envelope encryption</td>
+<td>Each message gets its own data key, wrapped by a master key that is used once per message, 3 times for 3 messages of any size; a different master key is refused, and the master key's bytes are never stored.</td>
 </tr>
 <tr>
 <td>5. The bill: what Tink decides for you, and what it does not</td>
@@ -80,13 +82,14 @@ what remains the bank's job.</p>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>15 tests in <code>DemoRunsTest</code>, <code>KeysetTest</code>, <code>TinkAeadTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves.</p>
+<p>18 tests in <code>DemoRunsTest</code>, <code>KeysetTest</code>, <code>TinkAeadTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>The keyset is built from fixed key bytes so every run prints the same text, and its Base64 form is in the source. A real keyset is made with <code>generateNew</code>,
-which picks a random key and a random key id, and must never be written in the clear. The master key stands in for a key management service. Tink's nonces are random,
-so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. Tink 1.24 marks the
-encrypted-keyset functions the demo uses as deprecated, and the code says so where it uses them.</p>
+which picks a random key and a random key id, and must never be written in the clear. The master key stands in for a key management service, and the envelope is written with Tink's primitives. Tink's nonces are random,
+so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. Tink 1.24 deprecates its
+functions for storing a keyset, so the demo never stores one.</p>
 <h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
 <table>
 <thead>
 <tr>
@@ -99,17 +102,27 @@ encrypted-keyset functions the demo uses as deprecated, and the code says so whe
 <tr>
 <td>Java</td>
 <td>25</td>
-<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
 </tr>
 <tr>
 <td>Gradle</td>
-<td>9.2.1 (wrapper)</td>
-<td>build and run, nothing to install</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
 </tr>
 <tr>
-<td>JUnit</td>
-<td>5.10.2</td>
-<td>the tests</td>
+<td>com.google.crypto.tink:tink</td>
+<td>1.24.0</td>
+<td>Google Tink: safe cryptographic primitives</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
 </tr>
 <tr>
 <td>videokit</td>
@@ -182,8 +195,8 @@ encrypted-keyset functions the demo uses as deprecated, and the code says so whe
 <ul>
 <li><strong>A library and its dependency.</strong> Tink brings a protocol buffer library with it, and a recent JDK warns about the unsafe memory access that library uses.</li>
 <li><strong>A format of its own.</strong> A message starts with five bytes naming the key, then Tink's nonce, cipher text and tag. Another library cannot read it without Tink, or without code that knows the layout.</li>
-<li><strong>The keyset still needs a safe home.</strong> Tink can write it encrypted under a master key, but the master key has to live somewhere, ideally in a key management service or a hardware module.</li>
-<li><strong>Some of its functions move.</strong> Tink 1.24 marks its encrypted-keyset functions as deprecated, in favour of keeping the master key in a key management service, so code that uses them needs a plan.</li>
+<li><strong>The master key still needs a safe home.</strong> Envelope encryption moves the problem to the master key, which should live in a key management service or a hardware module and never be read by the application.</li>
+<li><strong>Whole-keyset storage is on its way out.</strong> Tink 1.24 deprecates its functions for writing a secret keyset, in favour of keys held in a key management service, so this project does not store keysets and wraps data keys instead.</li>
 <li><strong>Lengths still show,</strong> and a lost keyset is lost data.</li>
 </ul>
 <h2>When this is too much</h2>

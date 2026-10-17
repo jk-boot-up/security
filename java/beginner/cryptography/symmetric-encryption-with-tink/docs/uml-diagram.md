@@ -1,10 +1,10 @@
 # Symmetric Encryption with Google Tink — UML Sequence Diagrams
 
-## 1. Writing the keyset to disk
+## 1. Envelope encryption of one message
 
-The master key encrypts the keyset, so the file holds no key bytes in the clear.
+The data key is made for this message, used once, and sent to the master key to be wrapped; the master key never sees the message.
 
-![Writing the keyset to disk](images/uml-diagram.png)
+![Envelope encryption of one message](images/uml-diagram.png)
 
 ## 2. A message that will not open
 

@@ -11,14 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.TinkJsonProtoKeysetFormat;
 import com.google.crypto.tink.aead.PredefinedAeadParameters;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("deprecation") // Tink 1.24 deprecates its encrypted-keyset functions; see TinkDemo.act4KeysetOnDisk
 class KeysetTest {
 
     private KeysetHandle original() {
@@ -60,22 +58,54 @@ class KeysetTest {
     }
 
     @Test
-    void aKeysetWrittenEncryptedHidesTheKeyAndReadsBackWithTheMasterKey() throws Exception {
-        Aead master = new Bank(DemoKeysets.aes256Gcm(2001, "demo-master-key-standing-for-a-kms")).aead();
-        String json = TinkJsonProtoKeysetFormat.serializeEncryptedKeyset(original(), master, new byte[0]);
-        assertTrue(json.contains("encryptedKeyset"));
-        assertFalse(json.contains(DemoKeysets.keyBase64(TinkDemo.KEY_TEXT)));
-        byte[] sealed = new Bank(original()).seal(TinkDemo.ACCOUNT, TinkDemo.LINE);
-        KeysetHandle back = TinkJsonProtoKeysetFormat.parseEncryptedKeyset(json, master, new byte[0]);
-        assertArrayEquals(TinkDemo.LINE, new Bank(back).openOrNull(TinkDemo.ACCOUNT, sealed));
+    void envelopeEncryptionWrapsADifferentDataKeyForEveryMessage() throws Exception {
+        Aead envelope = TinkDemo.envelope(new Bank(DemoKeysets.aes256Gcm(2001, TinkDemo.MASTER_TEXT)).aead());
+        byte[] a = envelope.encrypt(TinkDemo.LINE, TinkDemo.ACCOUNT);
+        byte[] b = envelope.encrypt(TinkDemo.LINE, TinkDemo.ACCOUNT);
+        assertFalse(Arrays.equals(TinkDemo.wrappedKey(a), TinkDemo.wrappedKey(b)));
+        assertArrayEquals(TinkDemo.LINE, envelope.decrypt(a, TinkDemo.ACCOUNT));
     }
 
     @Test
-    void aKeysetWrittenEncryptedDoesNotReadBackWithAnotherMasterKey() throws Exception {
-        Aead master = new Bank(DemoKeysets.aes256Gcm(2001, "demo-master-key-standing-for-a-kms")).aead();
-        String json = TinkJsonProtoKeysetFormat.serializeEncryptedKeyset(original(), master, new byte[0]);
-        Aead wrong = new Bank(DemoKeysets.aes256Gcm(2001, "a-different-master-key-text-here")).aead();
-        assertThrows(GeneralSecurityException.class, () -> TinkJsonProtoKeysetFormat.parseEncryptedKeyset(json, wrong, new byte[0]));
+    void theMasterKeyIsUsedOncePerMessageWhateverItsSize() throws Exception {
+        CountingAead master = new CountingAead(new Bank(DemoKeysets.aes256Gcm(2001, TinkDemo.MASTER_TEXT)).aead());
+        Aead envelope = TinkDemo.envelope(master);
+        envelope.encrypt(new byte[10], TinkDemo.ACCOUNT);
+        envelope.encrypt(new byte[1_000_000], TinkDemo.ACCOUNT);
+        assertEquals(2, master.calls());
+    }
+
+    @Test
+    void aDifferentMasterKeyCannotOpenAnEnvelopeMessage() throws Exception {
+        byte[] message = TinkDemo.envelope(new Bank(DemoKeysets.aes256Gcm(2001, TinkDemo.MASTER_TEXT)).aead())
+                .encrypt(TinkDemo.LINE, TinkDemo.ACCOUNT);
+        Aead other = TinkDemo.envelope(new Bank(DemoKeysets.aes256Gcm(2001, "a-different-master-key-text-here")).aead());
+        assertThrows(GeneralSecurityException.class, () -> other.decrypt(message, TinkDemo.ACCOUNT));
+    }
+
+    @Test
+    void aChangedWrappedKeyOrCipherTextOrAccountIsRefused() throws Exception {
+        Aead envelope = TinkDemo.envelope(new Bank(DemoKeysets.aes256Gcm(2001, TinkDemo.MASTER_TEXT)).aead());
+        byte[] message = envelope.encrypt(TinkDemo.LINE, TinkDemo.ACCOUNT);
+        byte[] wrappedChanged = message.clone();
+        wrappedChanged[10] ^= 1;
+        byte[] cipherChanged = message.clone();
+        cipherChanged[cipherChanged.length - 1] ^= 1;
+        assertThrows(GeneralSecurityException.class, () -> envelope.decrypt(wrappedChanged, TinkDemo.ACCOUNT));
+        assertThrows(GeneralSecurityException.class, () -> envelope.decrypt(cipherChanged, TinkDemo.ACCOUNT));
+        assertThrows(GeneralSecurityException.class, () -> envelope.decrypt(message, "account=MAL-2".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void theMasterKeysOwnBytesNeverAppearInAStoredMessage() throws Exception {
+        byte[] message = TinkDemo.envelope(new Bank(DemoKeysets.aes256Gcm(2001, TinkDemo.MASTER_TEXT)).aead())
+                .encrypt(TinkDemo.LINE, TinkDemo.ACCOUNT);
+        byte[] masterBytes = DemoKeysets.keyBytes(TinkDemo.MASTER_TEXT);
+        boolean found = false;
+        for (int i = 0; i + masterBytes.length <= message.length; i++) {
+            found |= Arrays.equals(Arrays.copyOfRange(message, i, i + masterBytes.length), masterBytes);
+        }
+        assertFalse(found);
     }
 
     @Test

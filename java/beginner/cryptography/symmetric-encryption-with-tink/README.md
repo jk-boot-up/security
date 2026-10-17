@@ -2,9 +2,11 @@
 
 ```
 src/main/java/com/jk/explore/security/symmetrictink/
-├── Bank.java         The bank's encryption of statement lines with Tink's AEAD primitive: Tink picks the nonce, the layout and the mode
-├── DemoKeysets.java  Keysets with fixed contents, so the demo prints the same text on every run
-└── TinkDemo.java     Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results
+├── Bank.java          The bank's encryption of statement lines with Tink's AEAD primitive: Tink picks the nonce, the layout and the mode
+├── CountingAead.java  Wraps an Aead and counts how often it is used: stands for the calls a real key management service would be asked to make
+├── DemoKeysets.java   Keysets with fixed contents, so the demo prints the same text on every run
+├── EnvelopeAead.java  Envelope encryption: each message gets its own fresh 256-bit data key and is sealed with it using Tink's AES-GCM; the data key is then wrapped by a master {@link Aead}, which in a real system lives in a key management service or a hardware module, and the wrapped key travels with the message
+└── TinkDemo.java      Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results
 ```
 
 **Google's Tink library gives one safe call for encryption, picks the nonce and the layout for you, keeps keys in a keyset that can be rotated, and leaves out the unsafe choices, but the keyset still needs a safe place to live.**
@@ -16,7 +18,7 @@ message, and refuses to offer unsafe modes. Its keys live in a **keyset**, a lis
 keyset can still open its old messages. That makes **rotation** simple: add a new key, make it primary, and later remove the old one.
 
 The demo runs the same online bank as the plain project, with the same statement line, in five acts: one call and no nonce, any change refused,
-rotating the key, keeping the keyset itself safe, and what Tink does not do for you.
+rotating the key, keeping the keys safe with envelope encryption, and what Tink does not do for you.
 
 ## The idea in everyday terms
 
@@ -27,7 +29,7 @@ boxes: the maker keeps a key ring, adds a new key, and the old boxes still open 
 ## The scenario
 
 The online bank from the plain project stores a statement line, `RENT -1200`, for the account ANA-1. It now encrypts with Tink. The demo seals the line twice, flips a
-bit, moves a message to another account, adds a second key to the keyset and removes the first, writes the keyset to disk under a master key, and ends by listing
+bit, moves a message to another account, adds a second key to the keyset and removes the first, wraps each message's data key with a master key, and ends by listing
 what remains the bank's job.
 
 ## Run
@@ -43,7 +45,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 | 1. One call, and no nonce to look after | Sealing the same line twice gives different bytes, the message starts with 01000003e9 (version 1, key id 1001), and 16 bytes become 49. |
 | 2. Any change is refused | A flipped bit, a message moved to another account, and a different key of the same id are all refused. |
 | 3. Replacing the key without losing the data | Adding a new primary key gives a keyset of 2 keys; old messages still open, new messages use the new key id, and removing the old key makes old messages unreadable. |
-| 4. Keeping the keyset itself safe | The keyset is written encrypted under a master key: the file has an encryptedKeyset field, the key's own bytes are not in it, it reads back with the master key and not with another. |
+| 4. Keys that stay at home: envelope encryption | Each message gets its own data key, wrapped by a master key that is used once per message, 3 times for 3 messages of any size; a different master key is refused, and the master key's bytes are never stored. |
 | 5. The bill: what Tink decides for you, and what it does not | Tink offers authenticated templates and no ECB one, but the format is its own, it adds a library, the master key needs a home, and lengths still show. |
 
 ## Test
@@ -52,22 +54,26 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `KeysetTest`, `TinkAeadTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves.
+18 tests in `DemoRunsTest`, `KeysetTest`, `TinkAeadTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves.
 
 ## What the simulation got right, and what it left out
 
 The keyset is built from fixed key bytes so every run prints the same text, and its Base64 form is in the source. A real keyset is made with `generateNew`,
-which picks a random key and a random key id, and must never be written in the clear. The master key stands in for a key management service. Tink's nonces are random,
-so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. Tink 1.24 marks the
-encrypted-keyset functions the demo uses as deprecated, and the code says so where it uses them.
+which picks a random key and a random key id, and must never be written in the clear. The master key stands in for a key management service, and the envelope is written with Tink's primitives. Tink's nonces are random,
+so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. Tink 1.24 deprecates its
+functions for storing a keyset, so the demo never stores one.
 
 ## Technologies and versions
 
+Every version below is pinned in the project's build files and was the latest stable release when the project was built.
+
 | Technology | Version | Used for |
 | --- | --- | --- |
-| Java | 25 | the code (toolchain set in `build.gradle`; Gradle finds or downloads the JDK) |
-| Gradle | 9.2.1 (wrapper) | build and run, nothing to install |
-| JUnit | 5.10.2 | the tests |
+| Java | 25 | the language and runtime; a Gradle toolchain finds or downloads the JDK |
+| Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
+| com.google.crypto.tink:tink | 1.24.0 | Google Tink: safe cryptographic primitives |
+| org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
+| org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material
@@ -116,8 +122,8 @@ Five bytes name the key, then Tink's nonce, the cipher text and the tag.
 
 - **A library and its dependency.** Tink brings a protocol buffer library with it, and a recent JDK warns about the unsafe memory access that library uses.
 - **A format of its own.** A message starts with five bytes naming the key, then Tink's nonce, cipher text and tag. Another library cannot read it without Tink, or without code that knows the layout.
-- **The keyset still needs a safe home.** Tink can write it encrypted under a master key, but the master key has to live somewhere, ideally in a key management service or a hardware module.
-- **Some of its functions move.** Tink 1.24 marks its encrypted-keyset functions as deprecated, in favour of keeping the master key in a key management service, so code that uses them needs a plan.
+- **The master key still needs a safe home.** Envelope encryption moves the problem to the master key, which should live in a key management service or a hardware module and never be read by the application.
+- **Whole-keyset storage is on its way out.** Tink 1.24 deprecates its functions for writing a secret keyset, in favour of keys held in a key management service, so this project does not store keysets and wraps data keys instead.
 - **Lengths still show,** and a lost keyset is lost data.
 
 ## When this is too much
