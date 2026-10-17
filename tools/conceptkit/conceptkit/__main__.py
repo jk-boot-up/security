@@ -143,7 +143,7 @@ def ensure_video_files(p):
 
 def count_tests(p):
     """Tests that actually ran, from Gradle's results (a parameterized test counts once per case)."""
-    results = list((p / "build" / "test-results" / "test").glob("*.xml"))
+    results = list((p / "build" / "test-results").glob("*/*.xml"))
     if results:
         return sum(int(re.search(r'tests="(\d+)"', f.read_text()).group(1)) for f in results)
     n = 0
@@ -174,6 +174,8 @@ def build(name, media=True):
         ensure_video_files(p)
         print("  docs      " + generate.all_docs(p))
         run(log, p / "gradlew", "-q", "test", *java_args(), cwd=p)
+        if "integrationTest" in (p / "build.gradle").read_text():
+            run(log, p / "gradlew", "-q", "integrationTest", *java_args(), cwd=p)   # needs a running Docker
         print("  gradle    %d tests pass" % count_tests(p))
         run(log, VIDEOKIT, "slides", name)
         t = publish_docs.thumbnail(p)
