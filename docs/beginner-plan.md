@@ -360,13 +360,13 @@ nothing (for example Spring Security has no Go twin; the Go project would use `x
 
 ## 11. Checklist
 
-Status: all 20 planned projects are built as plain versions, and 19 of them have the with-tools versions that were planned (tcp-ip-basics-with-tcpdump, dns-basics-with-coredns, the Spring Boot and nginx HTTP and HTTPS versions, the OpenSSL and Bouncy Castle TLS and certificate versions, and the safe-habits tools versions). ✅ is done, ◐ is partly done (authentication-vs-authorization has its Spring Security version, and its Keycloak version is still planned; least-privilege has Spring Security and Kubernetes RBAC versions, and its Terraform version is still planned), – means no tool version is planned, and ☐ is not done. **Nothing has been uploaded.**
+Status: all 20 planned projects are built as plain versions, and 19 of them have the with-tools versions that were planned (tcp-ip-basics-with-tcpdump, dns-basics-with-coredns, the Spring Boot and nginx HTTP and HTTPS versions, the OpenSSL and Bouncy Castle TLS and certificate versions, and the safe-habits tools versions). ✅ is done, ◐ is partly done (authentication-vs-authorization has its Spring Security version, and it has its Keycloak version too; least-privilege has Spring Security, Kubernetes RBAC and Terraform versions), – means no tool version is planned, and ☐ is not done. **Nothing has been uploaded.**
 
 | # | Project | Plain code | With-tools code | Docs | Animation | Video | Uploaded |
 | ---: | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | 1 | cia-triad | ✅ | – | ✅ | ✅ | ✅ | ☐ |
 | 2 | threats-and-risk | ✅ | – | ✅ | ✅ | ✅ | ☐ |
-| 3 | authentication-vs-authorization | ✅ | ◐ | ✅ | ✅ | ✅ | ☐ |
+| 3 | authentication-vs-authorization | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 4 | password-hashing | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 5 | password-attacks-and-defences | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 6 | totp-multi-factor | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
@@ -381,7 +381,7 @@ Status: all 20 planned projects are built as plain versions, and 19 of them have
 | 15 | tls-handshake | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 16 | certificates-and-chain-of-trust | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 17 | https-server | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
-| 18 | least-privilege | ✅ | ◐ | ✅ | ✅ | ✅ | ☐ |
+| 18 | least-privilege | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 19 | patching-and-dependency-hygiene | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 20 | backups-and-recovery | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 

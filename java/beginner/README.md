@@ -9,14 +9,14 @@ Follow the [learning path](learning-path.md) for the exact order of every projec
 | Module | Projects built | Covers |
 | --- | ---: | --- |
 | [foundations](foundations) | 2 | the CIA triad, threats and risk |
-| [identity](identity) | 2 | authentication and authorization |
+| [identity](identity) | 3 | authentication and authorization |
 | [passwords-and-mfa](passwords-and-mfa) | 6 | password hashing, password attacks, one-time codes |
 | [cryptography](cryptography) | 8 | hashing, encryption, signatures |
 | [networking](networking) | 7 | TCP/IP, DNS, HTTP |
 | [transport-security](transport-security) | 7 | the TLS handshake, certificates, HTTPS |
-| [safe-habits](safe-habits) | 7 | least privilege, patching, backups |
+| [safe-habits](safe-habits) | 8 | least privilege, patching, backups |
 
-All seven modules exist, with 39 projects. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
+All seven modules exist, with 41 projects. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
 
 ## Run a project
 

@@ -13,12 +13,9 @@ What keeps a system safe over time: giving only the access that is needed, keepi
 | 5 | [patching-and-dependency-hygiene-with-trivy](patching-and-dependency-hygiene-with-trivy) | Trivy scanning the SBOM the Java code writes, and Gradle dependency verification |
 | 6 | [backups-and-recovery](backups-and-recovery) | Full and incremental backups, restore tests, 3-2-1, ransomware, retention and sealed archives |
 | 7 | [backups-and-recovery-with-rustfs](backups-and-recovery-with-rustfs) | Object versioning, object lock and a write-only backup identity on a local S3-compatible store |
+| 8 | [least-privilege-with-terraform](least-privilege-with-terraform) | IAM policies as Terraform applied with OpenTofu to LocalStack, evaluated in Java with deny, boundary, blast radius and a linter |
 
 A project with `-with-` in its name is the same lesson with a framework, a library or a local tool, and is its own self-contained project.
-
-## Still to come
-
-- least-privilege-with-terraform (planned): the same lesson as infrastructure code against LocalStack
 
 ## How the module is judged
 
