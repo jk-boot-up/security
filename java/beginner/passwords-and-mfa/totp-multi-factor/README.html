@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One-Time Codes (TOTP)</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>One-Time Codes (TOTP)</h1>
+<pre><code>src/main/java/com/jk/explore/security/totp/
+├── Authenticator.java  The authenticator app on the customer's phone: it holds the secret and works out the code from its own clock
+├── Base32.java         Base32 (RFC 4648), the text form authenticator apps use for a shared secret: upper-case letters and the digits 2 to 7, so it can be typed or put in a QR code without any look-alike characters
+├── DemoSecrets.java    Fixed secrets, so the demo prints the same codes on every run
+├── Hotp.java           HOTP (RFC 4226): a code made from a secret key and a counter
+├── MfaServer.java      The bank's login with an optional second factor
+├── SecretSource.java   Where shared secrets and recovery codes come from
+├── SecureSecrets.java  Real secrets and recovery codes, from the system's secure random generator
+├── Totp.java           TOTP (RFC 6238): HOTP where the counter is the number of whole steps of time since the start of 1970
+├── TotpDemo.java       Runs the online bank story in five numbered acts and prints exact, repeatable results
+└── Verdict.java        The bank's answer to a login attempt
+</code></pre>
+<p><strong>A time-based one-time code is made from a secret the phone and the bank share and the current 30-second step, so a stolen password is not enough, but a code typed into a fake page still works.</strong></p>
+<p>A password is something you know, and it can leak. A <strong>second factor</strong> adds something you have, such as a phone,
+so a stolen password alone is not enough. The most common second factor is the six-digit code in an authenticator
+app. It is a <strong>time-based one-time password</strong>, <strong>TOTP</strong>, defined in RFC 6238 on top of <strong>HOTP</strong> in RFC 4226. The bank
+and the phone share a <strong>secret key</strong>, set up once. Every 30 seconds, each works out the same code from that secret and the
+current time, and never needs to talk to the other. To make a code, the counter, the number of whole 30-second steps since 1970, is
+put through <strong>HMAC</strong> with the secret, and a few bytes of the result become six digits.</p>
+<p>This project builds that from the standard library, checks it against the published test values of the RFCs, and then
+looks at what a bank must decide around it: how far apart two clocks may be, whether a code may be used twice, and where the
+secret lives. Its last act shows what a code cannot do.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a safe-deposit box that needs two keys turned together: yours, and the bank clerk's. Your key is the password
+and never changes. The clerk's key is replaced every thirty seconds by a new one, and both the clerk and your phone know the pattern, so each can
+tell which key is right now without ever meeting. A thief with a copy of your key cannot open the box. But a thief who stands
+beside you, and uses the clerk's key the moment you show it, can.</p>
+<h2>The scenario</h2>
+<p>An online bank's customer, Dana, has a password, midnight7, that leaked from another site. The bank adds a second factor: Dana
+enrols an authenticator app on her phone, with a shared secret. From then on a login needs the password and the six-digit
+code. The demo follows the code from its first calculation, with the secret from the published RFC test values so the numbers can be
+checked, through clocks that disagree, a code used twice, and a fake bank page.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A password alone</td>
+<td>With only the password, which leaked from another site, the attacker logs in: one factor, one leak.</td>
+</tr>
+<tr>
+<td>2. Enrolling a second factor</td>
+<td>The bank makes a 20-byte secret shown as Base32; at time 59 the counter is 1 and the code is 287082; steps 0 to 3 give 755224, 287082, 359152, 969429.</td>
+</tr>
+<tr>
+<td>3. Logging in with a code, and clocks that disagree</td>
+<td>The password alone now asks for a code; the right code is accepted; a phone 25 seconds fast is accepted, 70 seconds fast and a 2-step-old code are not.</td>
+</tr>
+<tr>
+<td>4. The same code twice</td>
+<td>Without replay protection an observer can reuse Dana's code 5 seconds later; with it, the second use is REPLAYED.</td>
+</tr>
+<tr>
+<td>5. The bill: what a code cannot do</td>
+<td>A fake bank page can pass on the password and code at once; the bank's table holds the secret; a recovery code is a second way in that works once.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>29 tests in <code>AuthenticatorTest</code>, <code>Base32Test</code>, <code>DemoRunsTest</code>, <code>HotpTest</code>, <code>MfaServerTest</code>, <code>TotpTest</code>. The code generator is tested against the published values of RFC 4226 (HOTP, 10 values), RFC 6238 (TOTP with SHA-1, SHA-256 and SHA-512) and RFC 4648 (Base32). Every line the demo prints is checked against <code>docs/expected-output.txt</code>, and time is a number given to the code, so every run gives the same result.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Time is a number of seconds passed to the code, so every run prints the same digits. The secret is the key used in the published
+test values of RFC 4226 and RFC 6238, so the output can be checked against the standards, but it is public and must never protect a real
+account; <code>SecureSecrets</code> gives real random secrets. The bank here checks only the code and the password, and keeps its table in
+memory. A real bank also limits attempts, stores secrets encrypted, and offers other factors, which this project does not model.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/totp-multi-factor-explained.html">One-Time Codes (TOTP), explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The phone and the bank share a secret and each turn it, with the current time step, into the same code, without any message between them.</p>
+<p><img alt="Two devices, one code" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Hotp and Totp make codes; Authenticator is the phone; MfaServer is the bank.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The time becomes a counter, the counter goes through HMAC with the secret, and a few bytes of the result become six digits.</p>
+<p><img alt="How a code is made" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A login with a code: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/totp-multi-factor-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A code typed into a fake page still works.</strong> TOTP cannot tell the real bank from a copy, so an attacker who relays the password and code within seconds is in. Only phishing-resistant factors, such as hardware security keys, stop that.</li>
+<li><strong>The secret lives on the server too.</strong> The bank must keep the shared secret to check codes, so a stolen table of secrets lets an attacker make every customer's codes.</li>
+<li><strong>Recovery codes are a second way in.</strong> A customer who loses the phone needs one, and it must be guarded like a password.</li>
+<li><strong>Clocks must roughly agree.</strong> A window forgives small differences, and a wider window accepts more codes and gives an attacker more chances.</li>
+<li><strong>A little friction on every login,</strong> and a real cost for customers who lose their phone.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For an account that cannot lose anything, a password may be enough. For money, health, or anything that can be used to reset other
+accounts, a second factor is the standard advice, and an authenticator app is a reasonable first choice. Where the highest
+stakes meet phishing, a hardware key is better than a code.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The six-digit code in Google Authenticator, Microsoft Authenticator or a similar app, which changes every 30 seconds.</li>
+<li>The QR code you scan when you turn on two-factor sign-in, which carries the secret.</li>
+<li>"Enter one of your recovery codes" when you have lost your phone.</li>
+<li>Banks and email providers saying that SMS codes are weaker than an app.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the fifth in <a href="..">passwords-and-mfa</a>, after the password-hashing and password-attacks projects and their tool versions.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
