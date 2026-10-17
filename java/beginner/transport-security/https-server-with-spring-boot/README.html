@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>An HTTPS Server with Spring Boot</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>An HTTPS Server with Spring Boot</h1>
+<pre><code>src/main/java/com/jk/explore/security/httpsspring/
+├── Certificates.java     The demo keystores, made once with keytool (see infra/make-test-keystores.sh): a root CA's trust store, two server certificates for shop.example.test signed by it (the second stands for a renewed certificate), a client certificate, and an impostor's certificate signed by nobody
+├── HttpsSpringDemo.java  Runs the online store story in five numbered acts against real Spring Boot servers on the loopback interface
+├── Reply.java            What a client saw: the status, the headers, the body, and what TLS negotiated
+├── Shop.java             A running store: a Spring Boot server on two free loopback ports (HTTPS and plain HTTP), configured by properties that name SSL bundles
+├── ShopApp.java          The online store as a Spring Boot application
+└── ShopClient.java       A client built from an SSL bundle's context
+</code></pre>
+<p><strong>Spring Boot turns a keystore, a TLS version and a client-certificate rule into a working HTTPS server with a few properties, and can renew a certificate without a restart, but a wrong property is as silent as a right one, so check the result from outside.</strong></p>
+<p>The plain HTTPS project built a secure web server from the JDK's parts. Real stores use a framework. <strong>Spring Boot</strong> starts a web server (<strong>Tomcat</strong>) inside the program, and TLS becomes <strong>configuration</strong>: a property names an <strong>SSL bundle</strong>, and the bundle names
+a <strong>keystore</strong> file, a password, and the TLS versions allowed. Another property asks the server to require a <strong>client certificate</strong>, which is <strong>mutual TLS</strong>. A bundle can also <strong>watch</strong> its files, so when a certificate is renewed
+the server starts using it without a restart. <strong>Spring Security</strong> adds what configuration cannot: it redirects the plain HTTP port to HTTPS and writes the <strong>HSTS</strong> header.</p>
+<p>The demo starts real servers on the loopback interface, builds clients from the same kind of bundle (a client that trusts only a demo root and checks the host name), and tries to break each setting: a wrong name, an old TLS version, an untrusted certificate,
+a missing client certificate. It ends with what Spring does not do for you.</p>
+<h2>The idea in everyday terms</h2>
+<p>The plain project was building a door and its lock from raw metal. This one fits a standard door that a locksmith has certified, and a key cabinet that the shop can swap keys in without closing. You still have to walk round the outside
+and try the handle, because a door that was fitted wrongly looks exactly like one fitted right.</p>
+<h2>The scenario</h2>
+<p>An online store runs a small Spring Boot application. Its customers' browsers, and one internal service, connect over HTTPS. The demo configures the server, builds clients that verify it, redirects plain HTTP, renews the certificate while running, and requires a client certificate.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. TLS from an SSL bundle</td>
+<td>TLS 1.3 only, from properties and a bundle; a client built from a bundle trusting the demo root gets 200 over TLS 1.3, and a wrong name, TLS 1.2 only, or the JDK's default trust is refused.</td>
+</tr>
+<tr>
+<td>2. Redirect, HSTS and secure cookies</td>
+<td>The plain HTTP port answers 302 to an https address with an empty body and no HSTS; the HTTPS answer carries HSTS, and the session cookie is Secure, HttpOnly and SameSite=Strict and is never sent over plain HTTP.</td>
+</tr>
+<tr>
+<td>3. Renewing a certificate without a restart</td>
+<td>With reload-on-update the bundle watches its keystore file; replacing the file changes the served certificate, matched by fingerprint, and clients that trust the root need no change.</td>
+</tr>
+<tr>
+<td>4. Mutual TLS: the server checks the client too</td>
+<td>With client-auth need, Ana's client with a certificate signed by the demo root is identified; a client with no certificate, or one signed by nobody, is refused.</td>
+</tr>
+<tr>
+<td>5. What Spring leaves to you</td>
+<td>The actuator is not on the class path and gives 404, an error page does not leak its message, no Server header names the software; but configuration is silent when wrong and the private key is a file.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>22 tests in <code>CertificatesTest</code>, <code>DemoRunsTest</code>, <code>HttpsSpringTest</code>. Every test starts a real Spring Boot server on free loopback ports. The demo prints only port-independent facts, certificates are compared by fingerprint and never printed, and the renewal test polls until the new certificate is served, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The servers run on free loopback ports, so the demo prints only facts that do not depend on a port number. The shop's name, shop.example.test, resolves to this machine through a hosts file in the project that Gradle passes to the JVM.
+The keystores are made once by <code>infra/make-test-keystores.sh</code> with keytool, with a demo password, and are valid for a hundred years. Fingerprints are compared, not printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>4.1.1</td>
+<td>the latest stable release (the 4.2 line is only milestones); it starts the web server and reads the SSL bundles</td>
+</tr>
+<tr>
+<td>Spring Framework (Spring MVC, RestClient)</td>
+<td>7.0.9</td>
+<td>maps web addresses to Java methods, and its RestClient is the client in the demo; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Spring Security</td>
+<td>7.1.1</td>
+<td>redirects plain HTTP to HTTPS and writes the HSTS header; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>Apache Tomcat (embedded)</td>
+<td>11.0.24</td>
+<td>the web server inside the application; it does the TLS handshake; pinned by Spring Boot 4.1.1</td>
+</tr>
+<tr>
+<td>keytool (JDK)</td>
+<td>25</td>
+<td>made the demo keystores once; the script is in infra/</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/https-server-with-spring-boot-explained.html">An HTTPS Server with Spring Boot, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The plain port only redirects; the HTTPS port does TLS from the bundle and passes requests through the security filters.</p>
+<p><img alt="The store's two doors" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Shop starts a Spring Boot server from properties; ShopClient is the verifying client; Certificates holds the demo keystores.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A property names the bundle, the bundle names the files and the TLS versions, and the server builds its TLS context from them.</p>
+<p><img alt="From properties to a TLS connection" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A request to the plain port: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/https-server-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A large dependency.</strong> Spring Boot, Spring Security and Tomcat must be updated together when a vulnerability is fixed.</li>
+<li><strong>Configuration is silent.</strong> A misspelt property does nothing and says nothing, so the demo checks the result from outside, as an attacker would.</li>
+<li><strong>Reload helps only if someone renews.</strong> The server can swap a file without a restart, but a person or a tool still has to get a new certificate before the old one expires.</li>
+<li><strong>mTLS identifies machines, not people.</strong> It suits calls between services. A customer in a browser would need a password and more on top.</li>
+<li><strong>The private key is a file.</strong> The server must be able to read it, so protect the folder, and consider a key management service or hardware module for the real thing.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a small shop, the usual advice is to put the TLS in front of the application, in a reverse proxy or a load balancer that renews certificates by itself, and keep the application on plain HTTP inside a trusted network.
+Terminating TLS in the application, as here, fits when the traffic between the proxy and the application also needs protecting, or when there is no proxy.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>server.ssl.*</code> properties in <code>application.properties</code> files.</li>
+<li><code>.p12</code> and <code>.jks</code> files next to an application, and a password in its configuration.</li>
+<li>The "certificate has expired" outage that wakes people up.</li>
+<li>Service meshes and internal APIs that require client certificates.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the third in <a href="..">transport-security</a>, after <a href="../tls-handshake">tls-handshake</a> and <a href="../certificates-and-chain-of-trust">certificates-and-chain-of-trust</a>, and is the framework version of <a href="../https-server">https-server</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
