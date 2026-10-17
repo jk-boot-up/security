@@ -62,18 +62,27 @@ The structure will grow as content is added. Planned layout:
 
 ```
 security/
-├── beginner/        # Foundations and core concepts
-├── intermediate/    # Applied and application security
-├── advanced/        # Specialized and in-depth topics
-├── labs/            # Hands-on exercises and walkthroughs
-├── cheatsheets/     # Quick references
-└── resources/       # Books, courses, tools, and links
+├── java/                         # Java 25 + Gradle (first language)
+│   ├── beginner/                 # Foundations and core concepts
+│   │   └── <module>/<project>/   # one self-contained project per concept
+│   ├── intermediate/             # Applied and application security
+│   └── advanced/                 # Specialized and in-depth topics
+├── go/                           # added later, same shape
+├── cpp/                          # added later, same shape
+├── docs/                         # plans and specs
+├── tools/                        # shared build, video and publishing tools
+├── cheatsheets/                  # Quick references
+└── resources/                    # Books, courses, tools, and links
 ```
+
+Each concept is its own project, and a version that uses a framework or tool is a separate
+sibling project (for example `password-hashing` and `password-hashing-with-spring-security`).
+See [`docs/beginner-plan.md`](docs/beginner-plan.md).
 
 ## How to use this repo
 
-1. Start at `beginner/` and work through the topics in order.
-2. Try the matching lab for each topic before moving on.
+1. Start at `java/beginner/` and work through the modules in order.
+2. Run each project's demo and tests before moving on.
 3. Use `cheatsheets/` for quick review.
 4. Revisit earlier sections as you go deeper. Many advanced topics build on the basics.
 
