@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DNS Basics for Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>DNS Basics for Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/dns/
+├── Address.java              IPv4 addresses as four bytes packed into an int
+├── BadMessageException.java  A DNS message that is too short, malformed, or built from a name that cannot be encoded
+├── DnsDemo.java              Runs the online store story in five numbered acts and prints exact, repeatable results
+├── DnsMessage.java           A DNS message as in RFC 1035: a 12-byte header, questions, and answers
+├── LoopbackExchange.java     A real DNS exchange over UDP on this machine: a tiny server answers one question, and a client reads the answer
+├── Resolver.java             A caching resolver in a simulation with a clock in seconds
+└── TransactionIds.java       Where a resolver gets the 16-bit id and the source port of each query; a response is believed only if it repeats both
+</code></pre>
+<p><strong>DNS turns names into addresses with no signature on the answer: a resolver believes any reply that repeats the right id, so ids must be unguessable, lifetimes capped, and the final check left to TLS.</strong></p>
+<p>Before a browser can connect to the store, it must turn <strong>shop.example.com</strong> into an address. That is the job of <strong>DNS</strong>, the internet's phone book. A small <strong>question</strong> goes out in a single <strong>UDP</strong> datagram, and a small <strong>answer</strong> comes back, to be kept in a <strong>cache</strong>
+for its <strong>time to live</strong> (TTL). There is no connection and no signature. A resolver believes a reply if it repeats the question and the 16-bit <strong>transaction id</strong>, and, on modern resolvers, arrives at the right source port.
+Anyone who can guess those numbers and answer first can put a false address in the cache, which is <strong>cache poisoning</strong>.</p>
+<p>The demo builds a message byte by byte, with the name compression of RFC 1035, caches answers with a TTL, runs a real exchange over UDP, poisons a resolver with predictable ids, and shows what stops it.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of calling directory enquiries and writing down the number you are told. The operator never signs anything, and the line is open, so a person who shouts a number first, using the right reference code, is believed.
+The operator's notebook, the cache, then repeats the false number to every caller until the page is replaced.</p>
+<h2>The scenario</h2>
+<p>An online store is reached by name. The demo shows what a DNS question and answer contain, how a resolver caches, a real exchange over UDP on this machine, how a resolver with counting ids is poisoned with one forged answer, and what limits the damage.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A DNS message, byte by byte</td>
+<td>The question for shop.example.com is 34 bytes; the answer repeats the name as a two-byte pointer and is 50 bytes, not 66; nothing in it says who made it.</td>
+</tr>
+<tr>
+<td>2. The cache and the time to live</td>
+<td>An answer is kept for 300 seconds: a hit at second 100, a new question at second 300; caching repeats one false answer to every customer.</td>
+</tr>
+<tr>
+<td>3. A real exchange over UDP</td>
+<td>One datagram of 34 bytes goes out and 50 come back; the name is readable in the query; there is no connection and no signature.</td>
+</tr>
+<tr>
+<td>4. Cache poisoning by guessing</td>
+<td>Counting ids from port 53 are guessed at once and the cache says the attacker's address; a keyed id and port stop 1000 guesses out of about four billion pairs.</td>
+</tr>
+<tr>
+<td>5. How long a false answer lives, and what stops it</td>
+<td>A false answer with a 86400-second lifetime is still believed after two hours unless the resolver caps lifetimes at 3600; DNSSEC, encrypted DNS and TLS cover the rest.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>20 tests in <code>DemoRunsTest</code>, <code>DnsMessageTest</code>, <code>ResolverTest</code>. The query bytes are checked against the RFC 1035 layout and the answer's name pointer against its compression rule. The resolver uses a simulated clock and fixed secrets, and the one real exchange prints only facts that do not depend on port numbers, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Messages and the resolver are built in memory with a simulated clock, so the demo is exact. The one real exchange is over UDP on the loopback interface of the machine running it, and the demo prints only facts that do not depend on port numbers.
+The query layout is checked against RFC 1035.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/dns-basics-explained.html">DNS Basics for Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The browser asks a resolver, which asks upstream and keeps the answer; every hop is unsigned unless DNSSEC is used.</p>
+<p><img alt="From a name to an address" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>DnsMessage is the codec, TransactionIds decides what a query looks like, Resolver believes or refuses a response.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The resolver believes a response only if all of these match; an attacker has to guess the ones it cannot see.</p>
+<p><img alt="What a response must repeat" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A question that is answered and cached: who sends what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/dns-basics-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Random ports and ids are a speed bump, not a lock.</strong> About four billion combinations make blind guessing impractical, but not impossible against a patient attacker, and they do not protect against an attacker on the path.</li>
+<li><strong>Capping lifetimes costs speed.</strong> A shorter cap means more questions to the upstream servers, and it limits a false answer's life, not its first use.</li>
+<li><strong>DNSSEC needs the zone to be signed and the resolver to check.</strong> Both sides must deploy it, and keys must be managed and rolled over.</li>
+<li><strong>Encrypted DNS moves trust.</strong> DNS over TLS or HTTPS hides questions from the path, but the resolver still sees them.</li>
+<li><strong>The demo is a model.</strong> It supports only the A record, one question, and a simulated clock, so it teaches the ideas and not the full protocol.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Most applications never speak DNS themselves; the operating system does. The knowledge matters when choosing resolvers, setting TTLs, and deciding which defences to trust: DNSSEC where available, encrypted DNS for privacy, and always TLS with a certificate check as the last line.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>dig</code> and <code>nslookup</code>, which show questions, answers and TTLs.</li>
+<li>"DNS_PROBE_FINISHED" and "server not found" errors in a browser.</li>
+<li>TTL settings in a domain's control panel, and "wait for DNS to propagate".</li>
+<li>News stories about hijacked domains and poisoned caches.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the second in <a href="..">networking</a>, after <a href="../tcp-ip-basics">tcp-ip-basics</a>: a name is turned into an address before any connection starts, and the transport-security module explains the check that catches a wrong address.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
