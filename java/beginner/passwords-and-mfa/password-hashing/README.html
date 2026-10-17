@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Password Hashing</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Password Hashing</h1>
+<pre><code>src/main/java/com/jk/explore/security/hashing/
+├── AccountStore.java    The shop's table of accounts: a username and the stored text of its password, never the password
+├── Attacker.java        Someone who has stolen the table of stored passwords and tries a list of common passwords against it
+├── CountingSalts.java   Salts that are different for every call but the same on every run: 1, 2, 3 and so on, spread over 16 bytes
+├── Cracked.java         What an attacker got from a stolen table: which passwords were found, and how many guesses it took
+├── HashingDemo.java     Runs the online store story in five numbered acts and prints exact, repeatable results
+├── Hex.java             Small helpers shared by the hashers
+├── Login.java           The result of a login attempt
+├── PasswordHasher.java  Turns a password into the text that is stored, and checks a login attempt against it
+├── Pbkdf2Hasher.java    A slow, salted hash: PBKDF2 with HMAC-SHA-256, repeated {@code iterations} times
+├── PlainText.java       The worst way to store a password: as it is
+├── SaltSource.java      Where salts come from: a salt is a few extra bytes, different for every account, mixed into the hash
+├── SaltedSha256.java    A fast hash with a different salt for every account
+├── SecureSalts.java     Real salts: random bytes from the system's secure random generator
+├── UnsaltedSha256.java  A fast hash with nothing added
+└── WorkMeter.java       Counts hashing work in steps instead of seconds, so the demo prints the same numbers on every machine
+</code></pre>
+<p><strong>A shop should store only a slow, salted hash of each password, so a stolen database does not hand over the passwords, and every guess costs the attacker real work.</strong></p>
+<p>When a customer signs up, the shop must be able to check their password later, but it should
+never be able to read it. The answer is a <strong>hash</strong>: a one-way scramble. The shop stores the
+scramble, and at login it scrambles what the customer typed and compares. Nobody can run the
+scramble backwards. But a plain hash is not enough. Two customers with the same password get the
+same scramble, and an attacker can prepare a table of scrambles of common passwords in
+advance. So a good scheme adds two things. A <strong>salt</strong> is a few random bytes, different for each
+account, mixed in so that identical passwords look different. And a <strong>slow</strong> hash repeats the
+scramble many thousands of times, so each guess costs real work.</p>
+<p>This project stores the same five passwords four ways and attacks each one with the same list
+of common passwords. Work is counted in steps, not seconds, so every run prints the same
+numbers.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a safe. Storing the password as it is, is leaving the cash on the table. A plain hash is
+a lock that anyone with a catalogue of keys can open in a minute. A salt gives each customer a
+lock of their own, so one catalogue no longer fits. And a slow hash makes each lock so stiff that
+trying keys takes years. The thief can still carry the whole safe home. The safe only makes the
+opening slow.</p>
+<h2>The scenario</h2>
+<p>An online store has five customers. Ana and Ben both chose welcome1. Carol chose sunshine, Erin chose
+letmein, and Dave chose a long random password. One night the whole accounts table is stolen. How
+much the thief learns depends entirely on how the shop stored the passwords. The attacker has
+a list of eight common passwords and nothing else.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Passwords stored as they are</td>
+<td>The database is stolen and all 5 passwords are readable; there is nothing to crack.</td>
+</tr>
+<tr>
+<td>2. A fast hash, with no salt</td>
+<td>Ana and Ben have the same stored value; a table of 8 common passwords, hashed once, cracks 4 of 5 accounts with no guessing per account.</td>
+</tr>
+<tr>
+<td>3. A fast hash, with a salt for each account</td>
+<td>Ana and Ben's stored values now differ and the table trick fails, but cracking still takes only 24 guesses and 24 steps.</td>
+</tr>
+<tr>
+<td>4. A slow hash, with a salt for each account</td>
+<td>PBKDF2 with 100,000 rounds makes each guess cost 100,000 times more: the same 24 guesses take 2,400,000 steps, yet the 4 weak passwords still fall.</td>
+</tr>
+<tr>
+<td>5. The bill: every login pays, and old hashes must be upgraded</td>
+<td>One login costs 100,000 steps, 1,000 wrong logins cost 100,000,000; an account with 10,000 rounds is upgraded to 100,000 at its next login.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>20 tests in <code>AccountStoreTest</code>, <code>AttackerTest</code>, <code>DemoRunsTest</code>, <code>HashersTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>. Salts are a counter and work is counted in steps, so every run gives the same result.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Work is counted in steps (one step for a fast hash, one per round for a slow one) because seconds depend on the
+machine. The demo uses 100,000 rounds so it runs quickly, while current guidance for PBKDF2 with SHA-256 is several hundred
+thousand. Salts in the demo are a counter, so the output is repeatable; real salts come from a secure random generator,
+which this project also provides as <code>SecureSalts</code>. The attacker is a plain loop over eight passwords. Real attackers
+use lists of billions, rules that mutate each word, and graphics cards that make fast hashes even faster.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/password-hashing-explained.html">Password Hashing, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>At registration the hasher adds a salt and a slow hash; at login it repeats the work with the stored salt and rounds and compares.</p>
+<p><img alt="From a password to a stored hash" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Four hashers implement one interface; the account store and the attacker use it without knowing which one it is.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The stored text carries the rounds and the salt, so the check repeats exactly the work that made the hash.</p>
+<p><img alt="How a login is checked" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Erin logs in and her hash is upgraded" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/password-hashing-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every login pays.</strong> The slow hash runs on every login attempt, right or wrong, so the server spends real work each time. A flood of wrong logins can become an attack on the server itself.</li>
+<li><strong>Settings age.</strong> Computers get faster, so the number of rounds that was slow enough five years ago is too low now. Hashes must be upgraded, ideally at the next login.</li>
+<li><strong>A slow hash cannot save a weak password.</strong> A password that is on the attacker's list falls, however slow the hash. Slow only makes guessing expensive.</li>
+<li><strong>The salt is not a secret.</strong> It is stored beside the hash. Its job is to make every account's hash different, not to hide anything.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Never. Every system that stores a password for a person must hash it. What can vary is the
+choice of algorithm and settings. This project uses PBKDF2 because it ships with Java. Current
+guidance often prefers newer designs such as Argon2 or bcrypt where a library provides them, and
+the with-spring-security-crypto project shows them.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The long <code>$2a$...</code> text stored in a user table of many applications: a bcrypt hash with its cost and salt included.</li>
+<li>The notice "we store passwords as salted hashes" in a company's security page.</li>
+<li>A data-breach story where passwords were "hashed with MD5", and cracked within days.</li>
+<li>A framework's <code>PasswordEncoder</code>, whose stored values begin with a name between curly braces.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the first one in <a href="..">passwords-and-mfa</a>, the third module of the beginner track.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

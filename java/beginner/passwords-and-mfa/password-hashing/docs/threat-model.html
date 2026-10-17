@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Password Hashing</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Password Hashing</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The part of an online store that stores and checks customer passwords: the four storage schemes from plain text to
+PBKDF2, the account table, the login check and the upgrade of old hashes. It covers what a thief learns from a
+stolen table, and what guessing costs. It does not cover how passwords are chosen, how they travel to the server, or
+what happens after login.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Customers' passwords, which are often reused on other sites.</li>
+<li>The accounts table, which holds the stored text.</li>
+<li>The login check, which spends real work on every attempt.</li>
+<li>The accounts themselves, which a stolen or swapped hash could open.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Customers, who choose passwords, some of them weak.</li>
+<li>An attacker who has stolen a copy of the accounts table and guesses offline.</li>
+<li>An attacker who can write to the table and replace a stored hash.</li>
+<li>An attacker who sends many wrong logins to load the server.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Customer to server: the typed password arrives (HTTPS protects it; see the transport-security module).</li>
+<li>Application to database: the stored text is written and read.</li>
+<li>Database to the outside: the line a thief crosses when the table is copied.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>The accounts table is stolen and the passwords are readable</td>
+<td><code>PlainText</code>, and the table in every scheme</td>
+<td>Store only a salted, slow hash, never the password</td>
+<td>A weak password on the attacker's list still falls to guessing</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Information disclosure</td>
+<td>Two accounts with the same password can be seen to match</td>
+<td><code>UnsaltedSha256</code></td>
+<td>A different salt for every account, stored with the hash</td>
+<td>The salt is public by design; it hides matches, not passwords</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Information disclosure</td>
+<td>A table of common passwords, hashed in advance, cracks every account at once</td>
+<td><code>Attacker.crackWithTable</code></td>
+<td>Salts, so no table made in advance fits any account</td>
+<td>The attacker can still guess per account</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Elevation of privilege</td>
+<td>Offline guessing against a stolen hash</td>
+<td><code>Attacker.crackEachAccount</code>, <code>Pbkdf2Hasher</code></td>
+<td>A slow hash: 100,000 rounds multiply the cost of every guess by 100,000</td>
+<td>Weak passwords still fall; real guidance uses more rounds or a memory-hard function such as Argon2</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Denial of service</td>
+<td>Many wrong logins load the server, because each one costs a slow hash</td>
+<td><code>AccountStore.login</code></td>
+<td>None here; the cost is shown as 100,000,000 steps for 1,000 attempts</td>
+<td>Rate limits and lockouts are needed; the password-attacks-and-defences project covers them</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Tampering</td>
+<td>An attacker with write access swaps a stored hash for one they know</td>
+<td>the accounts table</td>
+<td>None in this project, by design</td>
+<td>Protect the table with database permissions and audit changes</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>Information disclosure</td>
+<td>The comparison leaks, through its timing, how much of a hash matched</td>
+<td><code>Hex.sameText</code></td>
+<td>A comparison that takes the same time wherever the texts differ</td>
+<td>Other side channels, such as response timing for unknown usernames, are not covered</td>
+</tr>
+<tr>
+<td>T8</td>
+<td>Elevation of privilege</td>
+<td>Old, weaker hashes stay in the table for accounts that never log in</td>
+<td><code>AccountStore.login</code>, <code>Pbkdf2Hasher.needsUpgrade</code></td>
+<td>The hash is replaced by a stronger one after the next correct login</td>
+<td>A hash can only be upgraded when the password is known, so dormant accounts stay weak</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The password reaches the server over a protected channel.</li>
+<li>Salts come from a secure random generator in real use. The demo uses a counter so output is repeatable, and must never be used for real accounts.</li>
+<li>The attacker's list is small. Real lists have billions of entries and rules that vary each word.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Password policy, breached-password checks and password managers.</li>
+<li>Multi-factor login: the totp project covers one-time codes.</li>
+<li>Choosing between PBKDF2, bcrypt, scrypt and Argon2 in a real system: the with-spring-security-crypto project shows bcrypt and Argon2.</li>
+<li>Resetting a forgotten password.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>HashersTest</code> checks each scheme against a known value, shows salts change the stored text, and checks the stored format.</li>
+<li><code>AttackerTest</code> shows a table cracks unsalted accounts, fails against salts, and that a slow hash multiplies the work by the number of rounds.</li>
+<li><code>AccountStoreTest</code> shows a wrong password never changes the stored hash and a correct one upgrades an old hash once.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, the with-spring-security-crypto version, repeats this with bcrypt and Argon2 from a library. After that, password-attacks-and-defences
+shows how attackers guess online, and how limits and lockouts answer them.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
