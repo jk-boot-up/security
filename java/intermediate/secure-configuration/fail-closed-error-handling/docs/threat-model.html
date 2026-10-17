@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Failing Closed: Secure Error Handling</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Failing Closed: Secure Error Handling</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>An online bank's payment check, its transfers between accounts, its connection pool and its error pages, when a dependency is slow, down or returns a value that cannot be read. It covers
+attackers who cause or exploit failures, and attackers who read error pages. It does not cover the fraud model itself, distributed transactions, or the logging pipeline.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The bank's money and the correctness of every balance.</li>
+<li>The decision to approve a payment.</li>
+<li>Internal details: host names, versions, code paths.</li>
+<li>Card numbers and other secrets that pass through errors.</li>
+<li>The bank's availability.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Customers paying and transferring money.</li>
+<li>An attacker who overloads a dependency or sends values that break parsing, to make a check fail.</li>
+<li>An attacker who reads error pages for internal details.</li>
+<li>Support staff who look up references in the log.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>The bank to its dependencies: every answer may be late, missing or wrong.</li>
+<li>The bank to the customer: what an error page says crosses this line.</li>
+<li>The bank to its log: the detail stays inside, without secrets.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Elevation of privilege</td>
+<td>A dependency failure turns into an approval, because a catch-all swallows the error</td>
+<td><code>NaiveAuthorizer</code></td>
+<td>Start from no; only an explicit, successful check approves</td>
+<td>A check that answers wrongly but on time is still believed</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>An unreadable value makes the code skip a check</td>
+<td><code>NaiveAuthorizer</code>, the limit check</td>
+<td>Strict parsing, and an unreadable value is a refusal</td>
+<td>Values that parse but are wrong need validation at the source</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>A change fails halfway, and money is lost or created</td>
+<td><code>Transfers.naive</code></td>
+<td>Check first, then change both sides, and undo if the second fails</td>
+<td>Across systems, an undo can fail too, and needs reconciliation</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>Errors leak connections until the bank stops</td>
+<td><code>ConnectionPool.naiveUpdate</code></td>
+<td>try-with-resources releases on every path</td>
+<td>Pool size and timeouts still need monitoring</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Information disclosure</td>
+<td>Error pages and logs reveal internals and card numbers</td>
+<td><code>ErrorPages.naive</code>, <code>SecurityLog</code></td>
+<td>A generic page with a reference; the log redacts card numbers</td>
+<td>Redaction catches card numbers, not every secret; secrets should not reach messages at all</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Denial of service</td>
+<td>Failing closed during an outage refuses every customer</td>
+<td><code>SafeAuthorizer</code>, <code>ResilientAuthorizer</code></td>
+<td>Time budgets, a limited retry, a breaker that refuses fast, and an alert on refusals</td>
+<td>Customers are still refused until the dependency is back; that is the chosen cost</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The fraud check and the limit are correct when they answer.</li>
+<li>The ledger's undo succeeds; across systems that needs reconciliation.</li>
+<li>In the demo, time runs on a simulated clock, and the card number is a well-known test number.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>The fraud model's accuracy.</li>
+<li>Distributed transactions and sagas across services.</li>
+<li>Shipping, storing and alerting on logs: the detection-and-response module.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>AuthorizerTest</code> checks the naive check's two failures, the safe check's refusals on errors, timeouts and bad values, and the references.</li>
+<li><code>PartialFailureTest</code> checks lost money in the naive transfer, all-or-nothing transfers, refusals of bad amounts, and connection leaks.</li>
+<li><code>ErrorsAndBreakerTest</code> checks the safe and raw error pages, card number redaction, the breaker's states, refusals without calls, and the single retry.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next module, api-security, applies the same habits to an API: explicit request and response models, budgets for every client, and protection of sessions.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

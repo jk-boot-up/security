@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Failing Closed: Secure Error Handling</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Failing Closed: Secure Error Handling</h1>
+<pre><code>src/main/java/com/jk/explore/security/failclosed/
+├── CircuitBreaker.java       A circuit breaker that fails closed
+├── ConnectionPool.java       A small pool of database connections
+├── Decision.java             The answer to a payment: approved or refused, with the reason and the reference the customer can quote
+├── ErrorPages.java           What the customer is told when something goes wrong
+├── FailClosedDemo.java       Runs the bank story in five numbered acts and prints exact, repeatable results
+├── FraudService.java         The fraud-check service, simulated
+├── Ledger.java               Account balances in cents
+├── NaiveAuthorizer.java      How payments get approved by accident
+├── Payment.java              A card payment the bank is asked to approve
+├── References.java           Reference numbers that a customer can quote and support can find in the log
+├── ResilientAuthorizer.java  Failing closed without failing slowly: a time budget per call, at most one retry for a call that failed fast, a circuit breaker that refuses at once when the fraud service is down, and a count of refusals by reason so that someone is alerted
+├── SafeAuthorizer.java       Failing closed
+├── SecurityLog.java          The bank's internal log
+├── ServiceException.java     A dependency that failed: it threw, or it did not answer in time
+├── SimClock.java             A clock in milliseconds that only moves when told to, so timeouts and cool-downs are exact and repeatable
+├── TimeoutException.java     A dependency that did not answer within its time budget
+└── Transfers.java            Two ways to move money between accounts when the second half can fail
+</code></pre>
+<p><strong>Most security checks are written for the case where everything works; when a dependency times out, an exception skips a step or half a transfer fails, the code must refuse, undo, release and say nothing useful to an attacker, and that safety costs availability that has to be paid for with budgets, breakers and alerts.</strong></p>
+<p><strong>Mishandling of exceptional conditions</strong> is new in the OWASP Top 10 (2025, A10). Security checks are usually written and tested for the case where everything works. The attack is the other case.
+A dependency times out, and a <strong>catch-all</strong> quietly lets the request through. An exception <strong>skips</strong> an authorization step, and the code carries on as if the step had passed. A transfer <strong>fails halfway</strong>,
+so money leaves one account and never reaches the other. A connection is never given back, and the service stops. An <strong>error page</strong> shows a stack trace with internal host names and a card number.</p>
+<p><strong>Failing closed</strong> is the answer. The decision starts as <strong>no</strong>, and only a check that ran and passed turns it into yes. Timeouts and exceptions become <strong>refusals</strong> with a <strong>reference</strong> the customer can quote.
+Changes that belong together happen as <strong>one unit of work</strong>, and resources are released on every path with <strong>try-with-resources</strong>. The customer sees a generic message, and the log keeps the detail, without secrets.</p>
+<p>The demo follows a bank's payment check through each failure, and ends with the cost: failing closed costs availability, and the ways to pay for it.</p>
+<p>Maps to: OWASP Top 10 2025 A10 (Mishandling of Exceptional Conditions); CWE-636 (not failing securely), CWE-755 (improper handling of exceptional conditions), CWE-703 (improper check or handling of exceptional conditions), CWE-209 (error messages containing sensitive information); OWASP ASVS 5.0, the chapter on logging and error handling.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a bank vault with an electronic lock. When the power fails, the door can either lock itself or open itself. A vault that opens during a power cut is a vault that a burglar can
+open by cutting the power. Failing closed is the vault that locks, and the price is that nobody gets in until the power is back, which is why the bank also has a generator and an alarm.</p>
+<h2>The scenario</h2>
+<p>An online bank approves card payments by asking a fraud-check service and checking the customer's daily limit, moves money between accounts, and shows error pages. The demo breaks each
+dependency in turn, on a simulated clock, and watches what the code does when something goes wrong.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Failing open</td>
+<td>A risky 1500.00 payment is approved while the fraud check is down, and a 4500.00 payment passes a 2000.00 daily limit because the spent-today value cannot be read.</td>
+</tr>
+<tr>
+<td>2. Failing closed</td>
+<td>The decision starts as no: a coffee is approved, the risky payment is refused, and a fraud check that is down, too slow for its 300 ms budget, or a value that cannot be read are all refusals with a reference.</td>
+</tr>
+<tr>
+<td>3. Failing halfway</td>
+<td>A transfer of 250.00 to a frozen account makes 250.00 vanish; as one unit of work nothing changes; three failed updates leak all three connections, and try-with-resources gives them back.</td>
+</tr>
+<tr>
+<td>4. What the customer is told, and what the log keeps</td>
+<td>The raw error page names an internal server, the full card number and code lines; the safe page gives a reference, and the log keeps the reason and the last four digits only.</td>
+</tr>
+<tr>
+<td>5. The bill, and how to pay it</td>
+<td>During a slow outage 10 coffees are refused after 50 seconds of waiting; a breaker that opens after 3 failures refuses the rest at once after 15 seconds, raises an alert, and closes again when the service is back.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>17 tests in <code>AuthorizerTest</code>, <code>DemoRunsTest</code>, <code>ErrorsAndBreakerTest</code>, <code>PartialFailureTest</code>. Timeouts and cool-downs run on a simulated clock and every service fault is injected, so the golden output is the same on every run and no network is used.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The fraud service, the ledger and the connection pool are simulations driven by a clock that only moves when told to, so timeouts, cool-downs and outages are exact and the output is the same
+on every run. The card number is a well-known test number, and the log keeps only its last four digits.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/fail-closed-error-handling-explained.html">Failing Closed: Secure Error Handling, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Every path that is not an explicit, timely pass leads to a refusal with a reference.</p>
+<p><img alt="A payment decision that fails closed" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Two authorizers with the same checks: one starts from yes, one from no.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Check what can be checked, then change both sides, and undo the first if the second still fails.</p>
+<p><img alt="A transfer as one unit of work" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A payment while the fraud check is down: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/fail-closed-error-handling-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Failing closed costs availability.</strong> When the fraud check is down, no payment goes through. Ten coffees during a slow outage are all refused, and customers notice.</li>
+<li><strong>Budgets and retries need tuning.</strong> A time budget that is too short refuses healthy calls; a retry that is too eager doubles the load on a struggling service.</li>
+<li><strong>A circuit breaker can hide an outage.</strong> Refusing fast is better than waiting, but only if someone is alerted that refusals are rising.</li>
+<li><strong>Undo is not always possible.</strong> A compensating step works inside one bank's ledger; across systems it needs idempotent operations and reconciliation.</li>
+<li><strong>Generic messages slow support down.</strong> The reference only helps if support can search the log for it.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a check that protects nothing important, failing open may be an acceptable business choice, as long as it is a written decision and not an accident. For payments, access control and
+anything that moves money or data, failing closed is the default, and the budgets, breakers and alerts are what make it bearable.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>catch (Exception e) { }</code> in code reviews, and logs full of swallowed exceptions.</li>
+<li>Outages where a payment, login or licence check let everything through while a service was down.</li>
+<li>Error pages with a stack trace, a database host name or a SQL fragment.</li>
+<li>Circuit breakers and timeouts in libraries such as Resilience4j, and the alerts that watch them.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the second in the intermediate track's <strong>secure-configuration</strong> module (<a href="..">secure-configuration</a>), after
+<a href="../security-misconfiguration">security-misconfiguration</a>. It builds on the beginner project
+<a href="../../../beginner/passwords-and-mfa/password-attacks-and-defences">password-attacks-and-defences</a>, whose bank refuses rather than guesses.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

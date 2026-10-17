@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Failing Closed: Secure Error Handling, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Failing Closed: Secure Error Handling, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Failing closed means that when a check cannot run, times out or throws, the answer is a refusal, half-finished changes are undone, resources are released, and the customer gets a reference instead of the error, with budgets, breakers and alerts to keep the cost in availability bearable.</p>
+<h2>The 5 acts</h2>
+<h3>1. Failing open</h3>
+<p>With the fraud check working, a payment of 1500.00 at an unknown electronics shop is refused. While the fraud check is down, the same payment is approved: an error became a yes. A payment of
+4500.00 against a daily limit of 2000.00 is refused, but when the account's spent-today value cannot be read, it is approved: an exception skipped the check. The decision started as yes,
+and each check could only take it away, so a check that never ran took nothing away.</p>
+<h3>2. Failing closed</h3>
+<p>The decision starts as no, and only a check that ran and passed can turn it into yes. A coffee for 4.50 is approved. The risky payment is refused as fraudulent. While the fraud check is down,
+it is refused because it could not be checked, with reference REF-0003. When the fraud check takes five seconds against a budget of 300 ms, a coffee is refused. The big payment with an unreadable
+spent-today value is refused. Every refusal is in the log with its reference: four lines.</p>
+<h3>3. Failing halfway</h3>
+<p>Ana sends 250.00 to Ben, whose account is frozen. The transfer fails after the debit, so Ana has 750.00, Ben has nothing, and the bank's total falls from 1000.00 to 750.00: 250.00 vanished. As
+one unit of work, checked first and undone if the second half fails, the transfer is refused and nothing changes. Three failed updates that give a connection back only on success leave no free
+connections, and the next update fails. The same three failures with try-with-resources leave all three connections free.</p>
+<h3>4. What the customer is told, and what the log keeps</h3>
+<p>The raw error page names an internal server, shows the full card number and shows lines of code. The customer instead sees: the payment could not be completed, please try again later, quoting
+reference REF-0001. The log line has the reference and the reason, but not the full card number, only its last four digits. Support finds the detail from the reference, and an attacker learns nothing from the page.</p>
+<h3>5. The bill, and how to pay it</h3>
+<p>Failing closed costs availability: ten coffees while the fraud check is slow are all refused, after 50 seconds spent waiting. With a circuit breaker that opens after three failures, all ten are
+still refused, but the fraud check is called only three times and the waiting stops at 15 seconds; the breaker is open. The refusals are counted by reason, and an alert is raised. After the
+cool-down, with the fraud check back, a coffee is approved and the breaker closes. An open breaker still says no: it fails fast, not open, and the refusals are watched so a long outage is noticed.</p>
+<h2>The verdict</h2>
+<p>Start every security decision as no, and approve only on an explicit, successful check. Give every call a time budget, and treat a late answer as no answer. Never write an empty catch, and
+map unexpected exceptions to a refusal. Make related changes one unit of work, and use try-with-resources. Show the customer a reference, log the detail without secrets, and alert on refusals.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>catch (Exception e) { }</code> and <code>catch (Exception e) { return true; }</code> in code reviews.</li>
+<li>Timeouts, retries and circuit breakers in service clients, and their dashboards.</li>
+<li>Error pages that say "something went wrong, reference ABC-123".</li>
+<li>Post-incident reports that say a check "failed open" during an outage.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>catch (Exception e) { }</code> in code reviews, and logs full of swallowed exceptions.</li>
+<li>Outages where a payment, login or licence check let everything through while a service was down.</li>
+<li>Error pages with a stack trace, a database host name or a SQL fragment.</li>
+<li>Circuit breakers and timeouts in libraries such as Resilience4j, and the alerts that watch them.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
