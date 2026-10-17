@@ -70,11 +70,14 @@ AES and GCM against published test values.
 
 ## Technologies and versions
 
+Every version below is pinned in the project's build files and was the latest stable release when the project was built.
+
 | Technology | Version | Used for |
 | --- | --- | --- |
-| Java | 25 | the code (toolchain set in `build.gradle`; Gradle finds or downloads the JDK) |
-| Gradle | 9.2.1 (wrapper) | build and run, nothing to install |
-| JUnit | 5.10.2 | the tests |
+| Java | 25 | the language and runtime; a Gradle toolchain finds or downloads the JDK |
+| Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
+| org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
+| org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material

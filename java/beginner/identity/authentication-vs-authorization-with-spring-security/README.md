@@ -79,11 +79,19 @@ application that uses cookies. The BCrypt cost is 4, the lowest allowed, for spe
 
 ## Technologies and versions
 
+Every version below is pinned in the project's build files and was the latest stable release when the project was built.
+
 | Technology | Version | Used for |
 | --- | --- | --- |
-| Java | 25 | the code (toolchain set in `build.gradle`; Gradle finds or downloads the JDK) |
-| Gradle | 9.2.1 (wrapper) | build and run, nothing to install |
-| JUnit | 5.10.2 | the tests |
+| Java | 25 | the language and runtime; a Gradle toolchain finds or downloads the JDK |
+| Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
+| org.springframework:spring-webmvc | 7.0.9, set by spring-framework-bom | Spring MVC: maps web addresses to controller methods |
+| org.springframework:spring-test | 7.0.9, set by spring-framework-bom | MockMvc, which sends requests through the real filter chain without a network port |
+| org.springframework.security:spring-security-web | 7.1.1, set by spring-security-bom | Spring Security's filter chain |
+| org.springframework.security:spring-security-config | 7.1.1, set by spring-security-bom | Spring Security's configuration, `@EnableMethodSecurity` and `HttpSecurity` |
+| jakarta.servlet:jakarta.servlet-api | 6.1.0 | the servlet API that Spring MVC and Spring Security are written against |
+| org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
+| org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material
