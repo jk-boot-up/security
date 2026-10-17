@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Logging</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Security Logging</h1>
+<pre><code>src/main/java/com/jk/explore/security/securitylogging/
+├── BankDay.java              One morning at the online bank, a minute per event: Ana logs in, someone else guesses her password from another address and moves money to an unknown account, Ben is refused another customer's account, Carol changes a role, and Ana pays by card
+├── ChainCheck.java           Walks a hash-chained log and reports the first line that does not follow the one before it
+├── EventType.java            The kinds of event a bank must be able to answer questions about later
+├── FileSink.java             A log file created readable and writable by its owner only, and written only by appending
+├── Hashes.java               SHA-256 of a log line, as lower-case hex
+├── Json.java                 A flat JSON object of string values, written and read without a library
+├── LogQuery.java             The questions an investigator asks of a structured log, answered by field instead of by guessing at text
+├── LogSink.java              Where finished log lines go
+├── MemorySink.java           Keeps lines in memory: the demo's view of a log, and the second store that shipped lines arrive in
+├── Outcome.java              How an event ended
+├── PlainLogger.java          The bank's old logger: a timestamp, a level and whatever message the code built, with user input pasted straight in
+├── Redactor.java             Decides what of an event may be written down
+├── Retention.java            Removes lines older than the retention period
+├── SecurityEvent.java        One security event: who did what, to what, when, from where, how it ended, and the request it belongs to
+├── SecurityLog.java          The bank's security log
+├── SecurityLoggingDemo.java  Runs the online bank story in five numbered acts and prints exact, repeatable results
+└── SimClock.java             A clock that moves only when told to, so every timestamp in the demo is the same on every run
+</code></pre>
+<p><strong>A security log must answer who did what, when, from where and how it ended, must never hold a password, token or card number, must not let user text write its lines, and must show when it was changed, which means structured events, a redactor, escaping, a hash chain and a copy that leaves the host.</strong></p>
+<p><strong>Security logging and alerting failures</strong> are number nine in the OWASP Top 10 (2025, A09). When something goes wrong at a bank, the first questions are always the same: <strong>who</strong> did it, <strong>what</strong> did they
+do, <strong>when</strong>, <strong>from where</strong>, and <strong>how did it end</strong>. A log written as free text for developers cannot answer them. A <strong>security log</strong> records each security event, such as a login, an access decision, a money movement or an admin
+change, as a <strong>structured record</strong> with the same fields every time and a <strong>request id</strong> that ties the record to everything else that request did. It must also never record what would make the log itself a target:
+<strong>passwords, tokens, session ids and full card numbers</strong>. It must not let text a user typed <strong>write its own lines</strong>. And it must show when someone has <strong>deleted or edited</strong> a line, which a <strong>hash chain</strong> does: each line carries the
+SHA-256 of the line before it.</p>
+<p>The demo follows one morning at an online bank: a customer's password is used from another address to move money, and the log either can or cannot say so.</p>
+<p>Maps to: OWASP Top 10 2025 A09 (Security Logging and Alerting Failures); CWE-778 (insufficient logging), CWE-117 (improper output neutralization for logs), CWE-532 (sensitive information in a log file); OWASP ASVS 5.0, the security logging chapter; NIST SP 800-92 (log management).</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a bank's visitor book. A good one records who came in, when, which door they used, whom they saw and when they left, every time in the same columns. It never records the combination of the safe, even if a visitor says it out loud.
+Nobody can write a fake visit between two real ones, because the pages are numbered and stamped. And a copy goes to head office every evening, so a burglar who burns the book has not burned the record.</p>
+<h2>The scenario</h2>
+<p>An online bank logs one morning: Ana logs in, someone else fails twice with her password from another address, then succeeds and moves 500 to an unknown account, Ben is refused another customer's account, Carol changes a role,
+and Ana pays by card. The demo asks the questions an investigator would, tries to forge and change log lines, and counts what logging costs.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What a security log must answer</td>
+<td>The old logger's 8 lines cannot say who moved 500 from ANA-1 to MAL-9; the structured security log says it was ana's account, from 198.51.100.66, after 2 failed logins from that address.</td>
+</tr>
+<tr>
+<td>2. What never to log</td>
+<td>The old logger wrote the full card number; the security log removes the tried password, the session id and the Authorization header, masks card numbers to the last four, even in a free-text note, and holds 0 of 5 secrets.</td>
+</tr>
+<tr>
+<td>3. Text that tries to write the log</td>
+<td>A username with a line break forges a second line in the old logger's file; the security log writes one line whose actor is exactly what was typed, and a quote with a fake field cannot change the outcome.</td>
+</tr>
+<tr>
+<td>4. A log that shows it was changed</td>
+<td>Each line carries the SHA-256 of the line before; deleting line 6 breaks the chain at line 6, editing it breaks it at line 7, and an edited last line is found only by comparing with the latest hash published elsewhere.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A shipped copy survives the local log's deletion; keeping 30 days removes 10 old lines while the rest still check from their anchor; 2000000 logins a day are about 582 megabytes; and a log nobody reads protects nothing.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>15 tests in <code>DemoRunsTest</code>, <code>JsonAndRedactorTest</code>, <code>SecurityLogTest</code>. The clock is simulated and the events are fixed, so timestamps, request ids and hashes are the same on every run. Tests feed every secret the bank's events carry through the log and check none reaches it, and check the chain against deleted, edited, garbled and truncated logs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank's events are fixed, and the clock is simulated, so every timestamp, request id and hash is the same on every run. The log is written in memory and, in act four, to a file in a temporary folder created with owner-only permissions.
+No secret is ever printed: the demo checks for them and prints only whether they were found.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/security-logging-explained.html">Security Logging, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Every event passes through the redactor and the JSON writer, is chained to the line before it, and is written locally and shipped elsewhere at once.</p>
+<p><img alt="From an event to a trustworthy line" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>SecurityLog turns events into chained JSON lines; Redactor decides what survives; ChainCheck and Retention work on the lines.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each line names the hash of the one before, so a change anywhere breaks the link after it; the last link is checked against the published head.</p>
+<p><img alt="A hash chain" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Recording one event: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/security-logging-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Logs are personal data.</strong> Names, account numbers and addresses make a security log subject to privacy law, so it needs a stated purpose, limited access and a retention period after which lines are deleted.</li>
+<li><strong>A log on the host dies with the host.</strong> An attacker with root can rewrite a file and its whole hash chain, so lines must be shipped to a separate store as they are written, and the latest hash published there.</li>
+<li><strong>Volume costs money.</strong> Hundreds of bytes per event, millions of events a day: what is logged needs a budget, and the security events must not drown in debug noise.</li>
+<li><strong>Redaction is never finished.</strong> Each new field can carry a new kind of secret, so the redactor needs tests that feed it every secret the application handles.</li>
+<li><strong>A log nobody reads protects nothing.</strong> Logging is evidence after the fact unless something watches it and alerts, which is the next project.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a toy program, a print statement is fine. For anything that handles accounts or money, structured security events, redaction and a request id are the minimum, and shipping lines off the host is
+cheap compared with a breach nobody can explain. A hash chain matters most where logs are evidence: payments, admin actions and access to personal data.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Audit logs in banking, card payment (PCI DSS) and health systems, which must say who accessed what and when.</li>
+<li>JSON log lines in cloud log services, with a trace or request id on every line.</li>
+<li>Breach reports that say the attackers were inside for months and nobody noticed.</li>
+<li>Incidents where passwords or tokens were found in plain text in log files.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the first in the intermediate track's <strong>detection-and-response</strong> module (<a href="..">detection-and-response</a>). It builds on the beginner projects
+<a href="../../../beginner/cryptography/hashing-and-integrity">hashing-and-integrity</a> and <a href="../../../beginner/passwords-and-mfa/password-attacks-and-defences">password-attacks-and-defences</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

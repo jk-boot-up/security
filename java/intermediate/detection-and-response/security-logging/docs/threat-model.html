@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Security Logging</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Security Logging</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>The security log of an online bank: what each event records, how secrets are kept out, how typed text is written, how the log is chained, stored, shipped and pruned. It covers an attacker who types text into forms, a thief who reads
+the log, and an intruder on the host who wants to hide what was done. It does not cover alerting on the log, or the log store's own security.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The record of who did what, which an investigation and a dispute depend on.</li>
+<li>The secrets the application handles: passwords, tokens, session ids and card numbers.</li>
+<li>The personal data in the log: names, account numbers and addresses.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Customers and staff whose actions are logged.</li>
+<li>An attacker who types text into forms, hoping to forge or hide records.</li>
+<li>A thief who gets a copy of the log file.</li>
+<li>An intruder on the host with the application's account, or with root.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Form input to the log writer: every typed character crosses it.</li>
+<li>The application to its log file on the host.</li>
+<li>The host to the separate log store, where shipped lines and the published head live.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Repudiation</td>
+<td>An action cannot be traced to who did it, from where, because the log does not record it</td>
+<td><code>SecurityLog.record</code>, <code>SecurityEvent</code></td>
+<td>Structured events with fixed fields and a request id for logins, access decisions, money movements and admin changes</td>
+<td>Events the application never sends are still missing, so the event list needs review with each feature</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Information disclosure</td>
+<td>Passwords, tokens, session ids or card numbers end up in the log and are stolen with it</td>
+<td><code>Redactor</code></td>
+<td>Removal by field name, masking by shape in free text, and tests that feed every known secret through the log</td>
+<td>A new kind of secret in an unexpected field needs a new rule</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>Typed text forges a log line or a field, misleading an investigation</td>
+<td><code>Json.write</code></td>
+<td>JSON lines with every control character and quote escaped, and text kept whole</td>
+<td>Tools that render log text unescaped, such as a web viewer, need their own output encoding</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Tampering</td>
+<td>An intruder deletes or edits lines to hide what was done</td>
+<td><code>ChainCheck</code>, the log file</td>
+<td>A hash chain that breaks at the first changed or missing line, and a published head for the last line</td>
+<td>An intruder with root can rebuild the whole chain, so only the shipped copy and the published head are trustworthy</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Denial of service</td>
+<td>The log is destroyed with the host</td>
+<td>the local file</td>
+<td>Every line shipped to a separate store as it is written</td>
+<td>Lines written in the moment before shipping can be lost</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Information disclosure</td>
+<td>The log is read by someone who should not see personal data, or kept longer than needed</td>
+<td>the log file, <code>Retention</code></td>
+<td>Owner-only permissions and a retention period with an anchor so pruning keeps the chain checkable</td>
+<td>Copies in backups and shipped stores need the same retention</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The separate log store is outside the intruder's reach.</li>
+<li>The clock is trusted; in the demo it is simulated.</li>
+<li>In the demo all names, addresses and secrets are fictional, and no secret is printed.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Alerting and detection rules: the detecting-attacks project.</li>
+<li>The log store's own access control.</li>
+<li>Signing the head hash: an exercise.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>JsonAndRedactorTest</code> checks escaping and parsing of any text, refusals of malformed lines, and redaction by name and by shape.</li>
+<li><code>SecurityLogTest</code> checks that no secret reaches the log, the fields of every line, forged lines, the chain against deletion, edits, garbling and truncation, file permissions and retention.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, detecting-attacks, reads the security log and raises alerts for password spraying, impossible travel and privilege changes.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

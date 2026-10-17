@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Logging, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Security Logging, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A security log records every security event with the same fields, never holds secrets, escapes the text it records, and carries a hash chain whose latest hash is kept elsewhere, so that it can answer who did what, cannot be used to steal or forge, and shows when it was changed.</p>
+<h2>The 5 acts</h2>
+<h3>1. What a security log must answer</h3>
+<p>The bank's old logger wrote 8 lines this morning, such as "ERROR login failed" and "INFO transfer done amount=500". The question is who moved 500 from ANA-1 to MAL-9, and from where. No old line even mentions ANA-1: the log cannot answer.
+The security log records who, what, when, where from, the outcome and a request id for each of 8 events. The transfer was made as ana, from 198.51.100.66, at 09:05, request req-0006. The same address had 2 failed logins as ana, then 1 success:
+someone with Ana's password, not Ana. The log covers logins, access decisions, money movements and admin changes.</p>
+<h3>2. What never to log</h3>
+<p>The old logger's card payment line holds the full card number, so a breach of the log is a breach of the cards. The security log's redactor removes the password tried in a failed login, the session id of the new login and the transfer's
+Authorization header, and masks the card to ************1111, including a card number typed into a free-text note. Of the 5 secrets in the morning's events, 0 are found anywhere in the security log. Secrets are removed by field name, and card numbers and tokens also by their shape.</p>
+<h3>3. Text that tries to write the log</h3>
+<p>A username typed into the login form contains a line break followed by text that looks like a log line: "INFO login ok user=admin". In the old logger's file it becomes a second line, a forged record of an admin login. The security log
+writes one JSON line, with the line break escaped; read back, the actor is exactly what was typed and the outcome is failure. A username carrying a quote and a fake outcome field cannot change the outcome either. Structured output escapes
+text instead of trusting it, and keeps it whole, so investigators see exactly what was sent.</p>
+<h3>4. A log that shows it was changed</h3>
+<p>Each line carries the SHA-256 of the line before it, and the morning's 8 lines form an intact chain. Deleting line 6, the transfer, breaks the chain at line 6. Editing line 6's amount from 500 to 50 breaks it at line 7, the line after the edit.
+An edited last line leaves the chain intact, because nothing follows it; comparing with the latest hash, published somewhere else as each line is written, finds the change. The file is written by appending only, with permissions rw-------. An attacker
+with root can still rewrite the whole file and its chain, which is why the log must also leave the host.</p>
+<h3>5. The bill</h3>
+<p>Every line is also shipped to a second store as it is written; when the attacker deletes the local log, the local copy has 0 lines and the shipped one has all 8, with its chain intact. Names and addresses make the log personal data, so it is kept for a fixed time:
+keeping 30 days, on day 41, 10 old lines go and 30 stay, and the kept lines still check from the anchor written down when the old ones went. The morning's lines average 291 bytes, so 2000000 logins a day write about 582 megabytes a day for logins alone. And
+a log that nobody reads is evidence only after the fact: the -with-loki-and-grafana version ships, queries and alerts.</p>
+<h2>The verdict</h2>
+<p>Log logins, access decisions, money movements and admin changes as structured events with a request id. Redact by field name and by shape, and test the redactor with every secret the application handles. Write JSON, never pasted text.
+Chain the lines, publish the head elsewhere, ship every line off the host as it is written, set a retention period, and budget the volume. Then watch the log, because a log nobody reads is only evidence.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>JSON log lines with <code>trace_id</code> or <code>request_id</code> fields.</li>
+<li>Audit-log requirements in payment and banking standards.</li>
+<li>Log masking settings for card numbers and tokens.</li>
+<li>Write-once log storage and log-shipping agents.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Audit logs in banking, card payment (PCI DSS) and health systems, which must say who accessed what and when.</li>
+<li>JSON log lines in cloud log services, with a trace or request id on every line.</li>
+<li>Breach reports that say the attackers were inside for months and nobody noticed.</li>
+<li>Incidents where passwords or tokens were found in plain text in log files.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
