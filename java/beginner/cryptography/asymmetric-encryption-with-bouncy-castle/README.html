@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asymmetric Encryption with Bouncy Castle and OpenSSL</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Asymmetric Encryption with Bouncy Castle and OpenSSL</h1>
+<pre><code>src/main/java/com/jk/explore/security/asymmetricbc/
+├── BouncyCastleDemo.java  Runs the online bank story in five numbered acts, with Bouncy Castle and OpenSSL, and prints facts that do not depend on random keys
+├── Certificates.java      Makes a self-signed X.509 certificate: a public key, a name, a validity period, all signed with the matching private key
+├── CmsEnvelope.java       Hybrid encryption in a standard file format: CMS EnvelopedData (RFC 5652), the format behind S/MIME email
+├── Hex.java               Small helpers for text and bytes
+├── OpenSsl.java           Calls the openssl command-line tool, a different program written by different people, to open a CMS envelope
+├── Pem.java               Keys and certificates as PEM: the text format with a &quot;-----BEGIN ...-----&quot; line, Base64 in the middle and an &quot;-----END ...-----&quot; line, which OpenSSL, SSH tools, web servers and most libraries read and write
+└── Providers.java         Registers Bouncy Castle as a security provider
+</code></pre>
+<p><strong>Bouncy Castle adds what the JDK leaves out, PEM key files, certificates and the standard CMS envelope, and OpenSSL, a program written by other people, can open what it writes, but the easy calls pick older padding and the library is large.</strong></p>
+<p>The plain version of this lesson used only the JDK, which does the maths but stops there. Real systems exchange keys and encrypted files in <strong>standard
+formats</strong> that other programs understand. <strong>Bouncy Castle</strong> is an open-source library that fills the gaps. It reads and writes <strong>PEM</strong>, the text format with a <code>-----BEGIN ...-----</code> line that
+OpenSSL, SSH and web servers all use. It builds <strong>X.509 certificates</strong>. And it writes <strong>CMS EnvelopedData</strong>, the standard envelope behind S/MIME email, which holds data encrypted with AES, the AES key locked with the
+recipient's RSA key, and the recipient named by a certificate. Because it is a standard, a different program can open it, and this project proves that by asking <strong>OpenSSL</strong>, a command-line tool written by other people, to open
+the bank's envelope.</p>
+<p>The demo keeps the same online bank and customer, Ana, as the plain project. It writes her keys as PEM, protects the private key with a password, makes a self-signed certificate, seals a statement in a CMS envelope, has OpenSSL open it,
+and ends with what Bouncy Castle costs.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a diplomat's sealed pouch. Any embassy in the world knows the standard form: the sealed bag, the label that names the recipient, the key held by one person. A pouch in a
+homemade format could be perfectly secure and still be useless, because nobody else would know how to open it. Bouncy Castle writes the standard pouch, and OpenSSL is the other embassy that proves it can open it.</p>
+<h2>The scenario</h2>
+<p>The online bank and Ana from the plain project. This time the bank must give Ana's keys a form that she can keep in files, and send her statements in a format that her email program and other tools can read. The
+demo writes her keys as PEM, makes a certificate for her public key, seals a 10,000-byte statement in a CMS envelope, opens it with Java, with Eve's key, and with OpenSSL, and finally looks at the costs of using the library.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Keys as PEM text</td>
+<td>A public key and a PKCS#8 private key are written as PEM; the private key in the clear is readable by anyone, encrypted with a password it is not, and a wrong password is refused.</td>
+</tr>
+<tr>
+<td>2. A certificate for the public key</td>
+<td>A self-signed X.509 certificate names Ana, is valid for the year 2026, is signed with SHA256WITHRSA, and has the same issuer and subject, so anyone could have made it.</td>
+</tr>
+<tr>
+<td>3. A standard envelope: CMS EnvelopedData</td>
+<td>A 10,000-byte statement is sealed for Ana's certificate with AES-256 and RSA-OAEP; Ana opens it, and Eve's private key is refused.</td>
+</tr>
+<tr>
+<td>4. A different program opens it</td>
+<td>The openssl command-line tool, written by other people, is given the envelope, the key file and the certificate, and opens the statement: it is a real standard.</td>
+</tr>
+<tr>
+<td>5. The bill: what Bouncy Castle costs</td>
+<td>The envelope locks its key with RSA-OAEP, but the easy call picks PKCS#1 v1.5; the library is about 7 MB, and registering it changes the whole program.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>20 tests in <code>CertificateTest</code>, <code>CmsEnvelopeTest</code>, <code>OpenSslInteropTest</code>, <code>PemTest</code>. The unit tests (<code>./gradlew test</code>) need nothing installed. The tests that call <code>openssl</code>, including the golden-output comparison, are tagged <code>openssl</code> and run with <code>./gradlew integrationTest</code>, which needs openssl 3 on the PATH.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keys are fresh and random on every run, so the demo prints only facts that do not depend on them: the headers of the files, the subject and dates of a certificate whose dates are fixed, and whether
+operations open or are refused. The certificate is self-signed, with fixed start and end dates so its text does not change. Act four calls the <code>openssl</code> command-line tool, which must be version 3 and on the PATH, and says so if it is not. The size
+of the library is printed in whole megabytes and belongs to the pinned version.</p>
+<h2>Technologies and versions</h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the code (toolchain set in <code>build.gradle</code>; Gradle finds or downloads the JDK)</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.2.1 (wrapper)</td>
+<td>build and run, nothing to install</td>
+</tr>
+<tr>
+<td>JUnit</td>
+<td>5.10.2</td>
+<td>the tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/asymmetric-encryption-with-bouncy-castle-explained.html">Asymmetric Encryption with Bouncy Castle and OpenSSL, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The statement is encrypted with AES-256; the AES key is locked with the RSA key in Ana's certificate; both go in one standard envelope.</p>
+<p><img alt="A CMS envelope for Ana" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Four small classes wrap the library: Pem, Certificates, CmsEnvelope and OpenSsl; Providers registers Bouncy Castle once.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The demo writes three files; openssl reads them and prints the statement; the demo compares it with the original.</p>
+<p><img alt="How the independent check works" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Sealing and opening an envelope: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/asymmetric-encryption-with-bouncy-castle-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The easy call picks older padding.</strong> Bouncy Castle's simplest way to address an envelope locks the key with PKCS#1 v1.5 padding, which is older and weaker than OAEP. OAEP has to be asked for by name.</li>
+<li><strong>A large library.</strong> The core jar is several megabytes, and the certificate and CMS code come in a second one. It is a lot to add for a few functions.</li>
+<li><strong>Registering a provider changes the whole program.</strong> Once Bouncy Castle is added to the JVM's list of providers, every library in the program can be handed algorithms from it.</li>
+<li><strong>Names and versions move.</strong> The artifacts changed from <code>jdk15on</code> to <code>jdk18on</code>, and APIs are deprecated over time, so upgrades need care and tests.</li>
+<li><strong>A self-signed certificate proves nothing.</strong> It binds a name to a key, signed by the key itself, so anyone can make one. Real proof needs a signature from a party that is trusted.</li>
+<li><strong>AES-CBC has no tag.</strong> This envelope hides the data but does not, on its own, detect changes, which is why newer designs prefer authenticated modes.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the plain JDK is enough, because all you need is AES-GCM between two services that you control, use it. Reach for Bouncy Castle when you must
+read or write formats the JDK does not know: PEM files, certificates, CMS, PGP, or an algorithm the JDK lacks. The question to ask each time is whether you need the format, or only the maths.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>-----BEGIN CERTIFICATE-----</code> and <code>-----BEGIN PRIVATE KEY-----</code> in files on a web server.</li>
+<li><code>openssl cms -encrypt</code> and <code>-decrypt</code>, and S/MIME encrypted email.</li>
+<li><code>id_rsa</code> and <code>id_rsa.pub</code> in an <code>.ssh</code> folder, which are PEM-style files.</li>
+<li>Libraries named <code>bcprov</code> and <code>bcpkix</code> in the dependency lists of Java applications.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is the fifth in <a href="..">cryptography</a>, the library version of <a href="../asymmetric-encryption">asymmetric-encryption</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
