@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broken Access Control</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Broken Access Control</h1>
+<pre><code>src/main/java/com/jk/explore/security/accesscontrol/
+├── AccessControlDemo.java  Runs the online store story in five numbered acts and prints exact, repeatable results
+├── Attempts.java           The requests the demo sends: what an attacker tries, and what honest users do every day
+├── Call.java               What a handler receives: who is asking (if anyone), the values from the path, the body, and the store's data
+├── GuardedStore.java       The fixed store: the same handlers as the naive store, but with every check taken out of them and put in one policy that runs before any handler
+├── Handler.java            The code behind one route
+├── Handlers.java           The store's business logic, with no access checks at all
+├── HttpFront.java          A store served over real HTTP on the loopback address, on a free port, and a client for it
+├── NaiveStore.java         The first version of the store: every handler checks what its author remembered to check
+├── Order.java              An order in the store
+├── Policy.java             Every access rule of the store in one table, checked at one place before any handler runs
+├── Reply.java              The store's answer: an HTTP status and a short body
+├── Request.java            One request to the store: a method, a path, the bearer token (which may be missing), and a short body
+├── Role.java               What a signed-in person is in the store
+├── Route.java              A method and a path pattern such as /orders/{id}
+├── RouteTable.java         The routes a store serves, in the order they were added, with the handler for each
+├── ShopData.java           The store's users and orders, built fresh for every run so that no act changes another
+├── Store.java              Anything that answers requests: the naive store and the guarded one
+└── User.java               A signed-in person: a name, a role, and the bearer token their requests carry
+</code></pre>
+<p><strong>Most access-control bugs are not clever: an order anyone can read by changing a number, a route nobody linked to, a check in the page but not on the server, a DELETE that was copied without its check. The fix is one policy at one choke point, deny by default, with a test that fails when a route has no rule.</strong></p>
+<p><strong>Access control</strong> decides what a signed-in person may do. It is the top risk in the <strong>OWASP Top 10 (2025), A01 Broken Access Control</strong>, and the top two of the
+<strong>OWASP API Security Top 10 (2023)</strong>: <strong>API1, Broken Object Level Authorization</strong>, and <strong>API5, Broken Function Level Authorization</strong>. The weaknesses have
+names in the CWE list: <strong>CWE-639</strong>, authorization bypass through a user-controlled key, which is the classic <strong>IDOR</strong>; <strong>CWE-862</strong>, missing authorization;
+and <strong>CWE-285</strong>, improper authorization. The <strong>Authorization</strong> chapter of <strong>OWASP ASVS 5.0</strong> lists what a verified application must do about them.</p>
+<p>Two directions matter. <strong>Horizontal</strong> (sideways) escalation reaches another person's data with the same role, such as another customer's order. <strong>Vertical</strong>
+(upwards) escalation reaches a higher role's functions, such as a refund that only staff may issue.</p>
+<p>The demo breaks a small online store API in all of these ways, then fixes every one with a single policy that runs before any handler, refuses by default,
+checks ownership of each object, logs each refusal, and is kept complete by a test.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a hotel where every key card opens every room, because the lock only checks that the card is a real card from this hotel. Being a guest
+is authentication. Opening only your own room is authorization. A room number that is hard to guess does not help if someone reads it off your
+key sleeve. And a staff door with no sign on it is still a door.</p>
+<h2>The scenario</h2>
+<p>An online store has an API for orders, addresses, refunds, user management and a sales report. The first version checks access inside each
+handler, wherever its author remembered to. The demo attacks it as a customer called ana, then replaces all those checks with one policy.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Walking order numbers</td>
+<td>Signed in as ana, the numbers 1000 to 1010 return 4 orders, 2 of them other customers'; ben's gift order with an unguessable id opens too, because it was shared.</td>
+</tr>
+<tr>
+<td>2. Routes that nobody checks</td>
+<td>The page hides the admin links, but ana's hand-made refund succeeds; a report nobody links to opens signed out; GET /admin/users is checked and DELETE is not.</td>
+</tr>
+<tr>
+<td>3. Sideways and upwards</td>
+<td>Ana redirects ben's order to her address (sideways) and issues a refund (upwards); of nine attacks, 7 succeed through 5 of 9 routes; the one careful route refuses her.</td>
+</tr>
+<tr>
+<td>4. One choke point, deny by default</td>
+<td>The same handlers behind one policy: 0 of 9 attacks succeed, 6 of 6 honest requests still work, someone else's order answers 404, and 9 refusals are logged with no token.</td>
+</tr>
+<tr>
+<td>5. Keeping it right, and the bill</td>
+<td>A new route without a rule is caught by the route inventory test and refused even to the admin; the rules hold over real HTTP; the bill is one table to keep complete and an ownership lookup per request.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>23 tests in <code>DemoRunsTest</code>, <code>GuardedStoreTest</code>, <code>HttpFrontTest</code>, <code>NaiveStoreTest</code>, <code>RouteInventoryTest</code>. The store, users, tokens and orders are fixed, so every status code is exact. The real HTTP check runs on a free loopback port and checks only status codes.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The store runs in memory with fixed users, tokens and orders, so every answer is exact. Act five also serves the guarded store over real HTTP on the
+loopback address, on a free port, and prints only the status codes. Every attack targets only this project's own code.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/broken-access-control-explained.html">Broken Access Control, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The naive store checks inside each handler; the guarded store checks once, before any handler, and refuses what it has no rule for.</p>
+<p><img alt="Where the checks live" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Both stores share the same handlers; only where the checks live differs.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>No rule means no; then signed in, then role, then ownership of the object in the path.</p>
+<p><img alt="How the policy decides" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Ana asks for ben's order: who checks what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/broken-access-control-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Ownership checks need data.</strong> Every object-level decision looks up who owns the object, which is a database read on every request unless it is folded into the query.</li>
+<li><strong>One table must be kept complete.</strong> A central policy only helps if every route has a rule, which is why a test reads the route list and fails when one is missing.</li>
+<li><strong>404 or 403 is a choice.</strong> Answering 404 for someone else's order hides that it exists, but makes support harder: the log has to carry the real reason.</li>
+<li><strong>Refusals are log lines.</strong> Logging every denial shows an attack in progress, and costs storage and attention; the log must never contain a token.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A store with one page and no accounts needs none of this. As soon as there are two customers, or one customer and one member of staff, object-level checks and deny by default are the minimum,
+because the attacks in this demo need nothing more than a browser's developer tools.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Bug bounty reports titled "IDOR in order endpoint" or "BOLA in /api/v1/users/{id}".</li>
+<li>Spring Security's <code>authorizeHttpRequests</code> with <code>anyRequest().denyAll()</code> at the end.</li>
+<li>The OWASP Top 10 and OWASP API Security Top 10, where this is first.</li>
+<li>Data breaches where records were downloaded by counting up an id in the address bar.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the first project of the <a href="../..">intermediate track</a>, in <a href="..">web-security</a>. It builds on the beginner projects
+<a href="../../../beginner/identity/authentication-vs-authorization">authentication-vs-authorization</a> and <a href="../../../beginner/safe-habits/least-privilege">least-privilege</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
