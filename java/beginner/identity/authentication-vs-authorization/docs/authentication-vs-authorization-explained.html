@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authentication vs Authorization, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Authentication vs Authorization, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Authentication finds out who is asking, usually by checking a password and handing out a session token; authorization decides what that person may do, using rules about roles and ownership; and a gate must do both, in that order, on every request.</p>
+<h2>The 5 acts</h2>
+<h3>1. The first version, with no checks</h3>
+<p>The first version of the shop asks nobody anything. A request with no token at all
+asks to refund order O-1, and the answer is 200 OK. The same request can view the
+order. There is no concept of a person, so there is nothing to protect.</p>
+<h3>2. Authentication: finding out who is asking</h3>
+<p>Authentication finds out who is asking. Ben tries to log in with a wrong password
+and is rejected. He logs in with his password and receives a session token,
+tok-1: from now on he shows the token instead of the password. A request with no
+token gets 401 UNAUTHENTICATED. A request with a made-up token, tok-99, gets the
+same, because the shop never issued it. A request with Ben's token gets 200 OK.
+The password is stored only as a slow, salted hash, so even the shop cannot read
+it back.</p>
+<h3>3. Authenticated is not the same as authorized</h3>
+<p>The team believes the problem is solved, because every request now needs a login.
+But the gate only asks whether the person is logged in. Ben is a customer. He
+refunds order O-1, which is Ana's, and the answer is 200 OK. He views Ana's
+order, and the answer is 200 OK again. Being logged in proved who he was, and
+nothing decided what he was allowed to do.</p>
+<h3>4. Authorization: what may this person do?</h3>
+<p>Authorization is a set of rules about roles and ownership, applied after
+authentication. The gate now answers in two steps. First, who is this? No live
+token gets 401. Then, may this person do this to this order? If not, 403
+FORBIDDEN. Ben refunding is 403, and Ben viewing Ana's order is 403, but Ben
+viewing his own order O-2 is 200. Sam, from support, may view any order and
+refund, so both are 200. Ana cancelling Ben's order is 403. Alex, an admin,
+cancelling it is 200. The rules are written once, in one place.</p>
+<h3>5. The bill: sessions expire, and roles go stale</h3>
+<p>The checks have costs. A session lasts only 3 ticks. Sam logs in at tick 0, and at
+tick 4 his refund gets 401, because the session has expired: safer if a token is
+stolen, and a new login for him. Then a subtler cost. Sam logs in, and then Alex
+demotes him to a customer. If the role was copied into the session at login, Sam
+can still refund: 200 OK, a stale role. If the gate looks up the role every
+time, the same refund is 403 FORBIDDEN, at the price of one lookup per request.
+Either choice is a trade between speed and being current.</p>
+<h2>The verdict</h2>
+<p>Do both, in order, in one place. Turn away requests with no known person with
+401. Then apply the rules to the known person, and answer 403 when they may not.
+Keep the rules in one policy and not scattered across endpoints, put the gate in
+front of every endpoint, and choose on purpose whether a role is copied into the
+session or looked up each time.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>A 401 page asking you to sign in, and a 403 page saying you may not.</li>
+<li>A session cookie that expires, followed by a login page.</li>
+<li>Role names such as viewer, editor and admin in a settings screen.</li>
+<li>A "remember me" box, which trades a longer session for convenience.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The 401 and 403 pages a browser shows, and the difference between them.</li>
+<li>A login form, a "remember me" box, and a "your session has expired" message.</li>
+<li>A "you do not have permission to view this page" message after you have signed in.</li>
+<li>Role names such as viewer, editor and admin in a cloud or office tool.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
