@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTPS Server with nginx</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>HTTPS Server with nginx</h1>
+<pre><code>src/main/java/com/jk/explore/security/httpsnginx/
+├── ConfigScore.java     Reads an nginx configuration as text and scores it against seven TLS habits, one point each
+├── HeaderAudit.java     Scores a response against five security headers, one point each
+├── HttpsNginxDemo.java  Runs the online store story in five numbered acts against real nginx containers and prints repeatable results
+├── Nginx.java           One nginx container with a given configuration and the demo certificates, started for a demo and stopped afterwards
+├── NginxConfig.java     Writes the nginx configuration for each version of the online store's front door
+├── Pki.java             The demo's certificates and keys, made once by infra/make-test-pki.sh
+├── Probe.java           Sends raw bytes to a port and reads the whole answer, so malformed requests can be sent that an HTTP client library would never send
+└── TlsClient.java       A Java HTTPS client that checks the certificate chain and the host name, the way a browser does
+</code></pre>
+<p><strong>nginx can end TLS for an online store with HTTP/2, HSTS, a redirect and optional client certificates in a few lines, but the lines have traps: old protocols, a forwarded header the client can forge, and a certificate file that is not there.</strong></p>
+<p>The plain version of this lesson put TLS inside the Java server. In production, TLS is usually ended by the web server or load balancer in front of the application, and <strong>nginx</strong> is very often that server. This project
+runs real nginx containers and checks them with a Java client that does what a browser does: it verifies the <strong>certificate chain</strong> and the <strong>host name</strong>.</p>
+<p>The settings are few and each one matters. <code>ssl_protocols TLSv1.3</code> leaves out the older versions. <code>http2 on</code> speeds up pages. <code>add_header Strict-Transport-Security ... always</code> tells browsers to use HTTPS next time, and <code>always</code>
+keeps it on error pages. <code>ssl_session_tickets off</code> avoids long-lived ticket keys. The plain port 80 only redirects. <code>ssl_verify_client on</code> asks visitors for a <strong>client certificate</strong>, which is <strong>mutual TLS</strong>. And the application behind nginx
+should be told what nginx saw, in the <code>X-Forwarded-Proto</code> header, never what the client claims.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a receptionist at the front door of an office. Visitors show their pass to the receptionist, who then phones the right person inside, so the staff never see the passes. That works as long as the receptionist writes down what they saw, and not
+what the visitor says. A receptionist who repeats "the visitor says they were checked at the gate" to the staff has handed every visitor a way to skip the check.</p>
+<h2>The scenario</h2>
+<p>An online store puts nginx in front of its application. The demo starts nginx in several versions: careful, one that also allows TLS 1.2, one with a certificate nobody trusts, one that demands client certificates, and two that differ in one header line.
+A Java client checks each one, and the configuration is tested with <code>nginx -t</code> and scored against seven habits.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. nginx ends the TLS for the shop</td>
+<td>A Java client that trusts the demo root gets 200 over TLS 1.3 with HTTP/2, five of five security headers, and the application behind nginx is told the request was https.</td>
+</tr>
+<tr>
+<td>2. Which TLS versions the shop allows</td>
+<td>With TLS 1.3 only, a client limited to TLS 1.2 is refused; allowing TLS 1.2 with three strong ciphers lets it in, and TLS 1.3 clients still get 1.3.</td>
+</tr>
+<tr>
+<td>3. The plain port, the redirect and HSTS</td>
+<td>The plain port answers 301 to the same address on https and sends no HSTS; the HTTPS answer carries a two-year HSTS, which protects every visit after the first.</td>
+</tr>
+<tr>
+<td>4. Who the client trusts, and who the server trusts</td>
+<td>The client refuses an unknown root, a wrong name and an impostor certificate; with ssl_verify_client on, nginx refuses a client without a certificate and sets the client's identity itself.</td>
+</tr>
+<tr>
+<td>5. The proxy trap, a config check and a score</td>
+<td>Passing on the client's X-Forwarded-Proto makes the application believe a plain request is secure; nginx -t catches a missing certificate; the careful config scores 7 of 7 and a copied one 1 of 7.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>27 tests in <code>ConfigAndScoreTest</code>, <code>DemoRunsTest</code>, <code>NginxContainerTest</code>, <code>PkiTest</code>, <code>ProbeTest</code>, <code>ReferenceConfigTest</code>. The default tests need only a JDK. The tests tagged docker start real nginx containers (nginx:1.31.7-alpine) on free local ports and always remove them; a test checks that none are left behind. The demo prints no port numbers or random values, so its golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The demo and its golden-output test start real nginx containers, so they need a running Docker and run with <code>./gradlew integrationTest</code>. The default <code>./gradlew test</code> needs no Docker: it checks the generated configuration, the score, the demo certificates and the
+reply parser. The demo prints only facts that do not depend on port numbers or on random values. The certificates are made once by <code>infra/make-test-pki.sh</code> and the shop is named shop.example.test through a hosts file kept in the project.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>nginx (container image)</td>
+<td>nginx:1.31.7-alpine</td>
+<td>the web server and reverse proxy in front of the store, pinned to an exact version</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>any recent Docker Engine or Docker Desktop</td>
+<td>runs the nginx containers for the demo and the container tests</td>
+</tr>
+<tr>
+<td>OpenSSL (script only)</td>
+<td>3.6.3</td>
+<td>made the demo certificates once, in infra/make-test-pki.sh; not needed to run the project</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/https-server-with-nginx-explained.html">HTTPS Server with nginx, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>TLS ends at nginx; the application behind it speaks plain HTTP on a local port.</p>
+<p><img alt="nginx at the front door" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>NginxConfig writes the configuration; Nginx runs it in a container; TlsClient checks it.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>nginx sets the headers from what it saw. A header the client sends with the same name is replaced.</p>
+<p><img alt="What the application is told" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A first visit: who talks to whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/https-server-with-nginx-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The application behind nginx speaks plain text.</strong> Traffic between nginx and the application is not encrypted in this setup, which is fine on one machine and not fine across a network. Use TLS to the application too, or a trusted private network.</li>
+<li><strong>Every setting is a place to go wrong.</strong> A copied configuration can allow old protocols or forget <code>always</code>, so the configuration needs a test and a score.</li>
+<li><strong>TLS 1.2 is a trade-off.</strong> Allowing it keeps older clients working and brings back the choice of ciphers, which must then be kept short.</li>
+<li><strong>Certificates expire.</strong> nginx reads them at start, so renewal needs a reload, and the plan for it matters more than the settings.</li>
+<li><strong>Demo keys are not secrets.</strong> The certificates in this project are made for the demo and are committed on purpose. Real private keys never go in a repository.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a small site, an nginx with a short, tested TLS configuration or a managed load balancer is the right answer. Client certificates are for machine-to-machine traffic and special users, not for ordinary customers.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>ssl_protocols</code>, <code>ssl_certificate</code> and <code>ssl_certificate_key</code> in every nginx tutorial.</li>
+<li>Mozilla's SSL configuration generator, and SSL Labs' test of a site.</li>
+<li><code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code> headers in application logs.</li>
+<li>Load balancers that "terminate TLS" in cloud diagrams.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../https-server">https-server</a> and <a href="../https-server-with-spring-boot">https-server-with-spring-boot</a> and uses the same ideas as <a href="../tls-handshake">tls-handshake</a> and <a href="../certificates-and-chain-of-trust">certificates-and-chain-of-trust</a>. It is the nginx twin of the HTTPS lesson.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTPS Server with nginx, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>HTTPS Server with nginx, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>nginx can end TLS at the front door of a site with a short list of settings, but each setting has a trap, so the configuration should be tested and scored, and the application must be told what nginx saw and never what the client claims.</p>
+<h2>The 5 acts</h2>
+<h3>1. nginx ends the TLS for the shop</h3>
+<p>A Java client that trusts the demo root asks https://shop.example.test/ and gets 200 over TLS 1.3. HTTP/2 was agreed during the handshake. The five security headers score 5 of 5, and the Server header says just nginx, with no version. Behind nginx the application, on a plain local port,
+answered: app saw proto=https. nginx told it what it saw.</p>
+<h3>2. Which TLS versions the shop allows</h3>
+<p>nginx set to TLS 1.3 only refuses a client limited to TLS 1.2, and a TLS 1.3 client gets TLS 1.3. With TLS 1.2 allowed as well, with three strong ciphers, the TLS 1.2 client gets TLS 1.2, and a TLS 1.3 client on the same server still gets TLS 1.3.
+Allow TLS 1.2 only while customers still need it, and keep the list of ciphers short.</p>
+<h3>3. The plain port, the redirect and HSTS</h3>
+<p>A request to http://shop.example.test/orders?id=7 gets 301 and a Location of the same address on https. The plain answer carries no HSTS, because a browser ignores HSTS sent over plain HTTP. The HTTPS answer carries max-age=63072000, two years.
+The very first visit is still plain, so HSTS protects every visit after it, and preloading protects the first.</p>
+<h3>4. Who the client trusts, and who the server trusts</h3>
+<p>The JDK's own list of trusted roots does not know the demo root, so it refuses. With the demo root trusted and the right name, the connection is accepted. Connecting by the address 127.0.0.1 is refused, because the name in the certificate must match.
+A server with the right name and a certificate signed by nobody trusted is refused. With ssl_verify_client on, a client with no certificate is refused, and with Ana's certificate the answer is 200 and the application is told Ana's name.
+When Ana adds a header claiming to be the admin, nginx overwrites it, because it sets that header itself.</p>
+<h3>5. The proxy trap, a config check and a score</h3>
+<p>If nginx passes on the client's own X-Forwarded-Proto, a plain request that claims https makes the application believe the connection is secure. When nginx sets the header from what it saw, the application is told http.
+nginx -t accepts the careful configuration and refuses one whose certificate file is missing, before any customer sees it. The careful configuration scores 7 of 7 on the TLS habits and a typical copied configuration scores 1 of 7.
+OCSP stapling is for certificates from a public authority and needs the server to reach it, so it is described and not run here.</p>
+<h2>The verdict</h2>
+<p>Use TLS 1.3, add 1.2 only if customers need it, send HSTS with always, redirect the plain port, hide the version, and set forwarded headers from nginx's own variables. Test every configuration with nginx -t, and keep private keys out of repositories.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>ssl_protocols</code>, <code>ssl_ciphers</code> and <code>ssl_session_tickets</code> in nginx configuration.</li>
+<li>Cloud load balancers listed as "TLS termination".</li>
+<li><code>X-Forwarded-Proto</code> handling in framework settings, such as "trust the proxy".</li>
+<li>Mozilla's SSL configuration generator.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>ssl_protocols</code>, <code>ssl_certificate</code> and <code>ssl_certificate_key</code> in every nginx tutorial.</li>
+<li>Mozilla's SSL configuration generator, and SSL Labs' test of a site.</li>
+<li><code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code> headers in application logs.</li>
+<li>Load balancers that "terminate TLS" in cloud diagrams.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
