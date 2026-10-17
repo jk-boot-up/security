@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Patching and Dependency Hygiene</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Patching and Dependency Hygiene</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>How an online store knows what it ships, learns about flaws in it, decides what to fix and when, and receives the fixed libraries. It covers the build that downloads artifacts, the registry they come from, and the advisory data. It does not cover flaws in the store's own code or the security of the registry's servers.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The running store, which contains every library in the inventory.</li>
+<li>The inventory of each release.</li>
+<li>The advisory data and the pinned hashes.</li>
+<li>The build that fetches and verifies artifacts.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The team that maintains the store.</li>
+<li>A library author, whose releases the store trusts.</li>
+<li>An attacker who can publish packages, or change a download on its way.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Registry to build: every artifact crosses it and the hash is the check.</li>
+<li>Advisory data to the scanner: the data decides what the team believes is wrong.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Tampering</td>
+<td>A dependency is swapped for a changed artifact under the same name and version</td>
+<td><code>Pins.verify</code></td>
+<td>A SHA-256 recorded at review time, compared on every download</td>
+<td>A pin proves the file is the one reviewed, not that the reviewed file was safe</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>A package is published under a name one letter from a real one, and gets installed by mistake</td>
+<td><code>Typosquat</code></td>
+<td>Flag names one edit from a known name, and take libraries only from an allow-listed repository</td>
+<td>Only near misses are caught; a deliberately different name needs human review</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Information disclosure</td>
+<td>A library with a known flaw stays in the store because nobody knew it was there</td>
+<td><code>Sbom</code>, <code>Audit.scan</code></td>
+<td>An inventory for every build, including transitive libraries, matched against advisories</td>
+<td>A scan finds known problems only, and the advisory data must be current</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Elevation of privilege</td>
+<td>A reachable critical flaw is exploited before it is fixed</td>
+<td><code>PatchWindow</code>, <code>Audit.triage</code></td>
+<td>Rank by score and reachability, and give each severity a deadline</td>
+<td>Even a fix inside the window leaves days of exposure; mitigations such as a temporary block may be needed</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Tampering</td>
+<td>The advisory data or the inventory is edited to hide a problem</td>
+<td><code>Advisory.parse</code>, <code>Sbom.parse</code></td>
+<td>Keep both under version control with reviewed changes, and fetch advisories from a trusted source over TLS</td>
+<td>Someone with write access to both can still hide a problem, so changes need a second reviewer</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Repudiation</td>
+<td>After an incident nobody can show what the store was built from at the time</td>
+<td><code>Sbom</code></td>
+<td>Keep the inventory of every release with the release</td>
+<td>The inventory must be generated by the build, because a hand-kept list drifts</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The first review of an artifact before pinning is honest and careful.</li>
+<li>The advisory data is current and comes from a source the team trusts.</li>
+<li>In the demo, all libraries and problems are fictional and the clock is simulated.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Flaws in the store's own code.</li>
+<li>Signature verification of artifacts: the signing projects.</li>
+<li>The security of the registry's own servers.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>VersionTest</code> checks numeric version order, every range operator, exact range boundaries and refused nonsense.</li>
+<li><code>JsonTest</code> checks the reader on every kind of value and on malformed text.</li>
+<li><code>CvssTest</code> checks the equation against published scores, the rounding rule and the severity bands.</li>
+<li><code>AuditTest</code> checks the inventory, shortest paths, cycles, broken inventories, the findings, the advice and the ranking.</li>
+<li><code>PatchWindowAndPinsTest</code> checks the deadlines, SHA-256 against published values, every single-bit change, unpinned artifacts and lookalike names.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, backups-and-recovery, looks at what happens when prevention fails: how to restore data, and how to know that the backup works.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
