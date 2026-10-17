@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-Site Request Forgery (CSRF) and Its Defences, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cross-Site Request Forgery (CSRF) and Its Defences, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A browser attaches a site's cookie to every request sent to it, so any request that changes state must also prove it came from the site's own page, with a per-session token, backed by SameSite cookies and checks of Sec-Fetch-Site and Origin, and no state change on GET.</p>
+<h2>The 5 acts</h2>
+<h3>1. A request Ana did not intend</h3>
+<p>Ana logs in at the bank and her browser keeps the session cookie; her balance is 1000. In another tab she opens a page on evil.example, whose hidden
+form posts to the bank: send 500 to mallory. The bank answers 200 and sends it: a transfer Ana never asked for. The balances are now 500 and 500.
+The browser added Ana's cookie because the request went to the bank; the cookie proves who is asking, not what she meant.</p>
+<h3>2. A token in every form</h3>
+<p>The bank's own transfer form carries a token tied to Ana's session, and Ana's transfer of 20 with that form works. The page on evil.example posts the
+same form without a token and is refused: 403, no form token. With a real token from Mallory's own session it is refused too: the token does not
+belong to this session. Another site cannot read Ana's token, because the form lives on the bank's pages and a browser does not let another site read them.
+The token is compared in constant time, so the time an answer takes does not reveal how much of a guess was right.</p>
+<h3>3. SameSite cookies</h3>
+<p>With SameSite=Lax the forged post from evil.example arrives without the cookie and the bank answers 401. A link on evil.example to the bank still
+opens Ana's account, because Lax allows cookies on top-level links, and the bank's own form still works. With SameSite=Strict even that link arrives without the
+cookie, so Ana looks logged out, while typing the bank's address works. With no SameSite attribute at all, a modern browser treats the cookie as Lax.</p>
+<h3>4. Where the request came from, and GET</h3>
+<p>A modern browser says Sec-Fetch-Site: cross-site for the forged post, and the bank refuses it; the bank's own form says same-origin and works. An older browser
+sends no Sec-Fetch-Site, so the bank reads Origin, https://evil.example, and refuses. With neither header only the token is left, so these checks add depth and do not
+replace it. A bank that moves money on GET loses 100 to a plain link on evil.example even with a Lax cookie, because Lax lets cookies ride on top-level links; the same link
+to a bank that needs POST is refused with 405. GET must never change state.</p>
+<h3>5. The bill</h3>
+<p>With SameSite as the only defence, an older browser that ignores it sends the forged transfer. With SameSite=Strict, a page on reviews.bank.example, where customers post
+content, is the same site, so the cookie is sent and the transfer goes through. The same page with tokens switched on is refused. But a bank page that forgot to include
+the token refuses Ana herself, so the token must reach every form and client. Finally, the bank's API takes a token in an Authorization header: a script on evil.example
+cannot add a header it does not know, so it is refused with 401, while Ana's own app, which holds the token, works. APIs with bearer tokens are not exposed in the same way,
+as long as the token is not kept in a cookie.</p>
+<h2>The verdict</h2>
+<p>Use the framework's CSRF protection and keep it on for every cookie-authenticated, state-changing request. Set session cookies to SameSite=Lax (or Strict where usability allows),
+Secure and HttpOnly. Check Sec-Fetch-Site and Origin as a second layer. Never change state on GET. For APIs, prefer bearer tokens in headers, and never put them in cookies without CSRF protection.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>Hidden token fields named <code>_csrf</code>, <code>csrf_token</code> or <code>authenticity_token</code>.</li>
+<li><code>SameSite=Lax</code> or <code>SameSite=Strict</code> in a <code>Set-Cookie</code> header.</li>
+<li>Servers that refuse requests with <code>Sec-Fetch-Site: cross-site</code>.</li>
+<li>A security finding titled "Cross-Site Request Forgery" with CWE-352.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Hidden <code>_csrf</code> or <code>authenticity_token</code> fields in the forms of almost every web framework.</li>
+<li><code>Set-Cookie: ...; SameSite=Lax</code> on session cookies, the default in modern browsers.</li>
+<li><code>Sec-Fetch-Site</code> headers in a browser's network panel.</li>
+<li>Breach reports where a router or bank changed settings after a visit to another page.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
