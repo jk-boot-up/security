@@ -360,7 +360,7 @@ nothing (for example Spring Security has no Go twin; the Go project would use `x
 
 ## 11. Checklist
 
-Status: projects 1 to 9 are built with their tool versions where one is planned, and project 10, digital-signatures, is built as its plain version. ✅ is done, ◐ is partly done (authentication-vs-authorization has its Spring Security version, and its Keycloak version is still planned), – means no tool version is planned, and ☐ is not done. **Nothing has been uploaded.**
+Status: all 20 planned projects are built as plain versions, and 19 of them have the with-tools versions that were planned (tcp-ip-basics-with-tcpdump, dns-basics-with-coredns, the Spring Boot and nginx HTTP and HTTPS versions, the OpenSSL and Bouncy Castle TLS and certificate versions, and the safe-habits tools versions). ✅ is done, ◐ is partly done (authentication-vs-authorization has its Spring Security version, and its Keycloak version is still planned; least-privilege has Spring Security and Kubernetes RBAC versions, and its Terraform version is still planned), – means no tool version is planned, and ☐ is not done. **Nothing has been uploaded.**
 
 | # | Project | Plain code | With-tools code | Docs | Animation | Video | Uploaded |
 | ---: | --- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -373,17 +373,17 @@ Status: projects 1 to 9 are built with their tool versions where one is planned,
 | 7 | hashing-and-integrity | ✅ | – | ✅ | ✅ | ✅ | ☐ |
 | 8 | symmetric-encryption | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 | 9 | asymmetric-encryption | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
-| 10 | digital-signatures | ✅ | ☐ | ✅ | ✅ | ✅ | ☐ |
-| 11 | keystore-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 12 | tcp-ip-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 13 | dns-basics | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 14 | http-basics-and-headers | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 15 | tls-handshake | ☐ | – | ☐ | ☐ | ☐ | ☐ |
-| 16 | certificates-and-chain-of-trust | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 17 | https-server | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 18 | least-privilege | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 19 | patching-and-dependency-hygiene | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
-| 20 | backups-and-recovery | ☐ | – | ☐ | ☐ | ☐ | ☐ |
+| 10 | digital-signatures | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 11 | keystore-basics | ✅ | – | ✅ | ✅ | ✅ | ☐ |
+| 12 | tcp-ip-basics | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 13 | dns-basics | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 14 | http-basics-and-headers | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 15 | tls-handshake | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 16 | certificates-and-chain-of-trust | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 17 | https-server | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 18 | least-privilege | ✅ | ◐ | ✅ | ✅ | ✅ | ☐ |
+| 19 | patching-and-dependency-hygiene | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
+| 20 | backups-and-recovery | ✅ | ✅ | ✅ | ✅ | ✅ | ☐ |
 
 ## 12. Risks
 

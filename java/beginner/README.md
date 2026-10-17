@@ -11,12 +11,12 @@ Follow the [learning path](learning-path.md) for the exact order of every projec
 | [foundations](foundations) | 2 | the CIA triad, threats and risk |
 | [identity](identity) | 2 | authentication and authorization |
 | [passwords-and-mfa](passwords-and-mfa) | 6 | password hashing, password attacks, one-time codes |
-| [cryptography](cryptography) | 7 | hashing, encryption, signatures |
-| [networking](networking) | 1 | TCP/IP, DNS, HTTP |
-| transport-security | 0 | the TLS handshake, certificates, HTTPS |
-| safe-habits | 0 | least privilege, patching, backups |
+| [cryptography](cryptography) | 8 | hashing, encryption, signatures |
+| [networking](networking) | 7 | TCP/IP, DNS, HTTP |
+| [transport-security](transport-security) | 7 | the TLS handshake, certificates, HTTPS |
+| [safe-habits](safe-habits) | 7 | least privilege, patching, backups |
 
-Five modules exist so far, with 18 projects. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
+All seven modules exist, with 39 projects. The full plan is in [`../../docs/beginner-plan.md`](../../docs/beginner-plan.md).
 
 ## Run a project
 
