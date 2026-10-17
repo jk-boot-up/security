@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Certificates and Chain of Trust with Bouncy Castle and OpenSSL</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Certificates and Chain of Trust with Bouncy Castle and OpenSSL</h1>
+<pre><code>src/main/java/com/jk/explore/security/certsbc/
+├── CertFactory.java     Builds X.509 version 3 certificates with Bouncy Castle's builders
+├── CertsBcDemo.java     Runs the online store story in five numbered acts and prints exact, repeatable results
+├── ChainValidator.java  Validates a certificate chain with the JDK's PKIX implementation, on a date the caller chooses, against the roots the caller trusts, optionally checking revocation lists
+├── Crls.java            A certificate revocation list: the issuer's signed statement of which of its certificates should no longer be trusted
+├── HostName.java        Does the certificate vouch for this host name?
+├── Issued.java          A certificate together with the key pair of its subject
+├── Pem.java             PEM is the text form every tool reads: a line saying what it is, the DER bytes in base 64, and a closing line
+├── Pki.java             The online store's certificates, built fresh for each run: a root, an intermediate limited to the store's names, and the server certificate for shop.example
+└── SigningRequest.java  How a shop gets a certificate without ever handing over its private key: it signs a request (PKCS#10) with that key, naming itself and carrying its public key
+</code></pre>
+<p><strong>Bouncy Castle builds real certificates, name limits, revocation lists and signing requests from named calls, and OpenSSL, written by other people, agrees with every one of them, but each extension is a place to get a rule quietly wrong.</strong></p>
+<p>The plain version of this lesson wrote the bytes of a certificate by hand, because the JDK can <strong>check</strong> certificates but has no public way to <strong>make</strong> them. <strong>Bouncy Castle</strong> is an open-source library that supplies the missing builders. With
+them the project makes a <strong>root</strong>, an <strong>intermediate</strong> and a <strong>server certificate</strong>, and attaches the extensions that say what each may do: whether it is an authority, how many authorities may sit below it, which keys may sign what, which names it
+covers, and which names an authority is allowed to certify at all (a <strong>name constraint</strong>).</p>
+<p>It also publishes <strong>revocation lists</strong> (CRLs), signed by the issuer, and walks through the <strong>signing request</strong> (PKCS#10) that lets a shop get a certificate without ever handing over its private key. Because all of this is standard, a different program can
+check it, and this project proves that by asking <strong>OpenSSL</strong> to verify the same chain, read the same lists, and even sign a request that Java wrote.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a passport office. The government (the root) authorises regional offices (the intermediates) and can limit what each may do: this office may only issue passports to residents of one town. The traveller (the shop) makes their own signature and brings only a
+form (the signing request), never the pen they sign with. Lost passports are published on a list the border officers check. A stolen office stamp is the disaster: forged passports look genuine until the office is struck off.</p>
+<h2>The scenario</h2>
+<p>An online store runs its own small certificate authority for shop.example. The demo builds the chain, limits the intermediate to the store's names, publishes lists, handles a signing request, and then imagines the intermediate's key being stolen.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A chain built with Bouncy Castle</td>
+<td>A root, an intermediate and a server certificate are built from named calls, with authority flags, key usages and key identifiers that link each to its parent.</td>
+</tr>
+<tr>
+<td>2. A limit the authority carries in its own certificate</td>
+<td>The intermediate may only certify shop.example and names below it; a certificate for another name from the same intermediate is refused with INVALID_NAME.</td>
+</tr>
+<tr>
+<td>3. A revocation list signed by the issuer</td>
+<td>A signed list naming the shop's serial makes the chain REVOKED; a list signed by someone else, or no list, leaves the status undetermined and the chain refused.</td>
+</tr>
+<tr>
+<td>4. Asking for a certificate without handing over the private key</td>
+<td>The shop signs a request with its own key; the authority checks the signature and its policy, certifies only names under shop.example, and the certificate holds the shop's public key.</td>
+</tr>
+<tr>
+<td>5. A stolen authority key, and the bill</td>
+<td>A forged chain from a stolen intermediate key is accepted until the root revokes the intermediate; then both the forged and the real chains are refused and the shop needs a new certificate.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>32 tests in <code>ChainTest</code>, <code>DemoRunsTest</code>, <code>HostNameTest</code>, <code>ListAndRequestTest</code>, <code>OpenSsl</code>, <code>OpenSslInteropTest</code>. Chains are validated on a fixed date. Keys are random, so the demo and its tests check only facts that do not depend on them. The ordinary tests need only a JDK; the integration tests (tagged openssl) run the real OpenSSL 3 as an independent check.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keys are random, so the demo prints only facts that do not depend on them: what an extension says, whether a chain is accepted and why, and whether a request or list verifies. The validation date is fixed (2026-01-01), not the real clock.
+OpenSSL is used only by the integration tests, so the demo and the ordinary tests need nothing installed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.bouncycastle:bcprov-jdk18on</td>
+<td>1.86</td>
+<td>Bouncy Castle: algorithms and providers the JDK lacks</td>
+</tr>
+<tr>
+<td>org.bouncycastle:bcpkix-jdk18on</td>
+<td>1.86</td>
+<td>Bouncy Castle PKIX: PEM, X.509 certificates and CMS</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>OpenSSL (command-line tool)</td>
+<td>3.x</td>
+<td>the independent check that verifies the chain, reads the lists and requests, and acts as a second authority; needed for the integration tests</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/dependencies.html">Dependencies</a></td>
+<td>what the framework and infrastructure are, and why they are here</td>
+</tr>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/certificates-and-chain-of-trust-with-bouncy-castle-explained.html">Certificates and Chain of Trust with Bouncy Castle and OpenSSL, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The root signs the intermediate, the intermediate signs the shop, and each certificate limits the one below.</p>
+<p><img alt="A small authority and its chain" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>CertFactory builds; Crls and SigningRequest support it; ChainValidator checks the result.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A signed bundle: the subject, its public key, the extensions that limit it, and the issuer's signature.</p>
+<p><img alt="What a certificate holds" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Getting a certificate: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/certificates-and-chain-of-trust-with-bouncy-castle-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every extension is a chance to be wrong.</strong> A missing critical flag or constraint silently weakens a rule, and nothing fails until someone relies on it.</li>
+<li><strong>The library is large.</strong> About a few megabytes of code to build a handful of structures, and its own release cycle to keep up with.</li>
+<li><strong>A stolen authority key breaks everything below it.</strong> Name constraints limit the damage, and revocation only protects clients that fetched the newest list.</li>
+<li><strong>Revocation is weak in practice.</strong> Many browsers go ahead when they cannot fetch a list, so short-lived certificates are the stronger defence.</li>
+<li><strong>Running an authority is a duty.</strong> Offline keys, audit logs, procedures and backups matter more than the code.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a real public website, use a public authority and an automated client. Run your own authority for internal systems, tests and mutual TLS between services, where you control who trusts the root, and keep the root key offline.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>openssl x509 -text</code>, which prints exactly the extensions this project writes.</li>
+<li>Let's Encrypt and other public authorities, which publish intermediates and revocation information.</li>
+<li>Internal certificate authorities in service meshes and Kubernetes.</li>
+<li><code>keytool -importcert</code>, which adds a root to a trust store.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../certificates-and-chain-of-trust">certificates-and-chain-of-trust</a> and is the fifth in <a href="..">transport-security</a>. It builds on <a href="../../cryptography/asymmetric-encryption-with-bouncy-castle">asymmetric-encryption-with-bouncy-castle</a>, which first used the library.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
