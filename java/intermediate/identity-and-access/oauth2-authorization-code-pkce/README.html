@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OAuth 2.0 Authorization Code Flow with PKCE</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>OAuth 2.0 Authorization Code Flow with PKCE</h1>
+<pre><code>src/main/java/com/jk/explore/security/oauth/
+├── AuthorizationServer.java  The bank's authorization server: the authorization endpoint the browser visits, and the token endpoint the client calls directly
+├── BankApi.java              The bank's accounts API, the resource server
+├── BudgetApp.java            The budgeting app, a public OAuth client
+├── ClientRegistration.java   What the bank knows about a client before any request arrives: its id, the exact redirect URIs it registered, the scopes it may ask for, and, for a confidential client that runs on a server, the SHA-256 of its secret
+├── LoopbackBank.java         The same authorization server and API behind a real HTTP server on the loopback interface
+├── OAuthDemo.java            Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── OAuthException.java       An OAuth 2.0 error response: an error code from RFC 6749 and a human-readable description
+├── Pkce.java                 Proof Key for Code Exchange (RFC 7636)
+├── SimClock.java             A clock in whole seconds that only moves when told, so lifetimes are exact and repeatable
+├── TokenEndpoint.java        The bank's token endpoint as the client sees it: in-process for most acts, over a real local HTTP server in act one
+└── Urls.java                 Builds and reads query strings and form bodies (application/x-www-form-urlencoded, UTF-8)
+</code></pre>
+<p><strong>The authorization code flow lets an app read a customer's bank accounts without ever seeing the password: the customer signs in at the bank, the browser carries only a short-lived code, and PKCE makes that code useless to anyone but the app that asked for it. Exact redirect addresses, a state bound to the browser, single-use codes, narrow scopes and rotating refresh tokens close the remaining gaps.</strong></p>
+<p><strong>OAuth 2.0</strong> (RFC 6749) lets a customer give an app limited access to an account without giving it the password. In the <strong>authorization code flow</strong>
+the app sends the customer's browser to the bank's <strong>authorization server</strong>; the customer signs in there and agrees to a <strong>scope</strong>, such as
+"read your accounts"; the browser comes back to the app's registered <strong>redirect URI</strong> with a short-lived <strong>authorization code</strong>; and the app swaps
+that code, directly with the bank, for an <strong>access token</strong>. <strong>PKCE</strong>, Proof Key for Code Exchange (RFC 7636), adds a secret the app makes for each
+sign-in, so that a code which leaks through a log or a browser history cannot be redeemed by anyone else. <strong>RFC 9700</strong>, the OAuth 2.0 Security Best
+Current Practice, makes PKCE, exact redirect matching and refresh token rotation the norm, and removes the implicit flow and the password grant.</p>
+<p>This project maps to <strong>OWASP Top 10 (2025) A07 Authentication Failures</strong>; to <strong>CWE-352</strong>, cross-site request forgery, which here takes the form of
+login forgery, and <strong>CWE-601</strong>, open redirect; and to the <strong>OAuth and OIDC</strong> chapter of <strong>OWASP ASVS 5.0</strong>.</p>
+<p>The demo builds an authorization server, a bank API and a budgeting app with the JDK alone, runs the whole flow in memory and over a real local HTTP
+server, and checks PKCE against the example that RFC 7636 publishes. Every mistake is shown as a request that the correctly built server or app refuses.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a hotel. A guest never gives the cleaning company the master key. The front desk issues a key card for one room, for one stay, after checking
+the guest's identity at the desk. OAuth is the front desk: the customer proves who they are to the bank, not to the app, and the app gets a card that
+opens only what was agreed, only for a while. PKCE is the card being useless unless it is collected by the person holding the matching receipt.</p>
+<h2>The scenario</h2>
+<p>An online bank lets a budgeting app read a customer's accounts. The demo walks through the flow message by message, then shows what happens when a code
+leaks, when a redirect address is changed, when another person's sign-in is pushed into the customer's browser, when a code is used twice, when the app
+asks for more than it registered, and when a refresh token is stolen.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The authorization code flow, step by step</td>
+<td>The app sends the browser to the bank, Ana signs in and agrees to accounts.read, the browser returns with a 43-character code that works for 60 seconds once, the app swaps it directly for an access token of 300 seconds, and reads the accounts: 200, also over a real local HTTP server.</td>
+</tr>
+<tr>
+<td>2. PKCE: a code is useless without the verifier</td>
+<td>The RFC 7636 verifier gives the published S256 challenge; only the challenge travels through the browser; a leaked code redeemed with no verifier or a made-up one is refused; plain and missing challenges are refused.</td>
+</tr>
+<tr>
+<td>3. Exact redirect addresses, state, and codes that work once</td>
+<td>Only the exact registered redirect address gets a code; a forced sign-in into Mallory's account is refused by the state check; a reused code is refused and revokes the token it gave; a code 61 seconds old is refused.</td>
+</tr>
+<tr>
+<td>4. Scopes and refresh tokens</td>
+<td>The token carries only accounts.read, so a payment is 403; asking for payments.write is refused; refresh tokens rotate, and reusing an old one revokes the whole family; an access token 300 seconds old is 401.</td>
+</tr>
+<tr>
+<td>5. Current practice, and the bill</td>
+<td>The implicit flow and the password grant are refused, as RFC 9700 and OAuth 2.1 require; a confidential client must authenticate; and production needs a real authorization server.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>28 tests in <code>AuthorizationServerTest</code>, <code>BudgetAppTest</code>, <code>DemoRunsTest</code>, <code>LoopbackTest</code>, <code>PkceTest</code>. PKCE is checked against RFC 7636 appendix B. Every refusal is a test with its exact OAuth error, and the whole flow is also tested over a real local HTTP server. Random codes and tokens are never printed, so the golden output is the same on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The authorization server, the bank API and the app run in memory with a simulated clock in whole seconds; act one also runs the flow over a real HTTP
+server on the loopback interface, and prints only status codes. Codes, tokens and states come from a secure random source and are never printed:
+messages show what each part is instead. The bank's sign-in and consent pages are stood in for by two parameters. Host names such as bank.example are
+labels; nothing leaves the machine.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/oauth2-authorization-code-pkce-explained.html">OAuth 2.0 Authorization Code Flow with PKCE, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The browser carries only the code; the app swaps it directly with the bank; the API asks the bank about every token.</p>
+<p><img alt="Who talks to whom" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The authorization server owns codes and tokens; the app owns states and verifiers; the API trusts only the server's answer.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The challenge goes with the request; the verifier goes only with the token request, directly from the app.</p>
+<p><img alt="What PKCE binds together" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The authorization code flow with PKCE: who sends what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/oauth2-authorization-code-pkce-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>More moving parts than a password form.</strong> Redirects, codes, states, verifiers and two kinds of token must all be handled correctly, which is why a maintained authorization server and client library are used in production.</li>
+<li><strong>Access tokens cannot be called back instantly</strong> unless the API checks with the authorization server on every request, as this one does; self-contained tokens trade that check for speed, so they must be short-lived.</li>
+<li><strong>Refresh token rotation punishes the honest app too.</strong> When a stolen token is reused, the whole family is revoked and the customer must sign in again, which is the price of containing the theft.</li>
+<li><strong>Exact redirect matching is strict on purpose.</strong> Every environment and every app variant needs its own registered address.</li>
+<li><strong>A hand-written server is for learning.</strong> It leaves out discovery, signed tokens, consent records, key rotation and account recovery; see the <code>-with-keycloak</code> version.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>An application that signs its own users in, with no third-party app involved, does not need OAuth at all: a session cookie is simpler. OAuth earns its
+place when one party's app needs limited access to an account held by another party, or when many applications share one sign-in.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Connect your bank account" buttons in budgeting and accounting apps, and the bank page that asks what the app may see.</li>
+<li>"Sign in with" buttons, which use OpenID Connect, built on this flow (the openid-connect project).</li>
+<li>Addresses ending in <code>?code=...&amp;state=...</code> after signing in somewhere.</li>
+<li>Advisories about stolen authorization codes, open redirects and leaked refresh tokens.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project follows <a href="../jwt-done-right">jwt-done-right</a> in <a href="..">identity-and-access</a>, part of the <a href="../..">intermediate track</a>. It builds on the beginner
+projects <a href="../../../beginner/identity/authentication-vs-authorization">authentication-vs-authorization</a> and <a href="../../../beginner/cryptography/hashing-and-integrity">hashing-and-integrity</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — OAuth 2.0 Authorization Code Flow with PKCE</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — OAuth 2.0 Authorization Code Flow with PKCE</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>The OAuth 2.0 authorization code flow between a customer's browser, a public budgeting app, the bank's authorization server and the bank's accounts API:
+authorization requests, redirects, the token endpoint, refresh tokens and API calls. It covers an attacker who can read logs and browser histories, send
+links, change request parameters and copy tokens. It does not cover the bank's sign-in page itself, a compromised device, or OpenID Connect.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>Ana's password, which only the bank may see.</li>
+<li>Authorization codes, access tokens and refresh tokens.</li>
+<li>The registered redirect URIs and the confidential client's secret.</li>
+<li>Ana's accounts, and the ability to move money.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>Ana, the customer, using a browser.</li>
+<li>The budgeting app, a public client.</li>
+<li>The bank's statements service, a confidential client.</li>
+<li>An attacker who reads logs, sends links and copies tokens.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Browser to authorization server: everything in the address bar is visible and changeable.</li>
+<li>App to token endpoint: the only place codes become tokens.</li>
+<li>App to bank API: every request carries a token that the API must check.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>An authorization code leaks through a log, a browser history or a referrer and is redeemed by someone else</td>
+<td><code>AuthorizationServer.token</code></td>
+<td>PKCE with S256: the code is bound to a challenge and redeemed only with its verifier</td>
+<td>A device that is itself compromised can read the verifier too</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>A changed redirect URI sends the code to an attacker's address</td>
+<td><code>ClientRegistration.registered</code></td>
+<td>Exact string matching of registered redirect URIs; errors about the redirect are shown at the bank, never redirected</td>
+<td>A registered address that itself has an open redirect would still leak codes</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Tampering</td>
+<td>A forced callback signs the customer into the attacker's account (login forgery)</td>
+<td><code>BudgetApp.callback</code></td>
+<td>A state made for each sign-in, bound to the browser session, checked in constant time and used once</td>
+<td>An app that skips the state check is exposed; OpenID Connect adds a nonce as well</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Elevation of privilege</td>
+<td>An app uses its token for more than the customer agreed to</td>
+<td><code>BankApi.call</code>, <code>AuthorizationServer.authorize</code></td>
+<td>Scopes limited to what the client registered, shown at consent and enforced by the API on every call</td>
+<td>A customer may agree to more than the app needs; consent screens must be clear</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Spoofing</td>
+<td>A stolen refresh token gives an attacker lasting access</td>
+<td><code>AuthorizationServer.token</code> (refresh)</td>
+<td>Rotation on every use, and reuse detection that revokes the whole family</td>
+<td>The attacker keeps access until the next real refresh; short access tokens limit the window</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Information disclosure</td>
+<td>The implicit flow or the password grant exposes tokens or passwords</td>
+<td><code>AuthorizationServer.authorize</code>, <code>AuthorizationServer.token</code></td>
+<td>Both are refused; confidential clients authenticate; public clients rely on PKCE</td>
+<td>A real deployment must keep these off as it adds clients and features</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>All real traffic uses TLS; the demo's loopback HTTP is for the lab only.</li>
+<li>The bank's sign-in page authenticates Ana correctly.</li>
+<li>Codes, tokens, states and verifiers come from a secure random source.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>OpenID Connect and ID tokens: the openid-connect project.</li>
+<li>Tokens in single-page apps: the tokens-in-the-browser project.</li>
+<li>A compromised device or browser.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>PkceTest</code> checks the RFC 7636 appendix B example, verifier rules and mismatches.</li>
+<li><code>AuthorizationServerTest</code> checks exact redirects, PKCE, single-use and expiring codes, revocation on reuse, scopes, refresh rotation, removed grants and client authentication.</li>
+<li><code>BudgetAppTest</code> checks states per browser session, forced callbacks and errors from the bank.</li>
+<li><code>LoopbackTest</code> runs the whole flow over a real local HTTP server.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, openid-connect, adds sign-in on top of this flow: ID tokens, nonce, discovery and logout.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OAuth 2.0 Authorization Code Flow with PKCE, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>OAuth 2.0 Authorization Code Flow with PKCE, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>In the authorization code flow with PKCE, the customer signs in at the bank, the browser carries only a short-lived single-use code to an exactly registered
+address, and the app swaps it directly for tokens by proving it holds the verifier it made for that sign-in, so neither the app nor anyone on the way ever
+sees the password, and a leaked code is worthless.</p>
+<h2>The 5 acts</h2>
+<h3>1. The authorization code flow, step by step</h3>
+<p>The budgeting app sends Ana's browser to the bank's authorization endpoint with the response type code, its client id, its registered redirect address, the
+scope accounts.read, a state and a PKCE code challenge. Ana signs in at the bank, never at the app, and agrees. The bank sends the browser back with a code of
+43 random characters that works for 60 seconds, once. The app checks the state, then calls the bank's token endpoint directly with the code and its code
+verifier, and receives an access token for 300 seconds and a refresh token. It reads Ana's accounts with the access token: 200. The app never saw Ana's
+password, and the browser never saw the access token. The same flow over a real local HTTP server answers 302, 200 and 200.</p>
+<h3>2. PKCE: a code is useless without the verifier</h3>
+<p>The RFC 7636 example verifier gives the S256 challenge E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM, the published value. Only the challenge travels
+through the browser: the request carries it, and not the verifier. When the code leaks, say through a log or a browser history, another app that redeems
+it with no verifier, or with one it made up, is refused because PKCE verification fails. The budgeting app redeems it with the real verifier. A request with
+the plain method, which would send the verifier itself, is refused, and so is a request with no challenge at all.</p>
+<h3>3. Exact redirect addresses, state, and codes that work once</h3>
+<p>The budgeting app registered exactly https://budget.example/callback. That address gets a code; a path that climbs out with <code>..</code>, a host that only starts
+with the same name, an added query and a change of letter case are all refused at the bank, with no redirect. A prefix or wildcard match would have sent
+Ana's code to three of them. Mallory sends Ana a link to the app's callback carrying Mallory's own code, to sign Ana into Mallory's account; the app checks
+the state against Ana's browser session and refuses it. A code redeemed once works; the same code redeemed again is refused, and the access token from the
+first redemption is revoked, because a reused code means it leaked. A code redeemed 61 seconds after it was issued is refused as expired.</p>
+<h3>4. Scopes and refresh tokens</h3>
+<p>The app asked for accounts.read, Ana agreed to that, and the token carries only that scope. GET /accounts answers 200; POST /payments with the same token
+answers 403 insufficient_scope. Asking for payments.write too, which the app never registered, is refused as an invalid scope. When the access token runs
+out, the app refreshes it and gets a new access token and a new refresh token. The old refresh token, copied by a thief and used again, is refused, and the
+whole family is revoked: the newest refresh token held by the real app is refused too, and the newest access token answers 401. One reuse contains the
+theft. An access token 300 seconds old answers 401.</p>
+<h3>5. Current practice, and the bill</h3>
+<p>The implicit flow, which put the access token in the address bar, is refused as an unsupported response type. The password grant, which gives the app Ana's
+password, is refused as an unsupported grant type. Both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1. The
+statements service is a confidential client, so it also authenticates: with a wrong secret it is refused, and with its secret it still needs a real code and
+verifier. A public app on a phone cannot keep a secret, which is why PKCE, not a secret, protects its code. This server leaves out discovery, signed tokens,
+consent records, key rotation and account recovery: in production, run a real authorization server, as in the -with-keycloak version.</p>
+<h2>The verdict</h2>
+<p>Use the authorization code flow with PKCE for every client, public or confidential. Register exact redirect URIs. Bind state to the browser session, or use
+PKCE and OpenID Connect's nonce together. Keep codes single-use and short-lived. Ask for the narrowest scopes. Rotate refresh tokens or bind them to the
+client. Never use the implicit flow or the password grant. And use a maintained authorization server and client library.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>response_type=code</code> and <code>code_challenge_method=S256</code> in an authorization address.</li>
+<li><code>?code=...&amp;state=...</code> in the address after signing in.</li>
+<li><code>invalid_grant</code>, <code>invalid_scope</code> and <code>unsupported_grant_type</code> in token endpoint errors.</li>
+<li>"Connect your account" consent pages that list what an app may do.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Connect your bank account" buttons in budgeting and accounting apps, and the bank page that asks what the app may see.</li>
+<li>"Sign in with" buttons, which use OpenID Connect, built on this flow (the openid-connect project).</li>
+<li>Addresses ending in <code>?code=...&amp;state=...</code> after signing in somewhere.</li>
+<li>Advisories about stolen authorization codes, open redirects and leaked refresh tokens.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,55 @@
+ONE. The authorization code flow, step by step.
+  1. the budgeting app sends Ana's browser to the bank:
+     GET https://bank.example/authorize?response_type=code&client_id=budget-app&redirect_uri=https://budget.example/callback&scope=accounts.read&state=<state>&code_challenge=<code challenge>&code_challenge_method=S256
+  2. Ana signs in at the bank, never at the app, and is asked: budget-app wants to read your accounts (accounts.read). Ana agrees
+  3. the bank sends the browser back: 302 https://budget.example/callback?code=<code>&state=<state>
+     the code is 43 random characters and works for 60 seconds, once
+  4. the app checks the state, then calls the bank directly, not through the browser:
+     POST https://bank.example/token grant_type=authorization_code&code=<code>&redirect_uri=https://budget.example/callback&client_id=budget-app&code_verifier=<code verifier>
+  5. the bank answers with an access token for 300 seconds, scope accounts.read, and a refresh token
+  6. the app reads Ana's accounts: GET /accounts with the access token: 200, ana: 2 accounts
+  the app never saw Ana's password, and the browser never saw the access token
+  the same flow over a real local HTTP server: authorize 302, token 200, accounts 200
+TWO. PKCE: a code is useless without the verifier.
+  the RFC 7636 example verifier dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+  gives the S256 challenge E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM: the published value: true
+  only the challenge travels through the browser: the request carries it: true, and the verifier: false
+  the code leaks, say through a log or a browser history, and another app redeems it:
+    with no verifier: refused (invalid_grant: PKCE verification failed)
+    with a verifier it made up: refused (invalid_grant: PKCE verification failed)
+  the budgeting app redeems it with the real verifier: tokens issued
+  a request with code_challenge_method=plain, which sends the verifier itself: refused (invalid_request: only the S256 code challenge method is accepted)
+  a request with no challenge at all: refused (invalid_request: PKCE is required: send a code_challenge)
+THREE. Exact redirect addresses, state, and codes that work once.
+  the budgeting app registered exactly https://budget.example/callback
+    https://budget.example/callback: a code is sent there
+    https://budget.example/callback/../steal: refused at the bank, no redirect
+    https://budget.example.evil.test/callback: refused at the bank, no redirect
+    https://budget.example/callback?next=evil: refused at the bank, no redirect
+    https://BUDGET.example/callback: refused at the bank, no redirect
+  a prefix or wildcard match would have sent Ana's code to the second, third or fourth address
+  Mallory sends Ana a link to the app's callback carrying Mallory's own code, to sign Ana into Mallory's account:
+    the app checks the state against Ana's browser session: refused (invalid_state: this browser did not start this sign-in)
+  the code is redeemed once: the access token works: 200
+  the same code redeemed again: refused (invalid_grant: the code was already used, so the tokens issued from it are revoked)
+  and the access token from the first redemption is now: 401  <- A REUSED CODE MEANS IT LEAKED, SO EVERYTHING FROM IT IS REVOKED
+  a code redeemed 61 seconds after it was issued: refused (invalid_grant: the code has expired)
+FOUR. Scopes and refresh tokens.
+  the app asked for accounts.read, Ana agreed to that, and the token carries: accounts.read
+  GET /accounts: 200
+  POST /payments with the same token: 403 insufficient_scope
+  asking for payments.write too, which the app never registered: refused (invalid_scope: the client may not ask for [accounts.read, payments.write])
+  the access token runs out, so the app refreshes it: a new access token, and a new refresh token: true
+  the old refresh token, copied by a thief and used again: refused (invalid_grant: the refresh token was used twice, so every token in its family is revoked)
+  the newest refresh token, held by the real app: refused (invalid_grant: the refresh token was revoked)
+  and the newest access token: 401  <- ONE REUSE REVOKES THE WHOLE FAMILY, SO THE THEFT IS CONTAINED
+  an access token 300 seconds old: 401
+FIVE. Current practice, and the bill.
+  the implicit flow, which put the access token in the address bar (response_type=token): refused (unsupported_response_type: only the authorization code flow is offered)
+  the password grant, which gives the app Ana's password: refused (unsupported_grant_type: the password grant is not offered)
+  both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1
+  the statements service is a confidential client, so it also authenticates: with a wrong secret: refused (invalid_client: client authentication failed)
+  with its secret, and still a code and a verifier it does not have: refused (invalid_grant: unknown code)
+  a public app on a phone cannot keep a secret, which is why PKCE, not a secret, protects its code
+  this server leaves out discovery, signed tokens, consent records, key rotation and account recovery:
+  in production, run a real authorization server, as in the -with-keycloak version

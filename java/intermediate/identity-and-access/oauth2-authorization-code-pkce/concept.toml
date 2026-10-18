@@ -1,0 +1,602 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "oauth2-authorization-code-pkce"
+level = "intermediate"
+module = "identity-and-access"
+title = "OAuth 2.0 Authorization Code Flow with PKCE"
+short_title = "OAuth 2.0 with PKCE"
+package = "oauth"
+main_class = "OAuthDemo"
+tagline = "Give an app access without giving it your password"
+bold = "The authorization code flow lets an app read a customer's bank accounts without ever seeing the password: the customer signs in at the bank, the browser carries only a short-lived code, and PKCE makes that code useless to anyone but the app that asked for it. Exact redirect addresses, a state bound to the browser, single-use codes, narrow scopes and rotating refresh tokens close the remaining gaps."
+domain = "an online bank"
+domain_note = ""
+youtube_description = """The OAuth 2.0 authorization code flow with PKCE, in Java with only the JDK. Explained with an online bank and a budgeting app, like a hotel key card that the front desk issues for one room and one stay, without ever handing over the master key. We walk through every message of the flow, show that a leaked authorization code is useless without the PKCE code verifier, checked against the published example in RFC 7636, register exact redirect addresses so a code cannot be sent anywhere else, bind the state to the browser to stop login forgery, make codes single-use and short-lived, limit the app with scopes, rotate refresh tokens so that a stolen one revokes the whole family, and finish with current practice from RFC 9700: no implicit flow, no password grant, and a real authorization server in production."""
+thumb_lines = ["OAUTH 2.0", "CODE FLOW + PKCE"]
+thumb_code = "code_challenge_method=S256"
+youtube_title = "OAuth 2.0 Authorization Code Flow with PKCE in Java (RFC 7636, RFC 9700)"
+youtube_tags = ["oauth 2.0", "pkce", "authorization code flow", "rfc 9700", "rfc 7636", "refresh token rotation", "redirect uri", "api security", "java", "application security"]
+
+[readme]
+intro = """
+**OAuth 2.0** (RFC 6749) lets a customer give an app limited access to an account without giving it the password. In the **authorization code flow**
+the app sends the customer's browser to the bank's **authorization server**; the customer signs in there and agrees to a **scope**, such as
+"read your accounts"; the browser comes back to the app's registered **redirect URI** with a short-lived **authorization code**; and the app swaps
+that code, directly with the bank, for an **access token**. **PKCE**, Proof Key for Code Exchange (RFC 7636), adds a secret the app makes for each
+sign-in, so that a code which leaks through a log or a browser history cannot be redeemed by anyone else. **RFC 9700**, the OAuth 2.0 Security Best
+Current Practice, makes PKCE, exact redirect matching and refresh token rotation the norm, and removes the implicit flow and the password grant.
+
+This project maps to **OWASP Top 10 (2025) A07 Authentication Failures**; to **CWE-352**, cross-site request forgery, which here takes the form of
+login forgery, and **CWE-601**, open redirect; and to the **OAuth and OIDC** chapter of **OWASP ASVS 5.0**.
+
+The demo builds an authorization server, a bank API and a budgeting app with the JDK alone, runs the whole flow in memory and over a real local HTTP
+server, and checks PKCE against the example that RFC 7636 publishes. Every mistake is shown as a request that the correctly built server or app refuses.
+"""
+analogy = """
+Think of a hotel. A guest never gives the cleaning company the master key. The front desk issues a key card for one room, for one stay, after checking
+the guest's identity at the desk. OAuth is the front desk: the customer proves who they are to the bank, not to the app, and the app gets a card that
+opens only what was agreed, only for a while. PKCE is the card being useless unless it is collected by the person holding the matching receipt.
+"""
+scenario = """
+An online bank lets a budgeting app read a customer's accounts. The demo walks through the flow message by message, then shows what happens when a code
+leaks, when a redirect address is changed, when another person's sign-in is pushed into the customer's browser, when a code is used twice, when the app
+asks for more than it registered, and when a refresh token is stolen.
+"""
+costs = [
+    "**More moving parts than a password form.** Redirects, codes, states, verifiers and two kinds of token must all be handled correctly, which is why a maintained authorization server and client library are used in production.",
+    "**Access tokens cannot be called back instantly** unless the API checks with the authorization server on every request, as this one does; self-contained tokens trade that check for speed, so they must be short-lived.",
+    "**Refresh token rotation punishes the honest app too.** When a stolen token is reused, the whole family is revoked and the customer must sign in again, which is the price of containing the theft.",
+    "**Exact redirect matching is strict on purpose.** Every environment and every app variant needs its own registered address.",
+    "**A hand-written server is for learning.** It leaves out discovery, signed tokens, consent records, key rotation and account recovery; see the `-with-keycloak` version.",
+]
+too_much = """
+An application that signs its own users in, with no third-party app involved, does not need OAuth at all: a session cookie is simpler. OAuth earns its
+place when one party's app needs limited access to an account held by another party, or when many applications share one sign-in.
+"""
+met_before = [
+    "\"Connect your bank account\" buttons in budgeting and accounting apps, and the bank page that asks what the app may see.",
+    "\"Sign in with\" buttons, which use OpenID Connect, built on this flow (the openid-connect project).",
+    "Addresses ending in `?code=...&state=...` after signing in somewhere.",
+    "Advisories about stolen authorization codes, open redirects and leaked refresh tokens.",
+]
+where = """
+This project follows [jwt-done-right](../jwt-done-right) in [identity-and-access](..), part of the [intermediate track](../..). It builds on the beginner
+projects [authentication-vs-authorization](../../../beginner/identity/authentication-vs-authorization) and [hashing-and-integrity](../../../beginner/cryptography/hashing-and-integrity).
+"""
+twin = """
+The authorization server, the bank API and the app run in memory with a simulated clock in whole seconds; act one also runs the flow over a real HTTP
+server on the loopback interface, and prints only status codes. Codes, tokens and states come from a secure random source and are never printed:
+messages show what each part is instead. The bank's sign-in and consent pages are stood in for by two parameters. Host names such as bank.example are
+labels; nothing leaves the machine.
+"""
+test_note = "PKCE is checked against RFC 7636 appendix B. Every refusal is a test with its exact OAuth error, and the whole flow is also tested over a real local HTTP server. Random codes and tokens are never printed, so the golden output is the same on every run."
+
+[[act]]
+title = "The authorization code flow, step by step"
+summary = "The app sends the browser to the bank, Ana signs in and agrees to accounts.read, the browser returns with a 43-character code that works for 60 seconds once, the app swaps it directly for an access token of 300 seconds, and reads the accounts: 200, also over a real local HTTP server."
+detail = """
+The budgeting app sends Ana's browser to the bank's authorization endpoint with the response type code, its client id, its registered redirect address, the
+scope accounts.read, a state and a PKCE code challenge. Ana signs in at the bank, never at the app, and agrees. The bank sends the browser back with a code of
+43 random characters that works for 60 seconds, once. The app checks the state, then calls the bank's token endpoint directly with the code and its code
+verifier, and receives an access token for 300 seconds and a refresh token. It reads Ana's accounts with the access token: 200. The app never saw Ana's
+password, and the browser never saw the access token. The same flow over a real local HTTP server answers 302, 200 and 200.
+"""
+speech = """
+First demo: the flow, step by step. [[slnc 400]] The budgeting app sends Ana's browser to the bank. [[slnc 300]] It says who it is, where to send Ana back, what it wants, and adds a challenge. [[slnc 600]]
+Ana signs in at the bank, never at the app, and agrees to let the app read the accounts. [[slnc 600]]
+The bank sends the browser back with a short code. [[slnc 300]] Forty three random characters, good for sixty seconds, and only once. [[slnc 600]]
+The app checks the state, then calls the bank directly, and swaps the code for an access token. [[slnc 600]]
+With that token it reads the accounts. [[slnc 300]] The app never saw the password. [[slnc 300]] And the browser never saw the token.
+"""
+rows = { flow = "active ok" }
+console = [
+    ["GET https://bank.example/authorize?response_type=code&client_id=budget-app&redirect_uri=...&scope=accounts.read&state=<state>&code_challenge=<code challenge>&code_challenge_method=S256", "muted"],
+    ["Ana signs in at the bank, never at the app, and is asked: budget-app wants to read your accounts (accounts.read). Ana agrees", "muted"],
+    ["the bank sends the browser back: 302 https://budget.example/callback?code=<code>&state=<state>", "muted"],
+    ["the code is 43 random characters and works for 60 seconds, once", "amber"],
+    ["the bank answers with an access token for 300 seconds, scope accounts.read, and a refresh token", "ok"],
+    ["the app reads Ana's accounts: GET /accounts with the access token: 200, ana: 2 accounts", "ok"],
+    ["the same flow over a real local HTTP server: authorize 302, token 200, accounts 200", "ok"],
+]
+
+[[act]]
+title = "PKCE: a code is useless without the verifier"
+summary = "The RFC 7636 verifier gives the published S256 challenge; only the challenge travels through the browser; a leaked code redeemed with no verifier or a made-up one is refused; plain and missing challenges are refused."
+detail = """
+The RFC 7636 example verifier gives the S256 challenge E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM, the published value. Only the challenge travels
+through the browser: the request carries it, and not the verifier. When the code leaks, say through a log or a browser history, another app that redeems
+it with no verifier, or with one it made up, is refused because PKCE verification fails. The budgeting app redeems it with the real verifier. A request with
+the plain method, which would send the verifier itself, is refused, and so is a request with no challenge at all.
+"""
+speech = """
+Second demo: P K C E, often said pixie. [[slnc 400]] For every sign in, the app makes a secret, called the verifier. [[slnc 300]] It sends only a hash of it, called the challenge. [[slnc 600]]
+The published example from the standard gives exactly the published challenge. [[slnc 600]]
+Now suppose the code leaks, through a log, or a browser history. [[slnc 300]] Another app tries to redeem it. [[slnc 300]] Without the verifier, it is refused. [[slnc 300]] With a verifier it made up, it is refused. [[slnc 600]]
+The real app, holding the verifier, gets its tokens. [[slnc 600]]
+And the bank refuses the plain method, which would send the verifier itself, and refuses a request with no challenge at all.
+"""
+rows = { pkce = "active ok" }
+console = [
+    ["the RFC 7636 example verifier dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "muted"],
+    ["gives the S256 challenge E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM: the published value: true", "ok"],
+    ["only the challenge travels through the browser: the request carries it: true, and the verifier: false", "ok"],
+    ["a leaked code redeemed with no verifier: refused (invalid_grant: PKCE verification failed)", "ok"],
+    ["with a verifier it made up: refused (invalid_grant: PKCE verification failed)", "ok"],
+    ["the budgeting app redeems it with the real verifier: tokens issued", "ok"],
+    ["code_challenge_method=plain: refused (invalid_request: only the S256 code challenge method is accepted)", "ok"],
+]
+
+[[act]]
+title = "Exact redirect addresses, state, and codes that work once"
+summary = "Only the exact registered redirect address gets a code; a forced sign-in into Mallory's account is refused by the state check; a reused code is refused and revokes the token it gave; a code 61 seconds old is refused."
+detail = """
+The budgeting app registered exactly https://budget.example/callback. That address gets a code; a path that climbs out with `..`, a host that only starts
+with the same name, an added query and a change of letter case are all refused at the bank, with no redirect. A prefix or wildcard match would have sent
+Ana's code to three of them. Mallory sends Ana a link to the app's callback carrying Mallory's own code, to sign Ana into Mallory's account; the app checks
+the state against Ana's browser session and refuses it. A code redeemed once works; the same code redeemed again is refused, and the access token from the
+first redemption is revoked, because a reused code means it leaked. A code redeemed 61 seconds after it was issued is refused as expired.
+"""
+speech = """
+Third demo: exact addresses, state, and codes that work once. [[slnc 400]] The app registered one redirect address. [[slnc 300]] Only that exact address gets a code. [[slnc 600]]
+A path that climbs out, a look alike host, an extra parameter, and even a change of letter case are refused at the bank. [[slnc 300]] A prefix match would have sent Ana's code away. [[slnc 600]]
+Next, Mallory sends Ana a link, carrying Mallory's own code, to sign Ana into Mallory's account. [[slnc 300]] The app checks the state against Ana's browser, and refuses it. [[slnc 600]]
+A code works once. [[slnc 300]] Used again, it is refused. [[slnc 300]] And the token from the first use is revoked, because a reused code means it leaked. [[slnc 600]]
+And a code more than a minute old is refused.
+"""
+rows = { redirect = "active ok" }
+console = [
+    ["https://budget.example/callback: a code is sent there", "ok"],
+    ["https://budget.example/callback/../steal: refused at the bank, no redirect", "ok"],
+    ["https://budget.example.evil.test/callback: refused at the bank, no redirect", "ok"],
+    ["the app checks the state against Ana's browser session: refused (invalid_state: this browser did not start this sign-in)", "ok"],
+    ["the same code redeemed again: refused (invalid_grant: the code was already used, so the tokens issued from it are revoked)", "ok"],
+    ["and the access token from the first redemption is now: 401  <- A REUSED CODE MEANS IT LEAKED, SO EVERYTHING FROM IT IS REVOKED", "amber"],
+    ["a code redeemed 61 seconds after it was issued: refused (invalid_grant: the code has expired)", "ok"],
+]
+
+[[act]]
+title = "Scopes and refresh tokens"
+summary = "The token carries only accounts.read, so a payment is 403; asking for payments.write is refused; refresh tokens rotate, and reusing an old one revokes the whole family; an access token 300 seconds old is 401."
+detail = """
+The app asked for accounts.read, Ana agreed to that, and the token carries only that scope. GET /accounts answers 200; POST /payments with the same token
+answers 403 insufficient_scope. Asking for payments.write too, which the app never registered, is refused as an invalid scope. When the access token runs
+out, the app refreshes it and gets a new access token and a new refresh token. The old refresh token, copied by a thief and used again, is refused, and the
+whole family is revoked: the newest refresh token held by the real app is refused too, and the newest access token answers 401. One reuse contains the
+theft. An access token 300 seconds old answers 401.
+"""
+speech = """
+Fourth demo: scopes and refresh tokens. [[slnc 400]] The app asked only to read the accounts. [[slnc 300]] So its token can read, and cannot pay. [[slnc 300]] A payment is refused. [[slnc 600]]
+Asking for payments too, which the app never registered, is refused. [[slnc 600]]
+When the access token runs out, the app swaps its refresh token for a new pair. [[slnc 300]] The old refresh token is now spent. [[slnc 600]]
+If a thief copied it and uses it again, the bank refuses it, and revokes the whole family. [[slnc 300]] Even the real app's newest tokens stop working. [[slnc 300]] The theft is contained, at the price of Ana signing in again. [[slnc 600]]
+And every access token expires after five minutes.
+"""
+rows = { scope = "active ok" }
+console = [
+    ["the app asked for accounts.read, Ana agreed to that, and the token carries: accounts.read", "muted"],
+    ["POST /payments with the same token: 403 insufficient_scope", "ok"],
+    ["asking for payments.write too, which the app never registered: refused (invalid_scope: ...)", "ok"],
+    ["the access token runs out, so the app refreshes it: a new access token, and a new refresh token: true", "muted"],
+    ["the old refresh token, copied by a thief and used again: refused (invalid_grant: the refresh token was used twice, so every token in its family is revoked)", "ok"],
+    ["and the newest access token: 401  <- ONE REUSE REVOKES THE WHOLE FAMILY, SO THE THEFT IS CONTAINED", "amber"],
+    ["an access token 300 seconds old: 401", "ok"],
+]
+
+[[act]]
+title = "Current practice, and the bill"
+summary = "The implicit flow and the password grant are refused, as RFC 9700 and OAuth 2.1 require; a confidential client must authenticate; and production needs a real authorization server."
+detail = """
+The implicit flow, which put the access token in the address bar, is refused as an unsupported response type. The password grant, which gives the app Ana's
+password, is refused as an unsupported grant type. Both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1. The
+statements service is a confidential client, so it also authenticates: with a wrong secret it is refused, and with its secret it still needs a real code and
+verifier. A public app on a phone cannot keep a secret, which is why PKCE, not a secret, protects its code. This server leaves out discovery, signed tokens,
+consent records, key rotation and account recovery: in production, run a real authorization server, as in the -with-keycloak version.
+"""
+speech = """
+Fifth demo: current practice, and the bill. [[slnc 400]] The implicit flow, which put the token in the address bar, is refused. [[slnc 300]] The password grant, which hands the app the password, is refused. [[slnc 300]] The current best practice removes both. [[slnc 600]]
+A service that runs on a server is a confidential client, so it also proves who it is with a secret. [[slnc 300]] An app on a phone cannot keep a secret, which is why P K C E protects its code instead. [[slnc 600]]
+And the bill. [[slnc 300]] This small server leaves out discovery, signed tokens, consent records, and key rotation. [[slnc 300]] In production, run a real authorization server.
+"""
+rows = { practice = "active amber" }
+console = [
+    ["the implicit flow (response_type=token): refused (unsupported_response_type: only the authorization code flow is offered)", "ok"],
+    ["the password grant: refused (unsupported_grant_type: the password grant is not offered)", "ok"],
+    ["both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1", "muted"],
+    ["the statements service is a confidential client: with a wrong secret: refused (invalid_client: client authentication failed)", "ok"],
+    ["a public app on a phone cannot keep a secret, which is why PKCE, not a secret, protects its code", "amber"],
+    ["in production, run a real authorization server, as in the -with-keycloak version", "amber"],
+]
+
+[animation]
+subtitle = "A budgeting app gets read access to Ana's bank accounts, without ever seeing Ana's password."
+boxes = [
+    ["flow", "Code flow", "browser carries a code, not a token"],
+    ["pkce", "PKCE", "the code is useless without the verifier"],
+    ["redirect", "Exact redirects", "state, and codes that work once"],
+    ["scope", "Scopes", "read is not pay; refresh tokens rotate"],
+    ["practice", "Current practice", "no implicit, no password grant"],
+]
+
+[docs.problem]
+scenario = """
+An online bank wants customers to connect a budgeting app that reads their accounts. The app is written by another company, and the bank must not let it see
+the customer's password, move money, or keep access for ever.
+"""
+naive = """
+Ask the customer for the bank password inside the app, or send the access token straight back through the browser's address bar, and match redirect
+addresses by prefix so every environment works.
+"""
+deliver = [
+    "An authorization server with the authorization and token endpoints, built with the JDK.",
+    "PKCE with S256 only, checked against RFC 7636 appendix B.",
+    "Exact redirect URI matching, with errors shown at the bank instead of redirected.",
+    "A state bound to the browser session, single-use codes that expire after 60 seconds, and revocation when a code is reused.",
+    "Scopes enforced by the bank's API, and refresh token rotation with reuse detection.",
+    "The whole flow over a real local HTTP server.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The jwt-done-right project, or an idea of what an access token is",
+    "What an HTTP redirect is",
+]
+not_required = [
+    "An OAuth library or an identity provider",
+    "A browser: the browser is modelled in Java",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "draw the authorization code flow and say which party sees which secret",
+    "explain what PKCE protects against and why S256 is required",
+    "explain why redirect URIs must match exactly and why state is bound to the browser",
+    "describe refresh token rotation and what reuse detection does",
+    "name the two grants that current practice removes, and why",
+]
+walkthrough = """
+Start with the hotel key card. Run the demo one act at a time. After act one, ask who saw the password, who saw the code and who saw the token. After act
+two, ask where a code can leak in a real phone or browser. In act three, ask what a prefix match would have allowed. In act four, ask why the honest app
+loses its tokens too when a thief reuses a refresh token, and whether that is the right trade.
+"""
+exercises = [
+    "Add a second registered redirect address for a test environment and check that each still matches only itself.",
+    "Make codes last 10 minutes instead of 60 seconds and write the test that shows the risk.",
+    "Add a `prompt=consent` option that forces the consent question again, and store what each customer agreed to.",
+    "Change the bank API to accept self-contained JWT access tokens from the jwt-done-right project, and list what is lost when it stops calling the server.",
+]
+
+[docs.explained]
+sentence = """
+In the authorization code flow with PKCE, the customer signs in at the bank, the browser carries only a short-lived single-use code to an exactly registered
+address, and the app swaps it directly for tokens by proving it holds the verifier it made for that sign-in, so neither the app nor anyone on the way ever
+sees the password, and a leaked code is worthless.
+"""
+verdict = """
+Use the authorization code flow with PKCE for every client, public or confidential. Register exact redirect URIs. Bind state to the browser session, or use
+PKCE and OpenID Connect's nonce together. Keep codes single-use and short-lived. Ask for the narrowest scopes. Rotate refresh tokens or bind them to the
+client. Never use the implicit flow or the password grant. And use a maintained authorization server and client library.
+"""
+recognise = [
+    "`response_type=code` and `code_challenge_method=S256` in an authorization address.",
+    "`?code=...&state=...` in the address after signing in.",
+    "`invalid_grant`, `invalid_scope` and `unsupported_grant_type` in token endpoint errors.",
+    "\"Connect your account\" consent pages that list what an app may do.",
+]
+
+[spec]
+purpose = """
+Teach the OAuth 2.0 authorization code flow with PKCE as RFC 9700 describes it, by building an authorization server, a resource server and a client with the
+JDK, and showing each attack as a request that the correct implementation refuses.
+"""
+nongoals = [
+    "OpenID Connect sign-in and ID tokens: the openid-connect project.",
+    "Tokens in single-page apps and the backend-for-frontend pattern: the tokens-in-the-browser project.",
+    "Validating self-contained JWT access tokens: the jwt-done-right project.",
+]
+problem = """
+Learners meet OAuth through libraries and identity providers and rarely see each message; the common failures are loose redirect matching, missing PKCE,
+missing state checks, long-lived codes and refresh tokens that never rotate.
+"""
+roles = [["The authorization server", "`AuthorizationServer`"], ["What the bank knows about a client", "`ClientRegistration`"], ["PKCE", "`Pkce`"], ["The bank's API", "`BankApi`"], ["The budgeting app", "`BudgetApp`"], ["The token endpoint as the app sees it", "`TokenEndpoint`"], ["The same over HTTP", "`LoopbackBank`"], ["Query strings and forms", "`Urls`"], ["OAuth errors", "`OAuthException`"], ["Entry point", "`OAuthDemo`"]]
+requirements = [
+    "PKCE matches RFC 7636 appendix B, only S256 is accepted, and a code without the right verifier is refused.",
+    "Only exactly registered redirect URIs get a code; other errors about the client are shown at the bank.",
+    "A callback is accepted only with the state its browser session was given.",
+    "Codes are single-use, expire after 60 seconds, and a reuse revokes what the first use issued.",
+    "Scopes are limited to what the client registered and enforced by the API; refresh tokens rotate and a reuse revokes the family.",
+    "The implicit flow and the password grant are refused; confidential clients authenticate.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who talks to whom"
+caption = "The browser carries only the code; the app swaps it directly with the bank; the API asks the bank about every token."
+nodes = [
+    { id = "ana", label = "Ana's browser", sub = "signs in at the bank", col = 0, row = 0, colour = "client" },
+    { id = "app", label = "Budgeting app", sub = "public client, holds the verifier", col = 1, row = 0, colour = "amber" },
+    { id = "as", label = "Authorization server", sub = "sign-in, consent, codes, tokens", col = 2, row = 0, colour = "green" },
+    { id = "api", label = "Bank API", sub = "accounts and payments", col = 2, row = 1, colour = "accent", shape = "store" },
+]
+edges = [
+    { from = "ana", to = "as", label = "authorize, sign in, consent" },
+    { from = "as", to = "ana", label = "302 with code and state", dashed = true },
+    { from = "app", to = "as", label = "code + verifier for tokens" },
+    { from = "app", to = "api", label = "Bearer access token" },
+    { from = "api", to = "as", label = "is this token active?", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The authorization server owns codes and tokens; the app owns states and verifiers; the API trusts only the server's answer."
+nodes = [
+    { id = "as", label = "AuthorizationServer", sub = ["authorize(params, user, consent)", "token(form)", "introspect(token)"], col = 0, row = 0, colour = "green" },
+    { id = "reg", label = "ClientRegistration", sub = ["registered(redirectUri)", "secretMatches(secret)"], col = 1, row = 0, colour = "accent" },
+    { id = "pkce", label = "Pkce", sub = ["challenge(verifier)", "matches(challenge, verifier)"], col = 2, row = 0, colour = "accent" },
+    { id = "app", label = "BudgetApp", sub = ["startLogin(session, scope)", "callback(session, query)"], col = 0, row = 1, colour = "amber" },
+    { id = "api", label = "BankApi", sub = ["call(method, path, authorization)"], col = 1, row = 1, colour = "client" },
+    { id = "http", label = "LoopbackBank", sub = ["authorize, token, accounts over HTTP"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "as", to = "reg", label = "checks" },
+    { from = "as", to = "pkce", label = "verifies with" },
+    { from = "app", to = "as", label = "calls the token endpoint" },
+    { from = "api", to = "as", label = "introspects" },
+    { from = "http", to = "as", label = "serves" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What PKCE binds together"
+caption = "The challenge goes with the request; the verifier goes only with the token request, directly from the app."
+nodes = [
+    { id = "v", label = "Code verifier", sub = "43 random characters, kept by the app", col = 0, row = 0, colour = "amber" },
+    { id = "c", label = "Code challenge", sub = "BASE64URL(SHA-256(verifier))", col = 1, row = 0, colour = "accent" },
+    { id = "code", label = "Authorization code", sub = "bound to the challenge", col = 2, row = 0, colour = "green" },
+    { id = "check", label = "Token endpoint", sub = "hash the verifier, compare", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "v", to = "c", label = "SHA-256" },
+    { from = "c", to = "code", label = "stored with" },
+    { from = "code", to = "check", label = "redeemed with the verifier" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "The authorization code flow with PKCE: who sends what, in order"
+participants = ["Browser", "Budgeting app", "Authorization server", "Bank API"]
+steps = [
+    ["Budgeting app", "Browser", "go to the bank: client, redirect, scope, state, challenge"],
+    ["Browser", "Authorization server", "GET /authorize"],
+    ["note", "Authorization server", "Ana signs in and agrees"],
+    ["Authorization server", "Browser", "302 to the redirect URI with code and state", "reply"],
+    ["Browser", "Budgeting app", "callback with code and state"],
+    ["Budgeting app", "Authorization server", "POST /token: code, redirect, verifier"],
+    ["Authorization server", "Budgeting app", "access token and refresh token", "reply"],
+    ["Budgeting app", "Bank API", "GET /accounts with Bearer token"],
+    ["Bank API", "Budgeting app", "200", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A leaked code without the verifier"
+caption = "The code alone is not enough: the token endpoint hashes the verifier and compares."
+participants = ["Another app", "Authorization server"]
+steps = [
+    ["note", "Another app", "has the code from a log"],
+    ["Another app", "Authorization server", "POST /token with the code and a made-up verifier"],
+    ["note", "Authorization server", "SHA-256 of the verifier does not match the challenge"],
+    ["Authorization server", "Another app", "400 invalid_grant", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A stolen refresh token is reused"
+caption = "Rotation makes the old token single-use; its reuse revokes the family."
+participants = ["Thief", "Budgeting app", "Authorization server"]
+steps = [
+    ["Budgeting app", "Authorization server", "refresh with token one"],
+    ["Authorization server", "Budgeting app", "access token two, refresh token two", "reply"],
+    ["Thief", "Authorization server", "refresh with token one, copied earlier"],
+    ["note", "Authorization server", "token one was already used: revoke the family"],
+    ["Authorization server", "Thief", "400 invalid_grant", "reply"],
+    ["Budgeting app", "Authorization server", "refresh with token two"],
+    ["Authorization server", "Budgeting app", "400 invalid_grant: Ana signs in again", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The bank", nodes = ["as", "api"], colour = "green" },
+    { label = "Customer's device", nodes = ["browser", "app"], colour = "amber" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "browser", label = "Browser", sub = "carries the code and state", col = 0, row = 0, colour = "client", threats = ["T1", "T3"] },
+    { id = "app", label = "Budgeting app", sub = "public client", col = 0, row = 1, colour = "amber", threats = ["T4"] },
+    { id = "as", label = "Authorization server", sub = "codes, tokens, clients", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T2", "T5", "T6"] },
+    { id = "api", label = "Bank API", sub = "checks every token", col = 1, row = 1, colour = "accent", shape = "store", threats = ["T4"] },
+    { id = "attacker", label = "Attacker", sub = "reads logs, sends links, copies tokens", col = 2, row = 0, colour = "red", threats = ["T1", "T2", "T3", "T5"] },
+]
+edges = [
+    { from = "browser", to = "as", label = "authorize" },
+    { from = "app", to = "as", label = "token request" },
+    { from = "app", to = "api", label = "Bearer token" },
+    { from = "attacker", to = "as", label = "leaked code, changed redirect", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "attacker", to = "browser", label = "forced callback link", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "attacker", to = "as", label = "reused refresh token", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["OAUTH 2.0", "text"], ["CODE FLOW + PKCE", "accent"]]
+taglines = [["Give an app access without giving it your password", "gold"]]
+before = { code = "give the app your password", note = "or a token in the address bar", tag = "BEFORE" }
+after = { code = "code + PKCE, exact redirect", note = "short, single-use, narrow", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "OAuth 2.0 Authorization Code Flow with PKCE"
+narration = """Hello, and welcome. [[slnc 400]] This video explains the O Auth authorization code flow, with P K C E, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] O Auth lets a customer give an app limited access to an account, without giving it the password. [[slnc 600]] Think of a hotel. [[slnc 300]] A guest never hands the cleaning company the master key. [[slnc 300]] The front desk checks the guest, then issues a key card for one room, for one stay. [[slnc 700]] In this video, the domain is an online bank, and a budgeting app. [[slnc 500]] By the end, you will hear every message of the flow. [[slnc 300]] Why a leaked code is useless with P K C E. [[slnc 300]] Why redirect addresses must match exactly. [[slnc 300]] And how a stolen refresh token is contained."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A budgeting app wants to read", "Ana's bank accounts.", "", "It must never see the password,", "never move money,", "and never keep access for ever."]
+narration = """Here is the scenario. [[slnc 400]] A budgeting app, written by another company, wants to read Ana's bank accounts. [[slnc 500]] It must never see the password. [[slnc 300]] It must never move money. [[slnc 300]] And it must not keep access for ever."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Authorization server: the bank's sign-in and token service", "Client: the app asking for access", "Code: a short-lived ticket the browser carries", "Access token: what the app shows the API", "Scope: what the access allows"]
+narration = """Before the demos, the words. [[slnc 500]] The authorization server is the bank's sign in and token service. [[slnc 500]] The client is the app asking for access. [[slnc 500]] The code is a short lived ticket that the browser carries back. [[slnc 500]] The access token is what the app shows the bank's A P I. [[slnc 500]] And the scope is what the access allows, such as reading accounts."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Who Sees What"
+body = ["The bank sees the password", "The browser sees only the code and state", "The app sees the code, verifier and tokens", "The API sees only the access token", "Nobody else sees anything useful"]
+narration = """Let's put it side by side. [[slnc 400]] Only the bank sees the password. [[slnc 500]] The browser sees only the code and the state. [[slnc 500]] The app sees the code, its own verifier, and the tokens. [[slnc 500]] The A P I sees only the access token. [[slnc 500]] And anyone who reads a log or a history finds a code that is useless without the verifier."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["AuthorizationServer: codes and tokens", "ClientRegistration: exact redirects, secrets", "Pkce: verifier and challenge", "BankApi: checks scope on every call", "BudgetApp: state and verifier per sign-in"]
+narration = """Here is who does what in the code. [[slnc 400]] The authorization server issues codes and tokens, and checks every rule. [[slnc 500]] The client registration holds the exact redirect addresses, and a secret for server side clients. [[slnc 500]] The P K C E class makes and checks the verifier and challenge. [[slnc 500]] The bank A P I checks the scope on every call. [[slnc 300]] And the budgeting app keeps a state and a verifier for each sign in."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["\"Connect your bank account\" buttons", "\"Sign in with\" buttons", "Addresses ending in ?code=...&state=...", "Consent pages listing what an app may do"]
+narration = """You have probably met this already. [[slnc 400]] Connect your bank account buttons in budgeting apps use it. [[slnc 500]] Sign in with buttons are built on it. [[slnc 500]] Addresses that end in code, and state, after signing in somewhere, are this flow. [[slnc 500]] And consent pages that list what an app may do are its second step."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Code flow with PKCE, S256, for every client", "Exact redirect URIs", "State bound to the browser", "Short, single-use codes; narrow scopes", "Rotating refresh tokens; a real server"]
+narration = """So, how do you use it? [[slnc 400]] Use the code flow with P K C E for every client. [[slnc 500]] Register exact redirect addresses. [[slnc 500]] Bind the state to the browser. [[slnc 500]] Keep codes short lived and single use, and ask for the narrowest scopes. [[slnc 500]] Rotate refresh tokens, and in production, use a real authorization server."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Register a second", "redirect address and test it."]
+narration = """That's the O Auth authorization code flow with P K C E. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The customer signs in at the bank, the browser carries only a short lived code, and P K C E makes that code useless to anyone but the app that asked for it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Register a second redirect address for a test environment, and check that each one matches only itself. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+The OAuth 2.0 authorization code flow between a customer's browser, a public budgeting app, the bank's authorization server and the bank's accounts API:
+authorization requests, redirects, the token endpoint, refresh tokens and API calls. It covers an attacker who can read logs and browser histories, send
+links, change request parameters and copy tokens. It does not cover the bank's sign-in page itself, a compromised device, or OpenID Connect.
+"""
+assets = [
+    "Ana's password, which only the bank may see.",
+    "Authorization codes, access tokens and refresh tokens.",
+    "The registered redirect URIs and the confidential client's secret.",
+    "Ana's accounts, and the ability to move money.",
+]
+actors = [
+    "Ana, the customer, using a browser.",
+    "The budgeting app, a public client.",
+    "The bank's statements service, a confidential client.",
+    "An attacker who reads logs, sends links and copies tokens.",
+]
+boundaries = [
+    "Browser to authorization server: everything in the address bar is visible and changeable.",
+    "App to token endpoint: the only place codes become tokens.",
+    "App to bank API: every request carries a token that the API must check.",
+]
+assumptions = [
+    "All real traffic uses TLS; the demo's loopback HTTP is for the lab only.",
+    "The bank's sign-in page authenticates Ana correctly.",
+    "Codes, tokens, states and verifiers come from a secure random source.",
+]
+out_of_scope = [
+    "OpenID Connect and ID tokens: the openid-connect project.",
+    "Tokens in single-page apps: the tokens-in-the-browser project.",
+    "A compromised device or browser.",
+]
+tests = [
+    "`PkceTest` checks the RFC 7636 appendix B example, verifier rules and mismatches.",
+    "`AuthorizationServerTest` checks exact redirects, PKCE, single-use and expiring codes, revocation on reuse, scopes, refresh rotation, removed grants and client authentication.",
+    "`BudgetAppTest` checks states per browser session, forced callbacks and errors from the bank.",
+    "`LoopbackTest` runs the whole flow over a real local HTTP server.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, openid-connect, adds sign-in on top of this flow: ID tokens, nonce, discovery and logout.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "An authorization code leaks through a log, a browser history or a referrer and is redeemed by someone else"
+where = "`AuthorizationServer.token`"
+control = "PKCE with S256: the code is bound to a challenge and redeemed only with its verifier"
+residual = "A device that is itself compromised can read the verifier too"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A changed redirect URI sends the code to an attacker's address"
+where = "`ClientRegistration.registered`"
+control = "Exact string matching of registered redirect URIs; errors about the redirect are shown at the bank, never redirected"
+residual = "A registered address that itself has an open redirect would still leak codes"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A forced callback signs the customer into the attacker's account (login forgery)"
+where = "`BudgetApp.callback`"
+control = "A state made for each sign-in, bound to the browser session, checked in constant time and used once"
+residual = "An app that skips the state check is exposed; OpenID Connect adds a nonce as well"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "An app uses its token for more than the customer agreed to"
+where = "`BankApi.call`, `AuthorizationServer.authorize`"
+control = "Scopes limited to what the client registered, shown at consent and enforced by the API on every call"
+residual = "A customer may agree to more than the app needs; consent screens must be clear"
+
+[[threat]]
+id = "T5"
+stride = "S"
+threat = "A stolen refresh token gives an attacker lasting access"
+where = "`AuthorizationServer.token` (refresh)"
+control = "Rotation on every use, and reuse detection that revokes the whole family"
+residual = "The attacker keeps access until the next real refresh; short access tokens limit the window"
+
+[[threat]]
+id = "T6"
+stride = "I"
+threat = "The implicit flow or the password grant exposes tokens or passwords"
+where = "`AuthorizationServer.authorize`, `AuthorizationServer.token`"
+control = "Both are refused; confidential clients authenticate; public clients rely on PKCE"
+residual = "A real deployment must keep these off as it adds clients and features"
