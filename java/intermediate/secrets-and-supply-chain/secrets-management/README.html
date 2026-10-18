@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secrets Management</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secrets Management</h1>
+<pre><code>src/main/java/com/jk/explore/security/secrets/
+├── Database.java         The store's database, which accepts a login only for an account that exists, has not expired, and has the right password
+├── ImageLayers.java      A container image modelled as a stack of layer archives
+├── MountedSecrets.java   Secrets injected at run time as files in a mounted folder (as container platforms do with /run/secrets), read once at startup
+├── PaymentProvider.java  The payment provider's side of an API key
+├── Secret.java           A secret value that cannot be printed by accident: toString, string concatenation and log lines show &quot;[redacted]&quot;
+├── SecretScanner.java    Finds secrets written into files, the way repository and image scanners do: by the name of the setting (password, secret, api key, token) and by how random a long value looks (its Shannon entropy)
+├── SecretsDemo.java      Runs the online store story in five numbered acts and prints exact, repeatable results
+├── SecretsService.java   A small secrets service, run in the same process to keep the lab self-contained
+└── SimClock.java         A clock in seconds that moves only when told to, so leases and rotations are the same on every run
+</code></pre>
+<p><strong>Secrets leak from code, environment variables and image layers; inject them at run time from owner-only files, keep them out of logs, and better still lease short-lived, per-application logins from a secrets service that can rotate and revoke them.</strong></p>
+<p>Every application has secrets: a database password, an API key for the payment provider, a signing key. The beginner project
+<a href="../../../beginner/cryptography/keystore-basics">keystore-basics</a> showed where a key can live on one machine. This project looks at how
+secrets reach a running application, and how they <strong>leak</strong> on the way: written into a configuration file and committed, passed in an
+<strong>environment variable</strong> that every child process and crash report can read, or copied into a container <strong>image layer</strong> that a later layer
+only hides. The fixes are <strong>run-time injection</strong> from a file only the application can read, a <strong>Secret</strong> type that never prints its value,
+and better still a <strong>secrets service</strong> that gives each application its own <strong>leased</strong> login with a time to live, so a stolen login stops
+working by itself, and can be <strong>rotated</strong> and <strong>revoked</strong> without downtime.</p>
+<p>It maps to OWASP Top 10 (2025) A02 Security Misconfiguration and A04 Cryptographic Failures, CWE-798 (hard-coded credentials), CWE-522
+(insufficiently protected credentials), CWE-526 (secrets in environment variables), CWE-532 (secrets in logs), and the ASVS 5.0 chapter on
+secret management.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a hotel. The old way is one master key, copied for every member of staff, never changed, and written on a note in the office. The
+better way is a key card for each guest, programmed at the desk, opening only that guest's room, and stopping at checkout. If a card is lost,
+the desk cancels it at once, and the other guests never notice. The desk itself, which can make any card, becomes the thing to guard.</p>
+<h2>The scenario</h2>
+<p>An online store needs a database password and an API key for its payment provider. The demo looks for those secrets where teams leave
+them, injects them at run time instead, replaces the shared password with leased logins from a secrets service, rotates the payment key
+with no downtime, and counts the cost.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Where secrets leak</td>
+<td>A scanner finds 3 secrets in 3 committed files; a child process reads a key from the environment; a key deleted in a later image layer is still in layer two.</td>
+</tr>
+<tr>
+<td>2. Secrets injected at run time</td>
+<td>A secret file readable by others is refused; an owner-only file is read once at startup; the value prints as [redacted] and the startup copy is wiped.</td>
+</tr>
+<tr>
+<td>3. A secrets service that hands out leased logins</td>
+<td>Each application gets its own database login for 900 seconds; a wrong credential is refused; renewals stop at 3600 seconds; ended leases are removed; every request is audited.</td>
+</tr>
+<tr>
+<td>4. Rotation without downtime, and the blast radius of a leak</td>
+<td>Both key versions work during a changeover and only the new one after; a leaked leased login works for at most 300 more seconds and is revoked at once, while a static password works for years.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The secrets service becomes the target; the first credential remains; applications must handle new logins; a scanner is one check.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>17 tests in <code>DemoRunsTest</code>, <code>LeaksTest</code>, <code>SecretTest</code>, <code>ServiceTest</code>. A simulated clock makes leases exact; generated passwords are random and never printed, so the demo shows only facts that do not depend on them. A test checks that no demo secret value ever appears in the output.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Everything runs in one process with a simulated clock in seconds, so leases and rotations are exact. The secrets service is a small model of
+how Vault and OpenBao lease database logins, not a full server. The demo values are obviously fake and never printed. Generated passwords are
+random and never printed either, so the demo shows only facts that do not depend on them. The environment-variable act starts a real child
+process (<code>printenv</code>), and file permissions are the POSIX ones of macOS and Linux.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/secrets-management-explained.html">Secrets Management, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Red paths copy a secret into places that outlive it; the green path leases it at run time.</p>
+<p><img alt="Where secrets leak, and where they should come from" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>SecretsService leases logins that Database accepts until they expire; Secret never prints its value.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Issued, renewed up to a maximum, then removed: a copy stops working on its own.</p>
+<p><img alt="The life of a leased login" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Leasing a database login: who calls whom, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/secrets-management-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The secrets service holds every secret.</strong> It needs its own access control, audit trail and backups, and an outage of it stops every application that needs a new login.</li>
+<li><strong>The first credential is the hard part.</strong> An application still has to prove who it is to the secrets service. Platform identity (workload identity, in the advanced track) removes that last shared secret.</li>
+<li><strong>Leases and rotation need applications that cope.</strong> A connection pool must reconnect with a new login without a restart, and every server must switch keys before the old one is revoked.</li>
+<li><strong>A scanner is one check.</strong> It finds only what it has patterns for; the history of a repository and the layers of every image must be scanned too.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a single demo on one laptop, a file that only the developer can read is enough. As soon as there are servers, teams or customers, secrets
+belong outside the code and the image, injected at run time, and for anything that holds money or personal data, short-lived credentials
+from a secrets service are the standard.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Docker and Kubernetes secrets mounted as files under /run/secrets.</li>
+<li>HashiCorp Vault and OpenBao, AWS Secrets Manager, Azure Key Vault and Google Secret Manager.</li>
+<li>gitleaks, trufflehog and GitHub secret scanning, which fail a build or block a push.</li>
+<li>Breach reports that begin with a key found in a public repository or an image.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project opens <a href="..">secrets-and-supply-chain</a> in the intermediate track. It builds on <a href="../../../beginner/cryptography/keystore-basics">keystore-basics</a>,
+and the <code>-with-openbao</code> version runs the same leases against a real secrets server.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

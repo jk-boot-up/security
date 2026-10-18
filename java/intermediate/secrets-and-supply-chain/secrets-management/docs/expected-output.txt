@@ -1,0 +1,38 @@
+ONE. Where secrets leak.
+  the scanner reads the 3 files the team committed and finds 3 secrets:
+    config/application.properties:3 (a setting named db.password)
+    config/application.properties:4 (a setting named payment.api-key)
+    scripts/refund.sh:2 (a random-looking value)
+  production.properties names where its secrets come from, ${DB_PASSWORD} and a file, so it holds none
+  a key in an environment variable is read by any program the store starts: true  <- AND BY CRASH REPORTS AND DEBUG PAGES THAT PRINT THE ENVIRONMENT
+  an image built with the key, which a later layer deletes: 3 layers
+    the running container sees the key: false
+    anyone with the image file reads it from layer two: true  <- DELETING IN A LATER LAYER HIDES, IT DOES NOT REMOVE
+TWO. Secrets injected at run time.
+  a secret file with permissions rw-r--r--: refused at startup, because others can read it
+  the same file with permissions rw-------: read once at startup, 24 characters, nothing in the code or the image
+  the secret written into a log line: "connecting with password [redacted]"
+  once the connection pool has its copy, the startup copy is wiped: true, and using it now fails: true
+THREE. A secrets service that hands out leased logins.
+  shop-api proves who it is and gets a database login of its own: v-shop-api-1, for 900 seconds
+  reports gets a different login: v-reports-2; no two applications share one: true
+  a wrong application credential: refused
+  at t=600 the shop's login works: true
+  the shop renews its lease at t=600: now until t=1500
+  at t=900 the reports lease ends, it was never renewed: 1 login removed, reports can log in: false
+  renewing every few minutes, the lease stops at the maximum of 3600 seconds after issue: until t=3600
+  at t=3600 the shop's lease has ended and the database refuses the login: true, so the shop asks for a new one
+  the audit trail records every request: 10 entries, the first: t=0 shop-api leased v-shop-api-1 until t=900
+FOUR. Rotation without downtime, and the blast radius of a leak.
+  the store calls the payment provider with key v1: true
+  the provider issues v2, and during the changeover it accepts [v1, v2]: v1 true, v2 true
+  every server of the store switches to v2, then v1 is revoked: v1 false, v2 true
+  a leased login copied at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it
+  and once the leak is noticed, revoking the lease ends it at once: the login works: false
+  a static database password copied at t=600 still works three years later, until someone remembers to change it: true
+FIVE. The bill.
+  the secrets service holds every secret, so it needs its own access control, audit and backups
+  the application still needs a first credential to prove who it is; platform identity, in the advanced track, removes it
+  leases and rotation need applications that can reconnect with a new login without a restart
+  a scanner finds only what it has patterns for, so it is one check, not a guarantee, and history must be scanned too
+  the -with-openbao version runs the same leases against a real secrets server

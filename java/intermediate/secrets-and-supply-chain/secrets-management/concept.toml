@@ -1,0 +1,567 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "secrets-management"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "Secrets Management"
+short_title = "Secrets Management"
+package = "secrets"
+main_class = "SecretsDemo"
+tagline = "A secret that never sits still is a secret that leaks less"
+bold = "Secrets leak from code, environment variables and image layers; inject them at run time from owner-only files, keep them out of logs, and better still lease short-lived, per-application logins from a secrets service that can rotate and revoke them."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Secrets management in Java: where database passwords and API keys leak, and how a secrets service hands out short-lived logins instead. Explained with an online store, like a hotel that gives each guest a key card that stops working at checkout, instead of copying one master key for everyone. A small scanner finds secrets committed to a repository, a child process reads a key from the environment, and a deleted file is still in an image layer. Then secrets are injected at run time from owner-only files and redacted from logs, a secrets service leases a separate database login to each application with a time to live, a payment key is rotated with no downtime, and the bill: the secrets service itself becomes the most valuable thing to protect."""
+thumb_lines = ["SECRETS", "MANAGEMENT"]
+thumb_code = "lease: v-shop-api-1, 900 s"
+youtube_title = "Secrets Management in Java (Leaks, Run-Time Injection, Leases, Rotation)"
+youtube_tags = ["secrets management", "api keys", "secret scanning", "secret rotation", "dynamic credentials", "openbao", "vault", "java", "application security"]
+
+[readme]
+intro = """
+Every application has secrets: a database password, an API key for the payment provider, a signing key. The beginner project
+[keystore-basics](../../../beginner/cryptography/keystore-basics) showed where a key can live on one machine. This project looks at how
+secrets reach a running application, and how they **leak** on the way: written into a configuration file and committed, passed in an
+**environment variable** that every child process and crash report can read, or copied into a container **image layer** that a later layer
+only hides. The fixes are **run-time injection** from a file only the application can read, a **Secret** type that never prints its value,
+and better still a **secrets service** that gives each application its own **leased** login with a time to live, so a stolen login stops
+working by itself, and can be **rotated** and **revoked** without downtime.
+
+It maps to OWASP Top 10 (2025) A02 Security Misconfiguration and A04 Cryptographic Failures, CWE-798 (hard-coded credentials), CWE-522
+(insufficiently protected credentials), CWE-526 (secrets in environment variables), CWE-532 (secrets in logs), and the ASVS 5.0 chapter on
+secret management.
+"""
+analogy = """
+Think of a hotel. The old way is one master key, copied for every member of staff, never changed, and written on a note in the office. The
+better way is a key card for each guest, programmed at the desk, opening only that guest's room, and stopping at checkout. If a card is lost,
+the desk cancels it at once, and the other guests never notice. The desk itself, which can make any card, becomes the thing to guard.
+"""
+scenario = """
+An online store needs a database password and an API key for its payment provider. The demo looks for those secrets where teams leave
+them, injects them at run time instead, replaces the shared password with leased logins from a secrets service, rotates the payment key
+with no downtime, and counts the cost.
+"""
+costs = [
+    "**The secrets service holds every secret.** It needs its own access control, audit trail and backups, and an outage of it stops every application that needs a new login.",
+    "**The first credential is the hard part.** An application still has to prove who it is to the secrets service. Platform identity (workload identity, in the advanced track) removes that last shared secret.",
+    "**Leases and rotation need applications that cope.** A connection pool must reconnect with a new login without a restart, and every server must switch keys before the old one is revoked.",
+    "**A scanner is one check.** It finds only what it has patterns for; the history of a repository and the layers of every image must be scanned too.",
+]
+too_much = """
+For a single demo on one laptop, a file that only the developer can read is enough. As soon as there are servers, teams or customers, secrets
+belong outside the code and the image, injected at run time, and for anything that holds money or personal data, short-lived credentials
+from a secrets service are the standard.
+"""
+met_before = [
+    "Docker and Kubernetes secrets mounted as files under /run/secrets.",
+    "HashiCorp Vault and OpenBao, AWS Secrets Manager, Azure Key Vault and Google Secret Manager.",
+    "gitleaks, trufflehog and GitHub secret scanning, which fail a build or block a push.",
+    "Breach reports that begin with a key found in a public repository or an image.",
+]
+where = """
+This project opens [secrets-and-supply-chain](..) in the intermediate track. It builds on [keystore-basics](../../../beginner/cryptography/keystore-basics),
+and the `-with-openbao` version runs the same leases against a real secrets server.
+"""
+twin = """
+Everything runs in one process with a simulated clock in seconds, so leases and rotations are exact. The secrets service is a small model of
+how Vault and OpenBao lease database logins, not a full server. The demo values are obviously fake and never printed. Generated passwords are
+random and never printed either, so the demo shows only facts that do not depend on them. The environment-variable act starts a real child
+process (`printenv`), and file permissions are the POSIX ones of macOS and Linux.
+"""
+test_note = "A simulated clock makes leases exact; generated passwords are random and never printed, so the demo shows only facts that do not depend on them. A test checks that no demo secret value ever appears in the output."
+
+[[act]]
+title = "Where secrets leak"
+summary = "A scanner finds 3 secrets in 3 committed files; a child process reads a key from the environment; a key deleted in a later image layer is still in layer two."
+detail = """
+The scanner reads the three files the team committed and finds three secrets: a database password and a payment key named in a
+properties file, and a random-looking value in a script. The production file names where its secrets come from and holds none. A key in an
+environment variable is read by any program the store starts, and by crash reports and debug pages that print the environment. And an image
+built with the key, which a later layer deletes, hides it from the running container, but anyone with the image file reads it from layer two.
+"""
+speech = """
+First demo: where secrets leak. [[slnc 400]] A small scanner reads the files the team committed. [[slnc 300]] It finds three secrets. [[slnc 300]] A database password and a payment key, written into a settings file. [[slnc 300]] And a random looking value in a script. [[slnc 600]]
+A key in an environment variable is read by every program the store starts. [[slnc 300]] And by crash reports that print the environment. [[slnc 600]]
+And a key copied into a container image, then deleted in a later layer, is only hidden. [[slnc 300]] Anyone with the image file can read it from the earlier layer.
+"""
+rows = { leaks = "active wrong" }
+console = [
+    ["the scanner reads the 3 files the team committed and finds 3 secrets:", "muted"],
+    ["  config/application.properties:3 (a setting named db.password)", "bad"],
+    ["  config/application.properties:4 (a setting named payment.api-key)", "bad"],
+    ["  scripts/refund.sh:2 (a random-looking value)", "bad"],
+    ["a key in an environment variable is read by any program the store starts: true", "bad"],
+    ["the running container sees the key: false; anyone with the image file reads it from layer two: true", "bad"],
+]
+
+[[act]]
+title = "Secrets injected at run time"
+summary = "A secret file readable by others is refused; an owner-only file is read once at startup; the value prints as [redacted] and the startup copy is wiped."
+detail = """
+Secrets are injected when the store starts, as files in a mounted folder, the way container platforms do. A secret file with permissions
+rw-r--r-- is refused at startup, because others can read it. The same file with rw------- is read once: twenty-four characters, nothing in
+the code or the image. Written into a log line, the secret shows as [redacted], because the Secret type never prints its value. Once the
+connection pool has its copy, the startup copy is wiped, and using it fails.
+"""
+speech = """
+Second demo: secrets injected at run time. [[slnc 400]] The secret is a file in a mounted folder, read when the store starts. [[slnc 600]]
+If others can read the file, the store refuses to start. [[slnc 300]] With owner only permissions, it is read once. [[slnc 600]]
+Written into a log line, it shows as redacted, because the secret type never prints its value. [[slnc 600]]
+And once the connection pool has its copy, the startup copy is wiped.
+"""
+rows = { inject = "active ok" }
+console = [
+    ["a secret file with permissions rw-r--r--: refused at startup, because others can read it", "ok"],
+    ["the same file with permissions rw-------: read once at startup, 24 characters, nothing in the code or the image", "ok"],
+    ["the secret written into a log line: \"connecting with password [redacted]\"", "ok"],
+    ["once the connection pool has its copy, the startup copy is wiped: true", "ok"],
+]
+
+[[act]]
+title = "A secrets service that hands out leased logins"
+summary = "Each application gets its own database login for 900 seconds; a wrong credential is refused; renewals stop at 3600 seconds; ended leases are removed; every request is audited."
+detail = """
+Instead of one shared password, a secrets service hands out logins. The shop API proves who it is and gets a database login of its own,
+v-shop-api-1, for 900 seconds. The reports job gets a different login; no two applications share one. A wrong application credential is
+refused. At t=600 the shop's login works, and renewing extends it to t=1500. The reports lease, never renewed, ends at t=900 and its login is
+removed from the database. Renewals stop at the maximum of 3600 seconds after issue, and at t=3600 the database refuses the shop's login, so
+the shop asks for a new one. The audit trail records every request: ten entries.
+"""
+speech = """
+Third demo: a secrets service that hands out leased logins. [[slnc 400]] The shop proves who it is, and gets a database login of its own. [[slnc 300]] For nine hundred seconds. [[slnc 600]]
+The reports job gets a different login. [[slnc 300]] No two applications share one. [[slnc 300]] A wrong application credential is refused. [[slnc 600]]
+The shop renews its lease while it works. [[slnc 300]] The reports lease is never renewed, so it ends, and its login is removed from the database. [[slnc 600]]
+Renewals stop at a maximum of one hour. [[slnc 300]] Then the database refuses the old login, and the shop asks for a new one. [[slnc 300]] And every request is in the audit trail.
+"""
+rows = { service = "active ok" }
+console = [
+    ["shop-api proves who it is and gets a database login of its own: v-shop-api-1, for 900 seconds", "ok"],
+    ["reports gets a different login: v-reports-2; no two applications share one: true", "ok"],
+    ["a wrong application credential: refused", "ok"],
+    ["the shop renews its lease at t=600: now until t=1500", "muted"],
+    ["at t=900 the reports lease ends, it was never renewed: 1 login removed, reports can log in: false", "amber"],
+    ["the lease stops at the maximum of 3600 seconds after issue; at t=3600 the database refuses the login: true", "amber"],
+    ["the audit trail records every request: 10 entries", "muted"],
+]
+
+[[act]]
+title = "Rotation without downtime, and the blast radius of a leak"
+summary = "Both key versions work during a changeover and only the new one after; a leaked leased login works for at most 300 more seconds and is revoked at once, while a static password works for years."
+detail = """
+The payment provider issues key v2 while v1 is still in use, and during the changeover it accepts both. Every server of the store switches to
+v2, then v1 is revoked: v1 is refused and v2 works, with no moment in which neither did. Then the blast radius of a leak. A leased login copied
+at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it, and once the leak is noticed, revoking the lease ends it at once.
+A static database password copied at the same moment still works three years later, until someone remembers to change it.
+"""
+speech = """
+Fourth demo: rotation, and the blast radius of a leak. [[slnc 400]] The payment provider issues a new key, while the old one is still in use. [[slnc 300]] During the changeover, both work. [[slnc 600]]
+The store switches every server to the new key. [[slnc 300]] Then the old one is revoked. [[slnc 300]] There is never a moment when neither key works. [[slnc 600]]
+Now a leak. [[slnc 300]] A leased login, copied by a thief, works for a few minutes at most. [[slnc 300]] And revoking the lease ends it at once. [[slnc 600]]
+A static password, copied at the same moment, still works three years later.
+"""
+rows = { rotate = "active amber" }
+console = [
+    ["the provider issues v2, and during the changeover it accepts [v1, v2]: v1 true, v2 true", "ok"],
+    ["every server of the store switches to v2, then v1 is revoked: v1 false, v2 true", "ok"],
+    ["a leased login copied at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it", "amber"],
+    ["revoking the lease ends it at once: the login works: false", "ok"],
+    ["a static database password copied at t=600 still works three years later: true", "bad"],
+]
+
+[[act]]
+title = "The bill"
+summary = "The secrets service becomes the target; the first credential remains; applications must handle new logins; a scanner is one check."
+detail = """
+The secrets service holds every secret, so it needs its own access control, audit and backups. The application still needs a first credential
+to prove who it is; platform identity, in the advanced track, removes it. Leases and rotation need applications that can reconnect with a new
+login without a restart. A scanner finds only what it has patterns for, so it is one check, not a guarantee, and history must be scanned too.
+The -with-openbao version runs the same leases against a real secrets server.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The secrets service now holds every secret. [[slnc 300]] So it needs its own access control, audit trail, and backups. [[slnc 600]]
+The application still needs a first credential, to prove who it is. [[slnc 300]] Platform identity, in the advanced track, removes that last secret. [[slnc 600]]
+Applications must reconnect with new logins, without a restart. [[slnc 300]] And a scanner finds only what it has patterns for.
+"""
+rows = { service = "active amber", rotate = "active amber" }
+console = [
+    ["the secrets service holds every secret, so it needs its own access control, audit and backups", "amber"],
+    ["the application still needs a first credential to prove who it is", "amber"],
+    ["leases and rotation need applications that can reconnect with a new login without a restart", "amber"],
+    ["a scanner finds only what it has patterns for, so it is one check, not a guarantee", "amber"],
+]
+
+[animation]
+subtitle = "An online store's database password and payment key: where they leak, and how a secrets service leases them instead."
+boxes = [
+    ["leaks", "Where secrets leak", "code, environment, image layers"],
+    ["inject", "Run-time injection", "owner-only files, never printed"],
+    ["service", "Secrets service", "a leased login for each application"],
+    ["rotate", "Rotation and revocation", "two versions, then one; a leak ends early"],
+]
+
+[docs.problem]
+scenario = """
+An online store's servers need a database password and a payment provider's API key. Developers, build servers, container images and the
+running application all handle them, and any of them can leak.
+"""
+naive = """
+Put the password in the configuration file, the key in an environment variable, and copy both into the image so that it works everywhere.
+"""
+deliver = [
+    "A small secret scanner using setting names and entropy, run over a sample repository.",
+    "Demonstrations of the environment-variable and image-layer leaks.",
+    "Run-time injection from owner-only files, a Secret type that never prints, and wiping after use.",
+    "A model secrets service with per-application leased logins, renewal limits, expiry, revocation and an audit trail.",
+    "A key rotation with two versions during the changeover, and the blast radius of a leak measured by its lease.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The keystore-basics project, or what a key file and file permissions are",
+]
+not_required = [
+    "A secrets server: the service is modelled in the same process (the -with-openbao version runs a real one)",
+    "Docker: image layers are modelled as archives",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "name three places secrets leak outside the source code",
+    "explain why run-time injection from a file is better than an environment variable",
+    "explain what a lease is and why short-lived, per-application logins shrink a leak",
+    "describe a rotation that never leaves the application without a working key",
+]
+walkthrough = """
+Start with the hotel and its key cards. Run the demo one act at a time. After act one, ask where else in the group's own systems a secret might
+sit in an image or an environment. After act three, ask what happens to the shop if the secrets service is down. After act four, compare the two
+blast radii, and ask what the static password's would be in the group's own systems.
+"""
+exercises = [
+    "Add a scanner rule for private-key blocks (a BEGIN PRIVATE KEY line) and test it.",
+    "Give the secrets service a policy so that the reports job may only lease read-only logins.",
+    "Make the shop renew its lease automatically at two thirds of its time to live, and test it with the simulated clock.",
+    "Rotate the database login every hour while a simulated request stream keeps working.",
+]
+
+[docs.explained]
+sentence = """
+Secrets should never live in code, images or environment variables; they should be injected at run time, never logged, and ideally leased per
+application for a short time from a secrets service that can rotate and revoke them, which then becomes the thing to protect.
+"""
+verdict = """
+Keep secrets out of repositories and images, and scan both. Inject them at run time from files only the application can read, and never log
+them. Prefer short-lived, per-application credentials from a secrets service, rotate with two valid versions during a changeover, and revoke
+on any sign of a leak. Protect the secrets service as the most valuable system you run.
+"""
+recognise = [
+    "`/run/secrets/...` paths and Kubernetes secret volumes.",
+    "`vault read database/creds/...` or `bao lease renew` in scripts.",
+    "Secret scanning alerts on a pull request.",
+    "Key versions such as `v1` and `v2` in a provider's dashboard.",
+]
+
+[spec]
+purpose = """
+Teach how secrets leak and how they are managed safely by scanning a sample repository, demonstrating environment and image-layer leaks,
+injecting secrets at run time, leasing per-application logins from a model secrets service, and rotating a key with no downtime.
+"""
+nongoals = [
+    "A real secrets server: the -with-openbao version.",
+    "Platform and workload identity: the advanced track.",
+    "Encryption at rest of the secrets store itself.",
+]
+problem = """
+Learners put secrets where they are convenient, and the convenient places are the ones that leak.
+"""
+roles = [["Secret values", "`Secret`"], ["Secret scanner", "`SecretScanner`"], ["Image layers", "`ImageLayers`"], ["Run-time injection", "`MountedSecrets`"], ["Secrets service and leases", "`SecretsService`"], ["The database", "`Database`"], ["Key rotation", "`PaymentProvider`"], ["Entry point", "`SecretsDemo`"]]
+requirements = [
+    "The scanner finds named settings and random-looking values, and ignores placeholders.",
+    "A secret file readable by others is refused; the Secret type never prints its value and can be wiped.",
+    "Each application gets its own leased login, which ends at its expiry, stops renewing at the maximum, and ends at once when revoked.",
+    "Both key versions work during a rotation and only the new one after it.",
+    "The demo prints the same output on every run and never a secret value.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where secrets leak, and where they should come from"
+caption = "Red paths copy a secret into places that outlive it; the green path leases it at run time."
+nodes = [
+    { id = "repo", label = "Repository", sub = "a committed settings file", col = 0, row = 0, colour = "red", shape = "store" },
+    { id = "image", label = "Image layers", sub = "a key hidden, not removed", col = 1, row = 0, colour = "red", shape = "store" },
+    { id = "env", label = "Environment", sub = "read by every child process", col = 2, row = 0, colour = "red" },
+    { id = "service", label = "Secrets service", sub = "leases, rotation, audit", col = 0, row = 1, colour = "green", shape = "store" },
+    { id = "app", label = "The store", sub = "reads at startup, never prints", col = 1, row = 1, colour = "accent" },
+    { id = "db", label = "Database", sub = "a login per application", col = 2, row = 1, colour = "client", shape = "store" },
+]
+edges = [
+    { from = "repo", to = "image", label = "copied in", colour = "red", dashed = true },
+    { from = "image", to = "env", label = "exported", colour = "red", dashed = true },
+    { from = "service", to = "app", label = "leased login" },
+    { from = "app", to = "db", label = "logs in" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "SecretsService leases logins that Database accepts until they expire; Secret never prints its value."
+nodes = [
+    { id = "secret", label = "Secret", sub = ["use(fn)", "matches(other)", "wipe()"], col = 0, row = 0, colour = "green" },
+    { id = "scanner", label = "SecretScanner", sub = ["scan(root)", "entropy(text)"], col = 1, row = 0, colour = "amber" },
+    { id = "mounted", label = "MountedSecrets", sub = ["read(file)"], col = 2, row = 0, colour = "accent" },
+    { id = "service", label = "SecretsService", sub = ["leaseDatabaseLogin(app, credential)", "renew(lease)", "revoke(lease)", "expireLeases()"], col = 0, row = 1, colour = "green" },
+    { id = "db", label = "Database", sub = ["login(user, password)"], col = 1, row = 1, colour = "client" },
+    { id = "provider", label = "PaymentProvider", sub = ["issue(version, key)", "revoke(version)", "accepts(key)"], col = 2, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "service", to = "db", label = "creates and drops logins" },
+    { from = "mounted", to = "secret", label = "returns" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The life of a leased login"
+caption = "Issued, renewed up to a maximum, then removed: a copy stops working on its own."
+nodes = [
+    { id = "issue", label = "Issued", sub = "t=0, for 900 seconds", col = 0, row = 0, colour = "green" },
+    { id = "renew", label = "Renewed", sub = "while the app works", col = 1, row = 0, colour = "accent" },
+    { id = "max", label = "Maximum", sub = "3600 seconds after issue", col = 2, row = 0, colour = "amber" },
+    { id = "gone", label = "Removed", sub = "the database refuses it", col = 3, row = 0, colour = "red" },
+]
+edges = [
+    { from = "issue", to = "renew" },
+    { from = "renew", to = "max" },
+    { from = "max", to = "gone" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Leasing a database login: who calls whom, in order"
+participants = ["The store", "SecretsService", "Database"]
+steps = [
+    ["The store", "SecretsService", "leaseDatabaseLogin(shop-api, credential)"],
+    ["SecretsService", "SecretsService", "check the credential, audit"],
+    ["SecretsService", "Database", "create v-shop-api-1 until t=900"],
+    ["SecretsService", "The store", "the lease and its login", "reply"],
+    ["The store", "Database", "log in as v-shop-api-1"],
+    ["Database", "The store", "accepted until the lease ends", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Rotating the payment key"
+caption = "Two versions overlap, so the store is never without a working key."
+participants = ["Provider", "The store"]
+steps = [
+    ["Provider", "Provider", "issue v2; accept v1 and v2"],
+    ["The store", "Provider", "calls with v2 from every server"],
+    ["Provider", "Provider", "revoke v1"],
+    ["note", "Provider", "only v2 is accepted"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A leaked login"
+caption = "A leased login stops by itself and can be revoked at once; a static password does not."
+participants = ["Thief", "SecretsService", "Database"]
+steps = [
+    ["Thief", "Database", "logs in with a copied login at t=600"],
+    ["note", "Database", "works until t=900 at most"],
+    ["SecretsService", "Database", "revoke the lease"],
+    ["Thief", "Database", "logs in again"],
+    ["Database", "Thief", "refused", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Build and source", nodes = ["repo", "image"], colour = "amber" },
+    { label = "The running store", nodes = ["app", "logs"], colour = "green" },
+    { label = "Secrets platform", nodes = ["service", "db"], colour = "accent" },
+]
+nodes = [
+    { id = "repo", label = "Repository", sub = "settings and scripts", col = 0, row = 0, colour = "amber", shape = "store", threats = ["T1"] },
+    { id = "image", label = "Image", sub = "layers", col = 0, row = 1, colour = "amber", shape = "store", threats = ["T2"] },
+    { id = "app", label = "The store", sub = "reads secrets at startup", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T3"] },
+    { id = "logs", label = "Logs and crash reports", sub = "what the store prints", col = 1, row = 1, colour = "green", shape = "store", threats = ["T4"] },
+    { id = "service", label = "Secrets service", sub = "leases and audit", col = 2, row = 0, colour = "accent", shape = "store", threats = ["T5", "T6"] },
+    { id = "db", label = "Database", sub = "logins per application", col = 2, row = 1, colour = "client", shape = "store", threats = ["T5"] },
+]
+edges = [
+    { from = "repo", to = "image", label = "build" },
+    { from = "service", to = "app", label = "leased login" },
+    { from = "app", to = "db", label = "logs in" },
+    { from = "app", to = "logs", label = "writes", colour = "red", dashed = true, threats = ["T4"] },
+]
+
+[poster]
+headline = [["SECRETS", "text"], ["MANAGEMENT", "accent"]]
+taglines = [["A secret that never sits still is a secret that leaks less", "gold"]]
+before = { code = "db.password=...", note = "committed, copied, for ever", tag = "BEFORE" }
+after = { code = "lease v-shop-api-1, 900 s", note = "per app, short-lived, revocable", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Secrets Management"
+narration = """Hello, and welcome. [[slnc 400]] This video explains secrets management, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A secret is anything that proves an application may do something. [[slnc 300]] A database password, an A P I key, a signing key. [[slnc 300]] Secrets management is getting them to the application without leaking them on the way. [[slnc 600]] Think of a hotel. [[slnc 300]] The old way is one master key, copied for every member of staff, and never changed. [[slnc 300]] The better way is a key card for each guest, that stops working at checkout, and can be cancelled at once. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear where secrets leak. [[slnc 300]] How to inject them at run time. [[slnc 300]] How a secrets service leases a login to each application. [[slnc 300]] And how to rotate a key with no downtime."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store needs a database password", "and a payment provider's API key.", "", "Developers, build servers, images", "and the running store all handle them.", "", "Any of them can leak."]
+narration = """Here is the scenario. [[slnc 400]] An online store needs a database password, and an A P I key for its payment provider. [[slnc 500]] Developers, build servers, container images, and the running store all handle them. [[slnc 500]] And any one of them can leak."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Secret: a value that proves access", "Injection: handing it over at run time", "Lease: a login that ends by itself", "Rotation: replacing a secret with no downtime", "Revocation: ending it at once"]
+narration = """Before the demos, the words. [[slnc 500]] A secret is a value that proves an application may do something. [[slnc 500]] Injection means handing it over when the application starts, not building it in. [[slnc 500]] A lease is a login that ends by itself, after a time to live. [[slnc 500]] Rotation is replacing a secret, with no downtime. [[slnc 500]] And revocation is ending it at once."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "From Worst to Best"
+body = ["In the code or the image: for ever", "In an environment variable: widely readable", "In an owner-only file: better", "Leased per application: ends by itself", "With rotation and revocation: ends at once"]
+narration = """Let's put the options side by side, worst first. [[slnc 400]] In the code or the image, a secret lasts for ever. [[slnc 500]] In an environment variable, it is widely readable. [[slnc 500]] In a file only the application can read, it is better. [[slnc 500]] Leased to each application, it ends by itself. [[slnc 500]] And with rotation and revocation, a leaked one can be ended at once."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Secret: never prints, can be wiped", "SecretScanner: names and entropy", "MountedSecrets: owner-only files", "SecretsService: leases and audit", "PaymentProvider: two key versions"]
+narration = """Here is who does what in the code. [[slnc 400]] The secret class never prints its value, and can be wiped. [[slnc 500]] The scanner looks for setting names and random looking values. [[slnc 500]] Mounted secrets reads owner only files at startup. [[slnc 500]] The secrets service leases logins and keeps an audit trail. [[slnc 300]] And the payment provider accepts two key versions during a rotation."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["/run/secrets in containers", "Vault, OpenBao, cloud secret managers", "Secret scanning on pull requests", "Key versions in a provider's dashboard"]
+narration = """You have probably met this already. [[slnc 400]] Container platforms mount secrets as files, under run secrets. [[slnc 500]] Vault, OpenBao, and the cloud providers' secret managers lease and rotate them. [[slnc 500]] Code hosts scan pull requests for committed secrets. [[slnc 500]] And payment providers show key versions in their dashboards."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Keep secrets out of code and images", "Inject at run time, never log", "Lease short-lived logins per application", "Rotate with two versions, revoke on a leak", "Guard the secrets service"]
+narration = """So, how do you use it? [[slnc 400]] Keep secrets out of code and images, and scan both. [[slnc 500]] Inject them at run time, and never log them. [[slnc 500]] Lease short lived logins, one per application. [[slnc 500]] Rotate with two versions during the changeover, and revoke on any sign of a leak. [[slnc 500]] And guard the secrets service as the most valuable system you run."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Give the reports job", "a read-only policy and test it."]
+narration = """That's secrets management. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A secret that is leased, short lived and revocable leaks far less than one that sits still. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Give the reports job a policy that allows only read only logins, and test it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+How an online store's database password and payment key reach its servers: the repository, the build and image, the running process, its logs,
+and a secrets service that leases database logins. It covers developers' mistakes, a thief with a copy of the repository or image, and a thief
+with a copied login. It does not cover the security of the secrets server's own storage, or platform identity.
+"""
+assets = [
+    "The database password and every leased database login.",
+    "The payment provider's API key and its versions.",
+    "Each application's credential for the secrets service.",
+    "The audit trail of the secrets service.",
+]
+actors = [
+    "Developers and build servers that handle configuration.",
+    "The store's servers, which read secrets at startup.",
+    "A thief with a copy of the repository, an image or a log.",
+    "A thief with a copied login.",
+]
+boundaries = [
+    "Source and build to the running store: anything copied across outlives the run.",
+    "The store's process to its logs and child processes.",
+    "The store to the secrets service: the application must prove who it is.",
+]
+assumptions = [
+    "The secrets service is reachable only by the store's applications, and its own storage is protected.",
+    "File permissions are enforced by the operating system.",
+    "In the demo, every secret value is an obviously fake demo value, and generated passwords are random and never printed.",
+]
+out_of_scope = [
+    "Encryption at rest and unsealing of a real secrets server: the -with-openbao version.",
+    "Workload and platform identity: the advanced track.",
+    "Scanning the history of a real repository.",
+]
+tests = [
+    "`SecretTest` checks that a secret never prints, compares values and stops working once wiped.",
+    "`LeaksTest` checks the scanner, entropy, the image-layer leak and refusal of a secret file readable by others.",
+    "`ServiceTest` checks per-application logins, refusals and audit, expiry, renewal limits, revocation and rotation.",
+    "`DemoRunsTest` compares the whole demo with the golden output and checks that no secret value is printed.",
+]
+next = """
+The next project, artifact-signing, moves from the secrets an application uses to the trust in the application itself: signing a release and
+checking it before it runs.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A secret committed to the repository is read by anyone with a copy, for ever"
+where = "`SecretScanner`, the sample repository"
+control = "Secrets stay out of files; settings name where a secret comes from; a scanner checks every commit"
+residual = "A scanner finds only what it has patterns for, and a secret once committed must be treated as leaked and rotated"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A secret copied into an image layer is read from the image, even after a later layer deletes it"
+where = "`ImageLayers`"
+control = "Secrets are injected at run time, never built into images"
+residual = "Images built before the change still contain the secret and must be deleted"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "A secret in an environment variable, or a secret file readable by others, is read by another process or user"
+where = "`MountedSecrets.read`"
+control = "Owner-only secret files are read once at startup; files readable by others are refused"
+residual = "Anyone who can run code as the store's own user can still read the secret from its memory"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "A secret is written into a log line, a crash report or an error page"
+where = "`Secret.toString`"
+control = "The Secret type prints [redacted] and is wiped after use"
+residual = "Code that turns the value into a String on purpose can still log it; reviews and log scanning remain"
+
+[[threat]]
+id = "T5"
+stride = "S"
+threat = "A copied database login is used by someone else"
+where = "`SecretsService`, `Database.login`"
+control = "Logins are per application, leased for 900 seconds, renewable only to 3600, and revocable at once"
+residual = "A thief can use a copied login until it ends or is revoked, and can renew it with a stolen application credential"
+
+[[threat]]
+id = "T6"
+stride = "E"
+threat = "The secrets service is compromised and hands out every secret"
+where = "the secrets service"
+control = "Applications prove who they are; every request is audited"
+residual = "The secrets service is the most valuable system to protect, with its own access control, monitoring and backups"
