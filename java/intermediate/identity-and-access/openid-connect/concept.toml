@@ -1,0 +1,606 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "openid-connect"
+level = "intermediate"
+module = "identity-and-access"
+title = "OpenID Connect"
+short_title = "OpenID Connect"
+package = "oidc"
+main_class = "OidcDemo"
+tagline = "Access is not identity"
+bold = "OAuth 2.0 says what an app may do; OpenID Connect adds who signed in, in an ID token that the store must check against the provider it discovered: the exact issuer, its own audience, the time, and the nonce it gave this browser. The customer is the issuer and the subject together, never an email address."
+domain = "an online store"
+domain_note = ""
+youtube_description = """OpenID Connect in Java with only the JDK: "sign in with the bank" at an online store, like a passport checked at a hotel desk rather than a key card that only opens a door. We follow a sign-in from the store to the bank and back, look inside the ID token and see why an access token is not proof of who signed in, check the ID token the way OpenID Connect Core requires (signature with a published key, the exact issuer, the audience and azp, expiry with skew, and the nonce bound to this browser), load the provider's metadata and keys through discovery and refuse a provider posing as another, rotate signing keys, show why the customer is identified by issuer and subject and never by email, and finish with sign-out: RP-initiated logout and back-channel logout tokens."""
+thumb_lines = ["OPENID", "CONNECT"]
+thumb_code = "id_token: iss + sub + nonce"
+youtube_title = "OpenID Connect in Java (ID Token, Nonce, Discovery, Back-Channel Logout) - OWASP A07"
+youtube_tags = ["openid connect", "oidc", "id token", "oauth 2.0", "nonce", "discovery", "jwks", "single sign-on", "java", "application security"]
+
+[readme]
+intro = """
+**OAuth 2.0** lets an app act on a user's behalf: it answers *what may this app do?* It does not say who the user is. **OpenID Connect (OIDC)**
+is a thin identity layer on top. When the app asks for the `openid` scope, the provider returns an **ID token**: a signed JWT, meant for the app
+itself, that says who signed in (`iss` and `sub`), for which app (`aud`), when (`iat`, `auth_time`), how strongly (`acr`, `amr`), and which
+sign-in it belongs to (`nonce`). The app that relies on it is called the **relying party**.
+
+Most OIDC failures are checks left out: an access token taken as a sign-in, an issuer compared loosely, a nonce never checked, keys loaded from
+anywhere, or an account found by email address. This project builds a strict relying party with the JDK and shows each check refusing the token
+it exists to refuse.
+
+It maps to **OpenID Connect Core 1.0** (section 3.1.3.7, ID token validation), **OpenID Connect Discovery 1.0**, **OpenID Connect Back-Channel
+Logout 1.0**, **RFC 9700** (OAuth 2.0 Security Best Current Practice), **OWASP Top 10 (2025) A07 Authentication Failures**, **CWE-287**
+(improper authentication), **CWE-345** (insufficient verification of data authenticity), **CWE-347** (improper verification of a cryptographic
+signature), and the **OAuth and OIDC** chapter of **OWASP ASVS 5.0**.
+"""
+analogy = """
+Think of a hotel. An access token is a room key card: it opens a door, and the door does not care who holds it. An ID token is the passport shown
+at the desk: it says who the guest is, who issued the passport, and the desk checks that it was issued by a country it recognises, that it has not
+expired, and that the face matches tonight's booking. A desk that accepts a key card as a passport, or that books a room for anyone whose passport
+shows the same name, has misunderstood both.
+"""
+scenario = """
+An online store lets customers sign in with their bank, and with a second provider, wallet.example. The demo follows Ana's sign-in, checks ID
+tokens with one claim changed at a time, discovers the bank's metadata and keys and rotates them, shows an account takeover by email, and ends
+with sign-out on one device and on all of them.
+"""
+costs = [
+    "**Many checks, many options.** Core, Discovery, logout, and the provider's own choices add up; a hand-written relying party is for learning. Use a certified library and a real provider: see the `-with-spring-security-and-keycloak` version.",
+    "**Discovery is a dependency.** The store must reach the provider's metadata and keys, cache them, and refresh them when keys rotate, without ever taking a key from a token's say-so.",
+    "**Identity by issuer and subject means no easy account linking.** Linking a bank sign-in to an existing store account needs the customer to prove both, not a matching email.",
+    "**Sign-out is a distributed problem.** Ending the store's session is easy; ending every application's session needs the provider to tell each of them, and each must listen.",
+    "**ID tokens are personal data.** They carry email and session ids; keep them out of logs and do not send them to APIs.",
+]
+too_much = """
+For a store with its own passwords and no single sign-on, OpenID Connect adds a dependency and a flow. It earns its place when customers already
+have an account somewhere they trust, when several applications share one sign-in, or when the sign-in itself must meet a standard (passkeys,
+second factors) that the provider already runs.
+"""
+met_before = [
+    "\"Sign in with ...\" buttons on websites and apps.",
+    "Addresses ending in `/.well-known/openid-configuration`, and key sets at `jwks.json`.",
+    "`id_token`, `nonce` and `prompt=login` in redirect URLs.",
+    "Advisories about account takeover through unverified email claims in social sign-in.",
+]
+where = """
+This project follows [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce) and [jwt-done-right](../jwt-done-right) in
+[identity-and-access](..), part of the [intermediate track](../..). It uses their flow and their validator, and adds identity on top.
+"""
+twin = """
+Everything runs in one process with a simulated clock in whole seconds; one discovery check also runs over real HTTP on this machine's loopback
+address, on a free port that is never printed. ID tokens are signed with Ed25519 from fixed seeds, so they are the same on every run. State, nonce
+and session ids are random and never printed. Providers, users and email addresses are fictional.
+"""
+test_note = "Ed25519 key derivation is checked against RFC 8032 test 1. Every ID token check, every discovery check and every logout-token check is a test with its exact refusal reason; the sign-in flow, state binding, single-use codes, account keys and userinfo have their own tests."
+
+[[act]]
+title = "OAuth gives access; OpenID Connect adds who signed in"
+summary = "With the openid scope the bank returns an ID token for the store and an access token for its API; the ID token names Ana as https://bank.example | ana-0001, an access token offered as a sign-in is refused, and a reply without openid signs nobody in."
+detail = """
+The store sends Ana to the bank with the scope "openid email", and keeps a state and a nonce for her browser. The bank's reply holds two tokens:
+an ID token for the store, and an access token for the bank's API. The ID token's claims are iss, sub, aud, exp, iat, auth_time, nonce, acr, amr,
+sid, email and email_verified. The ID token is for store-web; the access token is for https://api.bank.example. Ana is signed in to the store as
+https://bank.example | ana-0001, at level urn:example:loa:2 with a password and a one-time code. The access token handed to the store as proof of
+sign-in is refused: its type is at+jwt, not an ID token. A sign-in that asks without the openid scope is refused too: the reply gives API access,
+not a sign-in.
+"""
+speech = """
+First demo: access and identity. [[slnc 400]] The store sends Ana to the bank, asking for the open I D scope. [[slnc 300]] It keeps a state and a nonce for her browser. [[slnc 600]]
+The bank's reply holds two tokens. [[slnc 300]] An I D token, for the store. [[slnc 300]] And an access token, for the bank's A P I. [[slnc 600]]
+The I D token says who signed in, who says so, for which app, when, how strongly, and for which sign-in. [[slnc 600]]
+Ana is signed in to the store, as the bank's user, ana. [[slnc 600]]
+Now hand the store the access token instead, as proof of sign-in. [[slnc 300]] Refused. [[slnc 300]] An access token says what is allowed, not who signed in. [[slnc 600]]
+And a sign-in that never asked for open I D gets no I D token at all. [[slnc 300]] Refused.
+"""
+rows = { identity = "active ok" }
+console = [
+    ["the store sends Ana to the bank with the scope \"openid email\", and a state and a nonce kept for her browser", "muted"],
+    ["the bank's reply holds two tokens: an ID token for the store, and an access token for the bank's API", "muted"],
+    ["the ID token's claims: iss, sub, aud, exp, iat, auth_time, nonce, acr, amr, sid, email, email_verified", "muted"],
+    ["the ID token is for store-web; the access token is for https://api.bank.example", "muted"],
+    ["Ana is signed in to the store as https://bank.example | ana-0001, at level urn:example:loa:2 with [pwd, otp]", "ok"],
+    ["the access token handed to the store as proof of sign-in: refused (not an ID token (typ at+jwt))  <- AN ACCESS TOKEN SAYS WHAT IS ALLOWED, NOT WHO SIGNED IN", "bad"],
+    ["a sign-in that asks without the openid scope: refused (no ID token: the reply gives API access, not a sign-in)", "ok"],
+]
+
+[[act]]
+title = "Checking the ID token, as OpenID Connect Core requires"
+summary = "The bank's own token is accepted; a foreign signature, an issuer with an extra slash or another issuer, another audience, two audiences without azp, thirty seconds past expiry, another sign-in's nonce, no nonce and alg none are each refused."
+detail = """
+The bank's own ID token is accepted. The same claims signed with a key the bank never published, under the bank's key id, are refused: the signature
+does not match. The issuer https://bank.example/, with one extra slash, is refused, because the issuer must equal the configured issuer exactly, and
+so is https://wallet.example signed by the bank. The audience budget-app is refused. Audiences store-web and budget-app with no azp are refused;
+with azp store-web they are accepted. Twenty-nine seconds past its expiry the token is accepted, inside the 30-second skew; thirty seconds past, it is
+refused. A nonce from another sign-in is refused, so a token from another login cannot be replayed into this one, and so is a token with no nonce at
+all. A header saying alg none is refused before anything else is read.
+"""
+speech = """
+Second demo: checking the I D token. [[slnc 400]] The bank's own token is accepted. [[slnc 600]]
+The same claims, signed with a key the bank never published. [[slnc 300]] Refused. [[slnc 600]]
+The issuer with one extra slash at the end. [[slnc 300]] Refused. [[slnc 300]] The issuer must match exactly. [[slnc 600]]
+Another audience. [[slnc 300]] Refused. [[slnc 300]] Two audiences, with no authorized party naming the store. [[slnc 300]] Refused. [[slnc 600]]
+Twenty nine seconds past expiry, inside the skew. [[slnc 300]] Accepted. [[slnc 300]] Thirty seconds past. [[slnc 300]] Refused. [[slnc 600]]
+A nonce from another sign-in. [[slnc 300]] Refused. [[slnc 300]] So a token from one login cannot be replayed into another. [[slnc 600]]
+And a header that says none. [[slnc 300]] Refused, before anything else is read.
+"""
+rows = { validate = "active ok" }
+console = [
+    ["the bank's own ID token: accepted", "ok"],
+    ["the same claims signed with a key the bank never published, under the bank's key id: refused (signature does not match)", "ok"],
+    ["issuer https://bank.example/ with one extra slash: refused (issuer is not the configured issuer)", "ok"],
+    ["audience budget-app: refused (audience does not include this client)", "ok"],
+    ["audiences store-web and budget-app, with no azp: refused; with azp store-web: accepted", "ok"],
+    ["twenty-nine seconds past its expiry: accepted, inside the 30 second skew; thirty seconds past: refused (expired)", "amber"],
+    ["a nonce from another sign-in: refused  <- A TOKEN FROM ANOTHER LOGIN CANNOT BE REPLAYED INTO THIS ONE", "ok"],
+    ["a header saying alg none: refused (algorithm is not EdDSA)", "ok"],
+]
+
+[[act]]
+title = "Discovery and keys"
+summary = "From one configured issuer the store reads the metadata and keys; a document naming another issuer or keys on another site is refused; a second key is added, the old one retired, and the same discovery works over real HTTP."
+detail = """
+The store is configured with one value, the issuer https://bank.example. It reads https://bank.example/.well-known/openid-configuration, which names
+the issuer https://bank.example, and loads the key bank-2026-a from https://bank.example/jwks.json. A document at that address naming the issuer
+https://wallet.example is refused, so one provider cannot pose as another, and so is a document whose keys are on https://keys.example. The bank adds
+a second key and signs new tokens with it; after a reload the store holds bank-2026-a and bank-2026-b, and tokens signed with either are accepted.
+The bank retires bank-2026-a; after a reload, the old key's token is refused as an unknown key id and a new token is accepted. Over real HTTP on this
+machine, metadata and keys load and an ID token from that provider is accepted.
+"""
+speech = """
+Third demo: discovery and keys. [[slnc 400]] The store is configured with one value: the bank's issuer. [[slnc 600]]
+It reads the bank's metadata from a well known address under that issuer. [[slnc 300]] The document must name exactly that issuer. [[slnc 300]] It does. [[slnc 600]]
+A document at that address that names another issuer. [[slnc 300]] Refused. [[slnc 300]] One provider cannot pose as another. [[slnc 300]] A document whose keys live on another site. [[slnc 300]] Refused. [[slnc 600]]
+The bank adds a second key, and signs new tokens with it. [[slnc 300]] After a reload, tokens signed with either key are accepted. [[slnc 600]]
+The bank retires the old key. [[slnc 300]] After the next reload, the old key's token is refused. [[slnc 600]]
+And the same discovery works over real H T T P, on this machine.
+"""
+rows = { discovery = "active ok" }
+console = [
+    ["the store is configured with one value, the issuer https://bank.example", "muted"],
+    ["it reads https://bank.example/.well-known/openid-configuration, which names the issuer https://bank.example: accepted", "ok"],
+    ["keys loaded from https://bank.example/jwks.json: bank-2026-a", "muted"],
+    ["a document at that address naming the issuer https://wallet.example: refused  <- ONE PROVIDER CANNOT POSE AS ANOTHER", "ok"],
+    ["a document whose keys are on https://keys.example: refused (the key set is not on the issuer's own site)", "ok"],
+    ["the bank adds a second key; the store reloads the key set: bank-2026-a, bank-2026-b", "muted"],
+    ["the bank retires bank-2026-a; after a reload, the old key's token: refused (unknown key id); a new token: accepted", "amber"],
+    ["over real HTTP on this machine: metadata and keys loaded: true, an ID token from that provider accepted: true", "ok"],
+]
+
+[[act]]
+title = "Who signed in: issuer and subject, never the email"
+summary = "The bank and wallet.example both name the email ana@mail.example; a store keyed by email gives Mallory Ana's account, keyed by issuer and subject there are two accounts and the unverified email is not used; userinfo answers only a valid access token."
+detail = """
+The bank says ana-0001 has the email ana@mail.example, verified. wallet.example says its user mal-3301 also has the email ana@mail.example, not
+verified. A store that keys accounts by email lets Mallory sign in with the wallet and get Ana's account: an account takeover. Keyed by issuer and
+subject there are 2 accounts, https://bank.example | ana-0001 and https://wallet.example | mal-3301, and Mallory's account has no email, because
+the wallet did not verify it. Userinfo with Ana's access token returns sub ana-0001 and her email, with the same subject as the ID token. Userinfo
+with the ID token instead is refused, and so is the access token after it expires.
+"""
+speech = """
+Fourth demo: who signed in. [[slnc 400]] The bank says Ana's email is ana at mail dot example, and that it has checked it. [[slnc 600]]
+A second provider says its user Mallory has the same email address. [[slnc 300]] It has not checked it. [[slnc 600]]
+A store that finds accounts by email lets Mallory sign in with the second provider, and land in Ana's account. [[slnc 300]] An account takeover. [[slnc 600]]
+A store that finds accounts by issuer and subject has two accounts. [[slnc 300]] And Mallory's has no email at all, because nobody checked it. [[slnc 600]]
+The userinfo endpoint answers Ana's access token with the same subject. [[slnc 300]] It refuses the I D token, and an expired access token.
+"""
+rows = { identity = "active wrong" }
+console = [
+    ["the bank says ana-0001 has the email ana@mail.example, verified", "muted"],
+    ["wallet.example says its user mal-3301 also has the email ana@mail.example, not verified", "amber"],
+    ["a store that keys accounts by email: Mallory signs in with the wallet and gets Ana's account: true  <- ACCOUNT TAKEOVER", "bad"],
+    ["keyed by issuer and subject: 2 accounts, https://bank.example | ana-0001 and https://wallet.example | mal-3301", "ok"],
+    ["Mallory's account has no email, because the wallet did not verify it: true", "ok"],
+    ["userinfo with Ana's access token: sub ana-0001, email ana@mail.example; the same subject as the ID token: true", "ok"],
+    ["userinfo with the ID token instead: refused (not an access token); after the access token expires: refused (expired)", "ok"],
+]
+
+[[act]]
+title = "Signing out, and the bill"
+summary = "Ana's sign-out ends the store's session and sends her to the bank's logout with id_token_hint; a back-channel logout token ends the laptop's session and leaves the phone's; a token with a nonce, without the event, or an ID token is refused."
+detail = """
+Ana signs out at the store: the store's session ends, and her browser is sent to https://bank.example/logout with id_token_hint,
+post_logout_redirect_uri and state. Ana is then signed in on a laptop and a phone: 2 store sessions. The bank ends the laptop's session and sends a
+back-channel logout token, typed logout+jwt, with the logout event, a sid and no nonce: accepted. One store session is left; the laptop is signed out
+and the phone still signed in. A logout token with a nonce is refused, so is one without the logout event, and so is an ID token sent as a logout
+token. The bill: OpenID Connect has many checks and options, so production code uses a certified library and a real provider; the ID token is for
+the store only; and signing out must reach every party.
+"""
+speech = """
+Fifth demo: signing out. [[slnc 400]] Ana signs out at the store. [[slnc 300]] The store's session ends. [[slnc 300]] Her browser is sent to the bank, to sign out there too. [[slnc 600]]
+Now Ana is signed in on a laptop and a phone. [[slnc 300]] The bank ends the laptop's session, and tells the store directly, with a logout token. [[slnc 600]]
+The logout token is typed, carries a logout event and a session id, and has no nonce. [[slnc 300]] The laptop is signed out. [[slnc 300]] The phone is not. [[slnc 600]]
+A logout token with a nonce, one without the event, or an I D token in its place. [[slnc 300]] All refused. [[slnc 600]]
+And the bill. [[slnc 300]] Open I D Connect has many checks, so use a certified library and a real provider. [[slnc 300]] Keep the I D token in the store. [[slnc 300]] And make sign out reach every application.
+"""
+rows = { logout = "active amber" }
+console = [
+    ["Ana signs out at the store: the store's session ended: true", "ok"],
+    ["her browser is sent to https://bank.example/logout with id_token_hint, post_logout_redirect_uri, state", "muted"],
+    ["Ana is signed in on a laptop and a phone: 2 store sessions", "muted"],
+    ["the bank ends the laptop's session and sends a logout token, typ logout+jwt, with the logout event, a sid and no nonce: accepted", "ok"],
+    ["store sessions left: 1, laptop signed in: false, phone signed in: true", "ok"],
+    ["a logout token with a nonce, without the event, or an ID token in its place: refused", "ok"],
+    ["OpenID Connect has many checks and options, so production code uses a certified library and a real provider", "amber"],
+]
+
+[animation]
+subtitle = "An online store lets customers sign in with their bank, and checks every ID token it is given."
+boxes = [
+    ["identity", "ID token", "who signed in, for this store"],
+    ["validate", "Validation", "issuer, audience, time, nonce"],
+    ["discovery", "Discovery", "metadata and keys from the issuer"],
+    ["logout", "Sign-out", "RP-initiated and back-channel"],
+]
+
+[docs.problem]
+scenario = """
+An online store wants customers to sign in with their bank instead of creating another password. Tokens arrive through the customer's browser, from
+providers the store must recognise, for a customer the store must identify correctly every time.
+"""
+naive = """
+Use the OAuth access token as proof of sign-in, decode the ID token without checking its issuer, audience or nonce, fetch keys from wherever the token
+or a document says, and find the customer's account by email address.
+"""
+deliver = [
+    "A relying party that binds state and nonce to the browser and redeems the code server to server.",
+    "ID token validation as OpenID Connect Core 1.0 section 3.1.3.7 requires, with every refusal tested.",
+    "Discovery from one configured issuer, with the mix-up check and keys only from the issuer's own site.",
+    "Key rotation by key id, through a reload of the provider's key set.",
+    "Accounts keyed by issuer and subject, and unverified email never used.",
+    "RP-initiated logout and back-channel logout tokens, validated.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The oauth2-authorization-code-pkce project, or the authorization code flow",
+    "The jwt-done-right project, or how a JWT is validated",
+]
+not_required = [
+    "A real identity provider: the -with-spring-security-and-keycloak version uses one",
+    "SAML: the saml-basics project",
+    "A browser: the demo models one",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what OpenID Connect adds to OAuth 2.0",
+    "list the checks a relying party makes on an ID token, and what each stops",
+    "explain discovery, and why the metadata must name the configured issuer",
+    "explain why a customer is identified by issuer and subject, not by email",
+    "describe RP-initiated and back-channel logout",
+]
+walkthrough = """
+Start with the hotel desk: key card and passport. Run act one and ask what the access token proves. After act two, ask which check stops a token from
+another login, and which stops a token for another app. In act three, ask what an attacker gains by serving the store a different metadata document.
+In act four, ask which sign-in providers the group uses and whether those sites link accounts by email.
+"""
+exercises = [
+    "Add `max_age` to the sign-in request and refuse an ID token whose `auth_time` is older than it.",
+    "Add a third provider and a rule that only the bank may be used for payments, by `iss` and `acr`.",
+    "Make the store cache the key set and reload it only when an unknown key id appears, with a limit on how often.",
+    "Add `prompt=login` for a payment and check `auth_time` is newer than the request.",
+]
+
+[docs.explained]
+sentence = """
+OpenID Connect adds a signed ID token to OAuth 2.0 that says who signed in, and a relying party must check it against the provider it discovered from
+one configured issuer: exact issuer, its own audience, the time and its own nonce, then identify the customer by issuer and subject.
+"""
+verdict = """
+Use OpenID Connect for sign-in, never a bare OAuth access token. Configure each provider by its issuer, load metadata and keys through discovery, and
+let a certified library validate ID tokens. Bind state and nonce to the browser, identify customers by issuer and subject, never link accounts on an
+email claim, and implement sign-out at both ends.
+"""
+recognise = [
+    "`scope=openid` in authorization requests, and an `id_token` in token responses.",
+    "`/.well-known/openid-configuration` documents and `jwks.json` key sets.",
+    "Library settings for the issuer, client id and allowed clock skew.",
+    "`end_session_endpoint` and `backchannel_logout_uri` in provider configuration.",
+]
+
+[spec]
+purpose = """
+Teach OpenID Connect sign-in by building a strict relying party with the JDK: the flow, ID token validation, discovery, identity by issuer and subject,
+and sign-out, with each check shown refusing the token it exists to refuse.
+"""
+nongoals = [
+    "A certified implementation: the -with-spring-security-and-keycloak version uses one.",
+    "Front-channel logout, session management iframes and dynamic client registration.",
+    "Encrypted ID tokens (JWE) and pairwise subject identifiers.",
+]
+problem = """
+Learners often meet OpenID Connect through a library and a "sign in with" button, and do not see which checks make the sign-in trustworthy.
+"""
+roles = [["The identity provider", "`Provider`"], ["Discovery", "`Discovery`, `ProviderConfig`, `KeySet`"], ["ID token validation", "`IdTokenValidator`, `IdToken`"], ["The relying party", "`Store`"], ["Real HTTP", "`LoopbackProvider`"], ["The web inside the process", "`Web`"], ["Tokens", "`Jws`, `Json`, `Base64Url`, `Ed25519`"], ["Entry point", "`OidcDemo`"]]
+requirements = [
+    "An ID token is accepted only with a published key, the exact issuer, the store in its audience (and azp when several), the time within skew, and this browser's nonce.",
+    "Metadata must name the configured issuer, and keys come only from the issuer's own site.",
+    "Accounts are keyed by issuer and subject; unverified email is not stored.",
+    "Back-channel logout tokens are typed, carry the logout event, have no nonce and end only the named session.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who is who in a sign-in"
+caption = "The store relies on the bank for identity: the browser carries the code, and the store fetches and checks the ID token itself."
+nodes = [
+    { id = "browser", label = "Ana's browser", sub = "carries state and code", col = 0, row = 0, colour = "client" },
+    { id = "store", label = "Online store", sub = "relying party", col = 1, row = 0, colour = "accent", shape = "ellipse" },
+    { id = "bank", label = "The bank", sub = "OpenID provider", col = 2, row = 0, colour = "green", shape = "ellipse" },
+    { id = "meta", label = "Metadata and keys", sub = "/.well-known, jwks.json", col = 2, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "browser", to = "bank", label = "sign in, consent" },
+    { from = "bank", to = "browser", label = "code" },
+    { from = "browser", to = "store", label = "code and state" },
+    { from = "store", to = "bank", label = "code for tokens", dashed = true },
+    { from = "meta", to = "store", label = "discovery", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The store discovers each provider's configuration, and checks every ID token against it with IdTokenValidator."
+nodes = [
+    { id = "store", label = "Store", sub = ["beginLogin(browser, issuer, scope)", "callback(browser, response)", "logout(browser)", "backchannelLogout(token)"], col = 0, row = 0, colour = "accent" },
+    { id = "validator", label = "IdTokenValidator", sub = ["validate(token, config, client, nonce, now)"], col = 1, row = 0, colour = "green" },
+    { id = "discovery", label = "Discovery", sub = ["discover(issuer, fetcher)"], col = 2, row = 0, colour = "amber" },
+    { id = "config", label = "ProviderConfig", sub = ["issuer, endpoints", "keys: KeySet"], col = 2, row = 1, colour = "amber" },
+    { id = "provider", label = "Provider", sub = ["authorize(request, user)", "token(code, client)", "userinfo(token)"], col = 0, row = 1, colour = "client" },
+]
+edges = [
+    { from = "store", to = "validator", label = "checks with" },
+    { from = "store", to = "discovery", label = "configured by" },
+    { from = "discovery", to = "config", label = "produces" },
+    { from = "store", to = "provider", label = "redeems codes at" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The order of the ID token checks"
+caption = "Nothing in the claims is believed until the signature has been checked with a key from the discovered issuer."
+nodes = [
+    { id = "header", label = "Header", sub = "alg EdDSA, typ not at+jwt", col = 0, row = 0, colour = "amber" },
+    { id = "key", label = "Key", sub = "kid from the discovered set", col = 1, row = 0, colour = "amber" },
+    { id = "sig", label = "Signature", sub = "Ed25519", col = 2, row = 0, colour = "green" },
+    { id = "who", label = "iss and aud", sub = "exact issuer, this client, azp", col = 3, row = 0, colour = "green" },
+    { id = "when", label = "Time and nonce", sub = "exp, iat, this browser's nonce", col = 4, row = 0, colour = "green" },
+]
+edges = [
+    { from = "header", to = "key" },
+    { from = "key", to = "sig" },
+    { from = "sig", to = "who" },
+    { from = "who", to = "when" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Signing in with the bank: who does what, in order"
+participants = ["Browser", "Store", "Bank"]
+steps = [
+    ["Browser", "Store", "sign in with the bank"],
+    ["Store", "Browser", "redirect: scope openid, state, nonce", "reply"],
+    ["Browser", "Bank", "authorization request; Ana signs in and agrees"],
+    ["Bank", "Browser", "redirect to the store with a code and the state", "reply"],
+    ["Browser", "Store", "code and state"],
+    ["Store", "Bank", "code for tokens"],
+    ["Bank", "Store", "ID token and access token", "reply"],
+    ["note", "Store", "validate the ID token, then sign Ana in as iss and sub"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A provider posing as another"
+caption = "The store checks that the metadata names the issuer it was configured with, so a different issuer's document is refused."
+participants = ["Store", "Address of the bank's metadata"]
+steps = [
+    ["Store", "Address of the bank's metadata", "GET /.well-known/openid-configuration"],
+    ["Address of the bank's metadata", "Store", "issuer: https://wallet.example", "reply"],
+    ["note", "Store", "configured issuer is https://bank.example: refused"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Back-channel logout"
+caption = "The bank tells the store directly that one session has ended; the store ends only that session."
+participants = ["Bank", "Store"]
+steps = [
+    ["note", "Bank", "Ana ends the laptop's session"],
+    ["Bank", "Store", "logout token: logout event, sid, no nonce"],
+    ["note", "Store", "verify, then end the session with that sid"],
+    ["Store", "Bank", "200", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["store", "accounts"], colour = "green" },
+    { label = "Providers", nodes = ["bank", "other"], colour = "amber" },
+    { label = "Outside", nodes = ["browser", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "store", label = "Store", sub = "relying party", col = 0, row = 0, colour = "accent", shape = "ellipse", threats = ["T1", "T2", "T3"] },
+    { id = "accounts", label = "Accounts", sub = "by issuer and subject", col = 0, row = 1, colour = "green", shape = "store", threats = ["T5"] },
+    { id = "bank", label = "Bank", sub = "OpenID provider", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T4"] },
+    { id = "other", label = "wallet.example", sub = "another provider", col = 1, row = 1, colour = "amber", shape = "ellipse", threats = ["T4", "T5"] },
+    { id = "browser", label = "Browser", sub = "carries code and state", col = 2, row = 0, colour = "client", threats = ["T2"] },
+    { id = "attacker", label = "Attacker", sub = "replays, forges, poses", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4", "T5", "T6"] },
+]
+edges = [
+    { from = "browser", to = "store", label = "code and state" },
+    { from = "store", to = "bank", label = "tokens, discovery" },
+    { from = "other", to = "store", label = "ID tokens" },
+    { from = "attacker", to = "store", label = "forged or replayed token", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "attacker", to = "other", label = "unverified email", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["OPENID", "text"], ["CONNECT", "accent"]]
+taglines = [["Access is not identity", "gold"]]
+before = { code = "access token = signed in", note = "key card as a passport", tag = "BEFORE" }
+after = { code = "id_token: iss, aud, nonce", note = "checked, then iss + sub", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "OpenID Connect"
+narration = """Hello, and welcome. [[slnc 400]] This video explains Open I D Connect, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] O Auth lets an app act on a user's behalf. [[slnc 300]] Open I D Connect adds who the user is, in a signed I D token, meant for the app itself. [[slnc 600]] Think of a hotel. [[slnc 300]] An access token is a room key card. [[slnc 300]] An I D token is the passport shown at the desk. [[slnc 300]] A desk that takes a key card as a passport has misunderstood both. [[slnc 700]] In this video, the domain is an online store, and the bank its customers sign in with. [[slnc 500]] By the end, you will hear what an I D token says. [[slnc 300]] Which checks make it trustworthy. [[slnc 300]] Why the customer is never found by email. [[slnc 300]] And how signing out works."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store lets customers", "sign in with their bank.", "", "Tokens arrive through the browser,", "from providers the store must recognise,", "for a customer it must identify every time."]
+narration = """Here is the scenario. [[slnc 400]] An online store lets customers sign in with their bank. [[slnc 500]] Tokens arrive through the customer's browser. [[slnc 300]] From providers the store must recognise. [[slnc 300]] For a customer the store must identify correctly, every time."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Relying party: the app that trusts the sign-in", "ID token: who signed in, for this app", "Issuer and subject: who the user is", "Nonce: ties a token to one sign-in", "Discovery: where the metadata and keys are"]
+narration = """Before the demos, the words. [[slnc 500]] The relying party is the app that trusts the sign-in. [[slnc 500]] The I D token says who signed in, for this app. [[slnc 500]] The issuer and the subject, together, are who the user is. [[slnc 500]] The nonce ties a token to one sign-in. [[slnc 500]] And discovery is how the app finds the provider's metadata and keys."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "The Checks, In Order"
+body = ["Header and a published key", "Signature", "The exact issuer", "This app in the audience", "Time, and this browser's nonce"]
+narration = """Let's put the checks in order. [[slnc 400]] First, the header, and a key the provider published. [[slnc 500]] Then the signature. [[slnc 500]] Then the issuer, exactly as configured. [[slnc 500]] Then this app, in the audience. [[slnc 500]] And last, the time, and the nonce this browser was given."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Provider: the bank, and a second provider", "Discovery: metadata and keys from one issuer", "IdTokenValidator: every check, in order", "Store: state, nonce, accounts, sign-out", "LoopbackProvider: discovery over real HTTP"]
+narration = """Here is who does what in the code. [[slnc 400]] The provider class plays the bank, and a second provider. [[slnc 500]] The discovery class loads metadata and keys from one configured issuer. [[slnc 500]] The I D token validator makes every check, in order. [[slnc 500]] The store keeps state and nonce, finds accounts, and signs customers out. [[slnc 300]] And the loopback provider serves discovery over real H T T P."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["\"Sign in with ...\" buttons", "/.well-known/openid-configuration", "id_token and nonce in redirects", "Account takeover through email claims"]
+narration = """You have probably met this already. [[slnc 400]] Every sign in with button on a website uses this flow, or one like it. [[slnc 500]] Providers publish their metadata at a well known address. [[slnc 500]] Redirects carry codes, states and nonces. [[slnc 500]] And security news has reported account takeovers through unverified email claims."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Sign in with an ID token, never an access token", "Configure each provider by its issuer", "Let a certified library validate", "Identify by issuer and subject", "Sign out at both ends"]
+narration = """So, how do you use it? [[slnc 400]] Sign customers in with an I D token, never with an access token. [[slnc 500]] Configure each provider by its issuer, and discover the rest. [[slnc 500]] Let a certified library do the validation. [[slnc 500]] Identify customers by issuer and subject. [[slnc 500]] And sign them out at both ends."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add max_age", "and refuse an old sign-in."]
+narration = """That's Open I D Connect. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Access is not identity, and an I D token is only trusted after the store has checked who issued it, for whom, when, and for which sign-in. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a maximum age to the sign-in request, and refuse a sign-in that is too old. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online store as an OpenID Connect relying party: starting a sign-in, redeeming the code, validating the ID token, discovering providers and their
+keys, identifying customers, and signing them out. It does not cover the provider's own security, the customer's device, or the store's other features.
+"""
+assets = [
+    "Customers' store accounts and orders.",
+    "The store's sessions.",
+    "The trust the store places in each provider's issuer and keys.",
+    "ID tokens, which carry personal data.",
+]
+actors = [
+    "Customers signing in through their browsers.",
+    "The bank and other providers.",
+    "An attacker who replays, forges or substitutes tokens, poses as a provider, or controls an account at a provider with someone else's email.",
+]
+boundaries = [
+    "Browser to store: codes and state arrive from the customer's side.",
+    "Provider to store: tokens, metadata and keys come from outside the store.",
+    "One provider to another: the store must never let one provider's user stand for another's.",
+]
+assumptions = [
+    "The providers keep their private signing keys secret.",
+    "The store's connection to each provider uses TLS, which the demo does not model.",
+    "In the demo, keys come from fixed seeds and protect nothing; all names and addresses are fictional.",
+]
+out_of_scope = [
+    "Front-channel logout and session-management iframes.",
+    "Dynamic client registration and pairwise subjects.",
+    "The provider's own sign-in and account security.",
+]
+tests = [
+    "`IdTokenValidatorTest` checks each ID token refusal with its reason, and Ed25519 against RFC 8032 test 1.",
+    "`DiscoveryTest` checks the mix-up refusal, keys on another site, a provider without EdDSA, origin comparison and discovery over real HTTP.",
+    "`StoreTest` checks the full flow, state binding, single-use codes, registered redirects, account keys, userinfo and both kinds of logout.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, tokens-in-the-browser, asks where these tokens should live when the app is a single-page application.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "An access token, a logout token or a token for another app is accepted as proof of sign-in"
+where = "`Store.signIn`, `IdTokenValidator`"
+control = "Token type, exact issuer, this client in the audience, and azp when there are several"
+residual = "Every relying party must configure its own client id; a shared default undoes the audience check"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "An ID token from another sign-in is replayed into this browser, or a callback is pushed into another browser"
+where = "`Store.beginLogin`, `Store.callback`"
+control = "State and nonce bound to the browser, compared in constant time; codes used once"
+residual = "Code interception is also covered by PKCE, shown in oauth2-authorization-code-pkce"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "An expired or altered ID token is accepted"
+where = "`IdTokenValidator`"
+control = "Signature with a published key before any claim is read; expiry and issue time within a small skew"
+residual = "Skew lets a token live a few seconds longer; keep it small"
+
+[[threat]]
+id = "T4"
+stride = "S"
+threat = "A provider poses as another, or the store loads keys from somewhere an attacker controls"
+where = "`Discovery`"
+control = "Metadata must name the configured issuer; keys only from the issuer's own site; keys never taken from a token"
+residual = "If the issuer's own site is compromised, its keys are too; this is the provider's risk to manage"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "Someone with an unverified email at another provider takes over a customer's account"
+where = "`Store` account keys"
+control = "Accounts keyed by issuer and subject; unverified email never stored or used for linking"
+residual = "Linking accounts across providers needs the customer to prove both, which costs a step"
+
+[[threat]]
+id = "T6"
+stride = "R"
+threat = "A customer signs out but other sessions stay alive"
+where = "`Store.logout`, `Store.backchannelLogout`"
+control = "RP-initiated logout at the provider, and back-channel logout tokens validated and applied per session"
+residual = "Applications that ignore logout tokens stay signed in until their sessions expire"

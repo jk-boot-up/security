@@ -1,0 +1,50 @@
+ONE. OAuth gives access; OpenID Connect adds who signed in.
+  the store sends Ana to the bank with the scope "openid email", and a state and a nonce kept for her browser
+  the bank's reply holds two tokens: an ID token for the store, and an access token for the bank's API
+  the ID token's claims: iss, sub, aud, exp, iat, auth_time, nonce, acr, amr, sid, email, email_verified
+  the ID token is for store-web; the access token is for https://api.bank.example
+  Ana is signed in to the store as https://bank.example | ana-0001, at level urn:example:loa:2 with [pwd, otp]
+  the access token handed to the store as proof of sign-in: refused (not an ID token (typ at+jwt))  <- AN ACCESS TOKEN SAYS WHAT IS ALLOWED, NOT WHO SIGNED IN
+  a sign-in that asks without the openid scope: refused (no ID token: the reply gives API access, not a sign-in)
+TWO. Checking the ID token, as OpenID Connect Core requires.
+  the bank's own ID token: accepted
+  the same claims signed with a key the bank never published, under the bank's key id: refused (signature does not match)
+  issuer https://bank.example/ with one extra slash: refused (issuer is not the configured issuer)
+  issuer https://wallet.example, signed by the bank: refused (issuer is not the configured issuer)
+  audience budget-app: refused (audience does not include this client)
+  audiences store-web and budget-app, with no azp: refused (several audiences and no azp naming this client); with azp store-web: accepted
+  twenty-nine seconds past its expiry: accepted, inside the 30 second skew; thirty seconds past: refused (expired)
+  a nonce from another sign-in: refused (nonce is not the one this browser was given)  <- A TOKEN FROM ANOTHER LOGIN CANNOT BE REPLAYED INTO THIS ONE
+  no nonce at all: refused (no nonce)
+  a header saying alg none: refused (algorithm is not EdDSA)
+THREE. Discovery and keys.
+  the store is configured with one value, the issuer https://bank.example
+  it reads https://bank.example/.well-known/openid-configuration, which names the issuer https://bank.example: accepted
+  keys loaded from https://bank.example/jwks.json: bank-2026-a
+  a document at that address naming the issuer https://wallet.example: refused (the metadata names another issuer)  <- ONE PROVIDER CANNOT POSE AS ANOTHER
+  a document whose keys are on https://keys.example: refused (the key set is not on the issuer's own site)
+  the bank adds a second key and signs new tokens with it; the store reloads the key set: bank-2026-a, bank-2026-b
+  a token signed with the old key: accepted; with the new key: accepted
+  the bank retires bank-2026-a; after a reload, the old key's token: refused (unknown key id); a new token: accepted
+  over real HTTP on this machine: metadata and keys loaded: true, an ID token from that provider accepted: true
+FOUR. Who signed in: issuer and subject, never the email.
+  the bank says ana-0001 has the email ana@mail.example, verified
+  wallet.example says its user mal-3301 also has the email ana@mail.example, not verified
+  a store that keys accounts by email: Mallory signs in with the wallet and gets Ana's account: true  <- ACCOUNT TAKEOVER
+  keyed by issuer and subject: 2 accounts, https://bank.example | ana-0001 and https://wallet.example | mal-3301
+  Mallory's account has no email, because the wallet did not verify it: true
+  userinfo with Ana's access token: sub ana-0001, email ana@mail.example; the same subject as the ID token: true
+  userinfo with the ID token instead: refused (not an access token)
+  userinfo with the access token after it expires: refused (expired)
+FIVE. Signing out, and the bill.
+  Ana signs out at the store: the store's session ended: true
+  her browser is sent to https://bank.example/logout with id_token_hint, post_logout_redirect_uri, state
+  Ana is signed in on a laptop and a phone: 2 store sessions
+  the bank ends the laptop's session and sends a logout token, typ logout+jwt, with the logout event, a sid and no nonce: accepted
+  store sessions left: 1, laptop signed in: false, phone signed in: true
+  a logout token with a nonce: refused (a logout token must not have a nonce)
+  a logout token without the event: refused (no logout event)
+  an ID token sent as a logout token: refused (not a logout token)
+  OpenID Connect has many checks and options, so production code uses a certified library and a real provider
+  the ID token is for the store only: never send it to an API, and never take an access token as a sign-in
+  signing out must reach every party: the store, the provider, and through back-channel logout every other application
