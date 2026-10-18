@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tokens in the Browser, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Tokens in the Browser, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Tokens kept in a browser are readable by every script on the page, so a backend for the frontend keeps them on the server and gives the browser only an HttpOnly
+cookie, and DPoP binds any token that must be used from the client to a key that never leaves it.</p>
+<h2>The 5 acts</h2>
+<h3>1. Tokens kept in the browser</h3>
+<p>The banking app signs Ana in and keeps its access token and refresh token in localStorage, and reads her balance: 200. A third-party script on the page
+reads what scripts can read and takes 2 tokens, sends them to its own server, and Ana closes the page. From elsewhere, the stolen access token reads the
+balance: 200. Five minutes later it has expired: 401. But ten days later, the stolen refresh token gets a new access token, which reads the balance: 200.
+One page visit gave a month of access. Anything a script can read, a script can send away.</p>
+<h3>2. A backend for the frontend keeps the tokens on the server</h3>
+<p>The BFF signs Ana in on the server; the browser gets one cookie, __Host-bff, with Path=/, Secure, HttpOnly and SameSite=Strict, which keeps the __Host-
+rules. The BFF holds the 2 tokens and the browser never sees them. The app reads the balance through the BFF: 200. The same third-party script now takes
+0 tokens, and cannot read the cookie. While the page is open it can still ask the BFF for the balance: 200, because a script on the page can still act as
+Ana. Once the page is closed, the script is no longer running, and nothing it took works anywhere else. Six minutes later the BFF refreshes the token on the
+server without the browser noticing: 200.</p>
+<h3>3. Requests started by another site</h3>
+<p>A cookie that is sent automatically invites cross-site request forgery. A hidden form on evil.example posts a transfer to the BFF, and SameSite=Strict keeps
+the cookie off it: 401. In an older browser that ignores SameSite, the cookie goes, but the bank's request header does not: 403. A script on evil.example
+that tries to add the header itself must first ask in a CORS preflight, which the BFF refuses for every other origin, so the request is never sent. The
+bank's own page sends the transfer with the header: 201. Transfers made: 1, the one the bank's own page asked for.</p>
+<h3>4. Tokens bound to a key, with DPoP</h3>
+<p>When tokens must be in the browser, DPoP binds them to a key that scripts cannot read: the access token carries the key's thumbprint in cnf.jkt, and each
+request carries a proof, a small JWT signed by that key, naming the method, the URL, the time, a unique id and the token's hash. With a fresh proof: 200.
+A script that takes the token from localStorage and sends it as a plain bearer token: 401. With a proof from a key of its own: 401, the key does not match.
+The app's own request copied and sent again: 401, the proof was already used. The proof for reading the balance used for a transfer: 401. A proof made two
+minutes ago, with the token still valid: 401, too old. The stolen refresh token with the thief's key is refused; presented by the app with its own key, it
+gives new tokens. A stolen token is useless without the key, and the key never leaves the browser.</p>
+<h3>5. The bill</h3>
+<p>Two BFF servers, each with its own session store: the second answers Ana's cookie with 401, so the sessions need a shared store. Every API call now passes
+through one more server, which must be run, scaled and kept up to date. Clearing the browser's storage loses the DPoP key; the old token with a new key is
+refused, so Ana signs in again. And a script on the open page can still ask the key for a proof and read the balance: 200. DPoP stops theft, not use while
+the page is open. So keep scripts off the page with a strict Content-Security-Policy, and keep tokens out of it with the BFF.</p>
+<h2>The verdict</h2>
+<p>For browser apps that hold OAuth tokens, use a backend for the frontend: a confidential client on the server, a __Host- cookie with Secure, HttpOnly and
+SameSite=Strict, and a request header on state-changing calls. Where tokens must be used from the client, bind them with DPoP. In both cases, keep third-party
+scripts to a minimum and enforce a strict Content-Security-Policy, because code on the open page can still act as the user.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>localStorage.setItem("access_token", ...)</code> in a single-page app.</li>
+<li>A session cookie named <code>__Host-...</code> on a banking app, and no token in the browser's storage.</li>
+<li><code>Authorization: DPoP</code> and <code>DPoP:</code> headers, and <code>cnf</code> with <code>jkt</code> in an access token.</li>
+<li>Library settings called "token handler", "BFF" or "sender-constrained tokens".</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Banking and health apps that sign in through a page on their own domain and never show a token.</li>
+<li><code>Authorization: DPoP ...</code> and a <code>DPoP:</code> header in API requests.</li>
+<li>Security advisories about a compromised analytics or chat script on a popular site.</li>
+<li>Frameworks that ship a "BFF" or "token handler" component for single-page apps.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
