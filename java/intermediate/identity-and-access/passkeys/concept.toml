@@ -1,0 +1,584 @@
+# concept.toml: everything about this project that is not Java code.
+# tools/conceptkit turns it into the README, docs, diagrams, animation and video scenes.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "passkeys"
+level = "intermediate"
+module = "identity-and-access"
+title = "Passkeys and WebAuthn"
+short_title = "Passkeys"
+package = "passkeys"
+main_class = "PasskeysDemo"
+tagline = "A key that only signs for the real site"
+bold = "A passkey is a key pair made for one site: the bank keeps only the public key, the device signs a fresh challenge for that site and no other, and the browser writes down where it really was, so a look-alike page gets nothing it can use. What is left to guard is recovery, and every older way in that is still switched on."
+domain = "an online bank"
+domain_note = ""
+youtube_description = """Passkeys and WebAuthn explained in Java with only the JDK. Explained with an online bank's passwordless sign-in, like a house key cut to fit one front door, that simply does not turn in any other lock. We register a passkey and see that the bank stores only a public key, sign in with a fresh single-use challenge, watch a look-alike site get nothing at all while a typed password is phished, require a fingerprint for a payment, catch a copied key with the signature counter, and finish with the bill: a lost phone, recovery codes, and a password that must be switched off before the account is really phishing-resistant."""
+thumb_lines = ["PASSKEYS", "AND WEBAUTHN"]
+thumb_code = "origin + rpIdHash + signature"
+youtube_title = "Passkeys and WebAuthn in Java (Phishing-Resistant Sign-In) - OWASP A07"
+youtube_tags = ["passkeys", "webauthn", "fido2", "passwordless", "phishing resistant", "authentication", "nist 800-63b", "java", "application security"]
+
+[readme]
+intro = """
+A **passkey** is a WebAuthn credential: a key pair made by an **authenticator** (a phone, a laptop or a security key) for one **relying party**,
+the site that will check it. The site keeps only the **public key**. To sign in, the site sends a fresh **challenge**; the authenticator signs it,
+together with the **SHA-256 of the relying party id** it was made for and a few flags, and the browser adds **client data** that records the
+**origin** of the page that asked. Because the browser, not the page, fills in the origin, and the authenticator only signs for the site it was
+made for, a passkey cannot be typed into the wrong site. That is what NIST SP 800-63B calls a **phishing-resistant** authenticator.
+
+This project maps to **OWASP Top 10 (2025) A07 Authentication Failures**; to **CWE-287**, improper authentication, and **CWE-294**,
+authentication bypass by capture-replay; to **NIST SP 800-63B**, phishing-resistant authenticators; to the **authentication** chapter of
+**OWASP ASVS 5.0**; and to **WebAuthn Level 3**.
+
+The demo builds a model relying party, browser and authenticator with the JDK alone, with ES256 (P-256) signatures and data structures laid out
+as WebAuthn lays them out: client data JSON, 37 bytes of authenticator data, and a signature over both.
+"""
+analogy = """
+Think of a house key cut to fit one front door. A password is a secret anyone can be talked into saying to the wrong person. The passkey is a key
+that simply does not turn in any other lock, and the door, not the person holding the key, checks that the key was cut for it. A copy of the lock
+tells a burglar nothing, because the lock holds no key. What is left to steal is the spare key under the mat: the recovery path.
+"""
+scenario = """
+An online bank replaces passwords with passkeys. Ana registers her phone, signs in, opens a look-alike page, pays a bill, and has her key copied.
+Ben loses his phone. The demo shows, for each step, what the bank checks and what it refuses.
+"""
+costs = [
+    "**Recovery becomes the weakest link.** A customer who loses the only device holding the passkey needs another way in. Register two passkeys, issue one-time recovery codes, and treat any recovery flow as carefully as sign-in itself.",
+    "**Old ways in keep old weaknesses.** While a password still works alongside a passkey, the account is only as strong as the password. Switch passwords off once a customer has two passkeys.",
+    "**Synced passkeys trade clone detection for convenience.** A passkey shared between a person's devices reports a counter of zero, so the counter cannot spot a copy; its protection is the account it syncs through.",
+    "**The bank must check every field, in order.** Skipping the origin, the relying party id hash, the flags or the challenge's single use undoes the protection; a maintained library makes those checks for you.",
+    "**A model is for learning.** Real WebAuthn uses CBOR and COSE keys, attestation formats and many authenticators; this project uses an encoded public key instead and no attestation, and the `-with-spring-security` version uses Spring Security's passkey support.",
+]
+too_much = """
+For a site with no accounts worth stealing, a password and a rate limit may be enough. For a bank, an e-mail provider or anything that recovers
+other accounts, passkeys are the default today, with user verification for payments and a carefully guarded recovery path.
+"""
+met_before = [
+    "\"Sign in with a passkey\" buttons, and a fingerprint or face prompt instead of a password field.",
+    "Security keys that plug into a USB port and must be touched.",
+    "Passkeys that appear on a new phone because they were synced through the phone maker's account.",
+    "Bank apps that ask for a fingerprint again before a payment.",
+]
+where = """
+This project is in [identity-and-access](..) in the [intermediate track](../..), after [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce).
+It builds on the beginner projects [digital-signatures](../../../beginner/cryptography/digital-signatures) and
+[totp-multi-factor](../../../beginner/passwords-and-mfa/totp-multi-factor), whose one-time codes can still be phished.
+"""
+twin = """
+Everything runs in memory with a simulated clock in whole seconds; no real browser or authenticator is used. Keys, challenges and credential ids
+are random, so the demo prints only facts that do not depend on them: sizes, flags, counters and verdicts. The demo password and recovery code
+are demo values that protect nothing.
+"""
+test_note = "Base64url is checked against the RFC 4648 test vectors and SHA-256 against the published abc vector. Every check the relying party makes is a test that refuses an answer with its exact reason, including the five-minute challenge boundary, a copied key caught by the counter, and the browser's relying party id rule."
+
+[[act]]
+title = "Registering a passkey: the bank keeps only a public key"
+summary = "The bank sends a 32-byte challenge; Ana's phone makes a P-256 key pair for bank.example and returns a 16-byte credential id and a 91-byte public key; the bank stores nothing that can sign, so a copy of its records is useless."
+detail = """
+The bank sends a challenge of 32 random bytes and its relying party id, bank.example. Ana's phone makes a new P-256 key pair for bank.example,
+keeps the private key, and returns a credential id of 16 bytes and a public key of 91 bytes. The bank checks the challenge, the type, the origin
+and the relying party id hash, and registers the passkey. What it stores is a credential id, the public key and a counter of 0: nothing that can
+sign. An answer made with another key under Ana's credential id, as someone holding a copy of the bank's records might try, is refused: the
+signature does not match.
+"""
+speech = """
+First demo: registering a passkey. [[slnc 400]] The bank sends a challenge of random bytes, and its own name. [[slnc 600]]
+Ana's phone makes a new key pair, for the bank's name only. [[slnc 300]] It keeps the private key, and sends back the public key. [[slnc 600]]
+The bank checks the challenge, the type, the origin, and the name the key was made for. [[slnc 300]] Then it stores the public key, and a counter. [[slnc 600]]
+That is all it stores. [[slnc 300]] Nothing that can sign. [[slnc 600]]
+So a copy of the bank's records is useless. [[slnc 300]] An answer made with another key, under Ana's credential, is refused. [[slnc 300]] The signature does not match.
+"""
+rows = { register = "active ok" }
+console = [
+    ["the bank sends a challenge of 32 random bytes and its relying party id bank.example", "muted"],
+    ["ana's phone makes a new P-256 key pair for bank.example and returns a credential id of 16 bytes and a public key of 91 bytes", "muted"],
+    ["the bank checks the challenge, the type, the origin and the relying party id hash: accepted (passkey ana's phone registered)", "ok"],
+    ["what the bank stores for ana's passkey: a credential id, a 91-byte public key and a counter of 0, and nothing that can sign", "ok"],
+    ["a copy of the bank's records cannot sign: an answer made with another key under ana's credential id: refused (signature does not match)", "ok"],
+]
+
+[[act]]
+title = "Signing in: a fresh challenge, signed once"
+summary = "The phone signs 37 bytes of authenticator data and the hash of the client data; the bank accepts it once, then refuses the same answer, an answer 301 seconds late, and an answer whose flags were changed after signing."
+detail = """
+Ana touches her phone, which signs 37 bytes of authenticator data and the SHA-256 of the client data. The bank checks the challenge, the type, the
+origin, the relying party id hash, the flags, the signature and the counter, and Ana is signed in. The same answer sent again is refused: its
+challenge was single-use. An answer that arrives 301 seconds after its challenge is refused: challenges last five minutes. And an answer whose
+user-verified flag was switched on after signing is refused, because the flags are inside the signed bytes.
+"""
+speech = """
+Second demo: signing in. [[slnc 400]] The bank sends a fresh challenge. [[slnc 300]] Ana touches her phone. [[slnc 600]]
+The phone signs a short block of data: the hash of the bank's name, its flags, and a counter. [[slnc 300]] It also signs the hash of the client data, which the browser wrote. [[slnc 600]]
+The bank checks every part, in order, and Ana is signed in. [[slnc 600]]
+The same answer sent again is refused. [[slnc 300]] Its challenge was used once, and is gone. [[slnc 300]] An answer that arrives after five minutes is refused too. [[slnc 600]]
+And an answer whose flags were changed after signing is refused. [[slnc 300]] The flags are inside the signature.
+"""
+rows = { signin = "active ok" }
+console = [
+    ["ana touches her phone; it signs 37 bytes of authenticator data and the SHA-256 of the client data", "muted"],
+    ["the bank checks challenge, type, origin, relying party id hash, flags, signature and counter: accepted (signed in as ana with ana's phone)", "ok"],
+    ["the same answer sent again: refused (unknown or already used challenge)", "ok"],
+    ["an answer that arrives 301 seconds after its challenge: refused (challenge expired)", "ok"],
+    ["the same kind of answer with the user-verified flag switched on after signing: refused (signature does not match)", "ok"],
+]
+
+[[act]]
+title = "A look-alike site gets nothing it can use"
+summary = "On bank-example.test the phone has no passkey for that name, the browser will not ask for bank.example, and even a relayed answer carries the real origin, which the bank refuses; a typed password, by contrast, works at the bank."
+detail = """
+Ana opens https://bank-example.test, a copy of the bank's page. It asks for a passkey for its own name, bank-example.test, and gets nothing: the
+phone has no passkey for that name. It passes on the bank's real challenge and asks for bank.example, and gets nothing: the browser will not use
+bank.example for a page at bank-example.test. Even a browser that skipped that rule writes the page's real origin into the client data, and the
+bank refuses it: the origin is not https://bank.example. The same page asking for Ana's password gets a password that works at the bank. A password
+can be phished; a passkey cannot.
+"""
+speech = """
+Third demo: a look-alike site. [[slnc 400]] Ana opens a copy of the bank's page, on a name that looks almost the same. [[slnc 600]]
+It asks for a passkey for its own name. [[slnc 300]] The phone has none. [[slnc 300]] Nothing comes back. [[slnc 600]]
+It passes on the bank's real challenge, and asks for the bank's name. [[slnc 300]] The browser refuses, because the page is not on the bank's site. [[slnc 600]]
+Even a browser that skipped that rule writes the page's real address into the signed data. [[slnc 300]] And the bank refuses it. [[slnc 600]]
+Now the same page asks for Ana's password. [[slnc 300]] She types it in. [[slnc 300]] And it works at the real bank. [[slnc 300]] A password can be phished. [[slnc 300]] A passkey cannot.
+"""
+rows = { phishing = "active ok" }
+console = [
+    ["ana opens https://bank-example.test, a copy of the bank's page", "muted"],
+    ["it asks for a passkey for its own name bank-example.test: nothing (the authenticator has no passkey for bank-example.test)", "ok"],
+    ["it passes on the bank's real challenge and asks for bank.example: nothing (the browser will not use bank.example for a page at https://bank-example.test)", "ok"],
+    ["even a browser that skipped that rule writes the page's real origin, and the bank checks it: refused (origin https://bank-example.test is not https://bank.example)", "ok"],
+    ["the same page asking for ana's password: the password works at the bank  <- A PASSWORD CAN BE PHISHED, A PASSKEY CANNOT", "bad"],
+]
+
+[[act]]
+title = "User verification for payments, and counters against copies"
+summary = "A payment with only a touch is refused and accepted with a fingerprint; a copied key signs with counter 7 after the real phone already reached 7, so it is refused and the passkey suspended; synced passkeys always report 0."
+detail = """
+A payment of 900 with only a touch is refused: payments need user verification. With Ana's fingerprint as well, it is accepted. Ana's phone counts
+its signatures, and the bank has now seen counter 6. An attacker copies the phone's key. The real phone signs in first, with counter 7. Then the copy
+signs in with counter 7, which is not above 7, and is refused as a possible cloned authenticator; the passkey is suspended until Ana confirms it,
+even for the real phone. A synced passkey, shared between Ana's devices, reports counter 0 every time and is accepted: a copy of it cannot be spotted
+by its counter, so its protection is the account it syncs through.
+"""
+speech = """
+Fourth demo: payments, and copies. [[slnc 400]] A payment with only a touch is refused. [[slnc 300]] Payments need user verification. [[slnc 300]] With Ana's fingerprint as well, it is accepted. [[slnc 600]]
+Ana's phone counts every signature, and the bank remembers the last count it saw. [[slnc 600]]
+Now an attacker copies the phone's key. [[slnc 300]] The real phone signs in, and its count goes up. [[slnc 300]] Then the copy signs in, with a count that is not higher. [[slnc 300]] The bank refuses it, and suspends the passkey until Ana confirms it. [[slnc 600]]
+A synced passkey, shared between Ana's devices, always reports zero. [[slnc 300]] So a copy cannot be spotted by its counter. [[slnc 300]] Its protection is the account it syncs through.
+"""
+rows = { verify = "active amber" }
+console = [
+    ["a payment of 900 with only a touch: refused (user verification required)", "ok"],
+    ["the same payment with her fingerprint as well: accepted", "ok"],
+    ["ana's phone counts its signatures; the bank has now seen counter 6", "muted"],
+    ["an attacker copies the phone's key; the real phone signs in first: accepted", "muted"],
+    ["then the copy signs in: refused (counter 7 is not above 7: possible cloned authenticator)", "ok"],
+    ["the passkey is now suspended until ana confirms it, even for the real phone: refused", "amber"],
+    ["a synced passkey, counter 0: accepted, twice; a copy cannot be spotted by its counter", "amber"],
+]
+
+[[act]]
+title = "The bill: recovery, lost devices and the move away from passwords"
+summary = "Ben's lost phone leaves his security key and a one-time recovery code; recovery is now the weakest way in, and Ana's password still works until the bank switches it off."
+detail = """
+Ben registers 2 passkeys, his phone and a security key, and keeps 1 recovery code of 20 characters. His phone is lost, and his new laptop has no
+passkey yet. The security key from his drawer signs him in. The recovery code works once and is refused the second time. Recovery is now the
+weakest way in, so it needs the same care as the passkeys themselves. And Ana's password still works alongside her passkeys: the weakest way in
+sets the level. Once Ana has two passkeys and the bank switches her password off, the password is refused. A real bank uses a maintained WebAuthn
+library, which is the `-with-spring-security` version.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Ben registers two passkeys, his phone and a security key, and keeps one recovery code. [[slnc 600]]
+His phone is lost. [[slnc 300]] His new laptop has no passkey yet. [[slnc 300]] The security key from his drawer signs him in. [[slnc 600]]
+The recovery code works once, and never again. [[slnc 300]] Recovery is now the weakest way in, so it needs the same care. [[slnc 600]]
+And Ana's password still works, next to her passkeys. [[slnc 300]] The weakest way in sets the level. [[slnc 300]] Once the bank switches her password off, it is refused. [[slnc 600]]
+A real bank uses a maintained library for all of these checks.
+"""
+rows = { recover = "active amber" }
+console = [
+    ["ben registers 2 passkeys, his phone and a security key, and keeps 1 recovery code of 20 characters", "muted"],
+    ["ben's phone is lost; his new laptop has no passkey yet: nothing (the authenticator has no passkey for bank.example)", "amber"],
+    ["the security key from his drawer: accepted (signed in as ben with ben's security key)", "ok"],
+    ["the recovery code, once: accepted; twice: refused (recovery code unknown or already used)", "ok"],
+    ["ana's password still works alongside her passkeys: accepted  <- THE WEAKEST WAY IN SETS THE LEVEL", "bad"],
+    ["once ana has two passkeys and the bank switches her password off: refused", "ok"],
+]
+
+[animation]
+subtitle = "An online bank replaces passwords with passkeys, and checks every answer its customers' devices send."
+boxes = [
+    ["register", "Register", "the bank keeps a public key"],
+    ["signin", "Sign in", "a fresh challenge, signed once"],
+    ["phishing", "Look-alike site", "gets nothing it can use"],
+    ["verify", "Payments and copies", "fingerprint, and the counter"],
+    ["recover", "Recovery", "the weakest way in"],
+]
+
+[docs.problem]
+scenario = """
+An online bank's customers sign in with passwords and one-time codes, and both can be typed into a convincing copy of the bank's page. The bank
+wants sign-in that a look-alike page cannot capture, without storing anything that would let a thief sign in.
+"""
+naive = """
+Add another secret: a longer password, a security question, a code by text message. Each is still something a person can be talked into
+entering on the wrong site, and each is stored somewhere a thief can copy.
+"""
+deliver = [
+    "Registration that stores only a public key, a credential id and a counter.",
+    "Sign-in with single-use, five-minute challenges, checked in a fixed order.",
+    "The browser's rule that a page may only ask for its own site's passkeys, and the origin written into the signed client data.",
+    "User verification for payments, and a counter that catches a copied device-bound key.",
+    "Recovery with a second passkey and one-time codes, and switching passwords off.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The beginner digital-signatures project, or what a key pair and a signature are",
+    "The beginner totp-multi-factor project, or what a second factor is",
+]
+not_required = [
+    "A browser or a real authenticator: both are modelled in Java",
+    "CBOR and COSE: the model uses an encoded public key instead",
+    "Elliptic-curve mathematics",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what a passkey is and what the site stores",
+    "list the checks a relying party makes on every answer, in order",
+    "explain why a look-alike site gets nothing from a passkey",
+    "explain user verification and the signature counter, and what synced passkeys change",
+    "describe why recovery and old passwords become the weak points",
+]
+walkthrough = """
+Start with the house key and the lock. Run the acts. After act one, ask what a thief who copies the bank's database could do with it. After act
+three, ask the group to say exactly which of the three refusals would stop a real phishing page, and which only matters if the browser is faulty.
+In act five, ask what the bank's recovery flow should require before it lets someone register a new passkey.
+"""
+exercises = [
+    "Add a second relying party, shop.example, and show that one authenticator holds separate keys for both, which cannot be used for each other.",
+    "Make the challenge lifetime one minute and write the boundary tests first.",
+    "Let a recovery code register a new passkey only after a waiting period and a message to the customer's other devices.",
+    "Add a check that a credential id is not longer than WebAuthn allows, and refuse it otherwise.",
+]
+
+[docs.explained]
+sentence = """
+A passkey is a key pair made for one site: the site stores only the public key, and signs in by checking a fresh, single-use challenge signed together
+with the site's own name and the page's real origin, so the key cannot be used anywhere else.
+"""
+verdict = """
+Offer passkeys as the main way in, with a maintained library making the checks. Require user verification for payments and changes to the account.
+Encourage two passkeys per customer, issue one-time recovery codes, guard the recovery flow, and switch passwords off once they are no longer needed.
+"""
+recognise = [
+    "`navigator.credentials.create` and `navigator.credentials.get` in a site's JavaScript.",
+    "A server that stores `credentialId`, `publicKey` and `signCount` per user.",
+    "Library settings named `rpId`, `origins` and `userVerification`.",
+    "Account settings pages listing several passkeys by device name.",
+]
+
+[spec]
+purpose = """
+Teach how passkeys work and why they resist phishing, by building a model relying party, browser and authenticator with the JDK, laid out as WebAuthn
+lays them out, and proving each check with a refusal.
+"""
+nongoals = [
+    "CBOR, COSE keys and attestation formats.",
+    "A real browser or authenticator.",
+    "Passkeys in a framework: the -with-spring-security version.",
+]
+problem = """
+Learners hear that passkeys are phishing-resistant but rarely see why: which bytes are signed, who writes the origin, and what the site must check.
+"""
+roles = [["Base64url", "`B64`"], ["SHA-256", "`Sha256`"], ["Client data", "`ClientData`"], ["Authenticator data", "`AuthenticatorData`"], ["The device", "`Authenticator`"], ["The browser's rules", "`Browser`"], ["The bank", "`RelyingParty`"], ["Simulated time", "`SimClock`"], ["Entry point", "`PasskeysDemo`"]]
+requirements = [
+    "The bank stores only a credential id, a public key and a counter.",
+    "Every answer is refused for a used or expired challenge, a wrong type or origin, another relying party id, missing flags, an unknown credential, a bad signature or a counter that did not rise.",
+    "The browser refuses a relying party id that is not the page's own site.",
+    "Payments require user verification.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who holds what"
+caption = "The private key never leaves the authenticator; the browser writes the origin; the bank holds only public keys."
+nodes = [
+    { id = "auth", label = "Authenticator", sub = "private key, per site", col = 0, row = 0, colour = "green", shape = "store" },
+    { id = "browser", label = "Browser", sub = "writes the real origin", col = 1, row = 0, colour = "client" },
+    { id = "bank", label = "The bank", sub = "checks every answer", col = 2, row = 0, colour = "accent", shape = "ellipse" },
+    { id = "store", label = "Passkey records", sub = "public keys and counters", col = 2, row = 1, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "bank", to = "browser", label = "challenge, relying party id" },
+    { from = "browser", to = "auth", label = "client data hash" },
+    { from = "auth", to = "browser", label = "signature" },
+    { from = "browser", to = "bank", label = "answer" },
+    { from = "store", to = "bank", label = "public key", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The browser enforces the site rule and writes client data; the authenticator signs; the relying party checks."
+nodes = [
+    { id = "rp", label = "RelyingParty", sub = ["startRegistration(user)", "startSignIn(user, forPayment)", "finishSignIn(user, answer)"], col = 0, row = 0, colour = "green" },
+    { id = "browser", label = "Browser", sub = ["create(origin, rpId, challenge)", "get(origin, rpId, challenge)", "rpIdAllowedFor(origin, rpId)"], col = 1, row = 0, colour = "client" },
+    { id = "auth", label = "Authenticator", sub = ["create(rpId, clientData)", "get(rpId, allowed, clientData)"], col = 2, row = 0, colour = "amber" },
+    { id = "cd", label = "ClientData", sub = ["type, challenge, origin", "json(), parse(bytes)"], col = 0, row = 1, colour = "accent" },
+    { id = "ad", label = "AuthenticatorData", sub = ["rpIdHash, flags, signCount", "encode(), decode(bytes)"], col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "browser", to = "auth", label = "asks" },
+    { from = "rp", to = "cd", label = "checks" },
+    { from = "rp", to = "ad", label = "checks" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The checks, in order"
+caption = "The bank refuses at the first check that fails, and a challenge is used up whatever the outcome."
+nodes = [
+    { id = "challenge", label = "Challenge", sub = "known, unused, under five minutes", col = 0, row = 0, colour = "client" },
+    { id = "origin", label = "Type and origin", sub = "webauthn.get, https://bank.example", col = 1, row = 0, colour = "amber" },
+    { id = "rpid", label = "Relying party id hash", sub = "SHA-256 of bank.example", col = 2, row = 0, colour = "amber" },
+    { id = "flags", label = "Flags", sub = "presence, and verification for payments", col = 3, row = 0, colour = "amber" },
+    { id = "sig", label = "Signature and counter", sub = "the stored public key", col = 4, row = 0, colour = "green" },
+]
+edges = [
+    { from = "challenge", to = "origin" },
+    { from = "origin", to = "rpid" },
+    { from = "rpid", to = "flags" },
+    { from = "flags", to = "sig" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Signing in with a passkey: who does what, in order"
+participants = ["Bank", "Browser", "Phone"]
+steps = [
+    ["Bank", "Browser", "challenge, rpId bank.example"],
+    ["Browser", "Browser", "page is on bank.example: allowed"],
+    ["Browser", "Phone", "rpId, SHA-256 of client data"],
+    ["note", "Phone", "touch, and a fingerprint for payments"],
+    ["Phone", "Browser", "authenticator data and signature", "reply"],
+    ["Browser", "Bank", "client data, authenticator data, signature"],
+    ["note", "Bank", "challenge, origin, rpId hash, flags, signature, counter"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A look-alike site"
+caption = "The page cannot choose the origin, and the phone cannot sign for a name it has no key for."
+participants = ["Look-alike page", "Browser", "Phone"]
+steps = [
+    ["Look-alike page", "Browser", "get rpId bank-example.test"],
+    ["Browser", "Phone", "any passkey for bank-example.test?"],
+    ["Phone", "Browser", "none", "reply"],
+    ["Look-alike page", "Browser", "get rpId bank.example"],
+    ["Browser", "Look-alike page", "refused: not this page's site", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A copied key caught by the counter"
+caption = "Only a device-bound passkey counts; a synced one always reports zero."
+participants = ["Real phone", "Copy", "Bank"]
+steps = [
+    ["Real phone", "Bank", "signature with counter 7"],
+    ["note", "Bank", "7 is above 6: accepted, remembers 7"],
+    ["Copy", "Bank", "signature with counter 7"],
+    ["note", "Bank", "7 is not above 7: refused, passkey suspended"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The customer's device", nodes = ["auth", "browser"], colour = "green" },
+    { label = "The bank", nodes = ["bank", "store"], colour = "accent" },
+    { label = "Outside", nodes = ["phish", "thief"], colour = "red" },
+]
+nodes = [
+    { id = "auth", label = "Authenticator", sub = "private keys", col = 0, row = 0, colour = "green", shape = "store", threats = ["T4"] },
+    { id = "browser", label = "Browser", sub = "site rule, origin", col = 0, row = 1, colour = "client", threats = ["T1"] },
+    { id = "bank", label = "Bank", sub = "checks answers", col = 1, row = 0, colour = "accent", shape = "ellipse", threats = ["T2", "T5", "T6"] },
+    { id = "store", label = "Passkey records", sub = "public keys", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T3"] },
+    { id = "phish", label = "Look-alike page", sub = "relays challenges", col = 2, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "thief", label = "Thief", sub = "copies keys or records", col = 2, row = 1, colour = "red", threats = ["T3", "T4", "T5"] },
+]
+edges = [
+    { from = "browser", to = "bank", label = "answers" },
+    { from = "auth", to = "browser" },
+    { from = "store", to = "bank" },
+    { from = "phish", to = "browser", label = "asks for the bank's passkey", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "thief", to = "store", label = "copies records", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "thief", to = "bank", label = "uses recovery or a password", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["PASSKEYS", "text"], ["AND WEBAUTHN", "accent"]]
+taglines = [["A key that only signs for the real site", "gold"]]
+before = { code = "password typed anywhere", note = "can be phished and copied", tag = "BEFORE" }
+after = { code = "origin + rpIdHash + signature", note = "nothing usable to steal", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Passkeys and WebAuthn"
+narration = """Hello, and welcome. [[slnc 400]] This video explains passkeys, and the web standard behind them, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A passkey is a key pair, made by a phone or a security key, for one site only. [[slnc 300]] The site keeps the public key, and the device keeps the private key. [[slnc 600]] Think of a house key cut to fit one front door. [[slnc 300]] It simply does not turn in any other lock. [[slnc 300]] And a copy of the lock tells a burglar nothing, because the lock holds no key. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will hear what the bank stores. [[slnc 300]] What it checks on every sign in. [[slnc 300]] Why a look-alike site gets nothing. [[slnc 300]] And what is left to guard."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank replaces passwords with passkeys.", "", "Passwords and codes can be typed", "into a copy of the bank's page.", "", "Passkeys cannot."]
+narration = """Here is the scenario. [[slnc 400]] An online bank replaces passwords with passkeys. [[slnc 500]] Passwords and one time codes can be typed into a copy of the bank's page. [[slnc 500]] Passkeys cannot. [[slnc 500]] The demos show why."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Relying party: the site that checks", "Authenticator: the phone or security key", "Challenge: a fresh random value, used once", "Origin: the page's real address", "User verification: a PIN or a fingerprint"]
+narration = """Before the demos, the words. [[slnc 500]] The relying party is the site that checks the passkey. [[slnc 500]] The authenticator is the phone, laptop or security key that holds it. [[slnc 500]] A challenge is a fresh random value, used once. [[slnc 500]] The origin is the real address of the page that asked. [[slnc 500]] And user verification means a PIN or a fingerprint, not only a touch."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "The Checks, In Order"
+body = ["Challenge: known, unused, fresh", "Type and origin", "Relying party id hash", "Flags: presence, and verification for payments", "Signature and counter"]
+narration = """Let's put the checks in order. [[slnc 400]] First, the challenge: one the bank issued, not used before, and fresh. [[slnc 500]] Then the type, and the origin of the page. [[slnc 500]] Then the hash of the bank's own name. [[slnc 500]] Then the flags: the user was present, and verified for payments. [[slnc 500]] And last, the signature, with the stored public key, and the counter."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["RelyingParty: the bank's checks", "Browser: the site rule, and the origin", "Authenticator: keys, signatures, counters", "ClientData and AuthenticatorData: the signed bytes"]
+narration = """Here is who does what in the code. [[slnc 400]] The relying party makes the bank's checks. [[slnc 500]] The browser enforces the rule that a page may only ask for its own site's passkeys, and writes the real origin. [[slnc 500]] The authenticator holds the keys, signs, and counts. [[slnc 500]] And the client data and authenticator data classes are the bytes that get signed."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Sign in with a passkey buttons", "Security keys that must be touched", "Passkeys synced to a new phone", "A fingerprint before a payment"]
+narration = """You have probably met this already. [[slnc 400]] Sign in with a passkey buttons, with a fingerprint prompt instead of a password field. [[slnc 500]] Security keys that must be touched. [[slnc 500]] Passkeys that appear on a new phone, because they were synced. [[slnc 500]] And bank apps that ask for a fingerprint again before a payment."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Passkeys as the main way in", "Verification for payments", "Two passkeys per customer", "Guarded recovery, one-time codes", "Passwords switched off when possible"]
+narration = """So, how do you use it? [[slnc 400]] Offer passkeys as the main way in, with a maintained library making the checks. [[slnc 500]] Require user verification for payments. [[slnc 500]] Encourage two passkeys per customer. [[slnc 500]] Guard the recovery flow, with one time codes. [[slnc 500]] And switch passwords off, once they are no longer needed."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a second site", "and show its keys cannot be used for the bank."]
+narration = """That's passkeys and web authentication. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A passkey only signs for the real site, so the weak points that remain are recovery, and every older way in. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second site, and show that its keys cannot be used for the bank. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+Passwordless sign-in at an online bank with passkeys: registration, sign-in, payments with user verification, copied keys, recovery and the
+remaining password. It covers a look-alike site, a replayed answer, a copied database or key, and the fallback paths. It does not cover malware
+in control of the customer's device or browser, attestation, or the platform that syncs passkeys.
+"""
+assets = [
+    "Customers' accounts and money.",
+    "The private keys inside customers' authenticators.",
+    "The bank's passkey records: public keys and counters.",
+    "Recovery codes and any remaining passwords.",
+]
+actors = [
+    "Customers and their devices.",
+    "A look-alike site that relays the bank's challenges.",
+    "A thief who copies the bank's records, a device's key, or a recovery code.",
+]
+boundaries = [
+    "Customer's device to the bank: every answer crosses it and is checked.",
+    "Web page to the browser: the page cannot choose the origin or another site's relying party id.",
+    "Authenticator to everything else: the private key never leaves it.",
+]
+assumptions = [
+    "The customer's browser enforces the WebAuthn rules.",
+    "The bank's clock is correct to within the challenge lifetime.",
+    "In the demo, keys and challenges are random and never printed, and the password and recovery code are demo values.",
+]
+out_of_scope = [
+    "Malware that controls the customer's device or browser.",
+    "Attestation of authenticator models.",
+    "The security of the account a synced passkey syncs through.",
+]
+tests = [
+    "`EncodingTest` checks base64url against RFC 4648, SHA-256 against the abc vector, and the byte layouts of client data and authenticator data.",
+    "`RelyingPartyTest` checks every refusal with its exact reason: used and expired challenges, another customer, type, origin, relying party id, flags, unknown credential, a stranger's key, a copied key, synced passkeys, the browser's site rule, passwords and recovery codes.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, saml-basics, looks at the older single sign-on standard that many banks still run beside OpenID Connect.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A look-alike site captures the customer's sign-in"
+where = "the browser, `Browser.rpIdAllowedFor`, `RelyingParty` origin check"
+control = "The authenticator signs only for its relying party id, the browser allows only the page's own site, and the bank checks the origin in the signed client data"
+residual = "A password or recovery path that is still enabled can be phished instead"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "An earlier answer is replayed"
+where = "`RelyingParty` challenge store"
+control = "Challenges are random, single-use and expire after five minutes"
+residual = "The bank must keep the challenge store on the server, not in a cookie the client can resend"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "The bank's passkey records are copied"
+where = "the passkey records"
+control = "Only public keys, credential ids and counters are stored; none can sign"
+residual = "Records still reveal which customers use which devices; protect them as personal data"
+
+[[threat]]
+id = "T4"
+stride = "S"
+threat = "A device-bound key is copied and used"
+where = "`RelyingParty` counter check"
+control = "A counter that does not rise is refused and the passkey suspended"
+residual = "Synced passkeys report zero, so their copies cannot be detected this way"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "The attacker uses the weakest remaining way in: a password or the recovery path"
+where = "`RelyingParty.passwordSignIn`, `RelyingParty.recover`"
+control = "One-time recovery codes stored as hashes, two passkeys per customer, passwords switched off"
+residual = "Recovery by a person (a call centre) remains open to persuasion and needs its own checks"
+
+[[threat]]
+id = "T6"
+stride = "E"
+threat = "An unattended, unlocked device approves a payment with only a touch"
+where = "`RelyingParty.startSignIn(user, forPayment)`"
+control = "User verification is required for payments"
+residual = "Malware on an unlocked device is out of scope"

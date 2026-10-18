@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Passkeys and WebAuthn</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Passkeys and WebAuthn</h1>
+<pre><code>src/main/java/com/jk/explore/security/passkeys/
+├── Authenticator.java      A model authenticator: a phone, a laptop or a security key
+├── AuthenticatorData.java  The authenticator data that the authenticator itself writes: the SHA-256 hash of the relying party id it signed for, flags for user presence and user verification, and a signature counter
+├── B64.java                Base64url without padding (RFC 4648 section 5), the encoding WebAuthn uses for challenges and credential ids
+├── Browser.java            The browser between a web page and the authenticator
+├── ClientData.java         The client data that the browser, not the web page, writes for every WebAuthn call: the type of call, the server's challenge and the origin of the page that asked
+├── PasskeysDemo.java       Runs the online bank's passwordless sign-in in five numbered acts
+├── RelyingParty.java       The bank's side of WebAuthn: it hands out single-use challenges, stores each customer's public keys, and checks every answer in a fixed order: challenge, type, origin, relying party id hash, flags, credential, signature and counter
+├── Sha256.java             SHA-256, used for the relying party id hash and for the hash of the client data
+└── SimClock.java           A clock in whole seconds that only moves when told to, so challenge expiry is exact and repeatable
+</code></pre>
+<p><strong>A passkey is a key pair made for one site: the bank keeps only the public key, the device signs a fresh challenge for that site and no other, and the browser writes down where it really was, so a look-alike page gets nothing it can use. What is left to guard is recovery, and every older way in that is still switched on.</strong></p>
+<p>A <strong>passkey</strong> is a WebAuthn credential: a key pair made by an <strong>authenticator</strong> (a phone, a laptop or a security key) for one <strong>relying party</strong>,
+the site that will check it. The site keeps only the <strong>public key</strong>. To sign in, the site sends a fresh <strong>challenge</strong>; the authenticator signs it,
+together with the <strong>SHA-256 of the relying party id</strong> it was made for and a few flags, and the browser adds <strong>client data</strong> that records the
+<strong>origin</strong> of the page that asked. Because the browser, not the page, fills in the origin, and the authenticator only signs for the site it was
+made for, a passkey cannot be typed into the wrong site. That is what NIST SP 800-63B calls a <strong>phishing-resistant</strong> authenticator.</p>
+<p>This project maps to <strong>OWASP Top 10 (2025) A07 Authentication Failures</strong>; to <strong>CWE-287</strong>, improper authentication, and <strong>CWE-294</strong>,
+authentication bypass by capture-replay; to <strong>NIST SP 800-63B</strong>, phishing-resistant authenticators; to the <strong>authentication</strong> chapter of
+<strong>OWASP ASVS 5.0</strong>; and to <strong>WebAuthn Level 3</strong>.</p>
+<p>The demo builds a model relying party, browser and authenticator with the JDK alone, with ES256 (P-256) signatures and data structures laid out
+as WebAuthn lays them out: client data JSON, 37 bytes of authenticator data, and a signature over both.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a house key cut to fit one front door. A password is a secret anyone can be talked into saying to the wrong person. The passkey is a key
+that simply does not turn in any other lock, and the door, not the person holding the key, checks that the key was cut for it. A copy of the lock
+tells a burglar nothing, because the lock holds no key. What is left to steal is the spare key under the mat: the recovery path.</p>
+<h2>The scenario</h2>
+<p>An online bank replaces passwords with passkeys. Ana registers her phone, signs in, opens a look-alike page, pays a bill, and has her key copied.
+Ben loses his phone. The demo shows, for each step, what the bank checks and what it refuses.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Registering a passkey: the bank keeps only a public key</td>
+<td>The bank sends a 32-byte challenge; Ana's phone makes a P-256 key pair for bank.example and returns a 16-byte credential id and a 91-byte public key; the bank stores nothing that can sign, so a copy of its records is useless.</td>
+</tr>
+<tr>
+<td>2. Signing in: a fresh challenge, signed once</td>
+<td>The phone signs 37 bytes of authenticator data and the hash of the client data; the bank accepts it once, then refuses the same answer, an answer 301 seconds late, and an answer whose flags were changed after signing.</td>
+</tr>
+<tr>
+<td>3. A look-alike site gets nothing it can use</td>
+<td>On bank-example.test the phone has no passkey for that name, the browser will not ask for bank.example, and even a relayed answer carries the real origin, which the bank refuses; a typed password, by contrast, works at the bank.</td>
+</tr>
+<tr>
+<td>4. User verification for payments, and counters against copies</td>
+<td>A payment with only a touch is refused and accepted with a fingerprint; a copied key signs with counter 7 after the real phone already reached 7, so it is refused and the passkey suspended; synced passkeys always report 0.</td>
+</tr>
+<tr>
+<td>5. The bill: recovery, lost devices and the move away from passwords</td>
+<td>Ben's lost phone leaves his security key and a one-time recovery code; recovery is now the weakest way in, and Ana's password still works until the bank switches it off.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>26 tests in <code>DemoRunsTest</code>, <code>EncodingTest</code>, <code>RelyingPartyTest</code>. Base64url is checked against the RFC 4648 test vectors and SHA-256 against the published abc vector. Every check the relying party makes is a test that refuses an answer with its exact reason, including the five-minute challenge boundary, a copied key caught by the counter, and the browser's relying party id rule.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Everything runs in memory with a simulated clock in whole seconds; no real browser or authenticator is used. Keys, challenges and credential ids
+are random, so the demo prints only facts that do not depend on them: sizes, flags, counters and verdicts. The demo password and recovery code
+are demo values that protect nothing.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/passkeys-explained.html">Passkeys and WebAuthn, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The private key never leaves the authenticator; the browser writes the origin; the bank holds only public keys.</p>
+<p><img alt="Who holds what" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The browser enforces the site rule and writes client data; the authenticator signs; the relying party checks.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The bank refuses at the first check that fails, and a challenge is used up whatever the outcome.</p>
+<p><img alt="The checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Signing in with a passkey: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/passkeys-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Recovery becomes the weakest link.</strong> A customer who loses the only device holding the passkey needs another way in. Register two passkeys, issue one-time recovery codes, and treat any recovery flow as carefully as sign-in itself.</li>
+<li><strong>Old ways in keep old weaknesses.</strong> While a password still works alongside a passkey, the account is only as strong as the password. Switch passwords off once a customer has two passkeys.</li>
+<li><strong>Synced passkeys trade clone detection for convenience.</strong> A passkey shared between a person's devices reports a counter of zero, so the counter cannot spot a copy; its protection is the account it syncs through.</li>
+<li><strong>The bank must check every field, in order.</strong> Skipping the origin, the relying party id hash, the flags or the challenge's single use undoes the protection; a maintained library makes those checks for you.</li>
+<li><strong>A model is for learning.</strong> Real WebAuthn uses CBOR and COSE keys, attestation formats and many authenticators; this project uses an encoded public key instead and no attestation, and the <code>-with-spring-security</code> version uses Spring Security's passkey support.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a site with no accounts worth stealing, a password and a rate limit may be enough. For a bank, an e-mail provider or anything that recovers
+other accounts, passkeys are the default today, with user verification for payments and a carefully guarded recovery path.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Sign in with a passkey" buttons, and a fingerprint or face prompt instead of a password field.</li>
+<li>Security keys that plug into a USB port and must be touched.</li>
+<li>Passkeys that appear on a new phone because they were synced through the phone maker's account.</li>
+<li>Bank apps that ask for a fingerprint again before a payment.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">identity-and-access</a> in the <a href="../..">intermediate track</a>, after <a href="../oauth2-authorization-code-pkce">oauth2-authorization-code-pkce</a>.
+It builds on the beginner projects <a href="../../../beginner/cryptography/digital-signatures">digital-signatures</a> and
+<a href="../../../beginner/passwords-and-mfa/totp-multi-factor">totp-multi-factor</a>, whose one-time codes can still be phished.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
