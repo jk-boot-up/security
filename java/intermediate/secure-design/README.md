@@ -7,6 +7,7 @@ OWASP Top 10 (2025) A06 Insecure Design: finding threats before code is written,
 | # | Project | What it shows | Maps to |
 | --- | --- | --- | --- |
 | 1 | [threat-modeling](threat-modeling) | A bank as a data-flow model in code, STRIDE threats found per element and boundary, rated and decided, with mitigations kept as tests that fail when the model drifts | A06, SSDF PW.1 |
+| 2 | [security-requirements-with-asvs](security-requirements-with-asvs) | Choosing an ASVS level, requirements kept as data, automated checks against a running store, coverage by chapter and a release gate | ASVS 5.0, A06, SSDF PW.1 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 
