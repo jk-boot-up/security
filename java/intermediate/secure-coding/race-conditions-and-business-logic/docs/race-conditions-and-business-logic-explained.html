@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Race Conditions and Business Logic, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Race Conditions and Business Logic, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A race condition lets two requests both pass a check before either acts, so the check and the action must be one step; retries need idempotency keys so they run once; and the server must enforce its own business rules
+and order states, because clients send requests together, again and out of order.</p>
+<h2>The 5 acts</h2>
+<h3>1. Check, then act</h3>
+<p>Ana has 100 and sends two withdrawals of 80 at the same moment. A reads the balance, then B reads it: both see 100. Both check that 100 covers 80, and both say yes. Then A writes 20 and pays out 80,
+and B writes 20 and pays out 80. The bank paid out 160 from a balance of 100, and the balance says 20. Sent one after the other, the second is refused, so a test that sends them in turn never
+sees the bug. A single-use coupon that is checked, applied and then marked used gives a discount of 40 instead of 20 the same way.</p>
+<h3>2. Making the check and the write one step</h3>
+<p>With a lock on the account around read, check and write, A takes the lock, and B waits while A reads 100, checks, writes 20 and releases the lock. Then B takes the lock, reads 20, and refuses.
+Paid out 80, balance 20. Without a lock, a compare-and-set writes only if the balance is still what was read: A sets 100 to 20, B tries to set 100 to 20 and fails because the balance changed,
+reads again, sees 20 and refuses. A coupon claimed in one step before the discount is used once. The rule that must always hold, the balance never below zero and each coupon used once, now holds
+in every order of steps.</p>
+<h3>3. Sending the same request twice</h3>
+<p>Ana pays 300 rent, the reply is lost, and her app sends the request again. Without a key, ana has 400 and ben 600: paid twice. With an idempotency key chosen by the app for this payment, the first send moves 300,
+and the same key again returns "already done: moved 300", so ana has 700 and ben 300. The same key with a different amount is refused, because a key names one request. A new key is a new payment.
+The key is claimed in one step before the money moves, so two copies racing each other cannot both run.</p>
+<h3>4. Rules the server must keep</h3>
+<p>A careless bank given a transfer of -50 from ana to ben takes 50 from ben. Ten transfers of 1 from ana to herself earn 10 reward points for nothing. The careful bank refuses a negative amount,
+a transfer to the same account, and more money than the account holds. A cart with boots at 180, three coupons and a total of 1 written by the client is charged -59 by a careless checkout,
+and 160 by the careful one, which ignores the client's total and allows one coupon per order. An order kept as flags is shipped before payment and refunded 360 on an order of 180. As a state machine,
+shipping first is refused, paying, shipping and refunding work, and a second refund is refused: 180 refunded in all.</p>
+<h3>5. The bill</h3>
+<p>A lock makes requests to one account take turns: B spent 3 steps waiting while A held the lock. Two transfers in opposite directions, each locking its own sender first, deadlock: A locks ANA-1, B locks BEN-2,
+and each waits for the other. With every lock taken in one order, the smaller account first, both finish and ana has 520 and ben 480. Two servers, each with its own lock in its own memory, sharing one database,
+both pay out 80 from 100: a lock in one process does not stop another. With more than one server, the guarantee must come from the database, which is the -with-postgres version of this project.</p>
+<h2>The verdict</h2>
+<p>Find every check-then-act on money, stock, coupons and counts, and make it one step: a lock, a compare-and-set, or better a single conditional database update. Give every request that may be retried an idempotency key.
+Write the business rules down and enforce them on the server, with explicit states for workflows. Take locks in one fixed order, and with more than one server, let the database provide the guarantee.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>if (balance &gt;= amount) { ... balance = balance - amount; }</code> in a request handler.</li>
+<li>An <code>Idempotency-Key</code> header in a payment API.</li>
+<li><code>UPDATE account SET balance = balance - ? WHERE id = ? AND balance &gt;= ?</code> as a one-step check and write.</li>
+<li>Order tables with a state column and allowed transitions.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Gift cards and coupons redeemed many times by sending the same request in parallel.</li>
+<li><code>Idempotency-Key</code> headers in payment provider APIs.</li>
+<li><code>SELECT ... FOR UPDATE</code>, optimistic locking with a version column, and isolation levels in database code.</li>
+<li>Order and refund workflows with states such as created, paid, shipped and refunded.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

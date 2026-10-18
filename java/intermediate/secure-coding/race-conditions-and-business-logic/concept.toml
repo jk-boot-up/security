@@ -1,0 +1,570 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "race-conditions-and-business-logic"
+level = "intermediate"
+module = "secure-coding"
+title = "Race Conditions and Business Logic"
+short_title = "Races and Business Logic"
+package = "races"
+main_class = "RacesDemo"
+tagline = "Correct one at a time is not correct at the same time"
+bold = "A check and the action it protects must happen as one step, a retried request must not run twice, and the server must keep its own rules about amounts, coupons and order states, because attackers send requests together, again and out of order."
+domain = "an online bank"
+domain_note = ""
+youtube_description = """Race conditions and business logic flaws in Java, OWASP Top 10 A06, insecure design. Explained with an online bank and store, like two cashiers who each check the same nearly empty account and both hand over the money. We watch two withdrawals of 80 from a balance of 100 both succeed, and a single-use coupon used twice, by running the steps of two requests in a written order; fix them with a lock and with a compare-and-set, so the balance can never go below zero; stop a retried payment from paying twice with an idempotency key; keep the server's own rules about negative amounts, transfers to yourself, stacked coupons, totals sent by the client and orders refunded twice; and finish with the bill: locks make requests take turns, locks taken in the wrong order deadlock, and a lock in one server does not stop another."""
+thumb_lines = ["RACE CONDITIONS", "AND BUSINESS LOGIC"]
+thumb_code = "if (balance >= amount) balance -= amount;"
+youtube_title = "Race Conditions and Business Logic Flaws in Java (OWASP A06)"
+youtube_tags = ["race condition", "toctou", "business logic", "idempotency key", "compare and set", "deadlock", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+A **race condition** happens when the result depends on the order in which two things run. The classic case in money handling is **check, then act**: a withdrawal reads the balance,
+checks that it covers the amount, then writes the new balance. Each step is right on its own. But two requests can both read and both check before either writes, so both pass,
+and the bank pays out twice what the account held. The same gap lets a single-use coupon be used twice. Testing one request at a time never finds it.
+
+The fixes make the check and the action **one step**: a **lock** around both, or a **compare-and-set** that writes only if the value is still the one that was checked. A request
+that may be sent again, because a reply was lost, carries an **idempotency key**, so the second copy returns the first answer instead of moving money again. And the server keeps its own
+**business rules**, whatever the client sends: amounts above zero, no transfers to oneself, one coupon per order, prices from the catalogue, and an order that moves through
+**states** (created, paid, shipped) and is refunded at most once.
+
+Real thread timing changes from run to run, so the demo shows concurrency with a model: each request is split into its steps, and the order in which the steps run is written down.
+The tests try every order, and also run the real Java code on real threads with the bad order forced.
+
+Maps to: OWASP Top 10 2025 A06 (Insecure Design); CWE-362 (concurrent execution with improper synchronization), CWE-367 (time-of-check time-of-use), CWE-840 (business logic errors),
+CWE-841 (improper enforcement of behavioural workflow); OWASP ASVS 5.0, the chapter on business logic.
+"""
+analogy = """
+Think of two cashiers at two counters. A customer with 100 in the account asks both for 80 at the same moment. Each cashier looks at the screen, sees 100, says yes, and hands over the money,
+and only then does each update the account. Both looked; neither was wrong to look; together they paid 160. The fix is one key to the account book: whoever holds it looks and writes before
+handing it on.
+"""
+scenario = """
+An online bank pays out withdrawals and transfers, and an online store takes coupons and payments for orders. The demo sends two requests at once, sends one request twice, and sends
+requests that break the rules, and watches what the careless and careful versions do.
+"""
+costs = [
+    "**Locks make requests take turns.** Requests to the same account wait for each other, which costs throughput on a busy account.",
+    "**Locks can deadlock.** Two transfers that lock their own sender first can each wait for the other for ever. Taking every lock in one fixed order prevents it.",
+    "**A lock in one process does not stop another.** With more than one server, the guarantee must come from the database: row locks, isolation levels or a version check.",
+    "**Idempotency keys need storage and expiry.** Keys must be kept long enough to cover retries, and the same key with a different request must be refused.",
+    "**Business rules must be written down.** A rule nobody stated, such as one coupon per order, is a rule nobody enforces.",
+]
+too_much = """
+For data that one request at a time can change, such as a user's own preferences, a race costs little. For money, stock, coupons, votes and anything counted, the check and the action must be
+one step, and retries must be idempotent. The more servers there are, the more the guarantee belongs in the database.
+"""
+met_before = [
+    "Gift cards and coupons redeemed many times by sending the same request in parallel.",
+    "`Idempotency-Key` headers in payment provider APIs.",
+    "`SELECT ... FOR UPDATE`, optimistic locking with a version column, and isolation levels in database code.",
+    "Order and refund workflows with states such as created, paid, shipped and refunded.",
+]
+where = """
+This project is the second in [secure-coding](..), after [input-validation](../input-validation), and builds on the beginner project
+[least-privilege](../../../beginner/safe-habits/least-privilege): the server, not the client, decides what is allowed.
+"""
+twin = """
+Concurrency is shown with a model: each request is a list of steps, and an `Interleaving` runs them in a written order, so the demo prints the same trace on every run. The tests try every
+possible order of two requests, and run the real Java versions (`RealAccounts`, `Bank`) on real threads, with the bad order forced by a barrier rather than left to chance.
+"""
+test_note = "Concurrency in the demo is a model with a written order of steps, so the output is the same on every run. The tests try every order of two requests, and run the real Java code on real threads, forcing the bad order with a barrier and checking the good versions under load fifty times."
+
+[[act]]
+title = "Check, then act"
+summary = "Two withdrawals of 80 from a balance of 100 both read and check before either writes, so the bank pays out 160 and the balance says 20; one after the other, the second is refused; a coupon is used twice the same way."
+detail = """
+Ana has 100 and sends two withdrawals of 80 at the same moment. A reads the balance, then B reads it: both see 100. Both check that 100 covers 80, and both say yes. Then A writes 20 and pays out 80,
+and B writes 20 and pays out 80. The bank paid out 160 from a balance of 100, and the balance says 20. Sent one after the other, the second is refused, so a test that sends them in turn never
+sees the bug. A single-use coupon that is checked, applied and then marked used gives a discount of 40 instead of 20 the same way.
+"""
+speech = """
+First demo: check, then act. [[slnc 400]] Ana has one hundred, and sends two withdrawals of eighty at the same moment. [[slnc 600]]
+Both requests read the balance. [[slnc 300]] Both see one hundred. [[slnc 300]] Both check that it covers eighty, and both say yes. [[slnc 600]]
+Then both write, and both pay out. [[slnc 300]] The bank paid out one hundred and sixty, from a balance of one hundred. [[slnc 600]]
+Sent one after the other, the second is refused. [[slnc 300]] So a test that sends them in turn never sees the bug. [[slnc 600]]
+A single use coupon is used twice, in the same gap.
+"""
+rows = { race = "active wrong" }
+console = [
+    ["A reads the balance: 100", "muted"],
+    ["B reads the balance: 100", "muted"],
+    ["A checks that 100 covers 80: yes", "muted"],
+    ["B checks that 100 covers 80: yes", "amber"],
+    ["A writes 20 and pays out 80", "muted"],
+    ["B writes 20 and pays out 80", "bad"],
+    ["the bank paid out 160 from a balance of 100  <- BOTH CHECKS PASSED BEFORE EITHER WROTE", "bad"],
+    ["one after the other: A paid out 80, B refused, so a test in turn never sees the bug", "amber"],
+    ["a single-use coupon sent twice at once: discount given 40 instead of 20  <- THE SAME GAP", "bad"],
+]
+
+[[act]]
+title = "Making the check and the write one step"
+summary = "With a lock, B waits while A reads, checks and writes, then sees 20 and is refused; with a compare-and-set, B's write fails because the balance changed, and B starts again and is refused; a coupon claimed in one step is used once."
+detail = """
+With a lock on the account around read, check and write, A takes the lock, and B waits while A reads 100, checks, writes 20 and releases the lock. Then B takes the lock, reads 20, and refuses.
+Paid out 80, balance 20. Without a lock, a compare-and-set writes only if the balance is still what was read: A sets 100 to 20, B tries to set 100 to 20 and fails because the balance changed,
+reads again, sees 20 and refuses. A coupon claimed in one step before the discount is used once. The rule that must always hold, the balance never below zero and each coupon used once, now holds
+in every order of steps.
+"""
+speech = """
+Second demo: making the check and the write one step. [[slnc 400]] First, with a lock on the account. [[slnc 600]]
+A takes the lock. [[slnc 300]] B waits, while A reads, checks, and writes. [[slnc 300]] Then B takes the lock, sees twenty, and refuses. [[slnc 600]]
+Second, without a lock, with a compare and set. [[slnc 300]] The write succeeds only if the balance is still the value that was read. [[slnc 300]] B's write fails, because A changed the balance. [[slnc 300]] B reads again, sees twenty, and refuses. [[slnc 600]]
+A coupon claimed in one step is used once. [[slnc 300]] The rule now holds, in every order of steps.
+"""
+rows = { atomic = "active ok" }
+console = [
+    ["with a lock: A takes the lock ANA-1, B waits for the lock ANA-1 three times", "muted"],
+    ["A writes 20, pays out 80 and releases the lock", "muted"],
+    ["B takes the lock, reads the balance: 20, checks that 20 covers 80: no", "ok"],
+    ["A: paid out 80, B: refused; paid out 80, balance 20", "ok"],
+    ["compare-and-set: B tries to set 100 to 20: the balance changed, start again", "amber"],
+    ["B reads the balance: 20; checks that 20 covers 80: no, refused", "ok"],
+    ["the coupon claimed in one step: A discount 20, B refused, discount given 20", "ok"],
+]
+
+[[act]]
+title = "Sending the same request twice"
+summary = "Without a key, a retried rent payment of 300 leaves ana with 400 and ben with 600; with an idempotency key, the second send returns the first answer, the same key with another amount is refused, and a new key is a new payment."
+detail = """
+Ana pays 300 rent, the reply is lost, and her app sends the request again. Without a key, ana has 400 and ben 600: paid twice. With an idempotency key chosen by the app for this payment, the first send moves 300,
+and the same key again returns "already done: moved 300", so ana has 700 and ben 300. The same key with a different amount is refused, because a key names one request. A new key is a new payment.
+The key is claimed in one step before the money moves, so two copies racing each other cannot both run.
+"""
+speech = """
+Third demo: sending the same request twice. [[slnc 400]] Ana pays her rent. [[slnc 300]] The reply is lost, and her app sends the request again. [[slnc 600]]
+Without a key, she pays twice. [[slnc 600]]
+With an idempotency key, chosen by the app for this one payment, the second send returns the first answer. [[slnc 300]] The money moves once. [[slnc 600]]
+The same key with a different amount is refused. [[slnc 300]] A key names one request. [[slnc 300]] And the key is claimed in one step, so two copies racing each other cannot both run.
+"""
+rows = { retry = "active ok" }
+console = [
+    ["the reply is lost and the app sends again: without a key, ana has 400 and ben 600  <- PAID TWICE", "bad"],
+    ["with an idempotency key: first send: moved 300", "ok"],
+    ["the same key again: already done: moved 300; ana has 700 and ben 300", "ok"],
+    ["the same key with a different amount: refused: the key rent-october was used for a different transfer", "ok"],
+    ["a new key is a new payment: moved 300; ana has 400", "muted"],
+]
+
+[[act]]
+title = "Rules the server must keep"
+summary = "A careless bank moves money the wrong way for -50 and rewards ten transfers to oneself; a careless checkout charges -59 for boots at 180; an order kept as flags is refunded 360 without being paid; the careful versions refuse each one."
+detail = """
+A careless bank given a transfer of -50 from ana to ben takes 50 from ben. Ten transfers of 1 from ana to herself earn 10 reward points for nothing. The careful bank refuses a negative amount,
+a transfer to the same account, and more money than the account holds. A cart with boots at 180, three coupons and a total of 1 written by the client is charged -59 by a careless checkout,
+and 160 by the careful one, which ignores the client's total and allows one coupon per order. An order kept as flags is shipped before payment and refunded 360 on an order of 180. As a state machine,
+shipping first is refused, paying, shipping and refunding work, and a second refund is refused: 180 refunded in all.
+"""
+speech = """
+Fourth demo: rules the server must keep, whatever the client sends. [[slnc 400]] A careless bank, given a transfer of minus fifty, takes money from the other customer. [[slnc 300]] Transfers to oneself earn reward points for nothing. [[slnc 600]]
+A careless checkout believes the total the client sent, and applies three coupons. [[slnc 300]] The store ends up owing the customer. [[slnc 600]]
+The careful checkout prices from the catalogue, and allows one coupon per order. [[slnc 600]]
+And an order kept as flags is refunded twice, without ever being paid. [[slnc 300]] As a state machine, created, paid, shipped, it is refunded once, and only after payment.
+"""
+rows = { rules = "active amber" }
+console = [
+    ["a careless bank given a transfer of -50 from ana to ben: ana has 1050 and ben 950  <- MONEY TAKEN FROM BEN", "bad"],
+    ["ten transfers of 1 from ana to herself: earns 10 reward points  <- POINTS FOR NOTHING", "bad"],
+    ["the careful bank: -50: refused; to herself: refused; 5000: refused: not enough money", "ok"],
+    ["careless checkout charges -59  <- THE STORE OWES THE CUSTOMER", "bad"],
+    ["careful checkout charges 160: the client's total ignored, one coupon per order", "ok"],
+    ["an order kept as flags: shipped before payment, refunded 360 on an order of 180", "bad"],
+    ["as a state machine: ship first refused; pay, ship, refund; refund again refused; refunded 180", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A lock made B wait 3 steps; two transfers that lock their own sender first deadlock, while one fixed lock order finishes both; two servers with locks in their own memory both pay 80 from 100, so the guarantee must come from the database."
+detail = """
+A lock makes requests to one account take turns: B spent 3 steps waiting while A held the lock. Two transfers in opposite directions, each locking its own sender first, deadlock: A locks ANA-1, B locks BEN-2,
+and each waits for the other. With every lock taken in one order, the smaller account first, both finish and ana has 520 and ben 480. Two servers, each with its own lock in its own memory, sharing one database,
+both pay out 80 from 100: a lock in one process does not stop another. With more than one server, the guarantee must come from the database, which is the -with-postgres version of this project.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] A lock makes requests to one account take turns. [[slnc 300]] The second request waited while the first held the lock. [[slnc 600]]
+Two transfers in opposite directions, each locking its own sender first, wait for each other for ever. [[slnc 300]] That is a deadlock. [[slnc 300]] Taking every lock in one fixed order prevents it. [[slnc 600]]
+And two servers, each with its own lock in its own memory, both pay out. [[slnc 300]] A lock in one process does not stop another. [[slnc 600]]
+With more than one server, the guarantee must come from the database.
+"""
+rows = { bill = "active amber" }
+console = [
+    ["a lock makes requests take turns: B spent 3 steps waiting while A held the lock", "amber"],
+    ["A locks ANA-1; B locks BEN-2; A waits for BEN-2; B waits for ANA-1", "amber"],
+    ["every request is waiting for a lock another one holds: deadlock", "bad"],
+    ["every lock in one order, the smaller account first: deadlock false; ana has 520, ben 480", "ok"],
+    ["two servers, each with its own lock: paid out 160 from 100  <- A LOCK IN ONE PROCESS DOES NOT STOP ANOTHER", "bad"],
+    ["with more than one server, the guarantee must come from the database: the -with-postgres version", "muted"],
+]
+
+[animation]
+subtitle = "An online bank and store meet requests sent together, sent again, and sent against the rules."
+boxes = [
+    ["race", "Check, then act", "two requests in the gap"],
+    ["atomic", "One step", "a lock, or compare-and-set"],
+    ["retry", "Idempotency key", "the same request runs once"],
+    ["rules", "Business rules", "amounts, coupons, states"],
+    ["bill", "The bill", "waiting, deadlock, many servers"],
+]
+
+[docs.problem]
+scenario = """
+An online bank and store serve many requests at once, from many devices. Customers double-click, apps retry when a reply is lost, and attackers send the same request many times in parallel on purpose.
+"""
+naive = """
+Write each operation as it reads: check the balance, then take the money; check the coupon, then apply it; mark the order refunded; trust the amount and the total the client sends. Every line is right, and the
+combination is wrong as soon as two requests overlap.
+"""
+deliver = [
+    "A step-by-step model that shows exactly how two requests overlap, in a written and repeatable order.",
+    "A lock and a compare-and-set that keep the balance right in every order, checked exhaustively.",
+    "Idempotency keys that make a retried payment run once.",
+    "Server-side business rules: positive amounts, no self-transfers, catalogue prices, one coupon, and an order state machine.",
+    "Real-thread tests that force the bad order and check the fixes under load.",
+    "The costs: waiting, deadlock and the limits of a lock in one process.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics, including what a thread is",
+    "The input-validation project, or the idea that the server decides what is allowed",
+]
+not_required = [
+    "The Java memory model in depth",
+    "A database: the -with-postgres version adds one",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain check-then-act and why testing one request at a time misses it",
+    "make a check and its action one step with a lock or a compare-and-set",
+    "explain idempotency keys and when a client needs them",
+    "list the business rules a server must enforce whatever the client sends",
+    "explain deadlock and why a lock in one process is not enough with many servers",
+]
+walkthrough = """
+Start with the two cashiers. Run act one and ask the group to find the step where it went wrong; there is none, only the order. In act two, ask why the compare-and-set needs a retry. In act three, ask who chooses the key,
+and what happens if the server chooses it instead. In act four, ask which rules were never written down. In act five, ask how the two servers could share one lock.
+"""
+exercises = [
+    "Change the order string in act one and find every order that overdraws; compare with the count the test computes.",
+    "Add a daily withdrawal limit, and check that it holds in every order with the lock and with compare-and-set.",
+    "Give idempotency keys an expiry on a simulated clock, and decide what a retry after expiry should do.",
+    "Add a three-account transfer and show that one fixed lock order still prevents deadlock.",
+]
+
+[docs.explained]
+sentence = """
+A race condition lets two requests both pass a check before either acts, so the check and the action must be one step; retries need idempotency keys so they run once; and the server must enforce its own business rules
+and order states, because clients send requests together, again and out of order.
+"""
+verdict = """
+Find every check-then-act on money, stock, coupons and counts, and make it one step: a lock, a compare-and-set, or better a single conditional database update. Give every request that may be retried an idempotency key.
+Write the business rules down and enforce them on the server, with explicit states for workflows. Take locks in one fixed order, and with more than one server, let the database provide the guarantee.
+"""
+recognise = [
+    "`if (balance >= amount) { ... balance = balance - amount; }` in a request handler.",
+    "An `Idempotency-Key` header in a payment API.",
+    "`UPDATE account SET balance = balance - ? WHERE id = ? AND balance >= ?` as a one-step check and write.",
+    "Order tables with a state column and allowed transitions.",
+]
+
+[spec]
+purpose = """
+Teach race conditions and business-logic flaws by showing two withdrawals and two coupon uses overlapping in a written order, fixing them with a lock and a compare-and-set, making retries idempotent, and enforcing business
+rules and an order state machine on the server.
+"""
+nongoals = [
+    "Database locking and isolation levels: the -with-postgres version.",
+    "Distributed locks and consensus.",
+    "Load testing.",
+]
+problem = """
+Developers test one request at a time, so overlapping requests and retries find the flaws in production.
+"""
+roles = [["Requests as steps", "`Steps`"], ["Running steps in a written order", "`Interleaving`"], ["Shared state of the model", "`Ledger`, `CouponBook`"], ["Withdrawals", "`NaiveWithdrawal`, `LockedWithdrawal`, `CasWithdrawal`"], ["Coupons", "`CouponRedemption`"], ["Lock order", "`LockingTransfer`"], ["Real threads", "`RealAccounts`"], ["Idempotency and rules", "`Bank`"], ["States", "`Order`"], ["Prices", "`Checkout`"], ["Entry point", "`RacesDemo`"]]
+requirements = [
+    "Some order of steps makes check-then-act overdraw, and one request after another does not.",
+    "With a lock or a compare-and-set, no order of steps overdraws or loses money.",
+    "A coupon claimed in one step is used once in every order.",
+    "The same idempotency key moves money once, even from many threads at once, and the same key with a different transfer is refused.",
+    "The bank refuses non-positive amounts, self-transfers, unknown accounts and overdrafts; checkout prices from the catalogue with one coupon; an order is refunded at most once and only after payment.",
+    "Opposite lock orders can deadlock; one fixed order never does.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where the gap is, and how it is closed"
+caption = "Check-then-act leaves a gap between reading and writing; a lock, a compare-and-set or a single conditional update closes it."
+nodes = [
+    { id = "read", label = "Read", sub = "balance 100", col = 0, row = 0, colour = "client" },
+    { id = "check", label = "Check", sub = "100 covers 80", col = 1, row = 0, colour = "amber" },
+    { id = "gap", label = "The gap", sub = "another request runs here", col = 2, row = 0, colour = "red" },
+    { id = "write", label = "Write", sub = "balance 20", col = 3, row = 0, colour = "client" },
+    { id = "one", label = "One step", sub = "lock, compare-and-set, or one UPDATE", col = 1, row = 1, colour = "green", shape = "ellipse" },
+]
+edges = [
+    { from = "read", to = "check" },
+    { from = "check", to = "gap" },
+    { from = "gap", to = "write" },
+    { from = "one", to = "gap", label = "closes", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Requests are lists of steps; the Interleaving runs them in a written order over shared state."
+nodes = [
+    { id = "steps", label = "Steps", sub = ["step()", "waiting()", "finished()", "outcome()"], col = 0, row = 0, colour = "accent" },
+    { id = "run", label = "Interleaving", sub = ["run(order, requests)", "deadlock, waits"], col = 1, row = 0, colour = "green" },
+    { id = "ledger", label = "Ledger", sub = ["balance, compareAndSet", "tryLock, unlock"], col = 2, row = 0, colour = "amber" },
+    { id = "bank", label = "Bank", sub = ["transfer(t)", "transfer(key, t)", "business rules"], col = 0, row = 1, colour = "green" },
+    { id = "order", label = "Order", sub = ["pay, ship, refund", "CREATED > PAID > SHIPPED"], col = 1, row = 1, colour = "green" },
+    { id = "checkout", label = "Checkout", sub = ["careful(request)", "catalogue prices, one coupon"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "run", to = "steps", label = "runs" },
+    { from = "steps", to = "ledger", label = "change" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "An order's states"
+caption = "Each step is allowed only from the states where it makes sense; a refund happens once, after payment."
+nodes = [
+    { id = "created", label = "Created", sub = "not paid", col = 0, row = 0, colour = "client" },
+    { id = "paid", label = "Paid", sub = "money received", col = 1, row = 0, colour = "green" },
+    { id = "shipped", label = "Shipped", sub = "on its way", col = 2, row = 0, colour = "green" },
+    { id = "refunded", label = "Refunded", sub = "final", col = 3, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "created", to = "paid", label = "pay" },
+    { from = "paid", to = "shipped", label = "ship" },
+    { from = "shipped", to = "refunded", label = "refund" },
+    { from = "paid", to = "refunded", label = "refund", dashed = true },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Two withdrawals with a lock: who does what, in order"
+participants = ["A", "Account lock", "B"]
+steps = [
+    ["A", "Account lock", "take the lock"],
+    ["B", "Account lock", "take the lock: wait"],
+    ["note", "A", "read 100, check, write 20, pay 80"],
+    ["A", "Account lock", "release"],
+    ["B", "Account lock", "take the lock"],
+    ["note", "B", "read 20, check: no, refuse"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A retried payment with an idempotency key"
+caption = "The key is claimed before the money moves; the second copy gets the first answer."
+participants = ["App", "Bank"]
+steps = [
+    ["App", "Bank", "transfer 300, key rent-october"],
+    ["note", "Bank", "claim the key, move 300"],
+    ["Bank", "App", "the reply is lost", "reply"],
+    ["App", "Bank", "transfer 300, key rent-october, again"],
+    ["Bank", "App", "already done: moved 300", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A deadlock"
+caption = "Each transfer holds one lock and waits for the other."
+participants = ["A", "ANA-1", "BEN-2", "B"]
+steps = [
+    ["A", "ANA-1", "lock"],
+    ["B", "BEN-2", "lock"],
+    ["A", "BEN-2", "lock: wait"],
+    ["B", "ANA-1", "lock: wait"],
+    ["note", "A", "neither can go on"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The bank and store", nodes = ["service", "data"], colour = "green" },
+    { label = "Clients", nodes = ["app", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "service", label = "Bank and store service", sub = "checks, rules, states", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T3", "T4", "T5"] },
+    { id = "data", label = "Balances, coupons, orders", sub = "shared state", col = 2, row = 0, colour = "accent", shape = "store", threats = ["T1", "T2", "T6"] },
+    { id = "app", label = "Customer's app", sub = "retries when a reply is lost", col = 0, row = 0, colour = "client", threats = ["T2"] },
+    { id = "attacker", label = "Attacker", sub = "parallel, repeated, crafted requests", col = 0, row = 1, colour = "red", threats = ["T1", "T3", "T4", "T5"] },
+]
+edges = [
+    { from = "app", to = "service", label = "requests" },
+    { from = "attacker", to = "service", label = "sends together and again", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "service", to = "data" },
+]
+
+[poster]
+headline = [["RACE CONDITIONS", "text"], ["AND BUSINESS LOGIC", "accent"]]
+taglines = [["Correct one at a time is not correct at the same time", "gold"]]
+before = { code = "if (balance >= amount) ...", note = "two requests both pass", tag = "BEFORE" }
+after = { code = "one step + idempotency key", note = "every order is safe", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Race Conditions and Business Logic"
+narration = """Hello, and welcome. [[slnc 400]] This video explains race conditions and business logic flaws, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A race condition happens when the result depends on the order in which two things run. [[slnc 300]] A business logic flaw is a rule the server forgot to keep. [[slnc 600]] Think of two cashiers at two counters. [[slnc 300]] A customer with one hundred asks both for eighty, at the same moment. [[slnc 300]] Each cashier looks, sees one hundred, and pays. [[slnc 300]] Neither was wrong to look. [[slnc 300]] Together, they paid one hundred and sixty. [[slnc 700]] In this video, the domain is an online bank and store. [[slnc 500]] By the end, you will hear how two requests slip through one check. [[slnc 300]] How to make the check and the action one step. [[slnc 300]] How to stop a retried payment from paying twice. [[slnc 300]] And which rules the server must keep for itself."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank and a store serve many requests at once.", "", "Customers double-click.", "Apps retry when a reply is lost.", "Attackers send the same request", "many times, in parallel, on purpose."]
+narration = """Here is the scenario. [[slnc 400]] An online bank and store serve many requests at once, from many devices. [[slnc 500]] Customers double click. [[slnc 300]] Apps retry when a reply is lost. [[slnc 300]] And attackers send the same request many times, in parallel, on purpose."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Race condition: the order decides the result", "Check, then act: a gap between the two", "Compare-and-set: write only if unchanged", "Idempotency key: one request, run once", "Deadlock: each waits for the other"]
+narration = """Before the demos, the words. [[slnc 500]] A race condition is when the order of two things decides the result. [[slnc 500]] Check, then act, leaves a gap between the check and the action. [[slnc 500]] A compare and set writes a value only if it has not changed. [[slnc 500]] An idempotency key makes one request run once, however often it is sent. [[slnc 500]] And a deadlock is two requests, each waiting for the other."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Ways to Close the Gap"
+body = ["A lock around check and write: one process", "Compare-and-set: no lock, a retry", "One conditional UPDATE: the database decides", "Row locks and versions: many servers"]
+narration = """Let's put the ways to close the gap side by side. [[slnc 400]] A lock around the check and the write works inside one process. [[slnc 500]] A compare and set needs no lock, and retries when it loses. [[slnc 500]] A single conditional update lets the database check and write in one step. [[slnc 500]] And with many servers, row locks and version checks in the database are the guarantee."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Steps and Interleaving: requests in a written order", "Ledger: shared state of the model", "NaiveWithdrawal, LockedWithdrawal, CasWithdrawal", "Bank: idempotency keys and rules", "Order and Checkout: states and prices"]
+narration = """Here is who does what in the code. [[slnc 400]] Each request is a list of steps, and the interleaving runs them in a written order. [[slnc 500]] The ledger holds the shared state. [[slnc 500]] Three withdrawal classes show check then act, a lock, and a compare and set. [[slnc 500]] The bank class keeps idempotency keys and the transfer rules. [[slnc 300]] And the order and checkout classes keep the states and the prices."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Gift cards redeemed many times at once", "Idempotency-Key headers in payment APIs", "SELECT ... FOR UPDATE and version columns", "Orders with states and allowed steps"]
+narration = """You have probably met this already. [[slnc 400]] Gift cards and coupons redeemed many times, by sending the same request in parallel. [[slnc 500]] Payment providers that ask for an idempotency key header. [[slnc 500]] Database code that selects a row for update, or keeps a version column. [[slnc 500]] And order systems with states, and rules about which step may follow which."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Make every check and its action one step", "Give retried requests an idempotency key", "Enforce business rules on the server", "Take locks in one fixed order", "With many servers, let the database decide"]
+narration = """So, how do you use it? [[slnc 400]] Make every check and the action it protects one step. [[slnc 500]] Give every request that may be retried an idempotency key. [[slnc 500]] Enforce the business rules on the server, with explicit states for workflows. [[slnc 500]] Take locks in one fixed order. [[slnc 500]] And with more than one server, let the database provide the guarantee."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Change the order of steps", "and find every order that overdraws."]
+narration = """That's race conditions and business logic. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A check and its action must be one step, a retry must run once, and the server keeps its own rules. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the order of steps in the first demo, and find every order that overdraws. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+An online bank's withdrawals and transfers and an online store's coupons, checkout and order workflow, under requests that arrive together, arrive again, and break the rules. It covers one service process; the database-level
+guarantees for many servers are the -with-postgres version. It does not cover authentication or input parsing, covered by earlier projects.
+"""
+assets = [
+    "Account balances and the money paid out.",
+    "Single-use coupons and the discounts given.",
+    "Orders, their states and refunds.",
+    "Idempotency keys and their stored answers.",
+]
+actors = [
+    "Customers, whose apps retry when a reply is lost.",
+    "An attacker who sends the same request many times in parallel, or with crafted values.",
+    "Operators who run more than one server.",
+]
+boundaries = [
+    "Client to server: amounts, totals, coupons and steps arrive from outside and must be checked against the server's own rules.",
+    "Request to shared state: every check and action on shared state is a place where requests can overlap.",
+]
+assumptions = [
+    "One service process in the plain version; the model's locks are the process's locks.",
+    "Clients choose a new idempotency key for each new operation, and reuse it only for retries.",
+    "In the demo, concurrency is modelled with a written order of steps; the real-thread tests force the bad order.",
+]
+out_of_scope = [
+    "Database isolation levels and row locks: the -with-postgres version.",
+    "Distributed locks across services.",
+    "Authentication and input validation: the earlier projects.",
+]
+tests = [
+    "`InterleavingTest` runs every order of two requests: check-then-act overdraws in some, the lock and compare-and-set in none; coupons, deadlock and fixed lock order.",
+    "`RealThreadsTest` forces the bad order with a barrier on real threads, and checks the lock, compare-and-set and idempotency key under load fifty times.",
+    "`RulesTest` checks the transfer rules, idempotency answers, the order state machine and checkout pricing.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, secrets-in-errors-and-logs, looks at what leaks when things go wrong, and the -with-postgres version moves these guarantees into the database.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Two requests both pass a balance or coupon check before either writes, and spend the same money or coupon twice"
+where = "`NaiveWithdrawal`, `CouponRedemption`"
+control = "The check and the write as one step: a lock, a compare-and-set, or a claim in one step"
+residual = "A lock in one process does not protect state shared by many servers"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A retried request moves money again"
+where = "`Bank.transfer`"
+control = "An idempotency key claimed in one step, returning the first answer to every copy"
+residual = "Keys must be stored long enough to cover retries, and clients must send them"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A negative amount, a transfer to oneself or an overdraft is accepted"
+where = "`Bank` rules"
+control = "Server-side rules for every transfer"
+residual = "Rules nobody wrote down are not enforced; new features need new rules"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "The client's total or stacked coupons set the price"
+where = "`Checkout`"
+control = "Prices from the catalogue, the client's total ignored, one coupon per order"
+residual = "Promotions with complex rules need their own tests"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "Workflow steps are skipped or repeated: shipped before payment, refunded twice"
+where = "`Order`"
+control = "A state machine that allows each step only from the right states"
+residual = "States must be checked and changed in one step too, or a race returns"
+
+[[threat]]
+id = "T6"
+stride = "D"
+threat = "Locks taken in different orders deadlock, and requests hang"
+where = "`LockingTransfer`"
+control = "Every lock taken in one fixed order"
+residual = "Locks still cost throughput, and timeouts are needed for anything that waits"

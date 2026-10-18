@@ -1,0 +1,69 @@
+ONE. Check, then act: two requests in the gap.
+  ana has 100 and sends two withdrawals of 80 at the same moment, from her phone and her laptop
+    A reads the balance: 100
+    B reads the balance: 100
+    A checks that 100 covers 80: yes
+    B checks that 100 covers 80: yes
+    A writes 20 and pays out 80
+    B writes 20 and pays out 80
+  A: paid out 80, B: paid out 80; the bank paid out 160 from a balance of 100, and the balance says 20  <- BOTH CHECKS PASSED BEFORE EITHER WROTE
+  the same two requests one after the other: A paid out 80, B refused, so a test that sends them in turn never sees the bug
+  a single-use coupon checked, applied, then marked used, sent twice at once: discount given 40 instead of 20  <- THE SAME GAP
+TWO. Making the check and the write one step.
+  with a lock on the account around read, check and write, in the same order of steps:
+    A takes the lock ANA-1
+    B waits for the lock ANA-1
+    A reads the balance: 100
+    B waits for the lock ANA-1
+    A checks that 100 covers 80: yes
+    B waits for the lock ANA-1
+    A writes 20, pays out 80 and releases the lock
+    B takes the lock ANA-1
+    B reads the balance: 20
+    B checks that 20 covers 80: no
+    B refuses and releases the lock
+  A: paid out 80, B: refused; paid out 80, balance 20
+  without a lock, with a compare-and-set that writes only if the balance is still what was read:
+    A reads the balance: 100
+    B reads the balance: 100
+    A checks that 100 covers 80: yes
+    B checks that 100 covers 80: yes
+    A sets 100 to 20 and pays out 80
+    B tries to set 100 to 20: the balance changed, start again
+    B reads the balance: 20
+    B checks that 20 covers 80: no, refused
+  A: paid out 80, B: refused; paid out 80, balance 20
+  the coupon claimed in one step before the discount: A discount 20, B refused, discount given 20
+  the rule that must always hold, the balance never below zero and each coupon used once, now holds in every order of steps
+THREE. Sending the same request twice.
+  ana pays 300 rent, the reply is lost, and her app sends the request again: without a key, ana has 400 and ben 600  <- PAID TWICE
+  with an idempotency key chosen by the app for this payment: first send: moved 300
+  the same key again: already done: moved 300; ana has 700 and ben 300
+  the same key with a different amount: refused: the key rent-october was used for a different transfer
+  a new key is a new payment: moved 300; ana has 400
+  the key is claimed in one step before the money moves, so two copies racing each other cannot both run
+FOUR. Rules the server must keep, whatever the client sends.
+  a careless bank given a transfer of -50 from ana to ben: ana has 1050 and ben 950  <- MONEY TAKEN FROM BEN
+  ten transfers of 1 from ana to herself: ana still has 1050 and earns 10 reward points  <- POINTS FOR NOTHING
+  the careful bank: -50: refused: the amount must be above zero; to herself: refused: a transfer to the same account; 5000: refused: not enough money
+  a cart with boots at 180, three coupons and a total of 1 written by the client:
+    careless checkout charges -59  <- THE STORE OWES THE CUSTOMER
+    careful checkout charges 160
+      the total sent by the client (1) is ignored
+      WELCOME20 refused: one coupon per order
+      SPRING20 refused: one coupon per order
+  an order kept as flags: shipped before payment true, refunded 360 on an order of 180  <- REFUNDED TWICE, NEVER PAID
+  the same order as a state machine: ship first: refused: cannot ship an order that is created; pay: paid; ship: shipped; refund: refunded; refund again: refused: cannot refund an order that is refunded
+    refunded 180 in all
+FIVE. The bill.
+  a lock makes requests to one account take turns: in the order above, B spent 3 steps waiting while A held the lock
+  two transfers in opposite directions, each locking its own sender first:
+    A locks ANA-1
+    B locks BEN-2
+    A waits for BEN-2
+    B waits for ANA-1
+    every request is waiting for a lock another one holds: deadlock
+  the same two with every lock taken in one order, the smaller account first: deadlock false; A moved 50, B moved 70; ana has 520, ben 480
+  two servers, each with its own lock in its own memory, sharing one database: A paid out 80, B paid out 80, paid out 160 from 100  <- A LOCK IN ONE PROCESS DOES NOT STOP ANOTHER
+  with more than one server, the guarantee must come from the database: row locks, isolation levels or a version check,
+  which is the -with-postgres version of this project
