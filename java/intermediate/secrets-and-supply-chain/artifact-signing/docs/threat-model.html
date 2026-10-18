@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Artifact Signing: Signed Releases, Key Rotation and Transparency Logs</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Artifact Signing: Signed Releases, Key Rotation and Transparency Logs</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>How an online store's release jar gets from its build to production: signing a release statement, trusting and rotating signing keys, a transparency log of signatures, and
+the deployment gate. It does not cover the build's own integrity, dependency risks, or the hardware module that should hold the keys.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The release jar that runs in production.</li>
+<li>The signing keys, and the key ring that deployments trust.</li>
+<li>The transparency log and its signed heads.</li>
+<li>The record of releases the store really made.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The release team, who build and sign releases.</li>
+<li>Anyone who can change files on mirrors, caches or build servers.</li>
+<li>A thief or an insider holding a signing key.</li>
+<li>A dishonest or compromised log operator.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Release build to the delivery path: the jar leaves the release team's control.</li>
+<li>Delivery path to the deployment gate: nothing is trusted until verified.</li>
+<li>Signing key to everything else: whoever holds it can vouch for anything.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Tampering</td>
+<td>The jar is changed on a mirror, a cache or a build server</td>
+<td><code>Verifier.verify</code></td>
+<td>A signed statement over the SHA-256 of the exact bytes, compared in constant time before anything runs</td>
+<td>A path to production that skips the gate runs unchecked</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>A forged statement or key claims to be the store's</td>
+<td><code>Verifier.verify</code>, <code>KeyRing</code></td>
+<td>Keys are pinned by id and channel; the signature must verify under the pinned public key</td>
+<td>The pinned keys themselves must reach every deployment through a trusted channel</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Elevation of privilege</td>
+<td>A stolen or misused signing key signs a release the store never made</td>
+<td>the signing key</td>
+<td>Signatures must be in the public log, and the store's monitor reports releases it did not make</td>
+<td>Between the signing and the monitor's alert, a deployment that trusts the log may run the release; keep keys in hardware</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Repudiation</td>
+<td>A stolen key backdates its signature to before the revocation</td>
+<td><code>KeyRing.revoke</code>, <code>DeployGate.checkWithLog</code></td>
+<td>Revocation is judged by the day the log recorded the signature, not the day the signer wrote</td>
+<td>Without a log, a backdated signature passes, so verifiers that skip the log stay exposed</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Tampering</td>
+<td>The log operator shows different histories to different readers</td>
+<td><code>TransparencyLog</code></td>
+<td>Signed heads, consistency proofs, and comparing heads: two heads of one size with different roots prove a fork</td>
+<td>Readers must actually exchange heads; a reader who never compares cannot see a fork</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Denial of service</td>
+<td>A deployment cannot verify because a key was revoked before it learned the new one</td>
+<td><code>KeyRing</code></td>
+<td>Rotation with an overlap in which both keys are trusted</td>
+<td>Deployments that are not updated during the overlap stop accepting releases</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The deployment's pinned keys and the log's key were installed through a trusted channel.</li>
+<li>The gate is on every path to production.</li>
+<li>In the demo, keys come from fixed demo seeds and days are numbers.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Build provenance and SBOMs: the sbom-and-provenance project.</li>
+<li>Container images and keyless signing: the -with-cosign version.</li>
+<li>Rollback to an older signed release: an exercise.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>Ed25519Test</code> checks RFC 8032 test 1 and determinism.</li>
+<li><code>MerkleTreeTest</code> checks known values and every inclusion and consistency proof up to seventeen entries, with wrong indexes and rewritten histories refused.</li>
+<li><code>VerifierTest</code> checks the canonical statement, every refusal and its reason, channels, rotation and revocation.</li>
+<li><code>LogAndGateTest</code> checks the gate with and without a log entry, revocation by the log's day, signed heads, the monitor and a forked log.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project, sbom-and-provenance, records what went into the build and how it was made, so a signature vouches not only for the bytes but for their origin.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

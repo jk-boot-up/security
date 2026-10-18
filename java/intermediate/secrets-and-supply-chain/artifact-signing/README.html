@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Artifact Signing: Signed Releases, Key Rotation and Transparency Logs</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Artifact Signing: Signed Releases, Key Rotation and Transparency Logs</h1>
+<pre><code>src/main/java/com/jk/explore/security/signing/
+├── Artifact.java         A release file: its name and its exact bytes
+├── DeployGate.java       The point of use: the step that decides whether an artifact runs
+├── Digests.java          SHA-256 digests, written as hex, and compared in constant time
+├── Ed25519.java          Ed25519 with the JDK
+├── KeyRing.java          The public keys a deployment trusts, each pinned to one channel, with the days it is valid from and, once revoked, valid until
+├── MerkleTree.java       The Merkle tree of a transparency log, as RFC 9162 (Certificate Transparency 2.0) defines it
+├── Monitor.java          The store's own watcher of the public log
+├── SignedRelease.java    A detached signature: the statement's bytes, the id of the key that signed them, and the Ed25519 signature
+├── SigningDemo.java      Runs the online store's release story in five numbered acts and prints exact, repeatable results
+├── SigningKey.java       A signing key with an id and the release channel it may sign for
+├── Statement.java        What a release signature vouches for: the artifact's name, version and channel, the SHA-256 of its exact bytes, and the day the signer says it signed
+├── TransparencyLog.java  An append-only public log of release signatures
+├── Verdict.java          The answer to &quot;may this artifact be deployed?&quot;, with the reason
+└── Verifier.java         Checks a release before it is deployed, in this order: the statement is well formed; it is signed by a known key for this channel, valid on the day it says it was signed; the signature matches; and the artifact's bytes match the signed digest and the expected name
+</code></pre>
+<p><strong>A deployment should run only an artifact whose exact bytes match a statement signed by a key it trusts for that channel, and only if that signature is in a public, append-only log, so that a stolen or misused key cannot sign in secret.</strong></p>
+<p>A store's deployment step downloads the release jar and runs it. If that step trusts whatever arrives, anyone who can change the file on the way, on a mirror,
+a cache or a build server, decides what runs in production. A checksum published next to the file does not help, because whoever can change one can change the other.</p>
+<p>The defences, in the order this project builds them:
+- A <strong>signed release statement</strong>: the artifact's name, version, channel and the <strong>SHA-256 of its exact bytes</strong>, signed with <strong>Ed25519</strong>, and verified against a
+  <strong>pinned public key</strong> before anything runs.
+- <strong>Signing keys per channel</strong>, with <strong>key ids</strong>, <strong>rotation with an overlap</strong>, and <strong>revocation</strong>.
+- A <strong>transparency log</strong>: an append-only <strong>Merkle tree</strong> of every signature, with <strong>inclusion proofs</strong> and <strong>consistency proofs</strong> as Certificate Transparency
+  uses them, so a signature made in secret, or a log that shows different people different histories, is found.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A08 Software or Data Integrity Failures and A03 Software Supply Chain Failures · CWE-494 Download of Code Without Integrity
+Check · CWE-347 Improper Verification of Cryptographic Signature · CWE-345 · SLSA · OWASP ASVS 5.0, the chapter on software integrity and secure deployment.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a shop that receives sealed crates from its own warehouse. A crate is opened only if the seal is the warehouse's, unbroken, and matches the packing list.
+The seals are cut per product line and replaced every year. And every seal the warehouse ever stamps is written in a public ledger that no one can erase, so a
+seal stamped in secret, even by someone holding the real stamp, shows up as a line the warehouse never wrote.</p>
+<h2>The scenario</h2>
+<p>An online store builds its release jar, shop-app, and deploys it to production. The demo builds the jar with fixed bytes, signs it with Ed25519 keys made from
+fixed demo seeds, keeps a key ring with a stable and a beta key, rotates and revokes keys on a numbered day, and runs a small transparency log with a signed tree head.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A deployment that runs whatever arrives</td>
+<td>The release team builds a 2440-byte jar; a mirror changes one byte; the trusting deployment step runs the altered jar.</td>
+</tr>
+<tr>
+<td>2. A signed release, checked before it runs</td>
+<td>A statement with the jar's SHA-256 is signed with Ed25519 and checked against a pinned key: the real jar passes; a changed jar, an edited statement, a forged key, an unknown key and no signature are refused.</td>
+</tr>
+<tr>
+<td>3. Signing keys: per channel, rotated, revoked</td>
+<td>A beta key cannot sign for stable; two stable keys overlap from day 100; after revocation on day 130 a day 140 signature is refused, but a thief can backdate to day 120.</td>
+</tr>
+<tr>
+<td>4. A public log that every signature must be in</td>
+<td>Releases go into an append-only Merkle log with signed heads and proofs; the backdated jar is refused unlogged and refused when logged by the log's day; the monitor reports it; a forked log is caught.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The gate refuses an unsigned jar but protects only the paths through it; the signing key needs a hardware module; rotation needs an overlap; keyless signing is the modern alternative.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>21 tests in <code>DemoRunsTest</code>, <code>Ed25519Test</code>, <code>LogAndGateTest</code>, <code>MerkleTreeTest</code>, <code>VerifierTest</code>. Ed25519 is checked against RFC 8032 test 1, the Merkle tree against the values its definition gives for the empty tree and the empty leaf, and every inclusion and consistency proof is checked for logs of up to seventeen entries, with wrong indexes and rewritten histories refused.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The jar is a fixed block of bytes, the keys come from fixed demo seeds, and Ed25519 signatures are deterministic, so every digest, signature and tree root is the
+same on every run. Days are numbers, not dates. The log lives in memory, and the forked view is a copy of it that grows differently. Nothing is fetched from a network.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/artifact-signing-explained.html">Artifact Signing: Signed Releases, Key Rotation and Transparency Logs, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The jar can be changed anywhere on the way; only the signature, the pinned key and the log decide whether it runs.</p>
+<p><img alt="From the build to production" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Verifier checks a signed statement against the KeyRing; DeployGate adds the log; Monitor reads the log for the store.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The signature covers the statement; the statement covers the exact bytes through their digest.</p>
+<p><img alt="What is signed" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Deploying a release: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/artifact-signing-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Verification protects only the paths that run it.</strong> A jar copied straight onto a server, or a pipeline step that skips the gate, runs unchecked.</li>
+<li><strong>The signing key is the most valuable secret in the pipeline.</strong> Whoever holds it can sign anything, so it belongs in a hardware module, and each signing is approved and logged.</li>
+<li><strong>Rotation is a project.</strong> Every deployment must trust the new key before the old one is revoked, which needs an overlap and a way to reach every verifier.</li>
+<li><strong>The signer's date cannot be trusted.</strong> A stolen key can date its signature before the revocation; only an independent time, such as the log's, settles it.</li>
+<li><strong>A transparency log helps only if someone reads it.</strong> The store must monitor the log for signatures with its keys that match no release it made.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Every artifact that runs in production should be signed and verified at the point of use; there is no small version of that. A transparency log and monitoring matter most
+when the key could be stolen or misused without anyone noticing, which is true for any key that lives longer than a day, and are what keyless signing builds on.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Signed jars, signed container images and signed operating system packages that a package manager checks before installing.</li>
+<li><code>.sig</code> and <code>.asc</code> files next to downloads, and a published public key or fingerprint.</li>
+<li>Certificate Transparency, which logs every web certificate in public Merkle logs.</li>
+<li>Supply chain incidents where a build server or a mirror served a changed release.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">secrets-and-supply-chain</a>, after <a href="../secrets-management">secrets-management</a>. It builds on
+<a href="../../../beginner/cryptography/digital-signatures">digital-signatures</a>, which introduced Ed25519, and on
+<a href="../../../beginner/safe-habits/patching-and-dependency-hygiene">patching-and-dependency-hygiene</a>, which pinned digests of dependencies.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

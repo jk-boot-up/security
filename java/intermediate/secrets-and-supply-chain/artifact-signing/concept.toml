@@ -1,0 +1,585 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "artifact-signing"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "Artifact Signing: Signed Releases, Key Rotation and Transparency Logs"
+short_title = "Artifact Signing"
+package = "signing"
+main_class = "SigningDemo"
+tagline = "Run only what the release team signed, and only what the world can see they signed"
+bold = "A deployment should run only an artifact whose exact bytes match a statement signed by a key it trusts for that channel, and only if that signature is in a public, append-only log, so that a stolen or misused key cannot sign in secret."
+domain = "an online store"
+domain_note = ""
+youtube_description = """Artifact signing in Java: an online store's deployment downloads its release jar and runs whatever arrives, so a jar with one byte changed on a mirror goes live. Then a signed release statement, with the SHA-256 of the exact bytes and an Ed25519 signature checked against a pinned key, refuses a changed jar, an edited statement and a forged key. Signing keys are kept per channel, rotated with an overlap and revoked, and a backdated signature from a stolen key shows why the signer's own date cannot be trusted. A public, append-only Merkle log, with inclusion and consistency proofs as in Certificate Transparency, makes every signature visible: the store's monitor spots a release it never made, and a log that shows two different views is caught. The bill: verify at the point of use, protect the signing key, and consider keyless signing. Mapped to OWASP Top 10 2025 A08 and A03, CWE-494 and CWE-347, and SLSA."""
+thumb_lines = ["ARTIFACT SIGNING", "SIGNED, PINNED, LOGGED"]
+thumb_code = "verify(sha256(jar), sig, key) + log"
+youtube_title = "Artifact Signing in Java (Ed25519 Releases, Key Rotation, Transparency Logs)"
+youtube_tags = ["artifact signing", "code signing", "software supply chain", "transparency log", "merkle tree", "ed25519", "slsa", "java", "application security"]
+
+[readme]
+intro = """
+A store's deployment step downloads the release jar and runs it. If that step trusts whatever arrives, anyone who can change the file on the way, on a mirror,
+a cache or a build server, decides what runs in production. A checksum published next to the file does not help, because whoever can change one can change the other.
+
+The defences, in the order this project builds them:
+- A **signed release statement**: the artifact's name, version, channel and the **SHA-256 of its exact bytes**, signed with **Ed25519**, and verified against a
+  **pinned public key** before anything runs.
+- **Signing keys per channel**, with **key ids**, **rotation with an overlap**, and **revocation**.
+- A **transparency log**: an append-only **Merkle tree** of every signature, with **inclusion proofs** and **consistency proofs** as Certificate Transparency
+  uses them, so a signature made in secret, or a log that shows different people different histories, is found.
+
+**Maps to:** OWASP Top 10 (2025) A08 Software or Data Integrity Failures and A03 Software Supply Chain Failures · CWE-494 Download of Code Without Integrity
+Check · CWE-347 Improper Verification of Cryptographic Signature · CWE-345 · SLSA · OWASP ASVS 5.0, the chapter on software integrity and secure deployment.
+"""
+analogy = """
+Think of a shop that receives sealed crates from its own warehouse. A crate is opened only if the seal is the warehouse's, unbroken, and matches the packing list.
+The seals are cut per product line and replaced every year. And every seal the warehouse ever stamps is written in a public ledger that no one can erase, so a
+seal stamped in secret, even by someone holding the real stamp, shows up as a line the warehouse never wrote.
+"""
+scenario = """
+An online store builds its release jar, shop-app, and deploys it to production. The demo builds the jar with fixed bytes, signs it with Ed25519 keys made from
+fixed demo seeds, keeps a key ring with a stable and a beta key, rotates and revokes keys on a numbered day, and runs a small transparency log with a signed tree head.
+"""
+costs = [
+    "**Verification protects only the paths that run it.** A jar copied straight onto a server, or a pipeline step that skips the gate, runs unchecked.",
+    "**The signing key is the most valuable secret in the pipeline.** Whoever holds it can sign anything, so it belongs in a hardware module, and each signing is approved and logged.",
+    "**Rotation is a project.** Every deployment must trust the new key before the old one is revoked, which needs an overlap and a way to reach every verifier.",
+    "**The signer's date cannot be trusted.** A stolen key can date its signature before the revocation; only an independent time, such as the log's, settles it.",
+    "**A transparency log helps only if someone reads it.** The store must monitor the log for signatures with its keys that match no release it made.",
+]
+too_much = """
+Every artifact that runs in production should be signed and verified at the point of use; there is no small version of that. A transparency log and monitoring matter most
+when the key could be stolen or misused without anyone noticing, which is true for any key that lives longer than a day, and are what keyless signing builds on.
+"""
+met_before = [
+    "Signed jars, signed container images and signed operating system packages that a package manager checks before installing.",
+    "`.sig` and `.asc` files next to downloads, and a published public key or fingerprint.",
+    "Certificate Transparency, which logs every web certificate in public Merkle logs.",
+    "Supply chain incidents where a build server or a mirror served a changed release.",
+]
+where = """
+This project is in [secrets-and-supply-chain](..), after [secrets-management](../secrets-management). It builds on
+[digital-signatures](../../../beginner/cryptography/digital-signatures), which introduced Ed25519, and on
+[patching-and-dependency-hygiene](../../../beginner/safe-habits/patching-and-dependency-hygiene), which pinned digests of dependencies.
+"""
+twin = """
+The jar is a fixed block of bytes, the keys come from fixed demo seeds, and Ed25519 signatures are deterministic, so every digest, signature and tree root is the
+same on every run. Days are numbers, not dates. The log lives in memory, and the forked view is a copy of it that grows differently. Nothing is fetched from a network.
+"""
+test_note = "Ed25519 is checked against RFC 8032 test 1, the Merkle tree against the values its definition gives for the empty tree and the empty leaf, and every inclusion and consistency proof is checked for logs of up to seventeen entries, with wrong indexes and rewritten histories refused."
+
+[[act]]
+title = "A deployment that runs whatever arrives"
+summary = "The release team builds a 2440-byte jar; a mirror changes one byte; the trusting deployment step runs the altered jar."
+detail = """
+The release team builds shop-app-2.4.0.jar, 2440 bytes with SHA-256 4577e6b10a2f145d. The deployment downloads it from a mirror where one byte was changed, so its
+SHA-256 is 6d6cca4f654956e0. The trusting deployment step deploys it without checking: an altered jar is running. A digest published next to the file does not help,
+because whoever can change the file can change the digest beside it.
+"""
+speech = """
+First demo: a deployment that runs whatever arrives. [[slnc 400]] The release team builds the store's jar. [[slnc 600]]
+The deployment downloads it from a mirror. [[slnc 300]] On the way, one byte has been changed. [[slnc 600]]
+The deployment step runs it, without checking. [[slnc 300]] An altered jar is now in production. [[slnc 600]]
+And a checksum published next to the file does not help. [[slnc 300]] Whoever can change the file can change the checksum beside it.
+"""
+rows = { trust = "active wrong" }
+console = [
+    ["the release team builds shop-app-2.4.0.jar: 2440 bytes, sha256 4577e6b10a2f145d", "muted"],
+    ["the deployment downloads it from a mirror where one byte was changed: sha256 6d6cca4f654956e0", "amber"],
+    ["the trusting deployment step: accepted (deployed shop-app-2.4.0.jar without checking it)  <- AN ALTERED JAR IS RUNNING", "bad"],
+    ["a digest published next to the file does not help: whoever can change the file can change the digest beside it", "amber"],
+]
+
+[[act]]
+title = "A signed release, checked before it runs"
+summary = "A statement with the jar's SHA-256 is signed with Ed25519 and checked against a pinned key: the real jar passes; a changed jar, an edited statement, a forged key, an unknown key and no signature are refused."
+detail = """
+The release statement names the artifact, its version, its channel, the SHA-256 of its exact bytes and the signing day. It is signed with the key stable-2026a, giving a
+64-byte Ed25519 signature that is the same on every run. The deployment pins that key's public key and checks before it deploys. The real jar is accepted. The jar with one
+byte changed is refused because it does not match the signed digest. The statement edited to version 2.4.1, with the signature kept, is refused. A signature from another key
+that calls itself stable-2026a is refused, a key the deployment does not know is refused, and no signature at all is refused.
+"""
+speech = """
+Second demo: a signed release. [[slnc 400]] The release team writes a statement. [[slnc 300]] The name, the version, the channel, and the S H A two fifty six of the jar's exact bytes. [[slnc 600]]
+It signs the statement with its key. [[slnc 300]] And the deployment pins that key, and checks before it runs anything. [[slnc 600]]
+The real jar is accepted. [[slnc 600]]
+A jar with one byte changed is refused. [[slnc 300]] A statement edited to another version is refused. [[slnc 300]] A signature from a key that only claims the right name is refused. [[slnc 300]] And no signature at all is refused.
+"""
+rows = { sign = "active ok" }
+console = [
+    ["the statement: name=shop-app version=2.4.0 channel=stable sha256=4577e6b10a2f145d... signed-day=120", "muted"],
+    ["signed with stable-2026a: an Ed25519 signature of 64 bytes, the same on every run: 6caf4ae3bad1f0aa...", "muted"],
+    ["the real jar: accepted (signed by stable-2026a for shop-app 2.4.0)", "ok"],
+    ["the jar with one byte changed: refused (the artifact does not match the signed digest)", "ok"],
+    ["the statement edited to version 2.4.1, signature kept: refused (the signature does not match)", "ok"],
+    ["signed by another key that calls itself stable-2026a: refused (the signature does not match)", "ok"],
+    ["signed by a key the deployment does not know: refused (unknown key attacker-1)", "ok"],
+    ["no signature at all: refused (no signature)", "ok"],
+]
+
+[[act]]
+title = "Signing keys: per channel, rotated, revoked"
+summary = "A beta key cannot sign for stable; two stable keys overlap from day 100; after revocation on day 130 a day 140 signature is refused, but a thief can backdate to day 120."
+detail = """
+A beta build signed with beta-2026a and offered to the stable deployment is refused: that key signs for beta, not stable. On day 100 stable-2026b is added, and both stable
+keys are trusted while the build moves over, so releases signed on day 110 with either key are accepted. On day 130 stable-2026a is revoked. A release it signed on day 120,
+before the revocation, is still accepted, and one it signed on day 140 is refused. But the signer writes the day: a thief with the old key signs a different jar on day 150,
+dates it day 120, and it is accepted. A backdated signature passes, because nothing independent records when it was really made.
+"""
+speech = """
+Third demo: managing the keys. [[slnc 400]] Each release channel has its own key. [[slnc 300]] A beta key cannot sign a stable release. [[slnc 600]]
+Keys are rotated with an overlap. [[slnc 300]] For a while, the old key and the new key are both trusted. [[slnc 600]]
+Then the old key is revoked. [[slnc 300]] A signature it made before the revocation still counts. [[slnc 300]] One made after does not. [[slnc 600]]
+But the signer writes the date. [[slnc 300]] A thief with the old key signs a different jar, and dates it before the revocation. [[slnc 300]] And it is accepted.
+"""
+rows = { keys = "active amber" }
+console = [
+    ["a beta build signed with beta-2026a, offered to the stable deployment: refused (key beta-2026a signs for beta, not stable)", "ok"],
+    ["day 100: stable-2026b is added, and both stable keys are trusted while the build moves over", "muted"],
+    ["signed on day 110 with stable-2026a: accepted;  with stable-2026b: accepted", "ok"],
+    ["day 130: stable-2026a is revoked", "muted"],
+    ["a release it signed on day 120, before the revocation: accepted", "ok"],
+    ["a release it signed on day 140: refused (signed on day 140, after key stable-2026a was revoked on day 130)", "ok"],
+    ["a thief with the old key signs a different jar on day 150 and dates it day 120: accepted  <- A BACKDATED SIGNATURE", "bad"],
+]
+
+[[act]]
+title = "A public log that every signature must be in"
+summary = "Releases go into an append-only Merkle log with signed heads and proofs; the backdated jar is refused unlogged and refused when logged by the log's day; the monitor reports it; a forked log is caught."
+detail = """
+The store logs its releases, 2.3.0 on day 90 and 2.4.0 on day 120, in an append-only log whose tree head (size 2, root c1e815c249fdd097) is signed by the log. The proof that
+2.4.0 is in the log is one hash, and it checks against the signed head. The deployment now requires a log entry and accepts the real release as entry 1. The thief's backdated
+jar is refused when it is not in the log, and refused when it is, because the log recorded it on day 150, after the revocation: the log's day counts, not the signer's.
+The store's monitor reads the log and reports entry 2 as a version 2.4.0 signed with stable-2026a that is not a release the store made. A log operator who hides that entry
+from the monitor must show two views, both signed, both of size 3, with different roots. Each still extends the earlier head of size 2, but two signed heads of the same
+size with different roots cannot both be true, so comparing heads proves the fork.
+"""
+speech = """
+Fourth demo: a public log. [[slnc 400]] Every signature goes into a log that can only grow. [[slnc 300]] It is a Merkle tree, the structure behind certificate transparency. [[slnc 600]]
+The log signs its head: its size, and its root hash. [[slnc 300]] A short proof shows that a release is in it. [[slnc 600]]
+Now the deployment requires a log entry. [[slnc 300]] The thief's jar, kept out of the log, is refused. [[slnc 300]] Put into the log, it is refused too, because the log records the real day. [[slnc 600]]
+The store's own monitor reads the log, and reports a release the store never made. [[slnc 600]]
+And a log that shows the monitor one history, and the customer another, is caught. [[slnc 300]] Two signed heads of the same size, with different roots, cannot both be true.
+"""
+rows = { log = "active ok" }
+console = [
+    ["the store logs its releases: 2.3.0 on day 90 and 2.4.0 on day 120; the log's head: size 2, root c1e815c249fdd097..., signed by the log: true", "muted"],
+    ["the proof that 2.4.0 is in the log: 1 hash, and it checks against the signed head: true", "ok"],
+    ["the deployment, now requiring a log entry: accepted (signed by stable-2026a for shop-app 2.4.0, logged as entry 1)", "ok"],
+    ["the thief's backdated jar, not logged: refused (the signature is not in the public log)", "ok"],
+    ["the thief's backdated jar, logged on day 150: refused (logged on day 150, after key stable-2026a was revoked on day 130)  <- THE LOG'S DAY, NOT THE SIGNER'S", "ok"],
+    ["the store's monitor reports: entry 2: version 2.4.0 signed with stable-2026a, digest 14669a56d76a94fc is not a release the store made", "amber"],
+    ["two views, both signed by the log, both of size 3: roots f230f49e340792fc... and 92f28850530761dd...", "amber"],
+    ["each view still extends the earlier head of size 2: true and true", "muted"],
+    ["two signed heads of the same size with different roots cannot both be true: the fork is proved: true", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "The gate refuses an unsigned jar but protects only the paths through it; the signing key needs a hardware module; rotation needs an overlap; keyless signing is the modern alternative."
+detail = """
+The gate refuses an unsigned jar, but it protects only the paths that pass through it: a jar copied straight onto a server never meets the gate. The signing key is the crown
+jewel: in the demo it comes from a fixed seed, and in practice it stays in a hardware module, with each signing approved and logged. Rotation is a project, because every
+deployment must trust the new key before the old one is revoked, here with an overlap of 30 days. Keyless signing replaces long-lived keys with short-lived certificates tied
+to an identity and recorded in a public log, which is the subject of the -with-cosign version.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The gate refuses an unsigned jar. [[slnc 300]] But it only protects the paths that go through it. [[slnc 300]] A jar copied straight onto a server never meets it. [[slnc 600]]
+The signing key is the crown jewel. [[slnc 300]] In practice it stays in a hardware module, and every signing is approved and logged. [[slnc 600]]
+Rotation is a project. [[slnc 300]] Every deployment must trust the new key before the old one is revoked. [[slnc 600]]
+And keyless signing replaces long lived keys with short lived certificates, tied to an identity, and recorded in a public log.
+"""
+rows = { bill = "active amber" }
+console = [
+    ["the gate refuses an unsigned jar: refused (no signature)", "ok"],
+    ["but it protects only the paths that pass through it: a jar copied straight onto a server never meets the gate", "amber"],
+    ["the signing key is the crown jewel: in practice it stays in a hardware module, and each signing is approved and logged", "amber"],
+    ["rotation is a project: every deployment must trust the new key before the old one is revoked, here an overlap of 30 days", "amber"],
+    ["keyless signing: short-lived certificates tied to an identity and recorded in a public log: the -with-cosign version", "muted"],
+]
+
+[animation]
+subtitle = "An online store learns to deploy only the jar its release team signed, and only signatures the whole world can see."
+boxes = [
+    ["trust", "Trusting deployment", "runs whatever arrives"],
+    ["sign", "Signed release", "a digest of the exact bytes, signed and pinned"],
+    ["keys", "Key management", "per channel, rotated, revoked"],
+    ["log", "Transparency log", "every signature in an append-only Merkle tree"],
+    ["bill", "The bill", "the gate, the key, rotation, keyless"],
+]
+
+[docs.problem]
+scenario = """
+An online store builds a release jar and deploys it to production through mirrors, caches and build servers, any of which could change the file on the way.
+"""
+naive = """
+Download the jar and run it, perhaps after comparing it with a checksum published in the same place.
+"""
+deliver = [
+    "A canonical release statement with the SHA-256 of the artifact, signed with Ed25519.",
+    "A verifier that pins public keys per channel, compares digests in constant time and explains every refusal.",
+    "Key rotation with an overlap, and revocation from a day onwards.",
+    "A Merkle transparency log with signed heads, inclusion and consistency proofs, after RFC 9162.",
+    "A deployment gate that requires a log entry and revokes by the log's day, and a monitor that reports releases the store never made.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The digital-signatures project, or an idea of what a signature and a public key are",
+]
+not_required = [
+    "Any signing service or certificate authority",
+    "Knowledge of Merkle trees: the project builds one",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a checksum next to a download does not prove integrity",
+    "sign and verify a release statement that covers the exact bytes",
+    "rotate and revoke a signing key without breaking deployments",
+    "explain why the signer's own date cannot settle revocation",
+    "describe what a transparency log and its inclusion and consistency proofs prove",
+]
+walkthrough = """
+Start with the sealed crates. Run act one and ask who decided what runs in production. In act two, ask why the statement carries the digest and not the jar. In act three, ask
+what the backdated signature tells about trusting dates. In act four, ask what the monitor would need to know to spot the bad entry. In act five, ask which deployment paths in
+a real store would skip the gate.
+"""
+exercises = [
+    "Add a second monitor that keeps the last head it saw and checks consistency with every new head.",
+    "Make the gate refuse a release whose version is lower than the one already deployed, to stop a rollback to an old signed jar.",
+    "Sign with two keys and require both, as a two-person rule for releases.",
+    "Add a log key rotation: the verifier trusts two log keys for a while.",
+]
+
+[docs.explained]
+sentence = """
+A deployment should run only an artifact whose exact bytes match a statement signed by a trusted key for its channel, and whose signature is in an append-only public log
+that the publisher monitors, so that changed files, edited statements, forged keys, secret signatures and backdated signatures are all refused or found.
+"""
+verdict = """
+Sign every release statement over the artifact's digest and verify it at the point of use, with keys pinned per channel. Keep signing keys in hardware, rotate them with an
+overlap, and revoke by an independent time. Require signatures to be in a transparency log, and monitor it for releases you did not make.
+"""
+recognise = [
+    "Package managers that refuse a package whose signature does not verify.",
+    "Admission rules that only allow signed container images to run.",
+    "Signed tree heads and inclusion proofs in Certificate Transparency logs.",
+    "Security findings titled \"download of code without integrity check\", CWE-494.",
+]
+
+[spec]
+purpose = """
+Teach how to trust a release by signing a statement over its digest, verifying it with pinned keys per channel, rotating and revoking keys, and requiring every signature to
+be in a public, append-only Merkle log that the publisher monitors.
+"""
+nongoals = [
+    "Container image signing formats and registries: the -with-cosign version.",
+    "Build provenance and SBOMs: the sbom-and-provenance project.",
+    "Hardware security modules: described, not run.",
+]
+problem = """
+Teams verify downloads with a checksum from the same place as the file, keep one signing key forever, trust the signer's dates, and have no way to see a signature made in secret.
+"""
+roles = [["The release statement", "`Statement`"], ["Signing keys", "`SigningKey`"], ["Trusted keys and revocation", "`KeyRing`"], ["Checks before deployment", "`Verifier`"], ["The Merkle tree and its proofs", "`MerkleTree`"], ["The public log", "`TransparencyLog`"], ["The store's watcher", "`Monitor`"], ["The point of use", "`DeployGate`"], ["Entry point", "`SigningDemo`"]]
+requirements = [
+    "A changed jar, an edited statement, a forged key, an unknown key and a missing signature are each refused with their reason.",
+    "A key signs only for its channel; keys overlap during rotation, and revocation counts from its day.",
+    "Ed25519 matches RFC 8032 test 1, and every inclusion and consistency proof checks for logs of up to seventeen entries.",
+    "The gate refuses a signature that is not in the log, and revokes by the log's day.",
+    "The monitor reports only unknown releases signed with the store's keys, and two heads of one size with different roots prove a fork.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "From the build to production"
+caption = "The jar can be changed anywhere on the way; only the signature, the pinned key and the log decide whether it runs."
+nodes = [
+    { id = "build", label = "Release build", sub = "makes the jar and the statement", col = 0, row = 0, colour = "client" },
+    { id = "key", label = "Signing key", sub = "in a hardware module", col = 0, row = 1, colour = "accent", shape = "store" },
+    { id = "mirror", label = "Mirror or cache", sub = "could change the file", col = 1, row = 0, colour = "amber", shape = "store" },
+    { id = "log", label = "Transparency log", sub = "every signature, append-only", col = 1, row = 1, colour = "green", shape = "store" },
+    { id = "gate", label = "Deployment gate", sub = "signature, key, log", col = 2, row = 0, colour = "green", shape = "ellipse" },
+    { id = "prod", label = "Production", sub = "runs the jar", col = 3, row = 0, colour = "client" },
+]
+edges = [
+    { from = "build", to = "mirror", label = "jar and signature" },
+    { from = "key", to = "build", label = "signs" },
+    { from = "build", to = "log", label = "logs the signature" },
+    { from = "mirror", to = "gate" },
+    { from = "log", to = "gate", label = "inclusion proof" },
+    { from = "gate", to = "prod", label = "only if all pass" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Verifier checks a signed statement against the KeyRing; DeployGate adds the log; Monitor reads the log for the store."
+nodes = [
+    { id = "statement", label = "Statement", sub = ["bytes()", "parse(bytes)"], col = 0, row = 0, colour = "client" },
+    { id = "key", label = "SigningKey", sub = ["sign(statement)"], col = 1, row = 0, colour = "accent" },
+    { id = "ring", label = "KeyRing", sub = ["trust(key, fromDay)", "revoke(id, fromDay)"], col = 2, row = 0, colour = "amber" },
+    { id = "verifier", label = "Verifier", sub = ["verify(artifact, release, name, channel)"], col = 0, row = 1, colour = "green" },
+    { id = "log", label = "TransparencyLog", sub = ["append(release, day)", "head()", "inclusionProof, consistencyProof"], col = 1, row = 1, colour = "green" },
+    { id = "gate", label = "DeployGate", sub = ["checkWithLog(...)"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "verifier", to = "ring", label = "looks keys up in" },
+    { from = "gate", to = "verifier", label = "first asks" },
+    { from = "gate", to = "log", label = "then asks for a proof" },
+    { from = "key", to = "statement", label = "signs" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What is signed"
+caption = "The signature covers the statement; the statement covers the exact bytes through their digest."
+nodes = [
+    { id = "jar", label = "Jar bytes", sub = "2440 bytes", col = 0, row = 0, colour = "client" },
+    { id = "digest", label = "SHA-256", sub = "4577e6b10a2f145d...", col = 1, row = 0, colour = "amber" },
+    { id = "statement", label = "Statement", sub = "name, version, channel, digest, day", col = 2, row = 0, colour = "accent" },
+    { id = "sig", label = "Ed25519 signature", sub = "64 bytes, key stable-2026a", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "jar", to = "digest" },
+    { from = "digest", to = "statement" },
+    { from = "statement", to = "sig" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Deploying a release: who does what, in order"
+participants = ["Pipeline", "DeployGate", "Verifier", "TransparencyLog"]
+steps = [
+    ["Pipeline", "DeployGate", "jar + signed statement"],
+    ["DeployGate", "Verifier", "verify(jar, release)"],
+    ["note", "Verifier", "statement, key, signature, channel, day, digest"],
+    ["Verifier", "DeployGate", "accepted", "reply"],
+    ["DeployGate", "TransparencyLog", "signed head + inclusion proof"],
+    ["TransparencyLog", "DeployGate", "proof checks, logged on day 120", "reply"],
+    ["DeployGate", "Pipeline", "deploy", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A backdated signature from a stolen key"
+caption = "The statement's date is the signer's; the log's day is not."
+participants = ["Thief", "TransparencyLog", "DeployGate", "Monitor"]
+steps = [
+    ["Thief", "DeployGate", "different jar, signed with stable-2026a, dated day 120"],
+    ["DeployGate", "Thief", "refused: not in the public log", "reply"],
+    ["Thief", "TransparencyLog", "logs it, on day 150"],
+    ["DeployGate", "Thief", "refused: logged after the revocation on day 130", "reply"],
+    ["Monitor", "TransparencyLog", "reads every entry"],
+    ["note", "Monitor", "entry 2 is not a release the store made"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Catching a log that shows two histories"
+caption = "Each view is consistent with the old head, but not with each other."
+participants = ["Monitor", "Log operator", "Customer"]
+steps = [
+    ["Log operator", "Monitor", "head: size 3, root f230f49e...", "reply"],
+    ["Log operator", "Customer", "head: size 3, root 92f28850...", "reply"],
+    ["Monitor", "Customer", "compare heads"],
+    ["note", "Customer", "same size, different roots: the log forked"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Release team", nodes = ["build", "key"], colour = "green" },
+    { label = "Delivery path", nodes = ["mirror", "log"], colour = "amber" },
+    { label = "Production", nodes = ["gate"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "build", label = "Release build", sub = "makes and signs", col = 0, row = 0, colour = "client" },
+    { id = "key", label = "Signing key", sub = "the crown jewel", col = 0, row = 1, colour = "accent", shape = "store", threats = ["T3", "T4"] },
+    { id = "mirror", label = "Mirror or cache", sub = "serves the jar", col = 1, row = 0, colour = "amber", shape = "store", threats = ["T1", "T2"] },
+    { id = "log", label = "Transparency log", sub = "append-only", col = 1, row = 1, colour = "green", shape = "store", threats = ["T5"] },
+    { id = "gate", label = "Deployment gate", sub = "point of use", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T2", "T6"] },
+    { id = "attacker", label = "Attacker", sub = "changes files, steals keys", col = 2, row = 1, colour = "red", threats = ["T1", "T3", "T4", "T5"] },
+]
+edges = [
+    { from = "build", to = "mirror", label = "jar and signature" },
+    { from = "mirror", to = "gate" },
+    { from = "log", to = "gate", label = "proofs" },
+    { from = "attacker", to = "mirror", label = "changes the jar", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "key", label = "steals or misuses", colour = "red", dashed = true, threats = ["T3", "T4"] },
+    { from = "attacker", to = "log", label = "forks the log", colour = "red", dashed = true, threats = ["T5"] },
+]
+
+[poster]
+headline = [["ARTIFACT SIGNING", "text"], ["SIGNED, PINNED, LOGGED", "accent"]]
+taglines = [["Run only what the release team signed, and only what the world can see they signed", "gold"]]
+before = { code = "curl mirror/app.jar && run", note = "whatever arrives", tag = "BEFORE" }
+after = { code = "verify(sha256, sig, key) + inLog", note = "signed, pinned, logged", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Artifact Signing"
+narration = """Hello, and welcome. [[slnc 400]] This video explains artifact signing, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] An artifact is a file that a build produces, such as the jar that a store deploys. [[slnc 300]] Signing it lets every deployment check that the file is exactly what the release team made. [[slnc 600]] Think of a shop that receives sealed crates from its own warehouse. [[slnc 300]] A crate is opened only if the seal is right and unbroken. [[slnc 300]] And every seal ever stamped is written in a public ledger that no one can erase. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear how a release is signed and checked. [[slnc 300]] How signing keys are rotated and revoked. [[slnc 300]] Why the signer's own date cannot be trusted. [[slnc 300]] And how a public log catches a signature made in secret."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store builds its release jar.", "", "It travels through mirrors, caches", "and build servers to production.", "", "Any of them could change it."]
+narration = """Here is the scenario. [[slnc 400]] An online store builds its release jar. [[slnc 500]] The jar travels through mirrors, caches, and build servers, on its way to production. [[slnc 500]] Any of them could change it. [[slnc 300]] So production must be able to tell, before it runs anything, whether the file is exactly the one the release team made."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Digest: a fingerprint of exact bytes", "Signature: proof a key holder vouched", "Pinned key: the one key a deployment trusts", "Revocation: a key no longer counts", "Transparency log: a public, append-only record"]
+narration = """Before the demos, the words. [[slnc 500]] A digest is a short fingerprint of the exact bytes of a file. [[slnc 500]] A signature proves that the holder of a key vouched for something. [[slnc 500]] A pinned key is the one key a deployment has decided to trust. [[slnc 500]] Revocation means a key no longer counts. [[slnc 500]] And a transparency log is a public record that can only grow."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Four Questions Before Anything Runs"
+body = ["Are these the exact bytes? the digest", "Who vouched for them? the signature", "Was that key trusted then? channel, rotation, revocation", "Could anyone see the signing? the log"]
+narration = """Let's put it in order. [[slnc 400]] Are these the exact bytes the release team made? [[slnc 300]] The digest answers that. [[slnc 500]] Who vouched for them? [[slnc 300]] The signature. [[slnc 500]] Was that key trusted for this channel, on that day? [[slnc 300]] The key ring. [[slnc 500]] And could anyone see that the signing happened? [[slnc 300]] The transparency log."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Statement: what is vouched for", "SigningKey and KeyRing: keys and trust", "Verifier: the checks, in order", "TransparencyLog and MerkleTree: the public record", "DeployGate and Monitor: point of use, and the watcher"]
+narration = """Here is who does what in the code. [[slnc 400]] The statement says exactly what is vouched for. [[slnc 500]] The signing key signs it, and the key ring decides which keys count, and when. [[slnc 500]] The verifier runs the checks, in order. [[slnc 500]] The transparency log keeps every signature in a Merkle tree, and hands out proofs. [[slnc 300]] And the deployment gate and the monitor use them."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Package managers checking signatures", ".sig and .asc files next to downloads", "Certificate Transparency logs", "Supply chain incidents"]
+narration = """You have probably met this already. [[slnc 400]] Package managers check a signature before they install anything. [[slnc 500]] Downloads often come with a signature file, and a published key. [[slnc 500]] Every web certificate is recorded in public certificate transparency logs. [[slnc 500]] And supply chain incidents often begin with a release that was changed on the way."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Sign a statement over the digest", "Verify at the point of use, keys pinned per channel", "Keep keys in hardware; rotate with an overlap", "Revoke by an independent time", "Require the log, and watch it"]
+narration = """So, how do you use it? [[slnc 400]] Sign a statement over the digest of every release. [[slnc 500]] Verify it where the artifact is used, with keys pinned per channel. [[slnc 500]] Keep signing keys in hardware, and rotate them with an overlap. [[slnc 500]] Revoke by a time that the signer cannot write. [[slnc 500]] And require every signature to be in a public log, and watch that log for releases you never made."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Make the gate refuse", "a rollback to an older signed jar."]
+narration = """That's artifact signing. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Run only the exact bytes that a trusted key signed, and only if that signature is in a public log that someone watches. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Make the gate refuse a rollback to an older signed jar. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+How an online store's release jar gets from its build to production: signing a release statement, trusting and rotating signing keys, a transparency log of signatures, and
+the deployment gate. It does not cover the build's own integrity, dependency risks, or the hardware module that should hold the keys.
+"""
+assets = [
+    "The release jar that runs in production.",
+    "The signing keys, and the key ring that deployments trust.",
+    "The transparency log and its signed heads.",
+    "The record of releases the store really made.",
+]
+actors = [
+    "The release team, who build and sign releases.",
+    "Anyone who can change files on mirrors, caches or build servers.",
+    "A thief or an insider holding a signing key.",
+    "A dishonest or compromised log operator.",
+]
+boundaries = [
+    "Release build to the delivery path: the jar leaves the release team's control.",
+    "Delivery path to the deployment gate: nothing is trusted until verified.",
+    "Signing key to everything else: whoever holds it can vouch for anything.",
+]
+assumptions = [
+    "The deployment's pinned keys and the log's key were installed through a trusted channel.",
+    "The gate is on every path to production.",
+    "In the demo, keys come from fixed demo seeds and days are numbers.",
+]
+out_of_scope = [
+    "Build provenance and SBOMs: the sbom-and-provenance project.",
+    "Container images and keyless signing: the -with-cosign version.",
+    "Rollback to an older signed release: an exercise.",
+]
+tests = [
+    "`Ed25519Test` checks RFC 8032 test 1 and determinism.",
+    "`MerkleTreeTest` checks known values and every inclusion and consistency proof up to seventeen entries, with wrong indexes and rewritten histories refused.",
+    "`VerifierTest` checks the canonical statement, every refusal and its reason, channels, rotation and revocation.",
+    "`LogAndGateTest` checks the gate with and without a log entry, revocation by the log's day, signed heads, the monitor and a forked log.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, sbom-and-provenance, records what went into the build and how it was made, so a signature vouches not only for the bytes but for their origin.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "The jar is changed on a mirror, a cache or a build server"
+where = "`Verifier.verify`"
+control = "A signed statement over the SHA-256 of the exact bytes, compared in constant time before anything runs"
+residual = "A path to production that skips the gate runs unchecked"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A forged statement or key claims to be the store's"
+where = "`Verifier.verify`, `KeyRing`"
+control = "Keys are pinned by id and channel; the signature must verify under the pinned public key"
+residual = "The pinned keys themselves must reach every deployment through a trusted channel"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A stolen or misused signing key signs a release the store never made"
+where = "the signing key"
+control = "Signatures must be in the public log, and the store's monitor reports releases it did not make"
+residual = "Between the signing and the monitor's alert, a deployment that trusts the log may run the release; keep keys in hardware"
+
+[[threat]]
+id = "T4"
+stride = "R"
+threat = "A stolen key backdates its signature to before the revocation"
+where = "`KeyRing.revoke`, `DeployGate.checkWithLog`"
+control = "Revocation is judged by the day the log recorded the signature, not the day the signer wrote"
+residual = "Without a log, a backdated signature passes, so verifiers that skip the log stay exposed"
+
+[[threat]]
+id = "T5"
+stride = "T"
+threat = "The log operator shows different histories to different readers"
+where = "`TransparencyLog`"
+control = "Signed heads, consistency proofs, and comparing heads: two heads of one size with different roots prove a fork"
+residual = "Readers must actually exchange heads; a reader who never compares cannot see a fork"
+
+[[threat]]
+id = "T6"
+stride = "D"
+threat = "A deployment cannot verify because a key was revoked before it learned the new one"
+where = "`KeyRing`"
+control = "Rotation with an overlap in which both keys are trusted"
+residual = "Deployments that are not updated during the overlap stop accepting releases"

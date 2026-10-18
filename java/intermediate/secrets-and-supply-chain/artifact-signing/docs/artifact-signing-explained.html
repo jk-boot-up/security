@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Artifact Signing: Signed Releases, Key Rotation and Transparency Logs, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Artifact Signing: Signed Releases, Key Rotation and Transparency Logs, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A deployment should run only an artifact whose exact bytes match a statement signed by a trusted key for its channel, and whose signature is in an append-only public log
+that the publisher monitors, so that changed files, edited statements, forged keys, secret signatures and backdated signatures are all refused or found.</p>
+<h2>The 5 acts</h2>
+<h3>1. A deployment that runs whatever arrives</h3>
+<p>The release team builds shop-app-2.4.0.jar, 2440 bytes with SHA-256 4577e6b10a2f145d. The deployment downloads it from a mirror where one byte was changed, so its
+SHA-256 is 6d6cca4f654956e0. The trusting deployment step deploys it without checking: an altered jar is running. A digest published next to the file does not help,
+because whoever can change the file can change the digest beside it.</p>
+<h3>2. A signed release, checked before it runs</h3>
+<p>The release statement names the artifact, its version, its channel, the SHA-256 of its exact bytes and the signing day. It is signed with the key stable-2026a, giving a
+64-byte Ed25519 signature that is the same on every run. The deployment pins that key's public key and checks before it deploys. The real jar is accepted. The jar with one
+byte changed is refused because it does not match the signed digest. The statement edited to version 2.4.1, with the signature kept, is refused. A signature from another key
+that calls itself stable-2026a is refused, a key the deployment does not know is refused, and no signature at all is refused.</p>
+<h3>3. Signing keys: per channel, rotated, revoked</h3>
+<p>A beta build signed with beta-2026a and offered to the stable deployment is refused: that key signs for beta, not stable. On day 100 stable-2026b is added, and both stable
+keys are trusted while the build moves over, so releases signed on day 110 with either key are accepted. On day 130 stable-2026a is revoked. A release it signed on day 120,
+before the revocation, is still accepted, and one it signed on day 140 is refused. But the signer writes the day: a thief with the old key signs a different jar on day 150,
+dates it day 120, and it is accepted. A backdated signature passes, because nothing independent records when it was really made.</p>
+<h3>4. A public log that every signature must be in</h3>
+<p>The store logs its releases, 2.3.0 on day 90 and 2.4.0 on day 120, in an append-only log whose tree head (size 2, root c1e815c249fdd097) is signed by the log. The proof that
+2.4.0 is in the log is one hash, and it checks against the signed head. The deployment now requires a log entry and accepts the real release as entry 1. The thief's backdated
+jar is refused when it is not in the log, and refused when it is, because the log recorded it on day 150, after the revocation: the log's day counts, not the signer's.
+The store's monitor reads the log and reports entry 2 as a version 2.4.0 signed with stable-2026a that is not a release the store made. A log operator who hides that entry
+from the monitor must show two views, both signed, both of size 3, with different roots. Each still extends the earlier head of size 2, but two signed heads of the same
+size with different roots cannot both be true, so comparing heads proves the fork.</p>
+<h3>5. The bill</h3>
+<p>The gate refuses an unsigned jar, but it protects only the paths that pass through it: a jar copied straight onto a server never meets the gate. The signing key is the crown
+jewel: in the demo it comes from a fixed seed, and in practice it stays in a hardware module, with each signing approved and logged. Rotation is a project, because every
+deployment must trust the new key before the old one is revoked, here with an overlap of 30 days. Keyless signing replaces long-lived keys with short-lived certificates tied
+to an identity and recorded in a public log, which is the subject of the -with-cosign version.</p>
+<h2>The verdict</h2>
+<p>Sign every release statement over the artifact's digest and verify it at the point of use, with keys pinned per channel. Keep signing keys in hardware, rotate them with an
+overlap, and revoke by an independent time. Require signatures to be in a transparency log, and monitor it for releases you did not make.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>Package managers that refuse a package whose signature does not verify.</li>
+<li>Admission rules that only allow signed container images to run.</li>
+<li>Signed tree heads and inclusion proofs in Certificate Transparency logs.</li>
+<li>Security findings titled "download of code without integrity check", CWE-494.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Signed jars, signed container images and signed operating system packages that a package manager checks before installing.</li>
+<li><code>.sig</code> and <code>.asc</code> files next to downloads, and a published public key or fingerprint.</li>
+<li>Certificate Transparency, which logs every web certificate in public Merkle logs.</li>
+<li>Supply chain incidents where a build server or a mirror served a changed release.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
