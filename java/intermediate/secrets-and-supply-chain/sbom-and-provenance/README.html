@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOMs and Build Provenance: What Is Inside, Who Built It, and From What</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SBOMs and Build Provenance: What Is Inside, Who Built It, and From What</h1>
+<pre><code>src/main/java/com/jk/explore/security/provenance/
+├── Archive.java         Builds a jar-like zip archive
+├── Builder.java         A build service: it builds a source into an artifact reproducibly and signs a provenance statement about it with its own key
+├── Component.java       One library the store is built with: its Maven coordinates and the bytes of its jar
+├── Digests.java         SHA-256 digests, written as hex, and compared in constant time
+├── Dsse.java            Dead Simple Signing Envelope (DSSE), the envelope in-toto uses
+├── Ed25519.java         Ed25519 with the JDK
+├── Json.java            A small JSON writer and reader
+├── Pipeline.java        A build pipeline described by the facts SLSA build levels depend on
+├── Policy.java          What the deployment gate checks before an artifact runs: a signature from a trusted builder key over the statement, the statement about this exact artifact, built by the expected builder, from the expected repository and branch
+├── Provenance.java      An in-toto Statement with a SLSA Provenance v1 predicate: the artifact (by digest) is the subject, and the predicate says how it was built: the build type, the source repository and branch it was asked to build, the exact commit it resolved, and the builder that ran it
+├── ProvenanceDemo.java  Runs the online store's release story in five numbered acts and prints exact, repeatable results
+├── Sbom.java            A CycloneDX 1.6 bill of materials in JSON
+├── Source.java          The source a build starts from: where it lives, which branch, which commit, and the files at that commit
+└── Verdict.java         The deployment gate's answer, with the reason
+</code></pre>
+<p><strong>A bill of materials says what a release contains; signed provenance says which builder made it from which repository, branch and commit; a deployment should check both, and only a reproducible build lets anyone confirm them.</strong></p>
+<p>The <a href="../artifact-signing">artifact-signing</a> project made sure a release is the exact bytes the release team signed. That still leaves two questions open: <strong>what is
+inside</strong> the release, and <strong>how and from what it was built</strong>. A signature over a jar built from a fork, or from an unreviewed branch, is still a valid signature.</p>
+<p>This project answers both:
+- A <strong>software bill of materials (SBOM)</strong> in <strong>CycloneDX 1.6</strong> lists every component with its <strong>package URL</strong> and <strong>SHA-256</strong>. It finds a library that changed after
+  the build, and says nothing about who built the release.
+- <strong>Provenance</strong>: an <strong>in-toto Statement</strong> with a <strong>SLSA Provenance v1</strong> predicate names the artifact by its digest, the <strong>source repository, branch and commit</strong>, and
+  the <strong>builder</strong>, and is signed by the builder in a <strong>DSSE envelope</strong> whose signature covers the payload type too.
+- A <strong>deployment gate</strong> that checks the signature, the subject digest, the builder, the repository and the branch before anything runs.
+- <strong>SLSA build levels</strong>, and <strong>reproducible builds</strong> that let anyone rebuild the commit and compare digests.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A03 Software Supply Chain Failures and A08 Software or Data Integrity Failures · SLSA v1.0 build track · in-toto · NIST SSDF
+PS.2, PS.3 and PW.4 · CWE-494 Download of Code Without Integrity Check · CWE-1357 Reliance on Insufficiently Trustworthy Component · OWASP ASVS 5.0, the chapter on
+software integrity and dependency management.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of food in a shop. The label on the packet lists the ingredients: that is the bill of materials. It does not say which factory made it, from which batch, or
+whether the factory followed its recipe. For that the shop wants a certificate of origin, stamped by the factory and naming the batch, and a shop that checks the stamp
+before the packet goes on the shelf. And if the recipe is precise enough, anyone can cook the same dish again and taste whether it matches.</p>
+<h2>The scenario</h2>
+<p>An online store releases shop-1.4.0.jar, built from three files at one commit of its main branch and depending on three libraries. The demo writes the jar with a
+reproducible archive builder, writes its SBOM, and has a build service sign provenance with an Ed25519 key made from a fixed demo seed. A deployment gate then checks
+builds of a fork, a branch, a laptop, a staging runner, an edited statement and a swapped jar.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What a bill of materials answers, and what it does not</td>
+<td>The CycloneDX SBOM lists three libraries with purls and SHA-256 hashes, matches the jar, and finds a changed library, but says nothing about who built the jar or from what.</td>
+</tr>
+<tr>
+<td>2. Provenance: who built it, from what</td>
+<td>An in-toto statement with a SLSA Provenance v1 predicate names the jar by digest, the repository, branch and commit, and the builder, signed in a DSSE envelope whose signature also covers the payload type.</td>
+</tr>
+<tr>
+<td>3. Checking before deploying</td>
+<td>The gate deploys the real release and refuses a fork, an unreviewed branch, a laptop-signed build, the staging runner, an edited statement, a swapped jar and a jar with no provenance.</td>
+</tr>
+<tr>
+<td>4. SLSA build levels, and builds that can be repeated</td>
+<td>A laptop build is level 0, self-signed provenance level 1, the hosted CI runner level 2, and an isolated platform level 3; careless builds differ, reproducible builds match and can be checked against the provenance.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A script that never checks deploys a fork; a stolen builder key makes a forged statement pass; an SBOM for 1.4.0 does not describe 1.4.1.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>19 tests in <code>DemoRunsTest</code>, <code>DsseAndJsonTest</code>, <code>Ed25519Test</code>, <code>PolicyTest</code>, <code>SbomAndBuildTest</code>. The DSSE encoding is checked against the example in the DSSE specification, Ed25519 against RFC 8032 test 1, and every gate refusal is checked with its reason; reproducible builds are checked to ignore file order and clock.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The jar is built from three small files with a fixed commit time and sorted entries, stored without compression, so its SHA-256 is the same on every run and every
+machine. The builder's key comes from a fixed demo seed, and Ed25519 signatures are deterministic. Timestamps in the documents are fixed strings. Nothing is fetched
+from a network, and no real build service runs.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/sbom-and-provenance-explained.html">SBOMs and Build Provenance: What Is Inside, Who Built It, and From What, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The builder records how it built the jar and signs that record; the gate checks the record before the jar runs.</p>
+<p><img alt="From commit to production" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Builder makes the jar and signs Provenance in a Dsse envelope; Policy checks it; Sbom lists the components.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The subject is the artifact by digest; the predicate says how it was built and by whom.</p>
+<p><img alt="What the provenance statement contains" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A release reaches production: who does what, in order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/sbom-and-provenance-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Provenance helps only when it is checked.</strong> A deploy script that never asks deploys a fork's build as happily as the real one.</li>
+<li><strong>The builder's key and the builder itself are now the target.</strong> With the key, anyone can sign a statement that a fork's jar came from main; with control of the build, anyone can make the builder sign it.</li>
+<li><strong>An SBOM goes stale.</strong> It describes one build; the next release needs a new one, and both need scanning against advisories published after the build.</li>
+<li><strong>Reproducible builds take work.</strong> Timestamps, file order, locales and tool versions all have to be fixed before two builds agree.</li>
+<li><strong>Levels are claims about the platform.</strong> A pipeline is only level three if its build steps really cannot reach the signing key.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Any team that ships software to others should produce an SBOM at every build, and any deployment that runs code it did not build should check signed provenance.
+The higher SLSA levels matter most for builds that many others depend on, and for teams whose build systems are shared or exposed.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>CycloneDX and SPDX files attached to releases and requested by customers and regulators.</li>
+<li><code>*.intoto.jsonl</code> and <code>*.sigstore.json</code> files next to release downloads.</li>
+<li>SLSA levels mentioned in project security policies and OpenSSF Scorecard checks.</li>
+<li>Supply chain incidents where a build server was compromised and signed releases were shipped.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">secrets-and-supply-chain</a>, after <a href="../artifact-signing">artifact-signing</a>, which signed the exact bytes of a release. It builds on
+<a href="../../../beginner/safe-habits/patching-and-dependency-hygiene">patching-and-dependency-hygiene</a>, which introduced bills of materials and advisories.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

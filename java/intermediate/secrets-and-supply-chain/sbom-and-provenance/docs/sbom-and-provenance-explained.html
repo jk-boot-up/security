@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOMs and Build Provenance: What Is Inside, Who Built It, and From What, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SBOMs and Build Provenance: What Is Inside, Who Built It, and From What, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>An SBOM records what a release contains, signed provenance records which builder made it from which repository, branch and commit, and a deployment should check both,
+with reproducible builds letting anyone confirm the result.</p>
+<h2>The 5 acts</h2>
+<h3>1. What a bill of materials answers, and what it does not</h3>
+<p>The release shop-1.4.0.jar is built from three files and depends on three libraries. Its CycloneDX 1.6 SBOM lists them by package URL, each with a SHA-256:
+acme-http 3.0.2, acme-json 2.4.1 and acme-log 1.9.0. The SBOM's application hash matches the jar, so it is the SBOM for this jar, and a library jar changed after
+the SBOM was written is found by its hash. But which repository, branch and commit the jar was built from, and who built it on which machine, the SBOM does not say.
+That is what provenance is for.</p>
+<h3>2. Provenance: who built it, from what</h3>
+<p>The build service writes an in-toto statement with the predicate type https://slsa.dev/provenance/v1. Its subject is shop-1.4.0.jar with SHA-256 38a6dd0dd912fc89.
+The build definition names the build type, the source repository https://git.shop.example/shop/store, the branch refs/heads/main and the commit 4f1c2a9e8b7d. The run
+details name the builder, https://build.shop.example/runner/v1. The statement is signed with Ed25519 in a DSSE envelope, over the encoding "DSSEv1 28
+application/vnd.in-toto+json 768" followed by the statement, and verifies with the builder's key shop-ci-2026. Because the payload type is part of what is signed, the
+same bytes offered as another payload type are refused.</p>
+<h3>3. Checking before deploying</h3>
+<p>The deployment gate trusts one builder key and one builder id, and expects the main branch of the store's repository. The release from the trusted builder, built from
+main, is deployed. A build of a fork is refused because it was built from another repository, and a build of an unreviewed branch because it was built from another
+branch. A build signed on a developer's laptop has no signature from a trusted builder. A statement signed with the trusted key but naming the staging runner names a
+builder that is not trusted. The fork's statement edited after signing to say main's repository no longer matches its signature. The fork's jar offered with the real
+release's provenance is refused because the statement is about another artifact. And a jar with no provenance at all is refused.</p>
+<h3>4. SLSA build levels, and builds that can be repeated</h3>
+<p>SLSA build levels are defined by what each adds. A developer's laptop build is level zero: it writes no provenance. A laptop build that signs its own provenance is level
+one, held back because the developer holds the key and could forge it. The store's hosted CI runner is level two, held back because build steps run where the signing key
+can be reached, so a malicious build could sign anything. A hardened build platform with isolated, short-lived builds is level three. Two careless builds of the same
+commit, each with its own clock and the file system's order, give different jars. Two reproducible builds, with the commit time and sorted entries, give the same jar,
+SHA-256 38a6dd0dd912fc89, so anyone can rebuild the commit and check it against the provenance subject.</p>
+<h3>5. The bill</h3>
+<p>Provenance only helps when it is checked: a deploy script that never asks runs the fork's build. With the builder's key stolen, a fork's jar with a statement
+claiming main is deployed by the gate, so the key and the builder must be protected. The SBOM written for 1.4.0, checked against the 1.4.1 jar, does not describe it, so
+the SBOM must be written at every build. And a correct SBOM is only useful if something scans it against new advisories, which is the -with-syft-and-grype version.</p>
+<h2>The verdict</h2>
+<p>Write an SBOM at every build and scan it continuously. Have the build platform, not developers, sign provenance, and check it at deployment against the expected
+builder, repository and branch. Protect the builder's key and isolate builds from it. Make builds reproducible so that independent rebuilds can confirm the provenance.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>Release pages that publish an SBOM and a provenance file next to each artifact.</li>
+<li>Admission policies that require provenance from a named builder.</li>
+<li>Questions from customers or regulators asking for an SBOM.</li>
+<li>SLSA levels in project documentation and scorecards.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>CycloneDX and SPDX files attached to releases and requested by customers and regulators.</li>
+<li><code>*.intoto.jsonl</code> and <code>*.sigstore.json</code> files next to release downloads.</li>
+<li>SLSA levels mentioned in project security policies and OpenSSF Scorecard checks.</li>
+<li>Supply chain incidents where a build server was compromised and signed releases were shipped.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,572 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "sbom-and-provenance"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "SBOMs and Build Provenance: What Is Inside, Who Built It, and From What"
+short_title = "SBOMs and Provenance"
+package = "provenance"
+main_class = "ProvenanceDemo"
+tagline = "Know what is inside a release, and prove where it came from"
+bold = "A bill of materials says what a release contains; signed provenance says which builder made it from which repository, branch and commit; a deployment should check both, and only a reproducible build lets anyone confirm them."
+domain = "an online store"
+domain_note = ""
+youtube_description = """SBOMs and build provenance in Java: an online store's release jar comes with a CycloneDX bill of materials that lists every library with its package URL and SHA-256, and finds a library changed after the build, but cannot say who built the jar or from which source. Signed provenance answers that: an in-toto statement with a SLSA Provenance predicate names the artifact by digest, the source repository, branch and commit, and the builder, signed with Ed25519 in a DSSE envelope. A deployment gate then refuses a build of a fork, an unreviewed branch, a laptop-signed build, a statement naming the wrong builder, an edited statement and a swapped jar. SLSA build levels are explained by what each adds, and reproducible builds let anyone rebuild the commit and check the digest. The bill: provenance helps only when checked, the builder's key must be protected, and an SBOM goes stale. Mapped to OWASP Top 10 2025 A03 and A08, SLSA, in-toto and NIST SSDF."""
+thumb_lines = ["SBOM AND PROVENANCE", "WHAT, WHO, FROM WHAT"]
+thumb_code = "in-toto + SLSA provenance + DSSE"
+youtube_title = "SBOMs and Build Provenance in Java (CycloneDX, SLSA, in-toto, DSSE)"
+youtube_tags = ["sbom", "cyclonedx", "slsa", "provenance", "in-toto", "dsse", "software supply chain", "reproducible builds", "java", "application security"]
+
+[readme]
+intro = """
+The [artifact-signing](../artifact-signing) project made sure a release is the exact bytes the release team signed. That still leaves two questions open: **what is
+inside** the release, and **how and from what it was built**. A signature over a jar built from a fork, or from an unreviewed branch, is still a valid signature.
+
+This project answers both:
+- A **software bill of materials (SBOM)** in **CycloneDX 1.6** lists every component with its **package URL** and **SHA-256**. It finds a library that changed after
+  the build, and says nothing about who built the release.
+- **Provenance**: an **in-toto Statement** with a **SLSA Provenance v1** predicate names the artifact by its digest, the **source repository, branch and commit**, and
+  the **builder**, and is signed by the builder in a **DSSE envelope** whose signature covers the payload type too.
+- A **deployment gate** that checks the signature, the subject digest, the builder, the repository and the branch before anything runs.
+- **SLSA build levels**, and **reproducible builds** that let anyone rebuild the commit and compare digests.
+
+**Maps to:** OWASP Top 10 (2025) A03 Software Supply Chain Failures and A08 Software or Data Integrity Failures · SLSA v1.0 build track · in-toto · NIST SSDF
+PS.2, PS.3 and PW.4 · CWE-494 Download of Code Without Integrity Check · CWE-1357 Reliance on Insufficiently Trustworthy Component · OWASP ASVS 5.0, the chapter on
+software integrity and dependency management.
+"""
+analogy = """
+Think of food in a shop. The label on the packet lists the ingredients: that is the bill of materials. It does not say which factory made it, from which batch, or
+whether the factory followed its recipe. For that the shop wants a certificate of origin, stamped by the factory and naming the batch, and a shop that checks the stamp
+before the packet goes on the shelf. And if the recipe is precise enough, anyone can cook the same dish again and taste whether it matches.
+"""
+scenario = """
+An online store releases shop-1.4.0.jar, built from three files at one commit of its main branch and depending on three libraries. The demo writes the jar with a
+reproducible archive builder, writes its SBOM, and has a build service sign provenance with an Ed25519 key made from a fixed demo seed. A deployment gate then checks
+builds of a fork, a branch, a laptop, a staging runner, an edited statement and a swapped jar.
+"""
+costs = [
+    "**Provenance helps only when it is checked.** A deploy script that never asks deploys a fork's build as happily as the real one.",
+    "**The builder's key and the builder itself are now the target.** With the key, anyone can sign a statement that a fork's jar came from main; with control of the build, anyone can make the builder sign it.",
+    "**An SBOM goes stale.** It describes one build; the next release needs a new one, and both need scanning against advisories published after the build.",
+    "**Reproducible builds take work.** Timestamps, file order, locales and tool versions all have to be fixed before two builds agree.",
+    "**Levels are claims about the platform.** A pipeline is only level three if its build steps really cannot reach the signing key.",
+]
+too_much = """
+Any team that ships software to others should produce an SBOM at every build, and any deployment that runs code it did not build should check signed provenance.
+The higher SLSA levels matter most for builds that many others depend on, and for teams whose build systems are shared or exposed.
+"""
+met_before = [
+    "CycloneDX and SPDX files attached to releases and requested by customers and regulators.",
+    "`*.intoto.jsonl` and `*.sigstore.json` files next to release downloads.",
+    "SLSA levels mentioned in project security policies and OpenSSF Scorecard checks.",
+    "Supply chain incidents where a build server was compromised and signed releases were shipped.",
+]
+where = """
+This project is in [secrets-and-supply-chain](..), after [artifact-signing](../artifact-signing), which signed the exact bytes of a release. It builds on
+[patching-and-dependency-hygiene](../../../beginner/safe-habits/patching-and-dependency-hygiene), which introduced bills of materials and advisories.
+"""
+twin = """
+The jar is built from three small files with a fixed commit time and sorted entries, stored without compression, so its SHA-256 is the same on every run and every
+machine. The builder's key comes from a fixed demo seed, and Ed25519 signatures are deterministic. Timestamps in the documents are fixed strings. Nothing is fetched
+from a network, and no real build service runs.
+"""
+test_note = "The DSSE encoding is checked against the example in the DSSE specification, Ed25519 against RFC 8032 test 1, and every gate refusal is checked with its reason; reproducible builds are checked to ignore file order and clock."
+
+[[act]]
+title = "What a bill of materials answers, and what it does not"
+summary = "The CycloneDX SBOM lists three libraries with purls and SHA-256 hashes, matches the jar, and finds a changed library, but says nothing about who built the jar or from what."
+detail = """
+The release shop-1.4.0.jar is built from three files and depends on three libraries. Its CycloneDX 1.6 SBOM lists them by package URL, each with a SHA-256:
+acme-http 3.0.2, acme-json 2.4.1 and acme-log 1.9.0. The SBOM's application hash matches the jar, so it is the SBOM for this jar, and a library jar changed after
+the SBOM was written is found by its hash. But which repository, branch and commit the jar was built from, and who built it on which machine, the SBOM does not say.
+That is what provenance is for.
+"""
+speech = """
+First demo: what a bill of materials answers. [[slnc 400]] The store's release depends on three libraries. [[slnc 600]]
+The bill of materials lists each one, by package name, with a fingerprint of its exact bytes. [[slnc 300]] It matches this jar. [[slnc 600]]
+And a library changed after the build is found, because its fingerprint no longer matches. [[slnc 600]]
+But which repository, branch and commit the jar was built from, the bill of materials does not say. [[slnc 300]] Nor who built it. [[slnc 300]] That is what provenance is for.
+"""
+rows = { sbom = "active amber" }
+console = [
+    ["the release shop-1.4.0.jar is built from 3 files and depends on 3 libraries", "muted"],
+    ["the CycloneDX 1.6 SBOM lists, each with a SHA-256: pkg:maven/com.acme/acme-http@3.0.2, pkg:maven/com.acme/acme-json@2.4.1, pkg:maven/com.acme/acme-log@1.9.0", "muted"],
+    ["this SBOM is the one for this jar: true", "ok"],
+    ["a library jar changed after the SBOM was written is found: [pkg:maven/com.acme/acme-json@2.4.1]", "ok"],
+    ["which repository, branch and commit the jar was built from: the SBOM does not say", "amber"],
+    ["who built it, and on which machine: the SBOM does not say  <- THAT IS WHAT PROVENANCE IS FOR", "amber"],
+]
+
+[[act]]
+title = "Provenance: who built it, from what"
+summary = "An in-toto statement with a SLSA Provenance v1 predicate names the jar by digest, the repository, branch and commit, and the builder, signed in a DSSE envelope whose signature also covers the payload type."
+detail = """
+The build service writes an in-toto statement with the predicate type https://slsa.dev/provenance/v1. Its subject is shop-1.4.0.jar with SHA-256 38a6dd0dd912fc89.
+The build definition names the build type, the source repository https://git.shop.example/shop/store, the branch refs/heads/main and the commit 4f1c2a9e8b7d. The run
+details name the builder, https://build.shop.example/runner/v1. The statement is signed with Ed25519 in a DSSE envelope, over the encoding "DSSEv1 28
+application/vnd.in-toto+json 768" followed by the statement, and verifies with the builder's key shop-ci-2026. Because the payload type is part of what is signed, the
+same bytes offered as another payload type are refused.
+"""
+speech = """
+Second demo: provenance. [[slnc 400]] The build service writes a statement about the jar. [[slnc 600]]
+The subject is the jar, named by its fingerprint. [[slnc 300]] Then the source: the repository, the branch, and the exact commit. [[slnc 300]] And the builder that ran the build. [[slnc 600]]
+The builder signs the statement, inside an envelope. [[slnc 300]] The signature covers the type of document too. [[slnc 600]]
+So the same signed bytes, offered as a different type of document, are refused.
+"""
+rows = { provenance = "active ok" }
+console = [
+    ["an in-toto statement, predicate https://slsa.dev/provenance/v1", "muted"],
+    ["subject: shop-1.4.0.jar, sha256 38a6dd0dd912fc89...", "muted"],
+    ["source: https://git.shop.example/shop/store, refs/heads/main, commit 4f1c2a9e8b7d...", "muted"],
+    ["builder: https://build.shop.example/runner/v1", "muted"],
+    ["signed in a DSSE envelope over the encoding: DSSEv1 28 application/vnd.in-toto+json 768 {...}", "muted"],
+    ["the Ed25519 signature verifies with the builder's key shop-ci-2026: true", "ok"],
+    ["the same signed bytes offered as another payload type: refused (the payload is not an in-toto statement)", "ok"],
+]
+
+[[act]]
+title = "Checking before deploying"
+summary = "The gate deploys the real release and refuses a fork, an unreviewed branch, a laptop-signed build, the staging runner, an edited statement, a swapped jar and a jar with no provenance."
+detail = """
+The deployment gate trusts one builder key and one builder id, and expects the main branch of the store's repository. The release from the trusted builder, built from
+main, is deployed. A build of a fork is refused because it was built from another repository, and a build of an unreviewed branch because it was built from another
+branch. A build signed on a developer's laptop has no signature from a trusted builder. A statement signed with the trusted key but naming the staging runner names a
+builder that is not trusted. The fork's statement edited after signing to say main's repository no longer matches its signature. The fork's jar offered with the real
+release's provenance is refused because the statement is about another artifact. And a jar with no provenance at all is refused.
+"""
+speech = """
+Third demo: checking before deploying. [[slnc 400]] The gate trusts one builder, and expects the main branch of the store's repository. [[slnc 600]]
+The real release is deployed. [[slnc 600]]
+A build of a fork is refused. [[slnc 300]] So is a build of an unreviewed branch. [[slnc 300]] And a build signed on a developer's laptop. [[slnc 600]]
+A statement with the right key but the wrong builder is refused. [[slnc 300]] A statement edited after signing is refused. [[slnc 300]] A different jar with the real statement is refused. [[slnc 300]] And a jar with no provenance at all is refused.
+"""
+rows = { gate = "active ok" }
+console = [
+    ["the release from the trusted builder, built from main: deployed", "ok"],
+    ["a build of a fork: refused (built from another repository)", "ok"],
+    ["a build of an unreviewed branch: refused (built from another branch)", "ok"],
+    ["a build signed on a developer's laptop: refused (no signature from a trusted builder)", "ok"],
+    ["the trusted key, but a statement naming the staging runner: refused (built by a builder that is not trusted)", "ok"],
+    ["the fork's statement edited after signing to say main's repository: refused (the signature does not match the statement)", "ok"],
+    ["the fork's jar offered with the real release's provenance: refused (the statement is about another artifact)", "ok"],
+    ["a jar with no provenance at all: refused (no provenance)", "ok"],
+]
+
+[[act]]
+title = "SLSA build levels, and builds that can be repeated"
+summary = "A laptop build is level 0, self-signed provenance level 1, the hosted CI runner level 2, and an isolated platform level 3; careless builds differ, reproducible builds match and can be checked against the provenance."
+detail = """
+SLSA build levels are defined by what each adds. A developer's laptop build is level zero: it writes no provenance. A laptop build that signs its own provenance is level
+one, held back because the developer holds the key and could forge it. The store's hosted CI runner is level two, held back because build steps run where the signing key
+can be reached, so a malicious build could sign anything. A hardened build platform with isolated, short-lived builds is level three. Two careless builds of the same
+commit, each with its own clock and the file system's order, give different jars. Two reproducible builds, with the commit time and sorted entries, give the same jar,
+SHA-256 38a6dd0dd912fc89, so anyone can rebuild the commit and check it against the provenance subject.
+"""
+speech = """
+Fourth demo: build levels, and builds that can be repeated. [[slnc 400]] A laptop build with no provenance is level zero. [[slnc 600]]
+A laptop that signs its own provenance is level one. [[slnc 300]] The developer holds the key, so the developer could forge it. [[slnc 600]]
+The store's hosted build runner is level two. [[slnc 300]] Build steps can reach the key, so a malicious build could sign anything. [[slnc 600]]
+A platform that isolates every build from the key is level three. [[slnc 600]]
+And two careless builds of the same commit give different jars. [[slnc 300]] Two reproducible builds give the same jar. [[slnc 300]] So anyone can rebuild it, and check.
+"""
+rows = { levels = "active amber" }
+console = [
+    ["a developer's laptop build: level 0, held back because it writes no provenance", "bad"],
+    ["a laptop build that signs its own provenance: level 1, held back because ... the developer could forge it", "amber"],
+    ["the store's hosted CI runner: level 2, held back because ... a malicious build could sign anything", "amber"],
+    ["a hardened build platform with isolated, short-lived builds: level 3", "ok"],
+    ["two careless builds of the same commit (own clock, file-system order) give the same jar: false", "bad"],
+    ["two reproducible builds (commit time, sorted entries) give the same jar: true, sha256 38a6dd0dd912fc89...", "ok"],
+    ["so anyone can rebuild the commit and check it against the provenance subject: true", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A script that never checks deploys a fork; a stolen builder key makes a forged statement pass; an SBOM for 1.4.0 does not describe 1.4.1."
+detail = """
+Provenance only helps when it is checked: a deploy script that never asks runs the fork's build. With the builder's key stolen, a fork's jar with a statement
+claiming main is deployed by the gate, so the key and the builder must be protected. The SBOM written for 1.4.0, checked against the 1.4.1 jar, does not describe it, so
+the SBOM must be written at every build. And a correct SBOM is only useful if something scans it against new advisories, which is the -with-syft-and-grype version.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Provenance helps only when it is checked. [[slnc 300]] A deploy script that never asks runs the fork's build. [[slnc 600]]
+If the builder's key is stolen, a forged statement passes the gate. [[slnc 300]] So the key, and the builder, must be protected. [[slnc 600]]
+And the bill of materials for one release does not describe the next. [[slnc 300]] Write it at every build, and scan it against new advisories.
+"""
+rows = { bill = "active wrong" }
+console = [
+    ["a deploy script that never checks runs the fork's build: deployed  <- PROVENANCE ONLY HELPS WHEN IT IS CHECKED", "bad"],
+    ["with the builder's key stolen, a fork's jar with a statement claiming main: deployed  <- PROTECT THE KEY AND THE BUILDER", "bad"],
+    ["the SBOM written for 1.4.0, checked against the 1.4.1 jar: describes it false  <- WRITE THE SBOM AT EVERY BUILD", "amber"],
+    ["and a correct SBOM is only useful if something scans it against new advisories: see the -with-syft-and-grype version", "muted"],
+]
+
+[animation]
+subtitle = "An online store learns to say what is inside its release, and to prove which builder made it from which source."
+boxes = [
+    ["sbom", "Bill of materials", "what is inside"],
+    ["provenance", "Signed provenance", "who built it, from what"],
+    ["gate", "Deployment gate", "checks before it runs"],
+    ["levels", "Build levels", "and reproducible builds"],
+    ["bill", "The bill", "checking, keys, freshness"],
+]
+
+[docs.problem]
+scenario = """
+An online store ships a release jar. Customers, auditors and its own deployment need to know what is inside it, and that it was built by the store's build service from the
+reviewed main branch, not from a fork, a branch or someone's laptop.
+"""
+naive = """
+Sign the jar and trust any signed jar, with no record of what is inside it or where it was built from.
+"""
+deliver = [
+    "A CycloneDX 1.6 SBOM with package URLs and SHA-256 hashes, and checks that it matches the jar and its libraries.",
+    "An in-toto statement with a SLSA Provenance v1 predicate, signed with Ed25519 in a DSSE envelope.",
+    "A deployment gate that checks signature, subject digest, builder, repository and branch, and explains every refusal.",
+    "SLSA build levels decided from the facts they depend on.",
+    "A reproducible archive builder, and a rebuild checked against the provenance.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The artifact-signing project, or an idea of signatures and digests",
+]
+not_required = [
+    "A real build service, Sigstore or a container registry",
+    "Knowledge of CycloneDX or in-toto: the project writes both",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what an SBOM records and what it cannot",
+    "read an in-toto statement with a SLSA Provenance predicate",
+    "explain what the DSSE encoding protects against",
+    "list the checks a deployment gate makes on provenance",
+    "place a pipeline at a SLSA build level and say what holds it back",
+]
+walkthrough = """
+Start with the food label and the certificate of origin. Run act one and ask what the SBOM would tell an auditor and what it would not. In act two, read the statement
+aloud field by field. In act three, ask which check stops each refused build. In act four, place the group's own pipeline at a level. In act five, ask who in the
+organisation can reach the builder's key.
+"""
+exercises = [
+    "Add a check that the commit in the provenance is one the store has reviewed, from a list of reviewed commits.",
+    "Write an SPDX version of the SBOM and compare what each format records.",
+    "Add a second signature to the envelope and require both, as a two-builder rule.",
+    "Make the careless build reproducible step by step and see which change fixes the digest.",
+]
+
+[docs.explained]
+sentence = """
+An SBOM records what a release contains, signed provenance records which builder made it from which repository, branch and commit, and a deployment should check both,
+with reproducible builds letting anyone confirm the result.
+"""
+verdict = """
+Write an SBOM at every build and scan it continuously. Have the build platform, not developers, sign provenance, and check it at deployment against the expected
+builder, repository and branch. Protect the builder's key and isolate builds from it. Make builds reproducible so that independent rebuilds can confirm the provenance.
+"""
+recognise = [
+    "Release pages that publish an SBOM and a provenance file next to each artifact.",
+    "Admission policies that require provenance from a named builder.",
+    "Questions from customers or regulators asking for an SBOM.",
+    "SLSA levels in project documentation and scorecards.",
+]
+
+[spec]
+purpose = """
+Teach the difference between what a release contains and how it was made, by writing a CycloneDX SBOM, signing SLSA provenance in a DSSE envelope, checking it at a
+deployment gate, explaining SLSA build levels, and making the build reproducible.
+"""
+nongoals = [
+    "Scanning SBOMs against advisories: the -with-syft-and-grype version.",
+    "Keyless signing and public transparency logs: the artifact-signing project and its -with-cosign version.",
+    "Running a real build platform.",
+]
+problem = """
+Teams sign releases and publish SBOMs, but deploy without checking where a release was built from, so a valid signature over a fork's build is accepted.
+"""
+roles = [["A library and its purl", "`Component`"], ["The bill of materials", "`Sbom`"], ["The source to build", "`Source`"], ["Reproducible archives", "`Archive`"], ["The provenance statement", "`Provenance`"], ["The signing envelope", "`Dsse`"], ["The build service", "`Builder`"], ["The deployment gate", "`Policy`"], ["SLSA levels", "`Pipeline`"], ["Entry point", "`ProvenanceDemo`"]]
+requirements = [
+    "The SBOM is CycloneDX 1.6 JSON with purls and SHA-256 hashes, matches its jar, and finds a changed library.",
+    "The DSSE encoding matches the specification's example, and the signature covers the payload type.",
+    "The gate refuses each wrong fact with its reason, and deploys only the real release.",
+    "Pipelines are placed at SLSA build levels from the facts those levels depend on.",
+    "Reproducible builds give the same digest regardless of file order and clock.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "From commit to production"
+caption = "The builder records how it built the jar and signs that record; the gate checks the record before the jar runs."
+nodes = [
+    { id = "source", label = "Source", sub = "repository, branch, commit", col = 0, row = 0, colour = "client", shape = "store" },
+    { id = "builder", label = "Build service", sub = "builds reproducibly", col = 1, row = 0, colour = "green", shape = "ellipse" },
+    { id = "key", label = "Builder key", sub = "signs provenance", col = 1, row = 1, colour = "accent", shape = "store" },
+    { id = "outputs", label = "Jar, SBOM, provenance", sub = "what, and how", col = 2, row = 0, colour = "amber", shape = "store" },
+    { id = "gate", label = "Deployment gate", sub = "builder, source, digest", col = 3, row = 0, colour = "green", shape = "ellipse" },
+]
+edges = [
+    { from = "source", to = "builder", label = "checked out" },
+    { from = "key", to = "builder", label = "signs" },
+    { from = "builder", to = "outputs" },
+    { from = "outputs", to = "gate", label = "only if all checks pass" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Builder makes the jar and signs Provenance in a Dsse envelope; Policy checks it; Sbom lists the components."
+nodes = [
+    { id = "builder", label = "Builder", sub = ["build(source, name, invocation)"], col = 0, row = 0, colour = "green" },
+    { id = "provenance", label = "Provenance", sub = ["statement(name, jar, source, builder)"], col = 1, row = 0, colour = "client" },
+    { id = "dsse", label = "Dsse", sub = ["pae(type, body)", "envelope(...)", "open(envelope, keys)"], col = 2, row = 0, colour = "accent" },
+    { id = "policy", label = "Policy", sub = ["check(envelope, name, jar)"], col = 0, row = 1, colour = "amber" },
+    { id = "sbom", label = "Sbom", sub = ["write(...)", "describes(sbom, jar)", "changedComponents(...)"], col = 1, row = 1, colour = "client" },
+    { id = "archive", label = "Archive", sub = ["reproducible(files)", "careless(order, files, clock)"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "builder", to = "provenance", label = "writes" },
+    { from = "builder", to = "dsse", label = "signs with" },
+    { from = "builder", to = "archive", label = "builds with" },
+    { from = "policy", to = "dsse", label = "opens with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the provenance statement contains"
+caption = "The subject is the artifact by digest; the predicate says how it was built and by whom."
+nodes = [
+    { id = "subject", label = "Subject", sub = "jar name and SHA-256", col = 0, row = 0, colour = "client" },
+    { id = "build", label = "Build definition", sub = "type, repository, branch", col = 1, row = 0, colour = "amber" },
+    { id = "deps", label = "Resolved dependencies", sub = "the exact commit", col = 2, row = 0, colour = "amber" },
+    { id = "run", label = "Run details", sub = "builder id, invocation", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "subject", to = "build" },
+    { from = "build", to = "deps" },
+    { from = "deps", to = "run" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A release reaches production: who does what, in order"
+participants = ["Build service", "Gate", "Production"]
+steps = [
+    ["Build service", "Build service", "build the commit reproducibly"],
+    ["Build service", "Build service", "write the statement, sign it in a DSSE envelope"],
+    ["Build service", "Gate", "jar and provenance"],
+    ["note", "Gate", "signature, subject digest, builder, repository, branch"],
+    ["Gate", "Production", "deploy only if every check passes"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A fork's build is refused"
+caption = "The signature is valid, but the statement says where the jar came from."
+participants = ["Attacker", "Build service", "Gate"]
+steps = [
+    ["Attacker", "Build service", "build my fork"],
+    ["Build service", "Gate", "jar and honest provenance naming the fork"],
+    ["note", "Gate", "repository is not the store's"],
+    ["Gate", "Attacker", "refused", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Rebuilding to check"
+caption = "A reproducible build lets anyone confirm the provenance subject."
+participants = ["Auditor", "Source", "Gate"]
+steps = [
+    ["Auditor", "Source", "check out the commit named in the provenance"],
+    ["Auditor", "Auditor", "build with the commit time and sorted entries"],
+    ["Auditor", "Gate", "the rebuilt jar with the published provenance"],
+    ["Gate", "Auditor", "the digest matches the subject", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Source control", nodes = ["source"], colour = "amber" },
+    { label = "Build platform", nodes = ["builder", "key"], colour = "green" },
+    { label = "Production", nodes = ["gate"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "source", label = "Repository", sub = "main, branches, forks", col = 0, row = 0, colour = "client", shape = "store", threats = ["T1"] },
+    { id = "builder", label = "Build service", sub = "builds and records", col = 1, row = 0, colour = "green", shape = "ellipse", threats = ["T3"] },
+    { id = "key", label = "Builder key", sub = "signs provenance", col = 1, row = 1, colour = "accent", shape = "store", threats = ["T2"] },
+    { id = "gate", label = "Deployment gate", sub = "checks provenance", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T4", "T5"] },
+    { id = "attacker", label = "Attacker", sub = "forks, edits, steals", col = 2, row = 1, colour = "red", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "source", to = "builder" },
+    { from = "key", to = "builder", label = "signs" },
+    { from = "builder", to = "gate", label = "jar and provenance" },
+    { from = "attacker", to = "source", label = "builds a fork or branch", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "key", label = "steals the key", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "attacker", to = "gate", label = "edits or swaps", colour = "red", dashed = true, threats = ["T4"] },
+]
+
+[poster]
+headline = [["SBOM AND PROVENANCE", "text"], ["WHAT, WHO, FROM WHAT", "accent"]]
+taglines = [["Know what is inside a release, and prove where it came from", "gold"]]
+before = { code = "signed jar, any source", note = "a fork's build passes", tag = "BEFORE" }
+after = { code = "SBOM + signed SLSA provenance", note = "checked at the gate", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "SBOMs and Build Provenance"
+narration = """Hello, and welcome. [[slnc 400]] This video explains bills of materials and build provenance, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A bill of materials lists what is inside a release. [[slnc 300]] Provenance records who built it, and from which source. [[slnc 600]] Think of food in a shop. [[slnc 300]] The label lists the ingredients. [[slnc 300]] But a certificate of origin, stamped by the factory, says where it was made, and from which batch. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will hear what a bill of materials can and cannot say. [[slnc 300]] What a signed provenance statement contains. [[slnc 300]] How a deployment checks it. [[slnc 300]] And why builds that can be repeated matter."""
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store ships a release jar.", "", "It must say what is inside,", "and prove it was built", "from the reviewed main branch,", "by the store's own build service."]
+narration = """Here is the scenario. [[slnc 400]] An online store ships a release jar. [[slnc 500]] It must say what is inside it. [[slnc 300]] And it must prove that the jar was built from the reviewed main branch, by the store's own build service. [[slnc 500]] Not from a fork, not from a branch, and not on someone's laptop."""
+
+[[scene]]
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["SBOM: what a release contains", "Provenance: how and from what it was built", "in-toto statement: a signed claim about an artifact", "DSSE: the envelope that is signed", "SLSA level: how much the provenance can be trusted"]
+narration = """Before the demos, the words. [[slnc 500]] An S B O M, a software bill of materials, lists what a release contains. [[slnc 500]] Provenance records how, and from what, it was built. [[slnc 500]] An in toto statement is a signed claim about an artifact. [[slnc 500]] D S S E is the envelope around it that gets signed. [[slnc 500]] And a S L S A level says how far the provenance can be trusted."""
+
+[[scene]]
+key = "acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "09-ladder"
+kind = "bullets"
+title = "Questions Before a Release Runs"
+body = ["What is inside it? the SBOM", "Is it the exact bytes? the subject digest", "Who built it? the builder id and key", "From what? repository, branch, commit", "Can anyone check? a reproducible build"]
+narration = """Let's put it in order. [[slnc 400]] What is inside it? [[slnc 300]] The bill of materials. [[slnc 500]] Is it the exact bytes? [[slnc 300]] The subject digest. [[slnc 500]] Who built it? [[slnc 300]] The builder, and the builder's key. [[slnc 500]] From what? [[slnc 300]] The repository, branch, and commit. [[slnc 500]] And can anyone check? [[slnc 300]] Only if the build can be repeated."""
+
+[[scene]]
+key = "10-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Sbom and Component: what is inside", "Builder and Archive: a reproducible build", "Provenance and Dsse: the signed statement", "Policy: the deployment gate", "Pipeline: SLSA build levels"]
+narration = """Here is who does what in the code. [[slnc 400]] The bill of materials class lists the components. [[slnc 500]] The builder builds the jar reproducibly, with the archive class. [[slnc 500]] The provenance class writes the statement, and the D S S E class signs it in an envelope. [[slnc 500]] The policy class is the deployment gate. [[slnc 300]] And the pipeline class decides build levels."""
+
+[[scene]]
+key = "11-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["CycloneDX and SPDX files", "Provenance files next to releases", "SLSA levels in security policies", "Compromised build servers in the news"]
+narration = """You have probably met this already. [[slnc 400]] CycloneDX and S P D X files, attached to releases. [[slnc 500]] Provenance files published next to downloads. [[slnc 500]] S L S A levels mentioned in project security policies. [[slnc 500]] And news stories about build servers that were compromised, and shipped signed releases."""
+
+[[scene]]
+key = "12-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Write an SBOM at every build, and scan it", "Let the platform sign provenance", "Check builder, source and digest at deploy", "Protect the key; isolate builds from it", "Make builds reproducible"]
+narration = """So, how do you use it? [[slnc 400]] Write a bill of materials at every build, and scan it continuously. [[slnc 500]] Let the build platform sign provenance, not developers. [[slnc 500]] Check the builder, the source and the digest before deploying. [[slnc 500]] Protect the builder's key, and keep builds away from it. [[slnc 500]] And make builds reproducible, so anyone can check."""
+
+[[scene]]
+key = "13-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a check that the commit", "is one the store has reviewed."]
+narration = """That's bills of materials and build provenance. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Say what is inside every release, prove which builder made it from which source, and check that proof before anything runs. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a check that the commit in the provenance is one the store has reviewed. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[threatmodel]
+scope = """
+How an online store records what a release contains and how it was built, and how its deployment checks that record: the SBOM, the provenance statement, the DSSE
+envelope, the builder's key and the deployment gate. It does not cover vulnerabilities in the listed components, the source review process, or public transparency logs.
+"""
+assets = [
+    "The release jar and its SBOM.",
+    "The provenance statements and the builder's signing key.",
+    "The build service itself.",
+    "The deployment gate's trust settings: the key, builder id, repository and branch.",
+]
+actors = [
+    "The store's build service.",
+    "Developers, who can push branches and run builds on their laptops.",
+    "An outsider who can fork the repository and request builds.",
+    "A thief or insider with access to the builder's key or the build machines.",
+]
+boundaries = [
+    "Source control to the build service: what is built is decided here.",
+    "Build service to everything else: only the platform should hold the signing key.",
+    "Delivery to production: nothing runs until the gate has checked it.",
+]
+assumptions = [
+    "The gate's trusted key and builder id were installed through a trusted channel.",
+    "The gate is on every path to production.",
+    "In the demo, the builder key comes from a fixed demo seed and timestamps are fixed strings.",
+]
+out_of_scope = [
+    "Scanning components against advisories: the -with-syft-and-grype version.",
+    "Public transparency logs: the artifact-signing project.",
+    "Reviewing the commits that main contains.",
+]
+tests = [
+    "`DsseAndJsonTest` checks the DSSE encoding against the specification's example, trusted and untrusted keys, bad envelopes, and the JSON reader and writer.",
+    "`PolicyTest` checks every gate refusal and its reason, an edited statement, and the statement's fields.",
+    "`SbomAndBuildTest` checks the CycloneDX document, SBOM matching, reproducible and careless builds, and SLSA levels.",
+    "`Ed25519Test` checks RFC 8032 test 1 and determinism.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, dependency-confusion, looks at how a build can be tricked into fetching the wrong component in the first place.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A build of a fork or an unreviewed branch is deployed as if it were the release"
+where = "`Policy.check`"
+control = "The gate checks the repository and branch named in signed provenance"
+residual = "A malicious commit merged into main passes; code review protects main"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A stolen builder key signs provenance that lies about the source"
+where = "the builder key"
+control = "Only the build platform holds the key; builds are isolated from it at SLSA level three"
+residual = "Until the theft is noticed and the key revoked, forged statements pass"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A compromised build service builds something other than the commit and signs provenance that looks honest"
+where = "`Builder.build`"
+control = "Reproducible builds let an independent rebuild of the commit check the digest"
+residual = "Someone has to actually rebuild and compare"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "A statement is edited after signing, or a different jar is paired with real provenance"
+where = "`Dsse.open`, `Policy.check`"
+control = "The signature covers the payload type and statement; the subject digest must match the jar"
+residual = "None within this check"
+
+[[threat]]
+id = "T5"
+stride = "R"
+threat = "Nobody can tell which components or source a running release came from"
+where = "`Sbom`, `Provenance`"
+control = "An SBOM and signed provenance kept with every release"
+residual = "A stale SBOM misleads; it must be written at every build"
