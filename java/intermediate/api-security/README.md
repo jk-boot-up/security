@@ -7,6 +7,7 @@ APIs are where most data now leaves a system. This module follows the OWASP API 
 | # | Project | What it shows | Maps to |
 | --- | --- | --- | --- |
 | 1 | [webhook-security](webhook-security) | A payment webhook anyone could forge or replay; HMAC signatures over the raw body, a time window, a record of processed events, idempotent handling and secret rotation | API8, API10, CWE-345, CWE-294 |
+| 2 | [session-management](session-management) | Random ids stored as hashes, rotation at sign-in and step-up, idle and absolute timeouts, real sign-out and revocation, and __Host- cookies | A07, CWE-384, CWE-613 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 
