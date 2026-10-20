@@ -40,8 +40,7 @@ Parsers are tested with the inputs their authors expected, and attacked with the
 | Tests | 12, all passing |
 | Demo output | 29 lines, identical on every run |
 | Acts | 4 |
-| Video | not built yet |
 
 ## Files every project has
 
-`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output, YouTube sheet, thumbnail and `animation.html`; `concept.toml`; `video/` with the scene script and voice settings.
+`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output and `animation.html`; `concept.toml`.

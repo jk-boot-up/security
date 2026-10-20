@@ -41,8 +41,7 @@ Developers let the shape of the database record decide what an API accepts and r
 | Tests | 10, all passing |
 | Demo output | 22 lines, identical on every run |
 | Acts | 5 |
-| Video | not built yet |
 
 ## Files every project has
 
-`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output, YouTube sheet, thumbnail and `animation.html`; `concept.toml`; `video/` with the scene script and voice settings.
+`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output and `animation.html`; `concept.toml`.
