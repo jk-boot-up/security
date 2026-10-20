@@ -9,6 +9,7 @@ Habits in the code itself: validating input at the trust boundary, keeping state
 | 1 | [input-validation](input-validation) | Server-side validation, typed allow-lists, canonical forms for Unicode names, size limits and regular-expression denial of service | A05, A06, CWE-20, CWE-1333, CWE-176 |
 | 2 | [race-conditions-and-business-logic](race-conditions-and-business-logic) | Two withdrawals that overdraw, a coupon used twice and a retried payment; locks, compare-and-set, idempotency keys, server-side rules and lock ordering | A06, CWE-362, CWE-367, CWE-840 |
 | 3 | [secrets-in-errors-and-logs](secrets-in-errors-and-logs) | A log is a second database that nobody protects | A09, A02, CWE-209, CWE-532, CWE-117 |
+| 4 | [fuzzing](fuzzing) | Let the machine try the inputs nobody thought of | CWE-20, CWE-248, CWE-190, CWE-835, A06 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

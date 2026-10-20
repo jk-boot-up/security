@@ -1,0 +1,396 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "fuzzing"
+level = "intermediate"
+module = "secure-coding"
+title = "Fuzzing a Parser"
+short_title = "Fuzzing"
+package = "fuzz"
+main_class = "FuzzDemo"
+tagline = "Let the machine try the inputs nobody thought of"
+bold = "A parser may refuse bad input in exactly one way, so a fuzzer feeds it mutated and generated input until anything else happens, shrinks each failure to the smallest input that still triggers it, and turns it into a regression test; coverage feedback reaches the deeper bugs that random text and simple mutation do not."
+domain = "a supplier order file parser"
+domain_note = ""
+youtube_description = "Fuzzing in Java: write a mutation and coverage-guided fuzzer, find bugs in a parser, shrink the inputs and keep them as tests."
+thumb_lines = ["FUZZING", "A PARSER"]
+thumb_code = "mutate, run, keep new coverage"
+youtube_title = "Fuzzing a Parser in Java: Mutation, Coverage Feedback and Regression Tests"
+youtube_tags = ["fuzzing", "coverage-guided fuzzing", "parsers", "delta debugging", "regression tests", "java", "application security"]
+
+[readme]
+intro = """
+A shop reads order files from suppliers. The parser works on every file the suppliers' tool writes, and the developers tested it on those. But a parser is a door that anyone can send anything through, and the inputs that break it are the ones nobody thought of: a number that is not a number,
+a decimal point with nothing after it, a suffix with half its letters, a quantity that overflows, a loop that never ends.
+
+**Fuzzing** is a machine doing the thinking-of: it makes thousands of inputs, runs the parser, and reports anything that is not either a clean parse or the one failure the parser promises, a `ParseException`. This project writes a small fuzzer so that nothing is a black box:
+- **Three ways to make inputs:** random text, valid example files changed a little (**mutation**), and mutation with **coverage feedback**, which keeps any input that reaches a branch no earlier input reached and mutates those in turn.
+- **An oracle:** the only allowed failure is `ParseException`. A `NumberFormatException`, an `ArrayIndexOutOfBoundsException`, a negative total or a run that never ends is a finding.
+- **Deduplication:** each kind of failure is filed once, with the run that found it.
+- **Minimization (delta debugging):** drop chunks of the input while the same failure remains, until nothing more can go.
+- **Regression tests:** each minimized input becomes a unit test, so the bug cannot come back.
+
+The parser, `BuggyOrderParser`, has five planted bugs of the kinds real parsers have; `FixedOrderParser` validates every field before using it.
+
+**Maps to:** NIST SSDF PW.8 (test executable code) · OWASP ASVS 5.0, the validation and secure development requirements · CWE-20 · CWE-248 · CWE-190 · CWE-835 · OWASP Top 10 (2025) A06 Insecure Design.
+"""
+analogy = """
+A quality inspector who tries a product with the inputs customers never think of: pressing every button at once, dropping it, holding it upside down. Most of the time nothing happens. Once in a while the product breaks, and the inspector writes down the shortest way to break it, so that the fix can be checked.
+"""
+scenario = """
+A shop's supplier order file parser, with five planted bugs. The demo fuzzes it with a fixed random seed, so the same inputs are made in the same order on every run and the bugs are found at the same run numbers.
+"""
+costs = [
+    "**Fuzzing needs an oracle.** The rule \"only ParseException may escape\" is simple. Rules about correct results (the total is right) are harder to state and need properties or a second implementation.",
+    "**It is a search, not a proof.** Finding nothing in 5,000 runs says nothing about run 5,001. Run it longer, in CI and on a schedule, and keep a corpus.",
+    "**Coverage needs instrumentation.** Real tools (Jazzer for the JVM, AFL++, libFuzzer) instrument the code automatically; this project instruments by hand to show the idea.",
+    "**Slow or stateful targets fuzz badly.** Keep the target a pure function of its input where possible, and give it a time or step budget.",
+    "**Triage costs time.** Many findings share a root cause; deduplication and minimization are what make the list readable.",
+]
+too_much = """
+Fuzz where untrusted input meets complicated code: parsers, decoders, file and network formats. Do not fuzz a function that only adds two numbers; test it. And use a proven fuzzer for real projects: the hand-written one here is for understanding what the tool does.
+"""
+met_before = [
+    "Crashes in image, PDF, archive and font libraries found by AFL and libFuzzer.",
+    "OSS-Fuzz, which fuzzes open-source projects continuously.",
+    "`@FuzzTest` in Jazzer, with JUnit 5.",
+    "`ClassCastException` or `NegativeArraySizeException` reported in a bug tracker from a file that someone made.",
+]
+where = """
+This project is in [secure-coding](..) and follows [input-validation](../input-validation), whose validators it tests, and [secrets-in-errors-and-logs](../secrets-in-errors-and-logs), which shows what a leaked exception reveals. The with-Jazzer version applies a real coverage-guided fuzzer to the store's parsers.
+"""
+twin = """
+The fuzzer is about 100 lines of Java: a seeded random generator (`SplittableRandom`, whose algorithm is fixed, so the run is repeatable), six mutation operators and a dictionary of tokens from the format, coverage bits reported by hand-placed `cov.hit(n)` calls, signatures made from the exception type and the last branch reached
+(a real fuzzer uses the stack trace), and a simplified delta-debugging minimizer. A step budget stands in for a timeout.
+"""
+test_note = "The random seed is fixed, so the demo finds the same bugs at the same run numbers every time."
+
+[[act]]
+title = "The parser works on the files it was written for"
+summary = "Both example files parse: one line, and two lines."
+detail = """
+The supplier's two example files, a single order line and a longer file with a comment, a discount directive, a quantity in kilograms and two lines, parse cleanly. This is what the developers tested, and what a test suite built from examples shows.
+"""
+speech = """
+First demo: the parser works on the files it was written for. [[slnc 400]] The supplier's example files parse cleanly. [[slnc 300]] That is what the tests showed, and it is true. [[slnc 300]] It says nothing about the files nobody wrote.
+"""
+rows = { works = "active ok" }
+console = [
+    ["\"ORDER v2\\nKTL-001;3;24.50\\n\" -> 1 line(s) parsed", "ok"],
+    ["\"ORDER v2\\n# weekly order\\n@discount 10%\\n...\" -> 2 line(s) parsed", "ok"],
+]
+
+[[act]]
+title = "Three ways to make inputs, 5000 runs each"
+summary = "Random text covers 1 branch of 16 and finds nothing; mutated seeds cover 15 and find 7 bugs; coverage-guided mutation covers all 16 and finds 8."
+detail = """
+Random printable text never gets past the first line: the parser wants the header "ORDER v2", so it covers one branch and finds no bug. Mutating the valid example files reaches 15 of the 16 branches and finds seven bugs. Keeping every input that reaches a new branch (the corpus grows from 2 to 10 inputs)
+reaches all 16 and finds eight, including a loop that never ends, which needs "@repeat" followed by an odd number.
+"""
+speech = """
+Second demo: three ways to make inputs. [[slnc 400]] Random text never gets past the header. [[slnc 300]] It covers one branch, and finds nothing. [[slnc 600]]
+Changing the valid example files reaches fifteen branches and finds seven bugs. [[slnc 600]]
+Keeping every input that reaches something new reaches all sixteen branches, and finds eight bugs, including a loop that never ends.
+"""
+rows = { strategies = "active amber" }
+console = [
+    ["RANDOM_TEXT      branches covered:  1 of 16, bugs found: 0, corpus: 2", "bad"],
+    ["MUTATE_SEEDS     branches covered: 15 of 16, bugs found: 7, corpus: 2", "amber"],
+    ["COVERAGE_GUIDED  branches covered: 16 of 16, bugs found: 8, corpus: 10", "ok"],
+]
+
+[[act]]
+title = "Each bug, as the smallest input that still triggers it"
+summary = "Eight findings, each shrunk to a few bytes and filed with the run that found it, and the first one shown as a generated regression test."
+detail = """
+The findings are an array index error for a price like "2." (found on run 25), number format errors for prices and discounts that are not numbers, a string index error for "g" without "kg", a negative total from a negative price, a number format error for "@repeat" with nothing after it, and a hang after
+"@repeat 1" on run 3,761. Each is shrunk by dropping chunks of the input while the same failure remains, until what is left is a few bytes. The first one is printed as the source of a unit test.
+"""
+speech = """
+Third demo: each bug, as the smallest input that still triggers it. [[slnc 400]] Eight findings. [[slnc 300]] Each one shrunk to a few bytes, and filed with the run that found it. [[slnc 600]]
+An index error for a price with nothing after the point. [[slnc 300]] A negative total from a negative price. [[slnc 300]] And a loop that never ends. [[slnc 600]]
+The first finding is printed as a unit test, so that it can never come back.
+"""
+rows = { findings = "active wrong" }
+console = [
+    ["ArrayIndexOutOfBoundsException after branch 14  run 25: \"ORDER v2\\n;3;2\"", "bad"],
+    ["IllegalStateException after branch 16  run 1089: \"ORDER v2\\n;3;-4.0\"", "bad"],
+    ["Hang after branch 9  run 3761: \"ORDER v2\\n@repeat 1\"", "bad"],
+    ["@Test void fuzzFinding1() { assertCleanOutcome(\"ORDER v2\\n;3;2\"); }", "muted"],
+]
+
+[[act]]
+title = "After the fix"
+summary = "Each minimized input is now refused with a clear message or read without a hang, and fuzzing the fixed parser the same way finds 0 bugs in 5000 runs, which proves little."
+detail = """
+The fixed parser checks every field with a strict pattern before using it, computes totals in long arithmetic and caps them, refuses negative numbers by pattern, ignores the unused @repeat directive, and reports every refusal as a ParseException. Each minimized input is now "refused" with a message or parsed without a loop.
+Fuzzing the fixed parser the same way finds nothing in 5,000 runs. That is encouraging, and it is not a proof: fuzzing is a search. The regression inputs stay in the test suite, and the fuzzer runs again whenever the parser changes.
+"""
+speech = """
+Fourth demo: after the fix. [[slnc 400]] Every field is checked before it is used. [[slnc 300]] Each of the smallest inputs is refused with a clear message, or read without a loop. [[slnc 600]]
+Fuzzing the fixed parser the same way finds nothing. [[slnc 300]] That is encouraging. It is not a proof. [[slnc 300]] Fuzzing is a search, so keep the regression tests, and fuzz again when the parser changes.
+"""
+rows = { fixed = "active ok" }
+console = [
+    ["\"ORDER v2\\n;3;2\" -> refused: a line needs a SKU, a quantity and a price", "ok"],
+    ["\"ORDER v2\\n@discount 1\" -> refused: bad discount", "ok"],
+    ["\"ORDER v2\\n@repeat 1\" -> 0 line(s) parsed", "ok"],
+    ["fuzzing the fixed parser the same way: 0 bugs in 5000 runs (which proves little)", "amber"],
+]
+
+[animation]
+subtitle = "A supplier order parser, a machine that tries the inputs nobody thought of, and the smallest file that breaks it."
+boxes = [
+    ["works", "It works", "on the files it was written for"],
+    ["strategies", "Making inputs", "random, mutated, coverage-guided"],
+    ["findings", "Findings", "shrunk to a few bytes each"],
+    ["fixed", "The fix", "and a regression test for each"],
+]
+
+[docs.problem]
+scenario = """
+A shop reads order files from suppliers, and anyone who can send a file to the shop can send any bytes.
+"""
+naive = """
+The parser passed its tests on the suppliers' example files, so it is safe.
+"""
+deliver = [
+    "A parser with five planted bugs and a fixed parser.",
+    "A fuzzer with three strategies, an oracle, deduplication, a minimizer and a regression test generator.",
+    "Hand-placed coverage instrumentation and a step budget as a deterministic timeout.",
+    "A comparison of the strategies, with a fixed seed.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what a parser and an exception are",
+]
+not_required = [
+    "Jazzer, AFL or libFuzzer: that is the next project",
+    "Knowledge of code coverage tools",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "state the oracle for a parser, and why 'only ParseException' is the right one",
+    "explain why random text finds little and what coverage feedback adds",
+    "describe what a minimizer does and why it matters",
+    "turn a finding into a regression test",
+]
+walkthrough = """
+Run act two and ask why random text covers one branch. In act three, read each minimized input and ask which line of the parser it reaches. In act four, ask why finding nothing is weaker than it sounds.
+"""
+exercises = [
+    "Add a sixth bug to the parser and see which strategy finds it first.",
+    "Add an oracle that checks the total of each line against a slow, obviously correct calculation.",
+    "Run with another seed and compare the run numbers where the bugs are found.",
+    "Add a crossover mutation that joins halves of two corpus inputs.",
+]
+
+[docs.explained]
+sentence = """
+Fuzzing makes the inputs nobody thought of, reports anything but the allowed failure, shrinks each finding, and keeps it as a test; feedback from coverage reaches deeper than random or simple mutation, and a clean run is a search result, not a proof.
+"""
+verdict = """
+Fuzz every parser of untrusted data with a real coverage-guided fuzzer (Jazzer on the JVM), starting from valid example files and a dictionary of tokens, with a clear oracle. Keep the corpus, run it in CI for a short time and for longer on a schedule, and turn every finding into a regression test.
+"""
+recognise = [
+    "`@FuzzTest` and `FuzzedDataProvider` in Jazzer tests.",
+    "Corpus directories of small input files in a repository.",
+    "OSS-Fuzz reports and crash reproducer files.",
+    "`-XX:-OmitStackTraceInFastThrow` in fuzzing setups (hot exceptions lose their stack traces).",
+]
+
+[spec]
+purpose = """
+Teach fuzzing by writing a small mutation and coverage-guided fuzzer, finding five planted bugs in an order file parser, shrinking each finding, and fixing the parser with regression tests.
+"""
+nongoals = [
+    "Automatic instrumentation or a production fuzzer: the fuzzing-with-jazzer project.",
+    "Fuzzing stateful network services.",
+    "Proving the absence of bugs.",
+]
+problem = """
+Parsers are tested with the inputs their authors expected, and attacked with the inputs they did not.
+"""
+roles = [["The parsers and their data", "`OrderParser`, `BuggyOrderParser`, `FixedOrderParser`, `OrderLine`, `ParseException`"], ["Instrumentation", "`Coverage`, `Hang`"], ["The fuzzer", "`Fuzzer`, `Strategy`, `Crash`, `Regression`"], ["Entry point", "`FuzzDemo`"]]
+requirements = [
+    "The only allowed failure is ParseException; anything else, a negative total or a hang is a finding.",
+    "Random text covers almost nothing; mutation and coverage feedback find the planted bugs; each kind of failure is filed once.",
+    "A minimized input still fails the same way and cannot lose any single character and keep failing.",
+    "A finding is turned into the source of a regression test.",
+    "The fixed parser refuses every minimized input cleanly and survives the same fuzzing.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The fuzzing loop"
+caption = "Inputs that reach new branches are kept and mutated in turn."
+nodes = [
+    { id = "corpus", label = "Corpus", sub = "valid files, then interesting inputs", col = 0, row = 0, colour = "green", shape = "store" },
+    { id = "mutate", label = "Mutate", sub = "change, insert, delete, token, repeat", col = 1, row = 0, colour = "accent" },
+    { id = "parser", label = "Parser", sub = "instrumented", col = 2, row = 0, colour = "client" },
+    { id = "oracle", label = "Oracle", sub = "only ParseException is allowed", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "corpus", to = "mutate" },
+    { from = "mutate", to = "parser", label = "input" },
+    { from = "parser", to = "oracle", label = "outcome, coverage" },
+    { from = "oracle", to = "corpus", label = "new branch: keep", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The fuzzer drives any OrderParser and reports crashes."
+nodes = [
+    { id = "fuzzer", label = "Fuzzer", sub = ["run(seeds, n, strategy)", "execute()", "minimize()"], col = 0, row = 0, colour = "accent" },
+    { id = "parser", label = "OrderParser", sub = ["parse(text, coverage)"], col = 1, row = 0, colour = "client" },
+    { id = "cov", label = "Coverage", sub = ["hit(n)", "last()", "step budget"], col = 2, row = 0, colour = "amber" },
+    { id = "crash", label = "Crash", sub = ["signature", "input", "minimized"], col = 0, row = 1, colour = "red" },
+    { id = "reg", label = "Regression", sub = ["asJavaTest(crash)"], col = 1, row = 1, colour = "green" },
+    { id = "buggy", label = "Buggy / Fixed parser", sub = ["five bugs", "validated"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "fuzzer", to = "parser", label = "runs" },
+    { from = "parser", to = "cov", label = "reports to" },
+    { from = "fuzzer", to = "crash", label = "files" },
+    { from = "reg", to = "crash", label = "turns into a test" },
+    { from = "buggy", to = "parser", label = "implement" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a finding to a test"
+caption = "Each step makes the finding smaller or more durable."
+nodes = [
+    { id = "crash", label = "A crash", sub = "any non-ParseException", col = 0, row = 0, colour = "red" },
+    { id = "sig", label = "Signature", sub = "type + last branch", col = 1, row = 0, colour = "accent" },
+    { id = "min", label = "Minimize", sub = "drop chunks while it still fails", col = 2, row = 0, colour = "amber" },
+    { id = "test", label = "Regression test", sub = "a unit test with the small input", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "crash", to = "sig" },
+    { from = "sig", to = "min" },
+    { from = "min", to = "test" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "One run of the fuzzer"
+participants = ["Fuzzer", "Parser", "Coverage"]
+steps = [
+    ["Fuzzer", "Fuzzer", "pick a corpus input and mutate it"],
+    ["Fuzzer", "Parser", "parse(input, coverage)"],
+    ["Parser", "Coverage", "hit(10), hit(11), hit(12)"],
+    ["Parser", "Fuzzer", "StringIndexOutOfBoundsException", "reply"],
+    ["Fuzzer", "Fuzzer", "file the crash; keep the input if it reached a new branch"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Minimizing a crash"
+participants = ["Fuzzer", "Parser"]
+steps = [
+    ["Fuzzer", "Parser", "the original crashing input"],
+    ["Fuzzer", "Parser", "the input without a chunk"],
+    ["Parser", "Fuzzer", "same failure: keep the smaller input", "reply"],
+    ["Fuzzer", "Parser", "the input without the next chunk"],
+    ["Parser", "Fuzzer", "different outcome: put the chunk back", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A hang caught by the step budget"
+participants = ["Fuzzer", "Parser", "Coverage"]
+steps = [
+    ["Fuzzer", "Parser", "ORDER v2 / @repeat 1"],
+    ["Parser", "Coverage", "hit(9) again and again"],
+    ["Coverage", "Parser", "Hang after 5000 steps", "reply"],
+    ["Parser", "Fuzzer", "Hang after branch 9", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The shop", nodes = ["parser", "orders"], colour = "green" },
+    { label = "Outside", nodes = ["sender"], colour = "red" },
+]
+nodes = [
+    { id = "sender", label = "Anyone who can send a file", sub = "any bytes", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "parser", label = "Order file parser", sub = "builds orders from text", col = 1, row = 0, colour = "client", threats = ["T1", "T2", "T3"] },
+    { id = "orders", label = "Orders and totals", sub = "money", col = 2, row = 0, colour = "green", shape = "store", threats = ["T2"] },
+]
+edges = [
+    { from = "sender", to = "parser", label = "file", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "parser", to = "orders", label = "orders", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+A supplier order file parser: the behaviour of the parser on arbitrary input. It covers crashes, hangs and wrong totals that arbitrary input can cause.
+It does not cover the authenticity of the sender or what the shop does with a valid order.
+"""
+assets = [
+    "The availability of the order import.",
+    "The correctness of order totals.",
+]
+actors = [
+    "A supplier's tool, which writes valid files.",
+    "Anyone who can send a file: a malicious sender or a faulty tool.",
+]
+boundaries = [
+    "File to parser: the bytes are untrusted.",
+]
+assumptions = [
+    "A crash in the importer is a denial of service, and a wrong total costs money.",
+    "The fuzzer's oracle is complete enough: only a clean parse or ParseException is correct.",
+]
+out_of_scope = [
+    "Memory-safety bugs: the JVM prevents them in this code.",
+    "Business rules beyond the format.",
+]
+tests = [
+    "`FuzzTest` checks the parsers, each bug by hand, the strategies' results, deduplication, minimization, the regression generator, the step budget and that the fixed parser survives several seeds.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, secrets-and-supply-chain, looks at where secrets are kept and what the build trusts, starting with dependency confusion.
+"""
+
+[[threat]]
+id = "T1"
+stride = "D"
+threat = "A malformed file crashes the import with an unexpected exception"
+where = "`BuggyOrderParser`"
+control = "Validate every field before use; report failures as `ParseException`; fuzz the parser"
+residual = "Cases the fuzzer has not reached"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A number that overflows or is negative corrupts a total"
+where = "`BuggyOrderParser` totals"
+control = "Strict patterns for numbers, long arithmetic, caps"
+residual = "Other business invariants that need their own checks"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "A directive makes the parser loop forever"
+where = "`BuggyOrderParser` @repeat"
+control = "No loops driven by input numbers; a step or time budget"
+residual = "Loops hidden in libraries the parser calls"

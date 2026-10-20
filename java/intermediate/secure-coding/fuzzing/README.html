@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuzzing a Parser</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Fuzzing a Parser</h1>
+<pre><code>src/main/java/com/jk/explore/security/fuzz/
+├── BuggyOrderParser.java  The first version of the supplier order file parser
+├── Coverage.java          What a coverage-guided fuzzer learns from a run
+├── Crash.java             A bug the fuzzer found: how it is recognised, the input that triggered it, and the shortest input that still does
+├── FixedOrderParser.java  The same format with every input checked before it is used, and every failure reported as a {@link ParseException}
+├── FuzzDemo.java          Runs the order file fuzzing story in four numbered acts and prints exact, repeatable results
+├── Fuzzer.java            A small fuzzer
+├── Hang.java              Thrown by {@link Coverage} when a run has taken too many steps: a deterministic stand-in for a timeout
+├── OrderLine.java         One parsed product line: what, how many, and the total in cents
+├── OrderParser.java       A parser for the shop's order files
+├── ParseException.java    The one failure a parser is allowed to report: &quot;this input is not valid&quot;
+├── Regression.java        Turns a crash into the source of a unit test, so that the bug stays fixed: the minimized input, the parser, and the one thing that may happen
+└── Strategy.java          How the next input is made
+</code></pre>
+<p><strong>A parser may refuse bad input in exactly one way, so a fuzzer feeds it mutated and generated input until anything else happens, shrinks each failure to the smallest input that still triggers it, and turns it into a regression test; coverage feedback reaches the deeper bugs that random text and simple mutation do not.</strong></p>
+<p>A shop reads order files from suppliers. The parser works on every file the suppliers' tool writes, and the developers tested it on those. But a parser is a door that anyone can send anything through, and the inputs that break it are the ones nobody thought of: a number that is not a number,
+a decimal point with nothing after it, a suffix with half its letters, a quantity that overflows, a loop that never ends.</p>
+<p><strong>Fuzzing</strong> is a machine doing the thinking-of: it makes thousands of inputs, runs the parser, and reports anything that is not either a clean parse or the one failure the parser promises, a <code>ParseException</code>. This project writes a small fuzzer so that nothing is a black box:
+- <strong>Three ways to make inputs:</strong> random text, valid example files changed a little (<strong>mutation</strong>), and mutation with <strong>coverage feedback</strong>, which keeps any input that reaches a branch no earlier input reached and mutates those in turn.
+- <strong>An oracle:</strong> the only allowed failure is <code>ParseException</code>. A <code>NumberFormatException</code>, an <code>ArrayIndexOutOfBoundsException</code>, a negative total or a run that never ends is a finding.
+- <strong>Deduplication:</strong> each kind of failure is filed once, with the run that found it.
+- <strong>Minimization (delta debugging):</strong> drop chunks of the input while the same failure remains, until nothing more can go.
+- <strong>Regression tests:</strong> each minimized input becomes a unit test, so the bug cannot come back.</p>
+<p>The parser, <code>BuggyOrderParser</code>, has five planted bugs of the kinds real parsers have; <code>FixedOrderParser</code> validates every field before using it.</p>
+<p><strong>Maps to:</strong> NIST SSDF PW.8 (test executable code) · OWASP ASVS 5.0, the validation and secure development requirements · CWE-20 · CWE-248 · CWE-190 · CWE-835 · OWASP Top 10 (2025) A06 Insecure Design.</p>
+<h2>The idea in everyday terms</h2>
+<p>A quality inspector who tries a product with the inputs customers never think of: pressing every button at once, dropping it, holding it upside down. Most of the time nothing happens. Once in a while the product breaks, and the inspector writes down the shortest way to break it, so that the fix can be checked.</p>
+<h2>The scenario</h2>
+<p>A shop's supplier order file parser, with five planted bugs. The demo fuzzes it with a fixed random seed, so the same inputs are made in the same order on every run and the bugs are found at the same run numbers.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The parser works on the files it was written for</td>
+<td>Both example files parse: one line, and two lines.</td>
+</tr>
+<tr>
+<td>2. Three ways to make inputs, 5000 runs each</td>
+<td>Random text covers 1 branch of 16 and finds nothing; mutated seeds cover 15 and find 7 bugs; coverage-guided mutation covers all 16 and finds 8.</td>
+</tr>
+<tr>
+<td>3. Each bug, as the smallest input that still triggers it</td>
+<td>Eight findings, each shrunk to a few bytes and filed with the run that found it, and the first one shown as a generated regression test.</td>
+</tr>
+<tr>
+<td>4. After the fix</td>
+<td>Each minimized input is now refused with a clear message or read without a hang, and fuzzing the fixed parser the same way finds 0 bugs in 5000 runs, which proves little.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>FuzzTest</code>. The random seed is fixed, so the demo finds the same bugs at the same run numbers every time.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The fuzzer is about 100 lines of Java: a seeded random generator (<code>SplittableRandom</code>, whose algorithm is fixed, so the run is repeatable), six mutation operators and a dictionary of tokens from the format, coverage bits reported by hand-placed <code>cov.hit(n)</code> calls, signatures made from the exception type and the last branch reached
+(a real fuzzer uses the stack trace), and a simplified delta-debugging minimizer. A step budget stands in for a timeout.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/fuzzing-explained.html">Fuzzing a Parser, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Inputs that reach new branches are kept and mutated in turn.</p>
+<p><img alt="The fuzzing loop" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The fuzzer drives any OrderParser and reports crashes.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step makes the finding smaller or more durable.</p>
+<p><img alt="From a finding to a test" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="One run of the fuzzer" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/fuzzing-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Fuzzing needs an oracle.</strong> The rule "only ParseException may escape" is simple. Rules about correct results (the total is right) are harder to state and need properties or a second implementation.</li>
+<li><strong>It is a search, not a proof.</strong> Finding nothing in 5,000 runs says nothing about run 5,001. Run it longer, in CI and on a schedule, and keep a corpus.</li>
+<li><strong>Coverage needs instrumentation.</strong> Real tools (Jazzer for the JVM, AFL++, libFuzzer) instrument the code automatically; this project instruments by hand to show the idea.</li>
+<li><strong>Slow or stateful targets fuzz badly.</strong> Keep the target a pure function of its input where possible, and give it a time or step budget.</li>
+<li><strong>Triage costs time.</strong> Many findings share a root cause; deduplication and minimization are what make the list readable.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Fuzz where untrusted input meets complicated code: parsers, decoders, file and network formats. Do not fuzz a function that only adds two numbers; test it. And use a proven fuzzer for real projects: the hand-written one here is for understanding what the tool does.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Crashes in image, PDF, archive and font libraries found by AFL and libFuzzer.</li>
+<li>OSS-Fuzz, which fuzzes open-source projects continuously.</li>
+<li><code>@FuzzTest</code> in Jazzer, with JUnit 5.</li>
+<li><code>ClassCastException</code> or <code>NegativeArraySizeException</code> reported in a bug tracker from a file that someone made.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">secure-coding</a> and follows <a href="../input-validation">input-validation</a>, whose validators it tests, and <a href="../secrets-in-errors-and-logs">secrets-in-errors-and-logs</a>, which shows what a leaked exception reveals. The with-Jazzer version applies a real coverage-guided fuzzer to the store's parsers.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

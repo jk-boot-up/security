@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuzzing a Parser — Animated Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #94a3b8; margin: 0 0 20px; max-width: 70ch; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+  .boxes { display: flex; flex-direction: column; gap: 10px; }
+  .row { border: 2px solid #334155; border-radius: 10px; padding: 12px 16px;
+         background: #1e293b; transition: all .25s ease; opacity: .55; }
+  .row .name { font-weight: 700; font-size: 1rem; }
+  .row .job { color: #94a3b8; font-size: .82rem; margin-top: 2px; }
+  .row.active { opacity: 1; box-shadow: 0 0 0 2px currentColor inset; }
+  .row.wrong { border-color: #f87171; color: #f87171; }
+  .row.wrong.active { background: #3f1d24; }
+  .row.ok { border-color: #34d399; color: #34d399; }
+  .row.ok.active { background: #10261f; }
+  .row.amber { border-color: #fbbf24; color: #fbbf24; }
+  .row.amber.active { background: #2a2110; }
+  .row.dim { opacity: .22; }
+  .console { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 16px;
+             font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86rem;
+             line-height: 1.55; overflow-y: auto; min-height: 320px; white-space: pre-wrap; }
+  #console-lines span.ok { color: #34d399; }
+  #console-lines span.bad { color: #f87171; }
+  #console-lines span.amber { color: #fbbf24; }
+  #console-lines span.muted { color: #94a3b8; }
+  .narration { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+               padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px;
+           padding: 10px 18px; font-size: .92rem; cursor: pointer; }
+  button:hover { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button#play { background: #7c3aed; border-color: #7c3aed; }
+  button#play:hover { background: #8b5cf6; }
+  #progress { color: #94a3b8; font-size: .85rem; margin-left: auto; }
+  .step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #a78bfa; font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Fuzzing a Parser — Step by Step</h1>
+  <p class="sub">A supplier order parser, a machine that tries the inputs nobody thought of, and the smallest file that breaks it.</p>
+
+  <div class="narration">
+    <div class="step-label" id="step-label">Ready</div>
+    <div id="narration">Press Step or Play to begin.</div>
+  </div>
+
+  <div class="stage">
+    <div class="boxes" id="boxes">
+      <div class="row" id="row-works">
+        <div class="name">It works</div>
+        <div class="job">on the files it was written for</div>
+      </div>
+      <div class="row" id="row-strategies">
+        <div class="name">Making inputs</div>
+        <div class="job">random, mutated, coverage-guided</div>
+      </div>
+      <div class="row" id="row-findings">
+        <div class="name">Findings</div>
+        <div class="job">shrunk to a few bytes each</div>
+      </div>
+      <div class="row" id="row-fixed">
+        <div class="name">The fix</div>
+        <div class="job">and a regression test for each</div>
+      </div>
+    </div>
+    <div class="console"><div id="console-lines"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="step">Step ▸</button>
+    <button id="play">Play ▶</button>
+    <button id="reset">Reset ↺</button>
+    <span id="progress">0 / 0</span>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+ {
+  "label": "Act 1 — The parser works on the files it was written for",
+  "narration": "First demo: the parser works on the files it was written for. The supplier's example files parse cleanly. That is what the tests showed, and it is true. It says nothing about the files nobody wrote.",
+  "rows": {
+   "works": "active ok"
+  },
+  "console": [
+   [
+    "\"ORDER v2\\nKTL-001;3;24.50\\n\" -> 1 line(s) parsed",
+    "ok"
+   ],
+   [
+    "\"ORDER v2\\n# weekly order\\n@discount 10%\\n...\" -> 2 line(s) parsed",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 2 — Three ways to make inputs, 5000 runs each",
+  "narration": "Second demo: three ways to make inputs. Random text never gets past the header. It covers one branch, and finds nothing. Changing the valid example files reaches fifteen branches and finds seven bugs. Keeping every input that reaches something new reaches all sixteen branches, and finds eight bugs, including a loop that never ends.",
+  "rows": {
+   "strategies": "active amber"
+  },
+  "console": [
+   [
+    "RANDOM_TEXT      branches covered:  1 of 16, bugs found: 0, corpus: 2",
+    "bad"
+   ],
+   [
+    "MUTATE_SEEDS     branches covered: 15 of 16, bugs found: 7, corpus: 2",
+    "amber"
+   ],
+   [
+    "COVERAGE_GUIDED  branches covered: 16 of 16, bugs found: 8, corpus: 10",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 3 — Each bug, as the smallest input that still triggers it",
+  "narration": "Third demo: each bug, as the smallest input that still triggers it. Eight findings. Each one shrunk to a few bytes, and filed with the run that found it. An index error for a price with nothing after the point. A negative total from a negative price. And a loop that never ends. The first finding is printed as a unit test, so that it can never come back.",
+  "rows": {
+   "findings": "active wrong"
+  },
+  "console": [
+   [
+    "ArrayIndexOutOfBoundsException after branch 14  run 25: \"ORDER v2\\n;3;2\"",
+    "bad"
+   ],
+   [
+    "IllegalStateException after branch 16  run 1089: \"ORDER v2\\n;3;-4.0\"",
+    "bad"
+   ],
+   [
+    "Hang after branch 9  run 3761: \"ORDER v2\\n@repeat 1\"",
+    "bad"
+   ],
+   [
+    "@Test void fuzzFinding1() { assertCleanOutcome(\"ORDER v2\\n;3;2\"); }",
+    "muted"
+   ]
+  ]
+ },
+ {
+  "label": "Act 4 — After the fix",
+  "narration": "Fourth demo: after the fix. Every field is checked before it is used. Each of the smallest inputs is refused with a clear message, or read without a loop. Fuzzing the fixed parser the same way finds nothing. That is encouraging. It is not a proof. Fuzzing is a search, so keep the regression tests, and fuzz again when the parser changes.",
+  "rows": {
+   "fixed": "active ok"
+  },
+  "console": [
+   [
+    "\"ORDER v2\\n;3;2\" -> refused: a line needs a SKU, a quantity and a price",
+    "ok"
+   ],
+   [
+    "\"ORDER v2\\n@discount 1\" -> refused: bad discount",
+    "ok"
+   ],
+   [
+    "\"ORDER v2\\n@repeat 1\" -> 0 line(s) parsed",
+    "ok"
+   ],
+   [
+    "fuzzing the fixed parser the same way: 0 bugs in 5000 runs (which proves little)",
+    "amber"
+   ]
+  ]
+ }
+];
+const rowIds = ["works", "strategies", "findings", "fixed"];
+const stepLabel = document.getElementById("step-label");
+const narrationEl = document.getElementById("narration");
+const consoleEl = document.getElementById("console-lines");
+const progressEl = document.getElementById("progress");
+const playBtn = document.getElementById("play");
+let i = -1, timer = null;
+
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function render() {
+  for (const id of rowIds) document.getElementById("row-" + id).className = "row";
+  if (i < 0) {
+    stepLabel.textContent = "Ready";
+    narrationEl.textContent = "Press Step or Play to begin.";
+    consoleEl.innerHTML = "";
+    progressEl.textContent = "0 / " + STEPS.length;
+    return;
+  }
+  const s = STEPS[i];
+  stepLabel.textContent = s.label;
+  narrationEl.textContent = s.narration;
+  for (const id of rowIds) {
+    const cls = s.rows[id];
+    document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
+  }
+  consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
+  progressEl.textContent = (i + 1) + " / " + STEPS.length;
+}
+function step() { if (i >= STEPS.length - 1) { stopPlay(); return; } i += 1; render(); }
+function reset() { stopPlay(); i = -1; render(); }
+// While a step's narration is playing, Play waits for it to finish.
+function speaking() { return typeof window.vkSpeaking === "function" && window.vkSpeaking(); }
+function startPlay() {
+  if (timer) return;
+  playBtn.textContent = "Pause ❚❚";
+  let quiet = 0;
+  timer = setInterval(() => {
+    if (speaking()) { quiet = 0; return; }
+    if (++quiet < 6) return;                     // 6 × 500 ms of reading time
+    quiet = 0;
+    if (i >= STEPS.length - 1) { stopPlay(); return; }
+    step();
+  }, 500);
+  if (i < 0) step();
+}
+function stopPlay() { if (timer) clearInterval(timer); timer = null; playBtn.textContent = "Play ▶"; }
+
+document.getElementById("step").addEventListener("click", () => { stopPlay(); step(); });
+document.getElementById("reset").addEventListener("click", reset);
+playBtn.addEventListener("click", () => { if (timer) stopPlay(); else startPlay(); });
+render();
+</script>
+</body>
+</html>
