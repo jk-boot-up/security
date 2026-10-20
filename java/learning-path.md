@@ -172,7 +172,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 89 | input-validation-with-hibernate-validator | With tools: hibernate validator | *planned*: Jakarta Validation constraints, groups and custom validators | A05, CWE-20, CWE-1333 |
 | 90 | [race-conditions-and-business-logic](intermediate/secure-coding/race-conditions-and-business-logic) | Plain | Correct one at a time is not correct at the same time | A06, CWE-362, CWE-840 |
 | 91 | race-conditions-and-business-logic-with-postgres | With tools: postgres | *planned*: row locks, isolation levels and optimistic locking with Hibernate | A06, CWE-362, CWE-840 |
-| 92 | secrets-in-errors-and-logs | Plain | *planned*: Stack traces, tokens and card numbers that leak through errors and logs; safe messages, redaction and log injection | A09, CWE-209, CWE-532, CWE-117 |
+| 92 | [secrets-in-errors-and-logs](intermediate/secure-coding/secrets-in-errors-and-logs) | Plain | A log is a second database that nobody protects | A09, CWE-209, CWE-532, CWE-117 |
 | 93 | secrets-in-errors-and-logs-with-logback | With tools: logback | *planned*: masking patterns and structured JSON logs | A09, CWE-209, CWE-532, CWE-117 |
 | 94 | fuzzing | Plain | *planned*: Feeding a parser random and mutated input until it breaks, and turning each crash into a regression test | SSDF PW.8 |
 | 95 | fuzzing-with-jazzer | With tools: jazzer | *planned*: coverage-guided fuzzing of the store's parsers with Jazzer and JUnit | SSDF PW.8 |

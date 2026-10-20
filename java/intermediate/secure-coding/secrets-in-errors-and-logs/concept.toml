@@ -1,0 +1,398 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "secrets-in-errors-and-logs"
+level = "intermediate"
+module = "secure-coding"
+title = "Secrets in Errors and Logs"
+short_title = "Secrets in Logs"
+package = "leaks"
+main_class = "LeaksDemo"
+tagline = "A log is a second database that nobody protects"
+bold = "Error pages and log files collect what the code touched, so stack traces show the customer the database password, logs keep card numbers and tokens for everyone who can search them, and a line break in a name forges log entries; give the customer a reference, keep secrets out of messages, redact as a last defence, and keep each event on one line."
+domain = "an online shop's checkout"
+domain_note = ""
+youtube_description = "Secrets in errors and logs, in Java: stack traces, card numbers, tokens, log injection and redaction."
+thumb_lines = ["SECRETS IN ERRORS", "AND LOGS"]
+thumb_code = "[REDACTED]"
+youtube_title = "Secrets in Errors and Logs: Redaction, Log Injection and Safe Errors (Java)"
+youtube_tags = ["logging", "secrets", "log injection", "redaction", "stack trace", "owasp", "java", "application security"]
+
+[readme]
+intro = """
+When something goes wrong, developers want detail: the exception, the request, the values. That detail travels to two places that are easy to forget. The **error page** goes to the customer (and to anyone who causes an error on purpose): a stack trace names classes, hosts, users and sometimes passwords
+that were in a connection string. The **log** goes to a file, a log service, a ticket, a screenshot in a chat: far more people can read it than can read the database, and it is kept for years.
+
+Four problems, in the order this project shows them:
+- **Detailed errors reach the customer** (CWE-209): the page shows the connection URL with the database password and the call chain.
+- **Secrets reach the log** (CWE-532): the whole request, with the card number and CVV, and the session token.
+- **Log injection** (CWE-117): a customer whose name contains a line break writes a second log line that looks like "login succeeded for admin".
+- **Redaction cannot find everything:** it works on shapes and names, and a secret with neither passes through.
+
+The defences:
+- **A generic answer with a reference** for the customer; the detail goes to the log under the same reference.
+- **A `Secret` wrapper** whose `toString` is `[REDACTED]`, so that logging it by accident leaks nothing.
+- **A logger that keeps every event on one line** and redacts card numbers (with the Luhn check), key-named values, bearer tokens, JWTs and URL passwords.
+- **Canary tests:** put a known fake secret through the flow, and fail the build if it appears in a response or a log.
+
+**Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures and A02 Security Misconfiguration · CWE-209 · CWE-532 · CWE-117 · OWASP ASVS 5.0, the logging and error handling chapters · PCI DSS requirement 3 (never keep the CVV).
+"""
+analogy = """
+A shop assistant who, when a card is declined, reads the whole card out loud to the queue and writes it on the receipt that goes in the public bin. The fix is to say "that did not work, here is a reference", and to keep a private note that never contains the number.
+"""
+scenario = """
+An online shop's checkout fails because the database is down. The demo shows the response the customer gets and the log lines the team keeps, first in a naive version and then in a fixed one. All values are fake: the card is a standard test number, the password and token are harmless markers.
+"""
+costs = [
+    "**Less detail in the response makes support harder.** The reference number bridges that: support finds the full record in the log.",
+    "**Redaction costs time on every line,** and can hide something a developer needs. Redact at the edge, keep the pattern list in one place and test it.",
+    "**Patterns produce false positives and false negatives.** An order number that happens to pass the Luhn check is masked; an unnamed secret is not.",
+    "**Structured logs help.** Typed fields can be redacted by name rather than by guessing at a free-text line.",
+    "**Retention is a risk too.** A log kept forever is a secret kept forever; set short retention for detailed logs.",
+]
+too_much = """
+Do not log request bodies at all by default: log the fields you need to explain what happened. And do not write your own redaction library for production if your logging framework has a maintained one: use this project to understand what it must do, and to write the tests that prove it.
+"""
+met_before = [
+    "A framework's default error page with a stack trace, in development mode.",
+    "`log.info(\"request: \" + request)` and `log.debug(\"response: \" + response)` in most code bases.",
+    "`%replace`, `MaskingConverter` and similar in logging configurations.",
+    "A breach report that begins \"credentials found in a log file\".",
+]
+where = """
+This project is in [secure-coding](..) and follows [fail-closed-error-handling](../../secure-configuration/fail-closed-error-handling), whose error pages it completes with the details of what must not be in them.
+[security-logging](../../detection-and-response/security-logging) shows what logs must contain; this one shows what they must not.
+"""
+twin = """
+The logger, the redactor and the checkout are plain Java. The database error is a fake `SQLException` whose message looks like the ones real drivers produce. All secrets are fixed markers, so the output is the same on every run.
+"""
+test_note = "All values are fixed markers and the card is a standard test number, so the demo prints the same text on every run."
+
+[[act]]
+title = "What the customer sees when the database is down"
+summary = "A 500 page shows the exception, the connection URL with the database password and the shop's own call chain."
+detail = """
+The naive checkout turns the exception into the page: the exception class, its message (which holds the JDBC URL with user and password and the internal host name) and the frames of the shop's own classes. One failed payment gives a visitor the database host, the user, the password and the structure of the code.
+"""
+speech = """
+First demo: what the customer sees when the database is down. [[slnc 400]] The page shows the exception. [[slnc 300]] Its message holds the connection string, with the host, the user and the password. [[slnc 300]] And the shop's own call chain. [[slnc 600]]
+One failed payment gives a visitor everything they need to try the database.
+"""
+rows = { page = "active wrong" }
+console = [
+    ["500 java.sql.SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=s3cr3t-db-password ...", "bad"],
+    ["at com.jk.explore.security.leaks.Database.saveOrder / Checkout.pay", "bad"],
+]
+
+[[act]]
+title = "What the log keeps"
+summary = "The log holds the card number, CVV, session token and the database password; a name with a line break writes a second, forged line."
+detail = """
+The naive logger writes the whole request, so the log has the card number, the CVV, and the session token as a JWT, and the error line has the same connection URL as the page. Anyone who can search the logs has all of it, for as long as the logs are kept.
+A customer whose name is "Mallory", a line break, and "INFO login succeeded user=admin ip=10.0.0.1" produces one event in the code and two lines in the file; the second looks like a genuine login by the admin.
+"""
+speech = """
+Second demo: what the log keeps. [[slnc 400]] The whole request, with the card number and the security code. [[slnc 300]] The session token. [[slnc 300]] And the database password again. [[slnc 600]]
+A customer whose name contains a line break writes a second log line, which looks like a login by the administrator.
+"""
+rows = { log = "active wrong" }
+console = [
+    ["INFO checkout started: {card=4111 1111 1111 1111, cvv=737, ...} token=eyJhbGciOi...", "bad"],
+    ["a customer whose name holds a line break -> 2 log lines from one event", "bad"],
+    ["INFO login succeeded user=admin ip=10.0.0.1  <- FORGED BY THE CUSTOMER", "bad"],
+]
+
+[[act]]
+title = "A generic answer, and the details where only the team looks"
+summary = "The customer gets 'Something went wrong. Quote reference ref-0001 to support.'; the log holds the failure under that reference with the password redacted and the token as [REDACTED]."
+detail = """
+The fixed checkout answers with a short sentence and a reference. The log line carries the same reference, the exception's class and a redacted message, so support can find the detail and the customer sees none. The session token is a Secret and prints as [REDACTED] without any redaction pass.
+"""
+speech = """
+Third demo: a generic answer, and the details where only the team looks. [[slnc 400]] The customer gets a sentence and a reference number. [[slnc 300]] The log has the failure under the same reference. [[slnc 600]]
+The password in the connection string is redacted, and the token prints as redacted without any pass at all.
+"""
+rows = { fixed = "active ok" }
+console = [
+    ["500 Something went wrong. Quote reference ref-0001 to support.", "ok"],
+    ["INFO checkout started for Ana with token [REDACTED]", "ok"],
+    ["ERROR checkout failed [ref-0001] | SQLException: ... password=[REDACTED] ...", "ok"],
+]
+
+[[act]]
+title = "Redaction, wrappers and forged lines"
+summary = "Luhn-valid card numbers, key-named credentials, bearer tokens, JWTs and URL passwords are masked; a number that fails the check is left; a forged name stays on one line."
+detail = """
+The redactor masks a card number only when its digits pass the Luhn check, so an order number that merely looks long is left alone. It masks values by key name (password, token, api_key, authorization, cvv and others), in text pairs and in JSON, bearer tokens, JWT-shaped strings and passwords in URLs.
+The Secret wrapper prints as [REDACTED] with no pass at all. And the fixed logger turns the forged name's line break into a visible escape, so the event stays on one line and cannot be mistaken for another.
+"""
+speech = """
+Fourth demo: redaction, wrappers and forged lines. [[slnc 400]] A card number is masked when its digits pass the check digit test. [[slnc 300]] An order number that only looks long is left alone. [[slnc 600]]
+Passwords, tokens and keys are masked by name and by shape. [[slnc 300]] The forged name stays on one line, with the line break shown as a visible escape.
+"""
+rows = { redact = "active ok" }
+console = [
+    ["card number in text -> charge [CARD ****1111] for order 1042", "ok"],
+    ["an order number that is not a card -> order 4111111111111112 shipped", "muted"],
+    ["password pair -> login failed password=[REDACTED]&user=ana", "ok"],
+    ["the forged name, fixed logger -> 1 line: INFO checkout started for Mallory\\nINFO login succeeded ...", "ok"],
+]
+
+[animation]
+subtitle = "A failed payment, an error page, a log file, and what each of them should say."
+boxes = [
+    ["page", "The error page", "what the customer sees"],
+    ["log", "The log", "what the team keeps"],
+    ["fixed", "A reference", "detail in the log, not on the page"],
+    ["redact", "Redaction", "cards, keys, tokens, passwords"],
+]
+
+[docs.problem]
+scenario = """
+An online shop's checkout calls a database that is down. The team wants to find the cause quickly, and customers see an error page.
+"""
+naive = """
+Show the error and log everything: the more detail, the easier the debugging, and only our own people read the logs.
+"""
+deliver = [
+    "A naive checkout and logger, and a fixed checkout and logger, with a fake driver error that contains a password.",
+    "A redactor with Luhn card detection, key-name masking, bearer and JWT detection and URL passwords.",
+    "A `Secret` wrapper that prints as redacted.",
+    "Log injection, shown and fixed, and canary tests that look for known fake secrets in responses and logs.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what a stack trace and a log file are",
+]
+not_required = [
+    "A logging framework: the logger is a small class",
+    "A real database",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "list what an error page must not contain and what a reference gives support",
+    "explain log injection and the one-line-per-event rule",
+    "describe what redaction can and cannot find, with an example of each",
+    "write a canary test for a flow",
+]
+walkthrough = """
+Run act one and ask what a visitor learns. In act two, ask who can read the log, for how long. In act four, find a secret the redactor cannot recognise, and say what would catch it.
+"""
+exercises = [
+    "Add a field for a customer's e-mail address to the log and mask all but the first letter and the domain.",
+    "Replace the free-text lines with structured key-value logging and redact by key.",
+    "Write a canary test that puts a fake password through the whole checkout and scans the sink.",
+    "Add a rule that rejects `Secret.reveal()` outside one package, using a test that scans the source.",
+]
+
+[docs.explained]
+sentence = """
+Errors and logs are outputs that outlive the request, so give the customer a reference and no detail, keep secrets out of messages with types and not patterns, escape what customers type, redact as a last line of defence, and test with canaries.
+"""
+verdict = """
+Return generic errors with a correlation id; log the detail with the same id. Never log request bodies, credentials, card data or tokens. Wrap secrets in a type that cannot print. Escape control characters in logged text, redact at the logging edge, set short retention, and test with canary secrets.
+"""
+recognise = [
+    "`e.printStackTrace()` or `e.getMessage()` in a response body.",
+    "`log.info(\"request: \" + request)`.",
+    "Framework debug pages enabled in production.",
+    "Findings with CWE-209, CWE-532 or CWE-117.",
+]
+
+[spec]
+purpose = """
+Teach what must stay out of error pages and logs by showing a stack trace with a database password, a log with a card number, a forged log line, and then a fixed checkout, a secret wrapper and a redactor.
+"""
+nongoals = [
+    "A logging framework or log shipping: the secrets-in-errors-and-logs-with-logback project.",
+    "What logs must contain for detection: the security-logging project.",
+    "PCI DSS compliance as a whole.",
+]
+problem = """
+Developers put detail in places that many people can read, and cannot take it back.
+"""
+roles = [["Logging", "`Logger`, `NaiveLogger`, `SafeLogger`, `LogSink`"], ["Redaction", "`Redactor`, `Luhn`, `Secret`"], ["The shop", "`Checkout`, `Database`"], ["Entry point", "`LeaksDemo`"]]
+requirements = [
+    "The naive checkout reveals the database URL and password and the call chain in its response.",
+    "The naive logger keeps card, CVV, token and password, and lets a name forge a log line.",
+    "The fixed checkout answers with a reference and logs the detail redacted, on one line.",
+    "The redactor masks Luhn-valid card numbers, key-named values, bearer tokens, JWTs and URL passwords, and leaves non-card numbers alone.",
+    "A Secret prints as [REDACTED].",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where the detail goes"
+caption = "The page and the log have different readers; the fixed version sends them different things."
+nodes = [
+    { id = "customer", label = "Customer", sub = "sees the page", col = 0, row = 0, colour = "red" },
+    { id = "checkout", label = "Checkout", sub = "fails, then answers", col = 1, row = 0, colour = "client" },
+    { id = "log", label = "Log", sub = "read by many, kept long", col = 2, row = 0, colour = "amber", shape = "store" },
+    { id = "redact", label = "Redaction", sub = "cards, keys, tokens", col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "checkout", to = "customer", label = "reference only" },
+    { from = "checkout", to = "log", label = "detail + reference" },
+    { from = "redact", to = "log", label = "masks", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Two loggers share an interface; the safe one cleans lines and uses the redactor."
+nodes = [
+    { id = "logger", label = "Logger", sub = ["info()", "error()"], col = 0, row = 0, colour = "accent" },
+    { id = "naive", label = "NaiveLogger", sub = ["writes as it comes"], col = 1, row = 0, colour = "red" },
+    { id = "safe", label = "SafeLogger", sub = ["one line", "redacted", "cut"], col = 2, row = 0, colour = "green" },
+    { id = "red", label = "Redactor", sub = ["redact(text)"], col = 0, row = 1, colour = "amber" },
+    { id = "secret", label = "Secret", sub = ["reveal()", "toString = [REDACTED]"], col = 1, row = 1, colour = "green" },
+    { id = "checkout", label = "Checkout", sub = ["naive()", "fixed()", "pay()"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "naive", to = "logger", label = "implements" },
+    { from = "safe", to = "logger", label = "implements" },
+    { from = "safe", to = "red", label = "uses" },
+    { from = "checkout", to = "logger", label = "logs with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What happens to a log message"
+caption = "The first defence is not to put the secret in the message."
+nodes = [
+    { id = "type", label = "Typed secrets", sub = "Secret prints as [REDACTED]", col = 0, row = 0, colour = "green" },
+    { id = "escape", label = "One line", sub = "control characters escaped", col = 1, row = 0, colour = "client" },
+    { id = "redact", label = "Redact", sub = "shapes and key names", col = 2, row = 0, colour = "accent" },
+    { id = "cut", label = "Cut", sub = "300 characters", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "type", to = "escape" },
+    { from = "escape", to = "redact" },
+    { from = "redact", to = "cut" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A failed payment, naive version"
+participants = ["Customer", "Checkout", "Database", "Log"]
+steps = [
+    ["Customer", "Checkout", "pay (card, cvv)"],
+    ["Checkout", "Log", "the whole request and the token"],
+    ["Checkout", "Database", "save the order"],
+    ["Database", "Checkout", "SQLException with the connection URL and password", "reply"],
+    ["Checkout", "Customer", "500 with the exception and the call chain", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A failed payment, fixed version"
+participants = ["Customer", "Checkout", "Database", "Log"]
+steps = [
+    ["Customer", "Checkout", "pay (card, cvv)"],
+    ["Checkout", "Log", "started for Ana, token [REDACTED]"],
+    ["Checkout", "Database", "save the order"],
+    ["Database", "Checkout", "SQLException", "reply"],
+    ["Checkout", "Log", "failed [ref-0001] with a redacted message"],
+    ["Checkout", "Customer", "500 quote reference ref-0001", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A forged log line"
+participants = ["Customer", "Naive logger", "Log file"]
+steps = [
+    ["Customer", "Naive logger", "name = Mallory<newline>INFO login succeeded user=admin"],
+    ["Naive logger", "Log file", "INFO checkout started for Mallory"],
+    ["Naive logger", "Log file", "INFO login succeeded user=admin (a second line)"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The shop", nodes = ["checkout", "log"], colour = "green" },
+    { label = "Outside", nodes = ["customer"], colour = "red" },
+    { label = "Log readers", nodes = ["readers"], colour = "amber" },
+]
+nodes = [
+    { id = "customer", label = "Customer or attacker", sub = "causes errors, chooses names", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "checkout", label = "Checkout", sub = "responses and log calls", col = 1, row = 0, colour = "client", threats = ["T1", "T2", "T3"] },
+    { id = "log", label = "Log", sub = "kept for years", col = 2, row = 0, colour = "green", shape = "store", threats = ["T2", "T3"] },
+    { id = "readers", label = "Everyone with log access", sub = "support, vendors, tickets", col = 2, row = 1, colour = "amber", threats = ["T2"] },
+]
+edges = [
+    { from = "customer", to = "checkout", label = "requests", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "checkout", to = "log", label = "lines", threats = ["T2", "T3"] },
+    { from = "log", to = "readers", label = "searched by", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+A shop's checkout responses and log lines. It covers what goes into error pages and logs and what a customer can cause to be written.
+It does not cover who may access the log service, or how the log is shipped and stored.
+"""
+assets = [
+    "Card numbers, CVVs, session tokens and database credentials.",
+    "The integrity of the audit trail.",
+]
+actors = [
+    "A customer, honest or not.",
+    "Anyone with access to the logs: staff, vendors, a contractor, an attacker with a stolen log-service account.",
+]
+boundaries = [
+    "The server to the customer: the response.",
+    "The application to the log service: the line, and then every reader and backup.",
+]
+assumptions = [
+    "Logs are readable by more people than the database is.",
+    "Developers add log lines without thinking about every field.",
+]
+out_of_scope = [
+    "Log shipping, retention and access control.",
+    "Detection rules over logs: detecting-attacks.",
+]
+tests = [
+    "`LeaksTest` checks the naive and fixed checkout and loggers with canary secrets, one-line events, line length, the Secret wrapper, Luhn card detection and the redaction patterns, and states that unnamed secrets are not found.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, fuzzing, finds the inputs that make parsers fail in the first place.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "An error response gives the customer hosts, users, passwords and code structure"
+where = "`Checkout` naive error path"
+control = "A generic answer with a correlation reference"
+residual = "Support needs the log to resolve the reference"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "Cards, CVVs, tokens and passwords are kept in the log and read by many people"
+where = "`NaiveLogger`, `Checkout.pay`"
+control = "Do not log secrets; `Secret` wrapper; redaction at the logging edge; short retention"
+residual = "Secrets with no name and no shape are not recognised"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A customer forges log lines with line breaks and control characters"
+where = "`NaiveLogger.info`"
+control = "Escape control characters so each event is one line; cut long lines"
+residual = "Structured (JSON) logging is safer still"

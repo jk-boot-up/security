@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secrets in Errors and Logs</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secrets in Errors and Logs</h1>
+<pre><code>src/main/java/com/jk/explore/security/leaks/
+├── Checkout.java     The shop's checkout call
+├── Database.java     The shop's database connection, which is down in this story
+├── LeaksDemo.java    Runs the checkout story in four numbered acts and prints exact, repeatable results
+├── LogSink.java      Where log lines end up
+├── Logger.java       Writes log lines for the shop
+├── Luhn.java         The check digit that card numbers carry
+├── NaiveLogger.java  The first version: the message is written as it comes, including line breaks that a customer typed, and the exception's message and trace
+├── Redactor.java     Masks secrets in text that has already been written, as a last line of defence
+├── SafeLogger.java   The fixed version
+└── Secret.java       A value that must never be printed: its {@code toString} says so
+</code></pre>
+<p><strong>Error pages and log files collect what the code touched, so stack traces show the customer the database password, logs keep card numbers and tokens for everyone who can search them, and a line break in a name forges log entries; give the customer a reference, keep secrets out of messages, redact as a last defence, and keep each event on one line.</strong></p>
+<p>When something goes wrong, developers want detail: the exception, the request, the values. That detail travels to two places that are easy to forget. The <strong>error page</strong> goes to the customer (and to anyone who causes an error on purpose): a stack trace names classes, hosts, users and sometimes passwords
+that were in a connection string. The <strong>log</strong> goes to a file, a log service, a ticket, a screenshot in a chat: far more people can read it than can read the database, and it is kept for years.</p>
+<p>Four problems, in the order this project shows them:
+- <strong>Detailed errors reach the customer</strong> (CWE-209): the page shows the connection URL with the database password and the call chain.
+- <strong>Secrets reach the log</strong> (CWE-532): the whole request, with the card number and CVV, and the session token.
+- <strong>Log injection</strong> (CWE-117): a customer whose name contains a line break writes a second log line that looks like "login succeeded for admin".
+- <strong>Redaction cannot find everything:</strong> it works on shapes and names, and a secret with neither passes through.</p>
+<p>The defences:
+- <strong>A generic answer with a reference</strong> for the customer; the detail goes to the log under the same reference.
+- <strong>A <code>Secret</code> wrapper</strong> whose <code>toString</code> is <code>[REDACTED]</code>, so that logging it by accident leaks nothing.
+- <strong>A logger that keeps every event on one line</strong> and redacts card numbers (with the Luhn check), key-named values, bearer tokens, JWTs and URL passwords.
+- <strong>Canary tests:</strong> put a known fake secret through the flow, and fail the build if it appears in a response or a log.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A09 Security Logging and Alerting Failures and A02 Security Misconfiguration · CWE-209 · CWE-532 · CWE-117 · OWASP ASVS 5.0, the logging and error handling chapters · PCI DSS requirement 3 (never keep the CVV).</p>
+<h2>The idea in everyday terms</h2>
+<p>A shop assistant who, when a card is declined, reads the whole card out loud to the queue and writes it on the receipt that goes in the public bin. The fix is to say "that did not work, here is a reference", and to keep a private note that never contains the number.</p>
+<h2>The scenario</h2>
+<p>An online shop's checkout fails because the database is down. The demo shows the response the customer gets and the log lines the team keeps, first in a naive version and then in a fixed one. All values are fake: the card is a standard test number, the password and token are harmless markers.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What the customer sees when the database is down</td>
+<td>A 500 page shows the exception, the connection URL with the database password and the shop's own call chain.</td>
+</tr>
+<tr>
+<td>2. What the log keeps</td>
+<td>The log holds the card number, CVV, session token and the database password; a name with a line break writes a second, forged line.</td>
+</tr>
+<tr>
+<td>3. A generic answer, and the details where only the team looks</td>
+<td>The customer gets 'Something went wrong. Quote reference ref-0001 to support.'; the log holds the failure under that reference with the password redacted and the token as [REDACTED].</td>
+</tr>
+<tr>
+<td>4. Redaction, wrappers and forged lines</td>
+<td>Luhn-valid card numbers, key-named credentials, bearer tokens, JWTs and URL passwords are masked; a number that fails the check is left; a forged name stays on one line.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>LeaksTest</code>. All values are fixed markers and the card is a standard test number, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The logger, the redactor and the checkout are plain Java. The database error is a fake <code>SQLException</code> whose message looks like the ones real drivers produce. All secrets are fixed markers, so the output is the same on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/secrets-in-errors-and-logs-explained.html">Secrets in Errors and Logs, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The page and the log have different readers; the fixed version sends them different things.</p>
+<p><img alt="Where the detail goes" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Two loggers share an interface; the safe one cleans lines and uses the redactor.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The first defence is not to put the secret in the message.</p>
+<p><img alt="What happens to a log message" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A failed payment, naive version" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/secrets-in-errors-and-logs-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Less detail in the response makes support harder.</strong> The reference number bridges that: support finds the full record in the log.</li>
+<li><strong>Redaction costs time on every line,</strong> and can hide something a developer needs. Redact at the edge, keep the pattern list in one place and test it.</li>
+<li><strong>Patterns produce false positives and false negatives.</strong> An order number that happens to pass the Luhn check is masked; an unnamed secret is not.</li>
+<li><strong>Structured logs help.</strong> Typed fields can be redacted by name rather than by guessing at a free-text line.</li>
+<li><strong>Retention is a risk too.</strong> A log kept forever is a secret kept forever; set short retention for detailed logs.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Do not log request bodies at all by default: log the fields you need to explain what happened. And do not write your own redaction library for production if your logging framework has a maintained one: use this project to understand what it must do, and to write the tests that prove it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A framework's default error page with a stack trace, in development mode.</li>
+<li><code>log.info("request: " + request)</code> and <code>log.debug("response: " + response)</code> in most code bases.</li>
+<li><code>%replace</code>, <code>MaskingConverter</code> and similar in logging configurations.</li>
+<li>A breach report that begins "credentials found in a log file".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">secure-coding</a> and follows <a href="../../secure-configuration/fail-closed-error-handling">fail-closed-error-handling</a>, whose error pages it completes with the details of what must not be in them.
+<a href="../../detection-and-response/security-logging">security-logging</a> shows what logs must contain; this one shows what they must not.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
