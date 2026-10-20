@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Server-Side Request Forgery (SSRF) and Its Defences</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Server-Side Request Forgery (SSRF) and Its Defences</h1>
+<pre><code>src/main/java/com/jk/explore/security/ssrf/
+├── AddressPolicy.java      Decides, from the real address and not from its spelling, whether a server may connect to it
+├── BlocklistImporter.java  The second version, a blocklist of host &lt;em&gt;names&lt;/em&gt;: it checks the text of the address, not the address the connection really goes to
+├── Dns.java                A model of name resolution with fixed answers
+├── ImportRefused.java      The import was refused
+├── Importer.java           &quot;Import a product image from a web address&quot;: the server fetches the address for the customer
+├── NaiveImporter.java      The first version: fetch whatever address the customer gives, and follow every redirect
+├── Network.java            The world the store's server can reach, as a table from address and path to a response
+├── Response.java           What a server answers: a status, a content type, a redirect target for 3xx, and a body
+├── SafeImporter.java       The fixed version
+├── SsrfDemo.java           Runs the product image import story in four numbered acts and prints exact, repeatable results
+├── Unreachable.java        No host with that name, or nothing listening at that address
+└── Url.java                A web address taken apart by hand, so each part can be checked: scheme, user info, host, port and path
+</code></pre>
+<p><strong>A feature that makes the server fetch a customer's address lets the customer reach whatever the server can reach, so check the address the connection really uses, connect to the address you checked, and look again at every redirect.</strong></p>
+<p>"Import a product image from a web address" looks harmless: the customer pastes an address and the <strong>server</strong> fetches it. But the server sits inside the
+company network, where it can reach things no customer can: the cloud <strong>metadata service</strong>, the server's own admin pages, and the office network. The customer
+only has to give an address that points there. That is <strong>server-side request forgery (SSRF)</strong>: the customer forges a request, and the trusted server sends it.</p>
+<p>The defences, in the order this project shows them:
+- <strong>Check the address, not the text.</strong> Resolve the host name and test the real address: loopback, link-local, private and shared ranges are refused, however the address is spelled (<code>2852039166</code>, <code>127.1</code>, <code>::ffff:a9fe:a9fe</code>).
+- <strong>Connect to the address you checked.</strong> If the name is looked up again, an attacker's DNS server can answer differently the second time (<strong>DNS rebinding</strong>).
+- <strong>Check every redirect,</strong> and every address a name resolves to.
+- <strong>Narrow what is fetched:</strong> web schemes and ports only, no user info, images only, a size limit, and a generic error for the customer.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A01 Broken Access Control · CWE-918 · OWASP ASVS 5.0, the validation chapter (SSRF protection).</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a receptionist who will phone any number a visitor writes on a slip and read back what the other end says. The receptionist's desk phone can reach
+the director's private line and the vault, which the visitor's cannot. A blocklist of three numbers is a list of the ones somebody thought of; the fix is to look at where
+the call really goes, and to dial only the number that was checked.</p>
+<h2>The scenario</h2>
+<p>An online store lets sellers import a product image from a web address. The demo simulates the network the store's server can reach, with a public image host,
+an attacker's host, the cloud metadata address, the server itself and an internal admin page. All secrets are harmless markers, and nothing leaves the process.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Importing an image</td>
+<td>An honest address imports a cat picture.</td>
+</tr>
+<tr>
+<td>2. The server fetches whatever it is told</td>
+<td>The same form reads the cloud credentials, the server's own settings and the internal admin page.</td>
+</tr>
+<tr>
+<td>3. A blocklist of names is easy to walk around</td>
+<td>A blocklist stops the metadata address as written and nothing else: decimal, short, mapped IPv6, a name that points inside, and a redirect all get through.</td>
+</tr>
+<tr>
+<td>4. Check the address the connection really uses</td>
+<td>Resolving once and testing every address refuses all nine attacks, while honest imports and the attacker's own public image still work.</td>
+</tr>
+<tr>
+<td>5. Why checking and then connecting is not enough</td>
+<td>An importer that checks the name and then looks it up again is fooled: it checked a public address and fetched the internal admin panel.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>SsrfTest</code>. Everything is fixed data, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The network is a table of addresses, paths and responses, and DNS is a table of names, so every run is the same and nothing is ever sent. Literal addresses are parsed
+by the JDK's own rules, the same rules that make <code>2852039166</code> and <code>127.1</code> valid addresses to a real connection. A rebinding name answers differently the second time.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/server-side-request-forgery-explained.html">Server-Side Request Forgery (SSRF) and Its Defences, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The customer never connects to the inside; the server does.</p>
+<p><img alt="How a customer's address reaches the inside" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Three importers share one interface; only the safe one uses AddressPolicy.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Every redirect goes through the same checks again.</p>
+<p><img alt="The checks an address passes, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A redirect that leads inside" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/server-side-request-forgery-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Allow-lists beat block-lists, and need upkeep.</strong> If images come from a few known hosts, name them. A general URL import cannot, so it must check addresses.</li>
+<li><strong>Some customers use private addresses on purpose.</strong> A company that hosts images on its intranet is refused, which is the right default.</li>
+<li><strong>Resolving yourself is more work.</strong> The code must connect to the address it checked, which many HTTP clients do not allow without a custom resolver.</li>
+<li><strong>Egress rules still matter.</strong> Address checks in code can have gaps; a network rule that stops the fetch service from reaching internal ranges is a second layer.</li>
+<li><strong>Metadata services need their own hardening,</strong> such as requiring a session token header, so that one forged GET is not enough.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the feature can take a file upload instead of an address, take the upload: there is no request to forge. Do not build a clever parser of addresses;
+the address after resolution is the only fact that matters.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Webhook URLs, avatar imports, link previews, PDF renderers and "fetch this feed" features.</li>
+<li>The cloud metadata address 169.254.169.254 in every list of SSRF payloads.</li>
+<li>A breach report that begins with a server that fetched a URL for a user.</li>
+<li>A finding titled "Server-Side Request Forgery" with CWE-918.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">web-security</a> and builds on <a href="../cross-site-request-forgery">cross-site-request-forgery</a>, which turned a browser into the forger.
+Here the forger is the server.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
