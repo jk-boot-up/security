@@ -215,7 +215,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 113 | [threat-modeling](intermediate/secure-design/threat-modeling) | Plain | Find the threats on paper, before an attacker finds them in production | A06, SSDF PW.1 |
 | 114 | threat-modeling-with-pytm | With tools: pytm | *planned*: the same model in pytm, with generated diagrams and reports | A06, SSDF PW.1 |
-| 115 | attack-trees-and-abuse-cases | Plain | *planned*: Attack trees with costs and likelihoods, abuse cases written as failing tests, and which defence cuts the cheapest path | A06 |
+| 115 | [attack-trees-and-abuse-cases](intermediate/secure-design/attack-trees-and-abuse-cases) | Plain | Draw how the attacker wins, price each step, then cut the cheapest path and look again | A06 |
 | 116 | attack-trees-and-abuse-cases-with-threat-dragon | With tools: threat dragon | *planned*: the store model in OWASP Threat Dragon | A06 |
 | 117 | [security-requirements-with-asvs](intermediate/secure-design/security-requirements-with-asvs) | Plain | Turn a verification standard into requirements that check themselves | ASVS 5.0 |
 
