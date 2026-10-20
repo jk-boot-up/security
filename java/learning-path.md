@@ -196,7 +196,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 104 | [linux-hardening](intermediate/platform-hardening/linux-hardening) | Plain | Most host compromises begin with a setting that nobody looked at | CIS Benchmarks |
 | 105 | linux-hardening-with-docker | With tools: docker | *planned*: the same checks against a hardened image | CIS Benchmarks |
-| 106 | container-hardening | Plain | *planned*: What a compromised process can reach as root, with all capabilities, a writable file system and no limits | CIS Docker and Kubernetes Benchmarks |
+| 106 | [container-hardening](intermediate/platform-hardening/container-hardening) | Plain | Assume the process is taken over, and ask what it can reach | CIS Docker and Kubernetes Benchmarks |
 | 107 | container-hardening-with-docker-and-kind | With tools: docker and kind | *planned*: non-root, read-only, dropped capabilities, seccomp, and Pod Security Standards on kind | CIS Docker and Kubernetes Benchmarks |
 
 ### 9. detection-and-response (OWASP A09; NIST CSF 2.0)

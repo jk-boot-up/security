@@ -8,6 +8,7 @@ runs it against a prepared system that has the usual mistakes, shows the report,
 | # | Project | What it shows | Maps to |
 | --- | --- | --- | --- |
 | 1 | [linux-hardening](linux-hardening) | Most host compromises begin with a setting that nobody looked at | A02, CWE-732, CWE-250 |
+| 2 | [container-hardening](container-hardening) | Assume the process is taken over, and ask what it can reach | A02, CWE-250, CWE-269 |
 
 ## How the module is judged
 
