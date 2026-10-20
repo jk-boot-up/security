@@ -144,7 +144,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 71 | oauth2-authorization-code-pkce-with-keycloak | With tools: keycloak | *planned*: the same flow against a real authorization server | RFC 9700, A07 |
 | 72 | openid-connect | Plain | *planned*: ID tokens and access tokens, `nonce`, discovery, userinfo and logout | A07 |
 | 73 | openid-connect-with-spring-security-and-keycloak | With tools: spring security and keycloak | *planned*: OIDC login in Spring Boot, with back-channel logout | A07 |
-| 74 | tokens-in-the-browser | Plain | *planned*: Why a single-page app should not hold tokens: the backend-for-frontend pattern with a session cookie, and sender-constrained tokens (DPoP) | OAuth for browser-based apps, RFC 9449 |
+| 74 | [tokens-in-the-browser](intermediate/identity-and-access/tokens-in-the-browser) | Plain | A token a script can read is a token an attacker can take | OAuth for browser-based apps, RFC 9449 |
 | 75 | tokens-in-the-browser-with-spring-boot | With tools: spring boot | *planned*: a small BFF in front of the bank API | OAuth for browser-based apps, RFC 9449 |
 | 76 | [passkeys](intermediate/identity-and-access/passkeys) | Plain | A key that only signs for the real site | A07, NIST SP 800-63B |
 | 77 | passkeys-with-spring-security | With tools: spring security | *planned*: passkey registration and login with Spring Security's WebAuthn support | A07, NIST SP 800-63B |

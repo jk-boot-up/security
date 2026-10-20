@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tokens in the Browser: BFF and DPoP</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Tokens in the Browser: BFF and DPoP</h1>
+<pre><code>src/main/java/com/jk/explore/security/tokens/
+├── ApiReply.java     A status and a short message
+├── AuthServer.java   The authorization server's token table: opaque random tokens, each for one user and optionally bound to one key's thumbprint
+├── B64.java          Base64url without padding, the encoding every JOSE part uses
+├── Bff.java          A backend for the frontend at {@code https://app.bank.example}
+├── BrowserPage.java  What a script running &lt;em&gt;on the page&lt;/em&gt; can reach, which is the whole point: web storage is readable by every script on the page (including an injected one), {@code document.cookie} shows cookies that are not HttpOnly, and an HttpOnly cookie can be used by the page (the browser attaches it) but never read
+├── DpopProof.java    A DPoP proof (RFC 9449): a small signed statement &quot;I, the holder of this key, am sending this method to this address now, with this token&quot;, made fresh for each request
+├── Jwk.java          A P-256 public key as a JSON Web Key, and its RFC 7638 thumbprint, which is how an access token names the one key it is bound to
+├── MiniJson.java     Reads the small subset of JSON a DPoP proof uses: objects, strings and whole numbers
+├── ResourceApi.java  The bank API at {@code https://api.bank.example}
+├── SimClock.java     A clock in whole seconds that only moves when the demo or a test says so
+└── TokensDemo.java   Runs the single-page app story in four numbered acts and prints exact, repeatable results
+</code></pre>
+<p><strong>A single-page app that keeps an access token where its scripts can read it loses the token to one injected script, and the stolen bearer token works from anywhere; keep the token on a backend behind an HttpOnly session cookie, or bind it to a key the browser holds with DPoP.</strong></p>
+<p>A single-page app (SPA) gets an <strong>access token</strong> after sign-in and sends it to the API. The easy place to keep it is <code>localStorage</code>. But every script on the page can read web storage,
+and one <strong>cross-site scripting</strong> bug, or one compromised third-party script, is enough to copy the token. A <strong>bearer token</strong> is accepted from whoever presents it, so the attacker uses it from their own computer,
+long after the page is closed.</p>
+<p>The ways out, in the order this project shows them:
+- <strong>A backend for the frontend (BFF).</strong> The tokens stay on a server the customer's browser never sees. The browser holds only a session cookie (<code>__Host-</code> prefix, <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite</code>). An injected script cannot read the cookie, so it cannot take the session away,
+  though it can still use the session <em>while the page is open</em>, which is why XSS must also be fixed.
+- <strong>Proof of possession (DPoP, RFC 9449).</strong> The token is bound to a key pair made in the browser. Each request carries a small signed proof for that method, address, time and token. A stolen token without the private key is useless.</p>
+<p><strong>Maps to:</strong> OAuth 2.0 for Browser-Based Applications (IETF BCP draft) · RFC 9449 (DPoP) · RFC 9700 (OAuth security best current practice) · OWASP Top 10 (2025) A07 · OWASP ASVS 5.0, the OAuth and session management chapters.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bearer token is cash: whoever holds it can spend it, and a pickpocket in the crowd (an injected script) is enough. A BFF is a bank that keeps your cash in its vault and gives you a numbered claim ticket that only works at its own counter.
+DPoP is a cheque that also needs your signature: a stolen cheque without the pen that signs it is paper.</p>
+<h2>The scenario</h2>
+<p>A single-page banking app at app.bank.example calls an API at api.bank.example. The demo models a page and what an injected script can reach, a small BFF, an authorization server's token table, and a resource API that accepts
+bearer tokens and DPoP-bound tokens. DPoP proofs use real ES256 (P-256) signatures from the JDK.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A token in local storage</td>
+<td>The app stores its access token in local storage and calls the API with it: 200.</td>
+</tr>
+<tr>
+<td>2. One injected script takes the token away</td>
+<td>A script injected into the page reads localStorage and sends the token to the attacker, who uses it from their own computer: 200.</td>
+</tr>
+<tr>
+<td>3. A backend for the frontend keeps the token</td>
+<td>The script finds nothing to read; the attacker's computer gets 401; a cross-site form post gets 403; the script can still use the session while the page is open; sign-out kills the cookie.</td>
+</tr>
+<tr>
+<td>4. A token that needs the key as well (DPoP)</td>
+<td>A bound token works only with a fresh proof signed by its own key: replays, bearer use, no proof, another key, another method and old proofs are all 401; the real key gets 200.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>TokensTest</code>. Tokens, session ids and keys are random, so the demo prints only statuses and messages.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The page, its storage and its cookies are a small Java model that follows the rule that matters: scripts read web storage and non-HttpOnly cookies, and the browser attaches HttpOnly cookies to requests without showing them.
+The DPoP proofs are real: ES256 over P-256, JWK thumbprints per RFC 7638, and the checks in RFC 9449 (typ, alg, key, method, address, time, token hash, replay).</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tokens-in-the-browser-explained.html">Tokens in the Browser: BFF and DPoP, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Each design changes what a script on the page can take away.</p>
+<p><img alt="Three places for a token" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The page models what scripts reach; the API accepts two kinds of token.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Every field of the proof stops a different attack.</p>
+<p><img alt="The checks on a DPoP proof, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A bearer token stolen from local storage" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tokens-in-the-browser-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A BFF is another server to run,</strong> with sessions to store, expire and revoke, and it sits on the path of every API call.</li>
+<li><strong>A BFF does not fix XSS.</strong> While the page is open, an injected script can still make requests through the session; the cookie only stops the script from carrying the token away.</li>
+<li><strong>A BFF needs CSRF protection</strong> because it uses cookies: the origin check and the custom header here are examples.</li>
+<li><strong>DPoP needs a key the script cannot export</strong> (a non-extractable WebCrypto key), or XSS can copy the key as easily as the token. Even then, an injected script can ask the key to sign while the page is open.</li>
+<li><strong>DPoP adds a signature to every request and a replay cache to the API,</strong> and clock and nonce handling to get right.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the app is server-rendered, with its own session cookie and no token in the browser, there is nothing to protect in storage. For a small internal tool, a BFF may be the simplest sound choice. DPoP matters most when tokens must reach
+the browser, or when tokens pass through places that log them.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>localStorage.setItem('access_token', ...)</code> in single-page app tutorials.</li>
+<li>The advice "never store tokens in localStorage" and the argument over cookies versus storage.</li>
+<li><code>Authorization: DPoP ...</code> and a <code>DPoP:</code> header in newer OAuth libraries.</li>
+<li>A BFF (backend for the frontend) in the OAuth working group's browser-apps guidance.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">identity-and-access</a> and builds on <a href="../oauth2-authorization-code-pkce">oauth2-authorization-code-pkce</a> and <a href="../openid-connect">openid-connect</a>, which get the tokens; here the question is where they live afterwards.
+It relies on <a href="../../api-security/session-management">session-management</a> for the cookie and <a href="../../web-security/cross-site-scripting">cross-site-scripting</a> for how a script gets onto the page.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

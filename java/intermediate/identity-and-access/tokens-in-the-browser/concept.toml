@@ -1,0 +1,411 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "tokens-in-the-browser"
+level = "intermediate"
+module = "identity-and-access"
+title = "Tokens in the Browser: BFF and DPoP"
+short_title = "Tokens in the Browser"
+package = "tokens"
+main_class = "TokensDemo"
+tagline = "A token a script can read is a token an attacker can take"
+bold = "A single-page app that keeps an access token where its scripts can read it loses the token to one injected script, and the stolen bearer token works from anywhere; keep the token on a backend behind an HttpOnly session cookie, or bind it to a key the browser holds with DPoP."
+domain = "a single-page banking app"
+domain_note = ""
+youtube_description = "Where should a single-page app keep its tokens? Local storage, a backend for the frontend, and DPoP, in Java."
+thumb_lines = ["TOKENS IN THE", "BROWSER"]
+thumb_code = "Authorization: DPoP + proof"
+youtube_title = "Tokens in the Browser: Why BFF and DPoP (Java)"
+youtube_tags = ["bff", "backend for frontend", "dpop", "oauth", "local storage", "xss", "java", "application security"]
+
+[readme]
+intro = """
+A single-page app (SPA) gets an **access token** after sign-in and sends it to the API. The easy place to keep it is `localStorage`. But every script on the page can read web storage,
+and one **cross-site scripting** bug, or one compromised third-party script, is enough to copy the token. A **bearer token** is accepted from whoever presents it, so the attacker uses it from their own computer,
+long after the page is closed.
+
+The ways out, in the order this project shows them:
+- **A backend for the frontend (BFF).** The tokens stay on a server the customer's browser never sees. The browser holds only a session cookie (`__Host-` prefix, `HttpOnly`, `Secure`, `SameSite`). An injected script cannot read the cookie, so it cannot take the session away,
+  though it can still use the session *while the page is open*, which is why XSS must also be fixed.
+- **Proof of possession (DPoP, RFC 9449).** The token is bound to a key pair made in the browser. Each request carries a small signed proof for that method, address, time and token. A stolen token without the private key is useless.
+
+**Maps to:** OAuth 2.0 for Browser-Based Applications (IETF BCP draft) · RFC 9449 (DPoP) · RFC 9700 (OAuth security best current practice) · OWASP Top 10 (2025) A07 · OWASP ASVS 5.0, the OAuth and session management chapters.
+"""
+analogy = """
+A bearer token is cash: whoever holds it can spend it, and a pickpocket in the crowd (an injected script) is enough. A BFF is a bank that keeps your cash in its vault and gives you a numbered claim ticket that only works at its own counter.
+DPoP is a cheque that also needs your signature: a stolen cheque without the pen that signs it is paper.
+"""
+scenario = """
+A single-page banking app at app.bank.example calls an API at api.bank.example. The demo models a page and what an injected script can reach, a small BFF, an authorization server's token table, and a resource API that accepts
+bearer tokens and DPoP-bound tokens. DPoP proofs use real ES256 (P-256) signatures from the JDK.
+"""
+costs = [
+    "**A BFF is another server to run,** with sessions to store, expire and revoke, and it sits on the path of every API call.",
+    "**A BFF does not fix XSS.** While the page is open, an injected script can still make requests through the session; the cookie only stops the script from carrying the token away.",
+    "**A BFF needs CSRF protection** because it uses cookies: the origin check and the custom header here are examples.",
+    "**DPoP needs a key the script cannot export** (a non-extractable WebCrypto key), or XSS can copy the key as easily as the token. Even then, an injected script can ask the key to sign while the page is open.",
+    "**DPoP adds a signature to every request and a replay cache to the API,** and clock and nonce handling to get right.",
+]
+too_much = """
+If the app is server-rendered, with its own session cookie and no token in the browser, there is nothing to protect in storage. For a small internal tool, a BFF may be the simplest sound choice. DPoP matters most when tokens must reach
+the browser, or when tokens pass through places that log them.
+"""
+met_before = [
+    "`localStorage.setItem('access_token', ...)` in single-page app tutorials.",
+    "The advice \"never store tokens in localStorage\" and the argument over cookies versus storage.",
+    "`Authorization: DPoP ...` and a `DPoP:` header in newer OAuth libraries.",
+    "A BFF (backend for the frontend) in the OAuth working group's browser-apps guidance.",
+]
+where = """
+This project is in [identity-and-access](..) and builds on [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce) and [openid-connect](../openid-connect), which get the tokens; here the question is where they live afterwards.
+It relies on [session-management](../../api-security/session-management) for the cookie and [cross-site-scripting](../../web-security/cross-site-scripting) for how a script gets onto the page.
+"""
+twin = """
+The page, its storage and its cookies are a small Java model that follows the rule that matters: scripts read web storage and non-HttpOnly cookies, and the browser attaches HttpOnly cookies to requests without showing them.
+The DPoP proofs are real: ES256 over P-256, JWK thumbprints per RFC 7638, and the checks in RFC 9449 (typ, alg, key, method, address, time, token hash, replay).
+"""
+test_note = "Tokens, session ids and keys are random, so the demo prints only statuses and messages."
+
+[[act]]
+title = "A token in local storage"
+summary = "The app stores its access token in local storage and calls the API with it: 200."
+detail = """
+After sign-in the app keeps the access token in localStorage and sends it as a bearer token. The API answers 200 with Ana's balance. It is the simplest design, and every tutorial shows it.
+"""
+speech = """
+First demo: a token in local storage. [[slnc 400]] The app keeps its token in web storage, and sends it with each call. [[slnc 300]] It works, and it is the simplest design.
+"""
+rows = { storage = "active ok" }
+console = [
+    ["the app calls the API with its token -> 200 balance of ana: 125000 cents", "ok"],
+]
+
+[[act]]
+title = "One injected script takes the token away"
+summary = "A script injected into the page reads localStorage and sends the token to the attacker, who uses it from their own computer: 200."
+detail = """
+An injected script (cross-site scripting, or a compromised third-party library) can read everything in web storage. It copies the access token to its owner. The attacker's own computer presents it as a bearer token and the API answers 200,
+because a bearer token is accepted from whoever holds it. Closing the page does not help: the token is already gone.
+"""
+speech = """
+Second demo: one injected script takes the token away. [[slnc 400]] A script on the page can read everything in web storage. [[slnc 300]] It copies the token to the attacker. [[slnc 600]]
+The attacker's own computer uses it, and the api answers. [[slnc 300]] A bearer token is accepted from whoever holds it.
+"""
+rows = { steal = "active wrong" }
+console = [
+    ["what the injected script can read -> [localStorage.access_token]", "bad"],
+    ["the attacker's own computer uses it -> 200 balance of ana: 125000 cents  <- NO KEY, NO PAGE, STILL WORKS", "bad"],
+]
+
+[[act]]
+title = "A backend for the frontend keeps the token"
+summary = "The script finds nothing to read; the attacker's computer gets 401; a cross-site form post gets 403; the script can still use the session while the page is open; sign-out kills the cookie."
+detail = """
+The BFF signs Ana in, keeps the access token in its own memory and gives the page only an HttpOnly session cookie. The injected script reads nothing: the list of what it can steal is empty. The attacker's computer, with no cookie, gets 401.
+A form post from evil.example carries the cookie but not the app's origin or custom header, so the BFF refuses it with 403. The honest limit: a script running in the page can still call the BFF through the browser while the page is open,
+so XSS still has to be fixed. After sign-out the same cookie is dead.
+"""
+speech = """
+Third demo: a backend for the frontend keeps the token. [[slnc 400]] The browser holds only a session cookie that scripts cannot read. [[slnc 300]] The injected script finds nothing to steal. [[slnc 600]]
+The attacker's computer has no cookie, and is refused. [[slnc 300]] A form post from another site is refused too. [[slnc 600]]
+The honest limit: a script in the page can still use the session while the page is open. [[slnc 300]] So the cross-site scripting bug must still be fixed.
+"""
+rows = { bff = "active ok", ride = "active amber" }
+console = [
+    ["what the injected script can read -> []", "ok"],
+    ["the attacker's computer with no cookie -> 401 not signed in", "ok"],
+    ["a form post from evil.example (cookie) -> 403 cross-site request refused", "ok"],
+    ["the script rides the session in the page -> 200 ...  <- WHILE THE PAGE IS OPEN", "amber"],
+    ["after sign-out, the same cookie -> 401 not signed in", "ok"],
+]
+
+[[act]]
+title = "A token that needs the key as well (DPoP)"
+summary = "A bound token works only with a fresh proof signed by its own key: replays, bearer use, no proof, another key, another method and old proofs are all 401; the real key gets 200."
+detail = """
+The app makes an ES256 key pair, and the authorization server binds the token to the key's thumbprint. Each call carries `Authorization: DPoP token` and a proof: a signed statement of the method, address, time, a unique id and the token's hash.
+The API checks the signature, the key against the token's binding, the method, the address, the time window and the token hash, and remembers each proof id. The honest call gets 200. The same proof again is "already used". The stolen token as a bearer token
+is refused, the token without a proof is refused, a proof from the attacker's own key is "signed with another key", a proof for a transfer cannot be used for a balance, and a proof saved for later is too old. A fresh proof from the real key works.
+"""
+speech = """
+Fourth demo: a token that needs the key as well. [[slnc 400]] The token is bound to a key made in the browser. [[slnc 300]] Each call carries a small signed proof, for that method, address and time. [[slnc 600]]
+A stolen token as a bearer token is refused. [[slnc 300]] With no proof, refused. [[slnc 300]] With a proof from another key, refused. [[slnc 600]]
+A proof used twice, a proof for another request, and an old proof are all refused. [[slnc 300]] Only the real key, with a fresh proof, gets in.
+"""
+rows = { dpop = "active ok" }
+console = [
+    ["the app: token + a proof from its key -> 200 balance of ana: 125000 cents", "ok"],
+    ["the same proof sent again (replay) -> 401 proof already used", "ok"],
+    ["the stolen token as a bearer token -> 401 this token needs a proof of possession", "ok"],
+    ["the stolen token, a proof from their key -> 401 proof was signed with another key", "ok"],
+    ["a proof meant for a transfer / saved for later -> 401", "ok"],
+    ["a fresh proof from the real key -> 200", "ok"],
+]
+
+[animation]
+subtitle = "A single-page banking app, an injected script, and three places to keep a token."
+boxes = [
+    ["storage", "Local storage", "readable by every script on the page"],
+    ["steal", "Stolen bearer token", "works from anywhere"],
+    ["bff", "A backend for the frontend", "tokens stay on the server"],
+    ["ride", "Riding the session", "possible while the page is open"],
+    ["dpop", "DPoP", "a token that needs a key as well"],
+]
+
+[docs.problem]
+scenario = """
+A single-page banking app gets an access token after sign-in, and must keep it somewhere between API calls.
+"""
+naive = """
+Put the token in local storage, because it is easy and survives a reload: our own scripts are the only ones on the page.
+"""
+deliver = [
+    "A model of a page, its storage and cookies, and what an injected script can reach.",
+    "A BFF with a session cookie, an origin check and a custom header.",
+    "Real DPoP proofs (ES256, JWK thumbprints) and an API that checks them, with a replay cache.",
+    "An honest account of what each design does not stop.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what an access token and a cookie are",
+]
+not_required = [
+    "A browser or JavaScript: the page is a model",
+    "A real authorization server: the token table is a stand-in",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a token in web storage is lost to one injected script",
+    "describe how a BFF keeps tokens off the browser and what it needs against CSRF",
+    "say what an HttpOnly cookie does and does not protect",
+    "explain what a DPoP proof contains and which attacks each field stops",
+]
+walkthrough = """
+Run act two and ask what the attacker needed besides the token. In act three, ask what an injected script can still do and why that does not make the BFF pointless. In act four, ask which field of the proof stops each refused call.
+"""
+exercises = [
+    "Add a nonce from the API that every proof must include, and see what it adds to the iat check.",
+    "Rotate the BFF session id after sign-in and after a privilege change.",
+    "Make the BFF refuse sessions older than eight hours or idle for 30 minutes.",
+    "Add an HttpOnly refresh token to the BFF, and decide what happens when the access token expires.",
+]
+
+[docs.explained]
+sentence = """
+A token that a script can read is a token an attacker can take, so keep tokens on a backend behind an HttpOnly cookie, or bind them to a key with DPoP, and still fix the cross-site scripting that put the script there.
+"""
+verdict = """
+For a first-party single-page app, prefer a BFF with a `__Host-` HttpOnly SameSite cookie and CSRF protection. When tokens must be in the browser, bind them with DPoP and keep the private key non-extractable. Never store long-lived tokens in
+web storage, and keep scripts out of the page with a strict Content-Security-Policy.
+"""
+recognise = [
+    "`localStorage.setItem` or `sessionStorage.setItem` holding a token.",
+    "A `/bff/` or `/api` proxy path that adds the `Authorization` header on the server.",
+    "`Authorization: DPoP` and a `DPoP` header.",
+    "`Set-Cookie: __Host-...; HttpOnly; Secure; SameSite=Lax`.",
+]
+
+[spec]
+purpose = """
+Teach where a single-page app should keep its tokens by stealing one from local storage, then comparing a backend for the frontend with a DPoP-bound token.
+"""
+nongoals = [
+    "A real browser, WebCrypto or a real authorization server.",
+    "Refresh tokens and token rotation: oauth2-authorization-code-pkce.",
+    "The Spring BFF version: the tokens-in-the-browser-with-spring-boot project.",
+]
+problem = """
+Developers keep bearer tokens where every script can read them, and an attacker needs only one script.
+"""
+roles = [["The page", "`BrowserPage`"], ["The BFF", "`Bff`"], ["Tokens and API", "`AuthServer`, `ResourceApi`, `ApiReply`"], ["DPoP", "`DpopProof`, `Jwk`, `MiniJson`, `B64`, `SimClock`"], ["Entry point", "`TokensDemo`"]]
+requirements = [
+    "An injected script reads a token in web storage and non-HttpOnly cookies, and not HttpOnly cookies.",
+    "A stolen bearer token works from another computer.",
+    "The BFF refuses requests without its cookie, and state-changing requests without the app's origin and custom header, and ends sessions on sign-out.",
+    "A DPoP-bound token is refused as a bearer token and without a proof, and every proof check (signature, key, method, address, time, token hash, replay) has a test.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Three places for a token"
+caption = "Each design changes what a script on the page can take away."
+nodes = [
+    { id = "script", label = "Injected script", sub = "runs on the page", col = 0, row = 0, colour = "red" },
+    { id = "page", label = "Single-page app", sub = "storage, cookies", col = 1, row = 0, colour = "client" },
+    { id = "bff", label = "BFF", sub = "holds the tokens", col = 2, row = 0, colour = "green" },
+    { id = "api", label = "API", sub = "bearer or DPoP", col = 3, row = 0, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "script", to = "page", label = "reads storage", colour = "red", dashed = true },
+    { from = "page", to = "bff", label = "session cookie" },
+    { from = "bff", to = "api", label = "Authorization" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The page models what scripts reach; the API accepts two kinds of token."
+nodes = [
+    { id = "page", label = "BrowserPage", sub = ["localStorage", "cookies, HttpOnly"], col = 0, row = 0, colour = "client" },
+    { id = "bff", label = "Bff", sub = ["signIn()", "handle()", "signOut()"], col = 1, row = 0, colour = "green" },
+    { id = "api", label = "ResourceApi", sub = ["call(method, path, auth, dpop)"], col = 2, row = 0, colour = "green" },
+    { id = "auth", label = "AuthServer", sub = ["issue(user, thumbprint)"], col = 0, row = 1, colour = "accent" },
+    { id = "dpop", label = "DpopProof", sub = ["create()", "ProofCheck.verify()"], col = 1, row = 1, colour = "amber" },
+    { id = "jwk", label = "Jwk, MiniJson", sub = ["thumbprint", "parse"], col = 2, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "bff", to = "api", label = "calls" },
+    { from = "api", to = "auth", label = "looks up" },
+    { from = "api", to = "dpop", label = "verifies" },
+    { from = "dpop", to = "jwk", label = "uses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The checks on a DPoP proof, in order"
+caption = "Every field of the proof stops a different attack."
+nodes = [
+    { id = "sig", label = "Signature and key", sub = "ES256, public key in the header", col = 0, row = 0, colour = "client" },
+    { id = "bind", label = "Key matches the token", sub = "thumbprint", col = 1, row = 0, colour = "accent" },
+    { id = "req", label = "This request", sub = "method, address, token hash", col = 2, row = 0, colour = "amber" },
+    { id = "fresh", label = "Fresh and new", sub = "time window, unused jti", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "sig", to = "bind" },
+    { from = "bind", to = "req" },
+    { from = "req", to = "fresh" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A bearer token stolen from local storage"
+participants = ["Injected script", "Attacker", "API"]
+steps = [
+    ["Injected script", "Attacker", "access_token from localStorage"],
+    ["Attacker", "API", "GET /balance, Authorization: Bearer ..."],
+    ["API", "Attacker", "200 balance of ana", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A BFF between the page and the API"
+participants = ["Page", "BFF", "API"]
+steps = [
+    ["Page", "BFF", "GET /balance + HttpOnly cookie"],
+    ["BFF", "API", "GET /balance + Bearer token (server side)"],
+    ["API", "BFF", "200", "reply"],
+    ["BFF", "Page", "200", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A stolen DPoP-bound token"
+caption = "Without the private key the attacker cannot make a proof."
+participants = ["Attacker", "API"]
+steps = [
+    ["Attacker", "API", "Authorization: DPoP token + proof from another key"],
+    ["note", "API", "the key is not the one the token is bound to"],
+    ["API", "Attacker", "401 proof was signed with another key", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Customer's browser", nodes = ["page", "script"], colour = "amber" },
+    { label = "The bank", nodes = ["bff", "api"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "script", label = "Injected script", sub = "same privileges as the app", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "page", label = "App page", sub = "storage, cookies", col = 1, row = 0, colour = "client", threats = ["T1"] },
+    { id = "bff", label = "BFF", sub = "session, tokens", col = 2, row = 0, colour = "green", threats = ["T2", "T3"] },
+    { id = "api", label = "API", sub = "verifies tokens and proofs", col = 3, row = 0, colour = "green", shape = "store", threats = ["T4"] },
+    { id = "attacker", label = "Attacker's computer", sub = "holds a copied token", col = 1, row = 1, colour = "red", threats = ["T1", "T4"] },
+]
+edges = [
+    { from = "script", to = "attacker", label = "token", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "page", to = "bff", label = "cookie", threats = ["T2"] },
+    { from = "bff", to = "api", label = "token" },
+    { from = "attacker", to = "api", label = "stolen token", colour = "red", dashed = true, threats = ["T4"] },
+]
+
+[threatmodel]
+scope = """
+A first-party single-page app and the API it calls. It covers where the access token is kept and what a script on the page, or a copy of the token, can do.
+It does not cover how the script got onto the page, the authorization server's own security, or stolen devices.
+"""
+assets = [
+    "The customer's access token and session.",
+    "The customer's account at the API.",
+]
+actors = [
+    "Ana, a customer using the app.",
+    "An attacker with a script running on the page.",
+    "An attacker with a copy of a token, using it from elsewhere.",
+]
+boundaries = [
+    "The page to the rest of the browser: every script on the page has the page's privileges.",
+    "The browser to the BFF and the API: requests carry a cookie or a token.",
+]
+assumptions = [
+    "The BFF's session store and the authorization server are not compromised.",
+    "In the DPoP design, the private key cannot be exported by scripts (the demo does not model WebCrypto).",
+]
+out_of_scope = [
+    "Preventing the injection: cross-site-scripting and Content-Security-Policy.",
+    "Refresh tokens and sign-in: oauth2-authorization-code-pkce and openid-connect.",
+]
+tests = [
+    "`TokensTest` checks the page model, the BFF's cookie, origin and header rules, sign-out, and every DPoP check: signature, key binding, method, address, token hash, time window, replay, key shape and the JSON reader.",
+    "`DemoRunsTest` compares the whole demo with the golden output and checks that it is repeatable.",
+]
+next = """
+The next project, saml-basics, looks at the older single sign-on standard and the signature attacks on its XML.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A script reads the access token from web storage and the attacker uses it elsewhere"
+where = "`BrowserPage`, local storage"
+control = "Keep the token on a BFF, or bind it with DPoP"
+residual = "While the page is open, the script can still send requests through the page"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "Another site makes the browser send the session cookie to the BFF"
+where = "`Bff.handle`"
+control = "`__Host-` SameSite cookie, origin check and a custom header on state-changing requests"
+residual = "A BFF page with cross-site scripting"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "An injected script uses the session while the page is open"
+where = "`Bff`, the page"
+control = "Fix the injection; a strict Content-Security-Policy; short sessions; step-up for sensitive actions"
+residual = "Remains possible by design while the script runs"
+
+[[threat]]
+id = "T4"
+stride = "S"
+threat = "A copied token, a replayed proof or a saved proof is presented to the API"
+where = "`ResourceApi`, `DpopProof.ProofCheck`"
+control = "Binding to a key, and checks of method, address, token hash, time and unused id"
+residual = "A key that scripts can export defeats the binding"
