@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Path Traversal, File Upload and Open Redirects, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Path Traversal, File Upload and Open Redirects, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A file name or link from a customer is untrusted: check its shape, resolve it and compare paths as paths, let the server name and classify uploads and keep them out of the web root, and redirect only to paths on your own site.</p>
+<h2>The 6 acts</h2>
+<h3>1. Downloading an invoice</h3>
+<p>The download takes a name and reads that file from the invoices folder. invoice-1001.txt returns "Invoice 1001: Ana, 42.50".</p>
+<h3>2. A name with .. leaves the folder</h3>
+<p>The name is joined to the folder's path and nothing else is checked, so <code>..</code> climbs out: <code>../secrets/db.txt</code> returns DB_PASSWORD=demo-not-real and <code>../config/app.properties</code> returns the settings.
+The customer never needed a vulnerability in the database, only a longer name.</p>
+<h3>3. A text check on the path is not a path check</h3>
+<p>The second version resolves the path, normalizes it and checks that the text starts with the invoices folder. <code>../secrets/db.txt</code> is refused. But <code>/…/invoices-private/payroll.txt</code>
+also starts with <code>/…/invoices</code>, so the payroll file is read. Comparing paths as text treats a folder's name as a prefix; <code>Path.startsWith</code> compares whole elements.</p>
+<h3>4. Names, paths and links, all checked</h3>
+<p>The fixed version first decodes the name exactly once, then requires <code>invoice-NNNN.txt</code>. Then it resolves against the real invoices folder, normalizes and compares as a path. Finally it follows symbolic links
+and checks the real file: a link named invoice-5555.txt that points at the secrets file passes the first checks and is refused with "link leads outside the invoice folder", while both older versions read it.
+The encoded <code>%2e%2e%2f</code> is decoded and refused as not an invoice name.</p>
+<h3>5. Uploads</h3>
+<p>The naive upload saves under the name the customer gave, in the web root. A file named <code>page.html</code> with a script in it is served as text/html, inline: a page on the store's own site with the customer's script.
+A name of <code>../../config/app.properties</code> replaces the settings, which now read admin=mallory. The fixed version limits the size, decides the type from the first bytes (PNG or JPEG only), makes the name itself
+(photo-0001.png), ignores the customer's name entirely, stores the file outside the web root, and serves it as image/png with a download header and nosniff. The script renamed cat.png is refused for what it contains,
+and a <code>../..</code> name is just ignored: the settings still read admin=ana.</p>
+<h3>6. Where to send the customer next</h3>
+<p>After sign-in or upload, the store sends the customer to the <code>return to</code> address. The naive version sends them wherever it says: a look-alike site at https://evil.example/login, <code>//evil.example</code> (a browser reads it
+as another site), <code>/\evil.example</code> (browsers treat the backslash as a slash) or <code>javascript:</code>. The fixed version allows only a path that starts with a single slash, has no backslash or control characters, and has no scheme
+or authority; everything else becomes /account. If an absolute address must be allowed, its host is compared exactly: shop.example.evil.example and shop.example@evil.example are refused.</p>
+<h2>The verdict</h2>
+<p>Prefer ids to names, and mapping tables to paths. If you must use names: allow-list the shape, decode once, resolve against the real base folder, compare with <code>Path.startsWith</code>, and check the real path after links.
+For uploads: size limit, magic-byte type, server-made name, storage outside the web root, <code>Content-Disposition: attachment</code> and <code>X-Content-Type-Options: nosniff</code>. For redirects: relative paths only, or an exact allow-list.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>new File(base, name)</code>, <code>Paths.get(base, name)</code> or <code>base.resolve(name)</code> with request data.</li>
+<li><code>getOriginalFilename()</code> used to build a path.</li>
+<li>A parameter named <code>next</code>, <code>url</code>, <code>redirect</code> or <code>returnTo</code> passed to a redirect.</li>
+<li>Findings with CWE-22, CWE-434 or CWE-601.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>../../etc/passwd</code> in every list of attack strings.</li>
+<li><code>new File(base, userInput)</code> and <code>Paths.get(base, name)</code> in older code.</li>
+<li>A <code>next</code> or <code>returnUrl</code> parameter on every login page.</li>
+<li>Findings titled "Path Traversal" (CWE-22), "Unrestricted Upload" (CWE-434) and "Open Redirect" (CWE-601).</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

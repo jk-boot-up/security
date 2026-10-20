@@ -1,0 +1,54 @@
+== 1. What 'docker run' with no options gives an attacker ==
+read-secrets           POSSIBLE  secrets are in the environment, which every process of the container can read
+tamper-with-app        POSSIBLE  the root file system is writable
+drop-and-run           POSSIBLE  the root file system is writable
+become-root            POSSIBLE  it already runs as root
+dangerous-syscalls     blocked   the default seccomp profile blocks them
+sniff-network          POSSIBLE  root with the NET_RAW capability
+mount-host             blocked   no CAP_SYS_ADMIN
+docker-socket          blocked   the Docker socket is not mounted
+host-files             blocked   no host directories are mounted
+host-network           blocked   its own network namespace
+see-host-processes     blocked   its own process namespace
+exhaust-memory         POSSIBLE  no memory limit
+fork-bomb              POSSIBLE  no process limit
+7 of 13 attacks possible; level: BASELINE
+
+== 2. The configuration from the tutorial ==
+docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/etc shop-app:latest
+13 of 13 attacks possible; level: PRIVILEGED
+  not baseline: privileged container
+  not baseline: host network
+  not baseline: host PID namespace
+  not baseline: host path volumes: /var/run/docker.sock, /etc
+  not baseline: seccomp unconfined
+  not baseline: capability beyond the default set: ALL
+
+== 3. One setting at a time ==
+start: the tutorial configuration                -> 13 of 13 possible, level PRIVILEGED
+no privileged, no host network, PID or mounts    ->  9 of 13 possible, level PRIVILEGED
+default seccomp profile                          ->  8 of 13 possible, level PRIVILEGED
+drop all capabilities                            ->  6 of 13 possible, level BASELINE
+run as a user that is not root                   ->  6 of 13 possible, level BASELINE
+no new privileges                                ->  5 of 13 possible, level RESTRICTED
+read-only root, noexec temporary directory       ->  3 of 13 possible, level RESTRICTED
+memory and process limits                        ->  1 of 13 possible, level RESTRICTED
+
+== 4. The hardened container ==
+docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --memory 512m --pids-limit 200 shop-app@sha256:9f2c1a7d
+securityContext:
+  privileged: false
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+level: RESTRICTED
+  still possible: read-secrets           POSSIBLE  the application must read its secrets, so a hijacked application can too
+
+== 5. Settings that look harmless ==
+hardened + NET_RAW -> level BASELINE, 1 of 13 attacks possible (NET_RAW matters only to root)
+hardened + root + SYS_ADMIN -> level PRIVILEGED, 3 of 13 attacks possible

@@ -1,0 +1,438 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "server-side-request-forgery"
+level = "intermediate"
+module = "web-security"
+title = "Server-Side Request Forgery (SSRF) and Its Defences"
+short_title = "SSRF Defences"
+package = "ssrf"
+main_class = "SsrfDemo"
+tagline = "When the server fetches an address for a customer, it fetches it from inside"
+bold = "A feature that makes the server fetch a customer's address lets the customer reach whatever the server can reach, so check the address the connection really uses, connect to the address you checked, and look again at every redirect."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Server-side request forgery and its defences, in Java."
+thumb_lines = ["SERVER-SIDE REQUEST", "FORGERY DEFENCES"]
+thumb_code = "isPublic(resolved address)"
+youtube_title = "Server-Side Request Forgery (SSRF) Defences in Java"
+youtube_tags = ["ssrf", "server-side request forgery", "dns rebinding", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+"Import a product image from a web address" looks harmless: the customer pastes an address and the **server** fetches it. But the server sits inside the
+company network, where it can reach things no customer can: the cloud **metadata service**, the server's own admin pages, and the office network. The customer
+only has to give an address that points there. That is **server-side request forgery (SSRF)**: the customer forges a request, and the trusted server sends it.
+
+The defences, in the order this project shows them:
+- **Check the address, not the text.** Resolve the host name and test the real address: loopback, link-local, private and shared ranges are refused, however the address is spelled (`2852039166`, `127.1`, `::ffff:a9fe:a9fe`).
+- **Connect to the address you checked.** If the name is looked up again, an attacker's DNS server can answer differently the second time (**DNS rebinding**).
+- **Check every redirect,** and every address a name resolves to.
+- **Narrow what is fetched:** web schemes and ports only, no user info, images only, a size limit, and a generic error for the customer.
+
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control · CWE-918 · OWASP ASVS 5.0, the validation chapter (SSRF protection).
+"""
+analogy = """
+Think of a receptionist who will phone any number a visitor writes on a slip and read back what the other end says. The receptionist's desk phone can reach
+the director's private line and the vault, which the visitor's cannot. A blocklist of three numbers is a list of the ones somebody thought of; the fix is to look at where
+the call really goes, and to dial only the number that was checked.
+"""
+scenario = """
+An online store lets sellers import a product image from a web address. The demo simulates the network the store's server can reach, with a public image host,
+an attacker's host, the cloud metadata address, the server itself and an internal admin page. All secrets are harmless markers, and nothing leaves the process.
+"""
+costs = [
+    "**Allow-lists beat block-lists, and need upkeep.** If images come from a few known hosts, name them. A general URL import cannot, so it must check addresses.",
+    "**Some customers use private addresses on purpose.** A company that hosts images on its intranet is refused, which is the right default.",
+    "**Resolving yourself is more work.** The code must connect to the address it checked, which many HTTP clients do not allow without a custom resolver.",
+    "**Egress rules still matter.** Address checks in code can have gaps; a network rule that stops the fetch service from reaching internal ranges is a second layer.",
+    "**Metadata services need their own hardening,** such as requiring a session token header, so that one forged GET is not enough.",
+]
+too_much = """
+If the feature can take a file upload instead of an address, take the upload: there is no request to forge. Do not build a clever parser of addresses;
+the address after resolution is the only fact that matters.
+"""
+met_before = [
+    "Webhook URLs, avatar imports, link previews, PDF renderers and \"fetch this feed\" features.",
+    "The cloud metadata address 169.254.169.254 in every list of SSRF payloads.",
+    "A breach report that begins with a server that fetched a URL for a user.",
+    "A finding titled \"Server-Side Request Forgery\" with CWE-918.",
+]
+where = """
+This project is in [web-security](..) and builds on [cross-site-request-forgery](../cross-site-request-forgery), which turned a browser into the forger.
+Here the forger is the server.
+"""
+twin = """
+The network is a table of addresses, paths and responses, and DNS is a table of names, so every run is the same and nothing is ever sent. Literal addresses are parsed
+by the JDK's own rules, the same rules that make `2852039166` and `127.1` valid addresses to a real connection. A rebinding name answers differently the second time.
+"""
+test_note = "Everything is fixed data, so the demo prints the same text on every run."
+
+[[act]]
+title = "Importing an image"
+summary = "An honest address imports a cat picture."
+detail = """
+The seller pastes http://images.example/cat.png, the server fetches it and stores PNG-cat. This is the feature working as intended.
+"""
+speech = """
+First demo: importing an image. [[slnc 400]] The seller pastes an address, and the server fetches it. [[slnc 300]] This is the feature working as intended.
+"""
+rows = { fetch = "active ok" }
+console = [
+    ["honest address -> imported: PNG-cat", "ok"],
+]
+
+[[act]]
+title = "The server fetches whatever it is told"
+summary = "The same form reads the cloud credentials, the server's own settings and the internal admin page."
+detail = """
+Without a check, the address of the metadata service returns the demo credentials, localhost returns the server's own environment (DB_PASSWORD=demo-not-real) and
+10.0.0.5 returns the internal admin panel. The seller sees them because the import shows what it fetched. The customer's request never touched those addresses; the server's did.
+"""
+speech = """
+Second demo: the server fetches whatever it is told. [[slnc 400]] The metadata address returns credentials. [[slnc 300]] Localhost returns the server's own settings. [[slnc 300]] An office address returns an admin page. [[slnc 600]]
+The customer never reached those addresses. The server did.
+"""
+rows = { naive = "active wrong" }
+console = [
+    ["metadata address -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY  <- THE SERVER'S CREDENTIALS", "bad"],
+    ["localhost -> imported: DB_PASSWORD=demo-not-real", "bad"],
+    ["office admin page -> imported: internal admin panel: 3 customers", "bad"],
+]
+
+[[act]]
+title = "A blocklist of names is easy to walk around"
+summary = "A blocklist stops the metadata address as written and nothing else: decimal, short, mapped IPv6, a name that points inside, and a redirect all get through."
+detail = """
+The blocklist refuses the metadata address, localhost and anything starting with 10. or 192.168. But 2852039166 is the same address written as one number, 127.1 is
+loopback, ::ffff:a9fe:a9fe is the metadata address in IPv6 clothes, intranet.attacker.example is a name whose DNS answer is 10.0.0.5, and attacker.example redirects to the
+metadata address after the check. The blocklist read the text; the connection used the address.
+"""
+speech = """
+Third demo: a blocklist of names is easy to walk around. [[slnc 400]] The same address written as one big number gets through. [[slnc 300]] So does a short loopback address, and an IPv6 spelling. [[slnc 600]]
+A name that points inside gets through, and so does a redirect after the check. [[slnc 600]]
+The blocklist read the text. The connection used the address.
+"""
+rows = { block = "active amber" }
+console = [
+    ["metadata address -> refused: blocked host name", "ok"],
+    ["decimal spelling 2852039166 -> imported: the credentials  <- SAME ADDRESS", "bad"],
+    ["short loopback 127.1 -> imported: DB_PASSWORD=demo-not-real", "bad"],
+    ["mapped IPv6 spelling -> imported: the credentials", "bad"],
+    ["a name that points inside -> imported: internal admin panel", "bad"],
+    ["a redirect from outside -> imported: the credentials", "bad"],
+]
+
+[[act]]
+title = "Check the address the connection really uses"
+summary = "Resolving once and testing every address refuses all nine attacks, while honest imports and the attacker's own public image still work."
+detail = """
+The safe importer parses the address by hand, refuses other schemes, other ports and user info, resolves the host once, requires every answer to be a public address,
+connects to the address it checked, and runs the same checks again on every redirect. Each spelling of an inside address is refused with the real address named in the log.
+A rebinding name is harmless, because the importer never asks DNS twice: it fetches only the attacker's own picture.
+"""
+speech = """
+Fourth demo: check the address the connection really uses. [[slnc 400]] The importer looks up the name once, and tests every answer. [[slnc 300]] It connects to the address it tested. [[slnc 600]]
+Every spelling of an inside address is refused, and so is a redirect to one. [[slnc 600]]
+A rebinding name gets nowhere, because the name is never looked up twice.
+"""
+rows = { safe = "active ok", rebind = "active ok" }
+console = [
+    ["honest address -> imported: PNG-cat", "ok"],
+    ["metadata, localhost, decimal, 127.1, mapped IPv6 -> refused: resolves to a private address", "ok"],
+    ["a name that points inside, and a redirect to the metadata address -> refused", "ok"],
+    ["user info trick -> refused: user info in the address", "ok"],
+    ["DNS rebinding -> imported: the attacker's own image only", "ok"],
+    ["a name with one private answer among two -> refused", "ok"],
+]
+
+[[act]]
+title = "Why checking and then connecting is not enough"
+summary = "An importer that checks the name and then looks it up again is fooled: it checked a public address and fetched the internal admin panel."
+detail = """
+A check-then-connect importer resolves rebind.attacker.example, sees a public address and approves. Then the HTTP client resolves it again; the attacker's DNS now answers
+10.0.0.5 and the client fetches the internal admin panel. The check was right, and the connection went elsewhere. The fix is not a better check: it is connecting to the address that was checked.
+"""
+speech = """
+Fifth demo: why checking and then connecting is not enough. [[slnc 400]] The importer checks the name, and it looks public. [[slnc 300]] Then the client looks the name up again, and the attacker's server answers with an inside address. [[slnc 600]]
+The check was right, and the connection went elsewhere. [[slnc 300]] So connect to the address that was checked.
+"""
+rows = { rebind = "active wrong" }
+console = [
+    ["check-then-connect: checked as public=true", "amber"],
+    ["then fetched -> internal admin panel: 3 customers  <- THE SECOND LOOKUP DIFFERED", "bad"],
+]
+
+[animation]
+subtitle = "An online store's image import, the network behind the server, and the checks that keep a customer out of it."
+boxes = [
+    ["fetch", "The import feature", "the server fetches a customer's address"],
+    ["naive", "No check", "the server reaches what customers cannot"],
+    ["block", "A blocklist", "reads the text, not the address"],
+    ["safe", "Check the address", "resolve once, test every answer"],
+    ["rebind", "DNS rebinding", "connect to the address you checked"],
+]
+
+[docs.problem]
+scenario = """
+An online store lets sellers import a product image from a web address. The server fetches the address from inside the company network.
+"""
+naive = """
+Fetch the address the seller gives: it is only a picture, so any address is fine.
+"""
+deliver = [
+    "A simulated network with a public host, an attacker's host, the metadata address, the server itself and an internal page.",
+    "Three importers: no check, a blocklist of names, and one that checks the real address.",
+    "An address policy that refuses loopback, link-local, private, shared and mapped ranges.",
+    "A demonstration of DNS rebinding and of why the checked address must be the connected address.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what an IP address and a DNS name are",
+]
+not_required = [
+    "A real network: the demo simulates one",
+    "Any framework",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a fetch made by the server reaches things the customer cannot",
+    "list ways of writing the same address that defeat a text blocklist",
+    "describe DNS rebinding and why the checked address must be the connected address",
+    "say why every redirect and every resolved address must be checked",
+]
+walkthrough = """
+Run act two and ask whose request reached the metadata address. In act three, ask what the blocklist compared and what the connection used. In act five, ask which of the
+two lookups the check saw.
+"""
+exercises = [
+    "Add an allow-list of image hosts and see which attacks it makes unnecessary.",
+    "Add IPv6 unique-local and documentation ranges to the policy, with tests.",
+    "Make the importer refuse an answer whose address changed between two lookups, and explain why that is weaker than connecting to the checked address.",
+    "Add a size limit that is checked while reading, not after.",
+]
+
+[docs.explained]
+sentence = """
+When a server fetches an address for a customer, it must test the address the connection will really use, connect to exactly that address, and test every redirect again.
+"""
+verdict = """
+Prefer uploads, or a fixed list of hosts. If you must fetch arbitrary addresses: resolve once, refuse non-public addresses, connect to the checked address,
+allow only http and https on the usual ports, follow few redirects and check each, limit type and size, and add network egress rules as a second layer.
+"""
+recognise = [
+    "A form field named `url`, `callback`, `webhook`, `image_url` or `feed`.",
+    "Library calls such as `new URL(input).openStream()` or `HttpClient.send` on a request built from input.",
+    "Requests to 169.254.169.254 in logs.",
+    "A finding titled \"Server-Side Request Forgery\" with CWE-918.",
+]
+
+[spec]
+purpose = """
+Teach SSRF by making a store's image import reach the metadata service and internal pages, then walking around a blocklist, and finally fixing it by checking and connecting to the real address.
+"""
+nongoals = [
+    "A real network or HTTP client: the world is a table of responses.",
+    "The Spring `RestClient` version: the server-side-request-forgery-with-spring-boot project.",
+    "Cloud-specific metadata hardening.",
+]
+problem = """
+Developers fetch addresses on behalf of customers and trust the text of the address, so a customer can aim the server's own network position at its inside.
+"""
+roles = [["The address parts", "`Url`"], ["Names and the network", "`Dns`, `Network`, `Response`"], ["The importers", "`NaiveImporter`, `BlocklistImporter`, `SafeImporter`"], ["The address rules", "`AddressPolicy`"], ["Entry point", "`SsrfDemo`"]]
+requirements = [
+    "The naive importer reaches the metadata service, localhost and an internal page.",
+    "A blocklist of names is bypassed by five different spellings and routes.",
+    "The safe importer refuses all of them, follows only public redirects, and still imports honest images.",
+    "The safe importer connects only to the address it checked, so rebinding cannot change the target.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "How a customer's address reaches the inside"
+caption = "The customer never connects to the inside; the server does."
+nodes = [
+    { id = "customer", label = "Customer", sub = "gives an address", col = 0, row = 0, colour = "red" },
+    { id = "server", label = "Store server", sub = "fetches it", col = 1, row = 0, colour = "client" },
+    { id = "inside", label = "Inside", sub = "metadata, admin pages, localhost", col = 2, row = 0, colour = "green", shape = "store" },
+    { id = "checks", label = "Checks", sub = "real address, pinned, redirects", col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "customer", to = "server", label = "address", colour = "red", dashed = true },
+    { from = "server", to = "inside", label = "request" },
+    { from = "checks", to = "server", label = "decide", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Three importers share one interface; only the safe one uses AddressPolicy."
+nodes = [
+    { id = "importer", label = "Importer", sub = ["importImage(address)"], col = 0, row = 0, colour = "accent" },
+    { id = "naive", label = "NaiveImporter", sub = ["follows everything"], col = 1, row = 0, colour = "red" },
+    { id = "block", label = "BlocklistImporter", sub = ["blocks names"], col = 2, row = 0, colour = "amber" },
+    { id = "safe", label = "SafeImporter", sub = ["checkedAddress(url)"], col = 0, row = 1, colour = "green" },
+    { id = "policy", label = "AddressPolicy", sub = ["isPublic(address)"], col = 1, row = 1, colour = "client" },
+    { id = "dns", label = "Dns", sub = ["resolve(host)"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "naive", to = "importer", label = "implements" },
+    { from = "block", to = "importer", label = "implements" },
+    { from = "safe", to = "importer", label = "implements" },
+    { from = "safe", to = "policy", label = "asks" },
+    { from = "safe", to = "dns", label = "resolves once" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The checks an address passes, in order"
+caption = "Every redirect goes through the same checks again."
+nodes = [
+    { id = "parse", label = "Parse", sub = "scheme, user info, host, port", col = 0, row = 0, colour = "client" },
+    { id = "resolve", label = "Resolve once", sub = "every answer", col = 1, row = 0, colour = "accent" },
+    { id = "policy", label = "Public only", sub = "not loopback, private, link-local", col = 2, row = 0, colour = "amber" },
+    { id = "connect", label = "Connect", sub = "to the checked address", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "parse", to = "resolve" },
+    { from = "resolve", to = "policy" },
+    { from = "policy", to = "connect" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A redirect that leads inside"
+participants = ["Customer", "Store server", "attacker.example", "Metadata service"]
+steps = [
+    ["Customer", "Store server", "import http://attacker.example/go"],
+    ["Store server", "attacker.example", "GET /go"],
+    ["attacker.example", "Store server", "302 to http://169.254.169.254/...", "reply"],
+    ["Store server", "Metadata service", "GET credentials"],
+    ["Metadata service", "Store server", "the credentials", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "DNS rebinding against check-then-connect"
+caption = "The check sees the first answer, the connection uses the second."
+participants = ["Importer", "Attacker's DNS", "Internal admin page"]
+steps = [
+    ["Importer", "Attacker's DNS", "rebind.attacker.example?"],
+    ["Attacker's DNS", "Importer", "203.0.113.9 (public)", "reply"],
+    ["note", "Importer", "check passes"],
+    ["Importer", "Attacker's DNS", "rebind.attacker.example? (again)"],
+    ["Attacker's DNS", "Importer", "10.0.0.5 (inside)", "reply"],
+    ["Importer", "Internal admin page", "GET /admin"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Checking and connecting to the same address"
+caption = "The name is looked up once; the connection goes to that answer."
+participants = ["Safe importer", "DNS", "Image host"]
+steps = [
+    ["Safe importer", "DNS", "images.example?"],
+    ["DNS", "Safe importer", "93.184.216.34", "reply"],
+    ["note", "Safe importer", "public: allowed"],
+    ["Safe importer", "Image host", "GET /cat.png at 93.184.216.34"],
+    ["Image host", "Safe importer", "image/png", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The inside", nodes = ["server", "inside"], colour = "green" },
+    { label = "Outside", nodes = ["customer", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "gives an address", col = 0, row = 0, colour = "red", threats = ["T1"] },
+    { id = "server", label = "Store server", sub = "fetches addresses", col = 1, row = 0, colour = "client", threats = ["T1", "T2"] },
+    { id = "inside", label = "Metadata, admin pages", sub = "reachable from the server", col = 2, row = 0, colour = "green", shape = "store", threats = ["T3"] },
+    { id = "attacker", label = "Attacker's host and DNS", sub = "redirects and rebinding", col = 1, row = 1, colour = "red", threats = ["T2", "T4"] },
+]
+edges = [
+    { from = "customer", to = "server", label = "address", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "server", to = "inside", label = "request", threats = ["T3"] },
+    { from = "attacker", to = "server", label = "redirect, DNS answer", colour = "red", dashed = true, threats = ["T2", "T4"] },
+]
+
+[threatmodel]
+scope = """
+An online store's "import an image from an address" feature, and the network position of the server that runs it. It covers addresses, redirects and DNS answers.
+It does not cover the content of the fetched file, or other ways a server can be made to send requests.
+"""
+assets = [
+    "The server's cloud credentials from the metadata service.",
+    "Internal admin pages and services on the server and the office network.",
+    "The server's availability.",
+]
+actors = [
+    "A seller importing an image.",
+    "An attacker who controls an address, a web host and the DNS for a name.",
+]
+boundaries = [
+    "Customer to server: the address is untrusted.",
+    "Server to inside network: the server is trusted there, the customer is not.",
+]
+assumptions = [
+    "The server can reach internal addresses (that is why they are worth reaching).",
+    "The importer controls how it connects, so it can connect to a chosen address.",
+]
+out_of_scope = [
+    "Malicious file contents: the path-traversal-and-file-upload project.",
+    "Hardening the metadata service itself.",
+]
+tests = [
+    "`SsrfTest` checks each importer against each spelling and route, the address policy, URL parsing, redirects and rebinding.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, xml-and-template-injection, moves to the files and templates the server processes.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A customer makes the server request an internal address"
+where = "`NaiveImporter`, `BlocklistImporter`"
+control = "Resolve, then require a public address (`AddressPolicy`)"
+residual = "A bug in the policy's ranges; add network egress rules"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A redirect from an outside host points inside"
+where = "`SafeImporter` redirect loop"
+control = "Every redirect goes through the same checks; few hops"
+residual = "None known in the model"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "The server's credentials and settings are read through the import"
+where = "metadata address, localhost"
+control = "The import never connects there; the metadata service should also need a session token"
+residual = "An application with other server-side fetches that skip the checks"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "DNS gives a public answer for the check and a private one for the connection"
+where = "`Dns` (rebinding)"
+control = "Resolve once and connect to the checked address"
+residual = "A client library that resolves again by itself"

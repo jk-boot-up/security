@@ -5,6 +5,7 @@ framework comes straight after its plain version, so the idea comes first and th
 
 Every built project has the same parts: a README, runnable Java 25 code with tests, diagrams, a threat model, an animated walkthrough and a
 narrated video script. Start with the project's README, run `./gradlew run`, then read its `docs/` folder.
+The projects added most recently (from sql-injection onward in the intermediate track) have all of these parts except the narrated video and its script.
 
 Legend: **Plain** means written with the JDK only. **With tools** means the same idea using a library, framework or local tool.
 *Planned* projects are not built yet; *on hold* projects were started and set aside for now.
@@ -99,18 +100,18 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 42 | [broken-access-control](intermediate/web-security/broken-access-control) | Plain | Signed in is not the same as allowed | A01, API1, CWE-639, CWE-862 |
 | 43 | [broken-access-control-with-spring-security](intermediate/web-security/broken-access-control-with-spring-security) | With tools: spring security | A framework enforces exactly the rules it is given | A01, API1, CWE-639, CWE-862 |
-| 44 | sql-injection | Plain | *on hold* A product search built by string concatenation leaks every order; prepared statements, allow-listed sort columns, and a least-privilege database user | A05, CWE-89 |
+| 44 | [sql-injection](intermediate/web-security/sql-injection) | Plain | Text typed by a customer must never become code | A05, CWE-89 |
 | 45 | sql-injection-with-hibernate-and-postgres | With tools: hibernate and postgres | *planned*: JPQL, Criteria and native-query injection in Hibernate 7 against a real PostgreSQL | A05, CWE-89 |
 | 46 | [cross-site-scripting](intermediate/web-security/cross-site-scripting) | Plain | Text from a customer must stay text | A05, CWE-79 |
 | 47 | [cross-site-scripting-with-spring-boot](intermediate/web-security/cross-site-scripting-with-spring-boot) | With tools: spring boot | Let the template escape, and know the one switch that stops it | A05, CWE-79 |
 | 48 | [cross-site-request-forgery](intermediate/web-security/cross-site-request-forgery) | Plain | A cookie proves who is asking, not what they meant | A01, CWE-352 |
 | 49 | cross-site-request-forgery-with-spring-security | With tools: spring security | *on hold* CSRF tokens, the SPA cookie mode, and what disabling CSRF costs | A01, CWE-352 |
-| 50 | server-side-request-forgery | Plain | *on hold* "Import a product image from a URL" reaches the metadata address and internal services; allow-lists, checking the address after DNS resolution, and DNS rebinding | A01, CWE-918 |
+| 50 | [server-side-request-forgery](intermediate/web-security/server-side-request-forgery) | Plain | When the server fetches an address for a customer, it fetches it from inside | A01, CWE-918 |
 | 51 | server-side-request-forgery-with-spring-boot | With tools: spring boot | *planned*: `RestClient` with a guarded resolver, no redirects and egress limits | A01, CWE-918 |
-| 52 | xml-and-template-injection | Plain | *planned*: XXE in an invoice upload, and server-side template injection in an e-mail template; secure parser settings and logic-less templates | A05, CWE-611, CWE-1336 |
-| 53 | insecure-deserialization | Plain | *planned*: A cart cookie of Java serialized objects runs a gadget chain; `ObjectInputFilter` allow-lists and data-only formats | A08, CWE-502 |
+| 52 | [xml-and-template-injection](intermediate/web-security/xml-and-template-injection) | Plain | A file or a template is a program for its reader | A05, CWE-611, CWE-1336 |
+| 53 | [insecure-deserialization](intermediate/web-security/insecure-deserialization) | Plain | Rebuilding an object from bytes runs code the sender chose | A08, CWE-502 |
 | 54 | insecure-deserialization-with-jackson | With tools: jackson | *planned*: polymorphic typing traps in Jackson 3 | A08, CWE-502 |
-| 55 | path-traversal-and-file-upload | Plain | *planned*: Invoice downloads with `../`, uploads that overwrite files or carry scripts; canonical paths, generated names and storage outside the web root | A01, CWE-22, CWE-434, CWE-601 |
+| 55 | [path-traversal-and-file-upload](intermediate/web-security/path-traversal-and-file-upload) | Plain | A file name from a customer is a path until proven otherwise | A01, CWE-22, CWE-434, CWE-601 |
 | 56 | path-traversal-and-file-upload-with-spring-boot | With tools: spring boot | *planned*: multipart limits, content checks and an open-redirect check on the "return to" link | A01, CWE-22, CWE-434, CWE-601 |
 
 ### 2. secure-configuration: misconfiguration and exceptional conditions (OWASP A02, A10)
@@ -126,11 +127,11 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
-| 61 | api-security | Plain | *planned*: Mass assignment, excessive data exposure, unlimited page sizes and missing rate limits in a bank API; explicit request and response models, and budgets | API3, API4, API6 |
+| 61 | [api-security](intermediate/api-security/api-security) | Plain | An API owes its callers three limits: what they may set, what they may see, and how much they may ask for | API3, API4, API6 |
 | 62 | api-security-with-spring-boot-and-redis | With tools: spring boot and redis | *planned*: validation, response shaping and a Redis-backed rate limiter | API3, API4, API6 |
 | 63 | [session-management](intermediate/api-security/session-management) | Plain | A session id is a password that the server hands out | A07, CWE-384 |
 | 64 | session-management-with-spring-session-and-redis | With tools: spring session and redis | *planned*: sessions in Redis and limits on concurrent sessions | A07, CWE-384 |
-| 65 | cors | Plain | *planned*: Reflected origins, the `null` origin and credentials expose a bank API to any site; an exact allow-list | A02, CWE-942 |
+| 65 | [cors](intermediate/api-security/cors) | Plain | CORS decides who may read an answer, not who may send a request | A02, CWE-942 |
 | 66 | cors-with-spring-boot | With tools: spring boot | *planned*: Spring's CORS configuration, done right and done wrong | A02, CWE-942 |
 | 67 | [webhook-security](intermediate/api-security/webhook-security) | Plain | A message to a public address proves nothing until it is verified | API8, API10, CWE-345 |
 
@@ -142,27 +143,27 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 69 | jwt-done-right-with-nimbus-jose-jwt | With tools: nimbus jose jwt | *planned*: the same checks with a standard library and a JWKS endpoint | A07, CWE-347 |
 | 70 | [oauth2-authorization-code-pkce](intermediate/identity-and-access/oauth2-authorization-code-pkce) | Plain | Give an app access without giving it your password | RFC 9700, A07 |
 | 71 | oauth2-authorization-code-pkce-with-keycloak | With tools: keycloak | *planned*: the same flow against a real authorization server | RFC 9700, A07 |
-| 72 | openid-connect | Plain | *planned*: ID tokens and access tokens, `nonce`, discovery, userinfo and logout | A07 |
+| 72 | [openid-connect](intermediate/identity-and-access/openid-connect) | Plain | Access is not identity | A07 |
 | 73 | openid-connect-with-spring-security-and-keycloak | With tools: spring security and keycloak | *planned*: OIDC login in Spring Boot, with back-channel logout | A07 |
-| 74 | tokens-in-the-browser | Plain | *planned*: Why a single-page app should not hold tokens: the backend-for-frontend pattern with a session cookie, and sender-constrained tokens (DPoP) | OAuth for browser-based apps, RFC 9449 |
+| 74 | [tokens-in-the-browser](intermediate/identity-and-access/tokens-in-the-browser) | Plain | A token a script can read is a token an attacker can take | OAuth for browser-based apps, RFC 9449 |
 | 75 | tokens-in-the-browser-with-spring-boot | With tools: spring boot | *planned*: a small BFF in front of the bank API | OAuth for browser-based apps, RFC 9449 |
 | 76 | [passkeys](intermediate/identity-and-access/passkeys) | Plain | A key that only signs for the real site | A07, NIST SP 800-63B |
 | 77 | passkeys-with-spring-security | With tools: spring security | *planned*: passkey registration and login with Spring Security's WebAuthn support | A07, NIST SP 800-63B |
-| 78 | saml-basics | Plain | *planned*: Assertions, signatures and signature-wrapping attacks on a small XML signer: why legacy single sign-on needs care | A07, CWE-347 |
+| 78 | [saml-basics](intermediate/identity-and-access/saml-basics) | Plain | A valid signature is not the same as the statement you believed | A07, CWE-347 |
 | 79 | saml-basics-with-keycloak | With tools: keycloak | *planned*: a SAML service provider against Keycloak | A07, CWE-347 |
 
 ### 5. tls-in-practice
 
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
-| 80 | local-certificate-authority | Plain | *planned*: A small CA in Java: issue, renew, revoke and publish a CRL, with short-lived certificates as the alternative to revocation | A04 |
+| 80 | [local-certificate-authority](intermediate/tls-in-practice/local-certificate-authority) | Plain | A certificate is a signed claim about a name, and revocation is only as good as the list the client has | A04 |
 | 81 | local-certificate-authority-with-step-ca | With tools: step ca | *planned*: a local step-ca with ACME and automatic renewal | A04 |
 | 82 | tls-servers-in-practice-with-nginx-and-caddy | With tools: nginx and caddy | *planned*: the same shop behind nginx and Caddy, automatic HTTPS from the local CA, HSTS and OCSP stapling | A02, A04 |
-| 83 | tls-misconfigurations | Plain | *planned*: A checker for weak protocols, weak ciphers, missing names, expired and incomplete chains | A02, A04 |
+| 83 | [tls-misconfigurations](intermediate/tls-in-practice/tls-misconfigurations) | Plain | A server's TLS is a set of choices, and a checker can read all of them | A02, A04 |
 | 84 | tls-misconfigurations-with-testssl | With tools: testssl | *planned*: testssl.sh against deliberately misconfigured local servers | A02, A04 |
-| 85 | inspecting-tls-traffic | Plain | *planned*: `SSLKEYLOGFILE` from a Java client, and what a key log gives away | A04 |
+| 85 | [inspecting-tls-traffic](intermediate/tls-in-practice/inspecting-tls-traffic) | Plain | A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral | A04 |
 | 86 | inspecting-tls-traffic-with-wireshark | With tools: wireshark | *planned*: decrypting a local capture with tshark | A04 |
-| 87 | certificate-pinning | Plain | *planned*: Pinning a public key in a mobile-style Java client, backup pins, and the outage a pin causes when keys rotate: why browsers dropped it | A04, CWE-295 |
+| 87 | [certificate-pinning](intermediate/tls-in-practice/certificate-pinning) | Plain | A pin trusts one key instead of every authority, and the price is paid on the day the key changes | A04, CWE-295 |
 
 ### 6. secure-coding
 
@@ -172,9 +173,9 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 89 | input-validation-with-hibernate-validator | With tools: hibernate validator | *planned*: Jakarta Validation constraints, groups and custom validators | A05, CWE-20, CWE-1333 |
 | 90 | [race-conditions-and-business-logic](intermediate/secure-coding/race-conditions-and-business-logic) | Plain | Correct one at a time is not correct at the same time | A06, CWE-362, CWE-840 |
 | 91 | race-conditions-and-business-logic-with-postgres | With tools: postgres | *planned*: row locks, isolation levels and optimistic locking with Hibernate | A06, CWE-362, CWE-840 |
-| 92 | secrets-in-errors-and-logs | Plain | *planned*: Stack traces, tokens and card numbers that leak through errors and logs; safe messages, redaction and log injection | A09, CWE-209, CWE-532, CWE-117 |
+| 92 | [secrets-in-errors-and-logs](intermediate/secure-coding/secrets-in-errors-and-logs) | Plain | A log is a second database that nobody protects | A09, CWE-209, CWE-532, CWE-117 |
 | 93 | secrets-in-errors-and-logs-with-logback | With tools: logback | *planned*: masking patterns and structured JSON logs | A09, CWE-209, CWE-532, CWE-117 |
-| 94 | fuzzing | Plain | *planned*: Feeding a parser random and mutated input until it breaks, and turning each crash into a regression test | SSDF PW.8 |
+| 94 | [fuzzing](intermediate/secure-coding/fuzzing) | Plain | Let the machine try the inputs nobody thought of | SSDF PW.8 |
 | 95 | fuzzing-with-jazzer | With tools: jazzer | *planned*: coverage-guided fuzzing of the store's parsers with Jazzer and JUnit | SSDF PW.8 |
 
 ### 7. secrets-and-supply-chain (OWASP A03, A08; SLSA)
@@ -185,18 +186,18 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 97 | secrets-management-with-openbao | With tools: openbao | *planned*: dynamic database credentials with leases from a local OpenBao | A02, CWE-798 |
 | 98 | [artifact-signing](intermediate/secrets-and-supply-chain/artifact-signing) | Plain | Run only what the release team signed, and only what the world can see they signed | A08, SLSA |
 | 99 | artifact-signing-with-cosign | With tools: cosign | *planned*: signing a container image and refusing an unsigned one | A08, SLSA |
-| 100 | sbom-and-provenance | Plain | *planned*: A bill of materials and a provenance statement for a build, and checking them before deploying | A03, SLSA, SSDF |
+| 100 | [sbom-and-provenance](intermediate/secrets-and-supply-chain/sbom-and-provenance) | Plain | Know what is inside a release, and prove where it came from | A03, SLSA, SSDF |
 | 101 | sbom-and-provenance-with-syft-and-grype | With tools: syft and grype | *planned*: generating and scanning the SBOM of a local image | A03, SLSA, SSDF |
-| 102 | dependency-confusion | Plain | *planned*: A private package name that a public repository can shadow; repository order, scoping and verification | A03, CWE-427 |
+| 102 | [dependency-confusion](intermediate/secrets-and-supply-chain/dependency-confusion) | Plain | If a build can find your private name in a public place, someone else will put a package there | A03, CWE-427 |
 | 103 | dependency-confusion-with-gradle | With tools: gradle | *planned*: repository content filtering and dependency verification | A03, CWE-427 |
 
 ### 8. platform-hardening
 
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
-| 104 | linux-hardening | Plain | *planned*: A Java checker for risky permissions, world-writable paths, SUID files, listening ports and default accounts, run against a prepared container | CIS Benchmarks |
+| 104 | [linux-hardening](intermediate/platform-hardening/linux-hardening) | Plain | Most host compromises begin with a setting that nobody looked at | CIS Benchmarks |
 | 105 | linux-hardening-with-docker | With tools: docker | *planned*: the same checks against a hardened image | CIS Benchmarks |
-| 106 | container-hardening | Plain | *planned*: What a compromised process can reach as root, with all capabilities, a writable file system and no limits | CIS Docker and Kubernetes Benchmarks |
+| 106 | [container-hardening](intermediate/platform-hardening/container-hardening) | Plain | Assume the process is taken over, and ask what it can reach | CIS Docker and Kubernetes Benchmarks |
 | 107 | container-hardening-with-docker-and-kind | With tools: docker and kind | *planned*: non-root, read-only, dropped capabilities, seccomp, and Pod Security Standards on kind | CIS Docker and Kubernetes Benchmarks |
 
 ### 9. detection-and-response (OWASP A09; NIST CSF 2.0)
@@ -205,9 +206,9 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 108 | [security-logging](intermediate/detection-and-response/security-logging) | Plain | A log is only useful if it can answer who did it, and only safe if it holds no secrets | A09, ASVS V16 |
 | 109 | security-logging-with-loki-and-grafana | With tools: loki and grafana | *planned*: shipping, querying and alerting locally | A09, ASVS V16 |
-| 110 | detecting-attacks | Plain | *planned*: Detection rules over a log stream: password spraying, impossible travel, privilege changes, and measuring false positives | A09, CSF Detect |
+| 110 | [detecting-attacks](intermediate/detection-and-response/detecting-attacks) | Plain | A detection rule is a hypothesis about an attacker, and it must be measured against a normal day | A09, CSF Detect |
 | 111 | detecting-attacks-with-opensearch | With tools: opensearch | *planned*: the same detections as saved queries and alerts | A09, CSF Detect |
-| 112 | incident-response | Plain | *on hold* A simulated breach timeline: prepare, detect, contain, eradicate, recover and learn, and the evidence each step needs | CSF Respond, NIST SP 800-61 |
+| 112 | [incident-response](intermediate/detection-and-response/incident-response) | Plain | The outcome of an incident is mostly decided before it starts, and by the order of the first hour | CSF Respond, NIST SP 800-61 |
 
 ### 10. secure-design (OWASP A06; SSDF)
 
@@ -215,7 +216,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 113 | [threat-modeling](intermediate/secure-design/threat-modeling) | Plain | Find the threats on paper, before an attacker finds them in production | A06, SSDF PW.1 |
 | 114 | threat-modeling-with-pytm | With tools: pytm | *planned*: the same model in pytm, with generated diagrams and reports | A06, SSDF PW.1 |
-| 115 | attack-trees-and-abuse-cases | Plain | *planned*: Attack trees with costs and likelihoods, abuse cases written as failing tests, and which defence cuts the cheapest path | A06 |
+| 115 | [attack-trees-and-abuse-cases](intermediate/secure-design/attack-trees-and-abuse-cases) | Plain | Draw how the attacker wins, price each step, then cut the cheapest path and look again | A06 |
 | 116 | attack-trees-and-abuse-cases-with-threat-dragon | With tools: threat dragon | *planned*: the store model in OWASP Threat Dragon | A06 |
 | 117 | [security-requirements-with-asvs](intermediate/secure-design/security-requirements-with-asvs) | Plain | Turn a verification standard into requirements that check themselves | ASVS 5.0 |
 

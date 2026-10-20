@@ -1,0 +1,397 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "detecting-attacks"
+level = "intermediate"
+module = "detection-and-response"
+title = "Detecting Attacks in Logs"
+short_title = "Detecting Attacks"
+package = "detect"
+main_class = "DetectionDemo"
+tagline = "A detection rule is a hypothesis about an attacker, and it must be measured against a normal day"
+bold = "Logs only help if rules turn them into alerts: brute force, password spraying, impossible travel, takeover and privilege changes each need a rule, and each rule must be measured against a normal day of the same logs, because a threshold that catches the attack and buries the analyst in false alarms is not detection."
+domain = "a company's sign-in and admin logs"
+domain_note = ""
+youtube_description = "Detection rules over a log stream in Java: brute force, password spraying, impossible travel, takeover and privilege change, with precision measured against a synthetic day."
+thumb_lines = ["DETECTING", "ATTACKS IN LOGS"]
+thumb_code = "5 rules, 9 alerts, 1 false"
+youtube_title = "Detecting Attacks in Logs: Rules, Thresholds and False Positives (Java)"
+youtube_tags = ["detection engineering", "password spraying", "impossible travel", "siem", "false positives", "java", "application security"]
+
+[readme]
+intro = """
+Logging records what happened. **Detection** decides which of it is an attack. The two are different jobs: a log with every event and no rules is a library no one reads. This project writes five **detection rules** over the sign-in and admin events of a company with 200 accounts, runs them on one
+synthetic Monday that contains both ordinary behaviour and four real attacks, and *measures* them, because a rule is only as good as the alerts it produces on a normal day.
+
+The rules, each a hypothesis about an attacker:
+- **Brute force:** at least N failed logins for one account within five minutes. Someone is guessing that account's password.
+- **Password spraying:** failures against many *different* accounts from one address. The attacker tries one or two common passwords per account, so the per-account rule never fires. The rule counts accounts per address.
+- **Impossible travel:** two successful logins by one account from places that no aeroplane connects in that time. Needs a list of the VPN's addresses, which otherwise look like the VPN's city.
+- **Success after failures:** a success from an address that has just failed repeatedly and has never succeeded for that account before: the guesses worked.
+- **Privilege change:** the admin role granted by someone who is not an approver, or without a change ticket.
+
+The day has the usual noise: typing mistakes, two people back from holiday who forget their passwords, five staff on the VPN, a break-glass admin grant at 3 a.m., and a phone whose carrier address is placed in the wrong city. The scoring compares every alert with ground truth: true positives, false positives and which attacks were noticed at all.
+
+**Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · NIST CSF Detect (DE.CM, DE.AE) · MITRE ATT&CK T1110 (brute force, including password spraying) and T1078 (valid accounts) · OWASP ASVS 5.0, the logging and monitoring chapter.
+"""
+analogy = """
+A night guard watching one hundred doors. A rule that rings an alarm at every rattled handle will ring all night and be switched off; a rule that waits for three handles on the same door in a minute, and ignores the cleaners' door, rings rarely and means it.
+The guard's value is the alarms people act on, not the doors watched.
+"""
+scenario = """
+One Monday of logs for a company with 200 accounts: 768 logins and 4 role grants, 113 events of which belong to four attacks (spraying, brute force, impossible travel, privilege change). The data is synthetic and generated with a fixed random seed, so every run is the same and the ground truth is known.
+"""
+costs = [
+    "**Every threshold is a trade.** Lower finds more attacks and more noise; higher is quiet and blind. The right value depends on your normal day, which is why you measure.",
+    "**Allow-lists need owners.** A VPN address list that is not kept up to date silently turns the rule off, or turns it back into noise.",
+    "**Context cuts false positives most:** knowing an account's usual addresses, roles and change tickets (the history and ticket data here) is worth more than a smarter threshold.",
+    "**Some false positives are healthy.** A break-glass grant should alert; it is a false positive for an attack and a true positive for a review.",
+    "**Attackers adapt.** Low and slow guessing, residential proxies near the victim, and logins at the victim's usual hours defeat simple rules, so rules need layers and review.",
+]
+too_much = """
+Do not write a hundred rules before the first ten are tuned and owned. Start with the attacks that matter to your system, measure each rule on a week of real logs, and keep a short list that people trust. A rules engine, a SIEM or an OpenSearch alert is where these rules run in production.
+"""
+met_before = [
+    "SIEM correlation rules and \"detection as code\" repositories (Sigma rules).",
+    "Cloud sign-in alerts such as \"unfamiliar sign-in properties\" and \"atypical travel\".",
+    "Account lockout, which stops brute force but is itself a denial of service for spraying.",
+    "MITRE ATT&CK technique pages for brute force and valid accounts.",
+]
+where = """
+This project is in [detection-and-response](..) and builds on [security-logging](../security-logging), which makes the events these rules read. The with-OpenSearch version expresses the same rules as saved queries and alerts. The next project, incident-response, takes over when an alert is real.
+"""
+twin = """
+The events are objects, the rules are classes with sliding windows, and the scenario is generated by a seeded random generator, so the ground truth is exact. The rules are written the way a detection engineer would write them, and could be translated to queries. Nothing reads real logs.
+"""
+test_note = "The day of logs is synthetic with a fixed seed, so the demo prints the same text on every run."
+
+[[act]]
+title = "One Monday of logs"
+summary = "772 events: 768 logins and 4 role grants; 113 of them belong to 4 real attacks (spraying, brute force, impossible travel, privilege change)."
+detail = """
+The log is a normal Monday with 200 accounts, plus four attacks that the scoring knows about: password spraying from one address against forty accounts (one guess works), thirty guesses at one account in four minutes followed by a success, a valid login from Sydney twenty-five minutes after one in Paris, and the compromised account making itself an administrator.
+"""
+speech = """
+First demo: one Monday of logs. [[slnc 400]] Seven hundred and seventy two events. [[slnc 300]] Two hundred accounts, ordinary logins, some typing mistakes, a few admin grants. [[slnc 600]]
+And four real attacks hidden in it, which the scoring knows about and the rules do not.
+"""
+rows = { day = "active ok" }
+console = [
+    ["772 events: 768 logins, 4 role grants; 113 of them belong to 4 real attacks", "muted"],
+    ["A: spraying, B: brute force, C: impossible travel, D: privilege change", "muted"],
+]
+
+[[act]]
+title = "A first version of each rule"
+summary = "The first versions notice all four attacks but raise 29 alerts, 21 of them false: impossible travel flags the VPN, success-after-failures flags every typo."
+detail = """
+With a brute-force threshold of three failures, an impossible-travel rule that knows nothing of the VPN, and a takeover rule that fires on a single failure before a success, the rules do see the attacks. They also produce a lot of alerts a person would have to read: the five VPN users and the phone with a wrong location,
+two people who forgot their passwords, ordinary typing mistakes. The analyst who gets twenty-nine alerts, most of them false, soon stops reading them.
+"""
+speech = """
+Second demo: a first version of each rule. [[slnc 400]] They notice the attacks. [[slnc 300]] They also raise twenty nine alerts, and most are false. [[slnc 600]]
+The VPN users look like they teleport. [[slnc 300]] Every typing mistake looks like a takeover. [[slnc 300]] An analyst who reads twenty nine alerts a day soon stops reading them.
+"""
+rows = { first = "active wrong" }
+console = [
+    ["brute-force(3)  3 alerts, 1 true, 2 false", "amber"],
+    ["impossible-travel  14 alerts, 3 true, 11 false", "bad"],
+    ["success-after-failures  9 alerts, 2 true, 7 false", "bad"],
+    ["spraying(8) 1 alert, 1 true; privilege-change 2 alerts, 1 true, 1 false", "amber"],
+]
+
+[[act]]
+title = "Tuning one threshold"
+summary = "Brute-force thresholds of 3 and 5 raise 2 false alarms (two people who forgot their password); 10 and 25 catch the attack with none; 40 misses it."
+detail = """
+The two false alarms at a threshold of 3 or 5 are the people back from holiday, who fail six times in three minutes. At 10 and 25 the rule catches the attacker's thirty guesses and nothing else. At 40 the rule is quiet and blind: the attack never reaches the threshold. The
+right threshold sits between the worst normal day and the weakest attack you care about, and it is a measurement, not a guess. A real attacker may go slower than five minutes, which is what the other rules and a rate limit are for.
+"""
+speech = """
+Third demo: tuning one threshold. [[slnc 400]] At three or five failures, two false alarms: people who forgot their password after a holiday. [[slnc 600]]
+At ten or twenty five, the attack is caught and nothing else. [[slnc 300]] At forty, the rule is quiet, and blind. [[slnc 600]]
+The right threshold sits between the worst normal day and the weakest attack you care about.
+"""
+rows = { tune = "active amber" }
+console = [
+    ["brute-force(3)  3 alerts, 1 true, 2 false", "amber"],
+    ["brute-force(10) 1 alert, 1 true, 0 false", "ok"],
+    ["brute-force(40) 0 alerts: the attack is missed", "bad"],
+]
+
+[[act]]
+title = "The tuned set, and what it tells the analyst"
+summary = "Five tuned rules give 9 alerts for the day, 7 true and 2 false, and every attack (A, B, C, D) is noticed; the false ones are a break-glass admin grant and a phone placed in the wrong city."
+detail = """
+The tuned rules use a threshold of 10 for brute force, eight distinct accounts for spraying, the VPN address list for travel, a change ticket and a list of approvers for admin grants, and each account's usual addresses for the takeover rule. Together they raise nine alerts: seven true and two false.
+The false ones are explainable and healthy: the 3 a.m. break-glass admin grant that should be reviewed anyway, and a phone whose carrier address a geolocation database places in Frankfurt. All four attacks are noticed, some by more than one rule (the spraying success is seen by the spraying rule, the impossible-travel rule and the privilege-change rule).
+"""
+speech = """
+Fourth demo: the tuned set. [[slnc 400]] Nine alerts for the day. [[slnc 300]] Seven are real. [[slnc 300]] Two are not: an emergency admin grant, which should be reviewed anyway, and a phone placed in the wrong city. [[slnc 600]]
+All four attacks are noticed, some of them by more than one rule. [[slnc 300]] An analyst can read nine alerts.
+"""
+rows = { tuned = "active ok" }
+console = [
+    ["together: 9 alerts for the day, 7 true, 2 false; attacks noticed: [A, B, C, D] of [A, B, C, D]", "ok"],
+    ["03:00 privilege-change  admin granted to u060 by ops1, no ticket   <- FALSE POSITIVE", "amber"],
+    ["10:02 spraying(8)  8 different accounts failed from 203.0.113.50 within 20 minutes", "ok"],
+    ["10:40 privilege-change  admin granted to u117 by u117 (not an approver), no ticket", "ok"],
+    ["15:25 impossible-travel+vpn-list  Madrid to Sydney, 17685 km in 25 minutes", "ok"],
+]
+
+[animation]
+subtitle = "A day of logs, five rules, and the alerts an analyst can actually read."
+boxes = [
+    ["day", "A day of logs", "normal noise and four attacks"],
+    ["first", "First versions", "29 alerts, 21 false"],
+    ["tune", "Tuning", "a threshold is a measurement"],
+    ["tuned", "The tuned set", "9 alerts, 7 true, all attacks found"],
+]
+
+[docs.problem]
+scenario = """
+A company logs every sign-in and admin change, and has no one who reads the logs. It wants alerts for the attacks that matter and few enough that they will be read.
+"""
+naive = """
+Alert on every failed login, every login from a new place and every role change.
+"""
+deliver = [
+    "A synthetic day of logs with ground truth: noise, four attacks and the usual look-alikes.",
+    "Five rules: brute force, spraying, impossible travel, success after failures and privilege change.",
+    "Scoring: alerts, true and false positives and attacks noticed, per rule.",
+    "A tuning experiment and a tuned rule set.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The security-logging project, or an idea of audit events",
+]
+not_required = [
+    "A SIEM or OpenSearch",
+    "Statistics",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what each rule assumes about an attacker",
+    "say why password spraying escapes a per-account rule",
+    "choose a threshold by looking at the normal day and the attack",
+    "name the context that removes false positives better than thresholds",
+]
+walkthrough = """
+Run act two and ask which alerts a person would actually read. In act three, ask what the right threshold would be if the attacker went ten times slower. In act four, ask whether the two false alerts should be removed from the rule or left in.
+"""
+exercises = [
+    "Add a rule for a login from a country the account has never used, and measure it on the day.",
+    "Add a low-and-slow brute-force variant with a one-hour window, and see what it costs in false positives.",
+    "Add an off-hours admin login rule, and decide how to treat the break-glass account.",
+    "Write the spraying rule as a query over a log store with a group-by.",
+]
+
+[docs.explained]
+sentence = """
+Detection turns logs into a few alerts that people trust, so write each rule as a hypothesis about an attacker, measure it against a normal day, add context to remove the false positives, and review what it misses.
+"""
+verdict = """
+Start from the attacks that matter, write one rule for each, measure every rule on real logs before enabling it, keep allow-lists and thresholds owned and reviewed, send alerts to somebody who acts on them, and test the rules with replayed attacks.
+"""
+recognise = [
+    "Sigma rules and SIEM correlation searches.",
+    "Cloud \"impossible travel\" and \"unfamiliar sign-in\" alerts.",
+    "ATT&CK technique IDs T1110 and T1078 in detection documentation.",
+    "Alert fatigue as a finding in an incident review.",
+]
+
+[spec]
+purpose = """
+Teach detection engineering by writing five rules over a synthetic day of sign-in and admin logs, scoring them against ground truth, tuning a threshold, and arriving at a rule set whose alerts an analyst can read.
+"""
+nongoals = [
+    "A SIEM, streaming or storage: the detecting-attacks-with-opensearch project.",
+    "Machine-learning detection.",
+    "Responding to alerts: the incident-response project.",
+]
+problem = """
+Logs are kept and never turned into alerts, or turned into so many alerts that nobody reads them.
+"""
+roles = [["Data", "`Event`, `City`, `Scenario`"], ["Rules", "`Rule`, `BruteForceRule`, `SprayingRule`, `ImpossibleTravelRule`, `TakeoverRule`, `PrivilegeChangeRule`"], ["Results", "`Alert`, `Score`"], ["Entry point", "`DetectionDemo`"]]
+requirements = [
+    "Each rule fires on its attack in a hand-made log and not on its near misses.",
+    "The scenario is repeatable and contains four attacks with ground truth.",
+    "First versions notice the attacks with many false alerts; tuning removes them; a threshold above the attack misses it.",
+    "The tuned set notices all four attacks with 9 alerts, 7 of them true.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "From events to alerts"
+caption = "Rules read the event stream and produce alerts that an analyst can act on."
+nodes = [
+    { id = "events", label = "Event stream", sub = "logins, role grants", col = 0, row = 0, colour = "client", shape = "store" },
+    { id = "rules", label = "Rules", sub = "windows, thresholds, allow-lists", col = 1, row = 0, colour = "accent" },
+    { id = "alerts", label = "Alerts", sub = "with the events behind them", col = 2, row = 0, colour = "amber" },
+    { id = "analyst", label = "Analyst", sub = "reads nine, not nine hundred", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "events", to = "rules" },
+    { from = "rules", to = "alerts" },
+    { from = "alerts", to = "analyst" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Every rule has the same shape; the score compares alerts with ground truth."
+nodes = [
+    { id = "rule", label = "Rule", sub = ["name()", "evaluate(log)"], col = 0, row = 0, colour = "accent" },
+    { id = "bf", label = "BruteForceRule, SprayingRule", sub = ["windows per account / address"], col = 1, row = 0, colour = "client" },
+    { id = "it", label = "ImpossibleTravelRule, TakeoverRule", sub = ["allow-list, history"], col = 2, row = 0, colour = "client" },
+    { id = "pc", label = "PrivilegeChangeRule", sub = ["approvers, tickets"], col = 0, row = 1, colour = "client" },
+    { id = "alert", label = "Alert", sub = ["rule", "subject", "evidence"], col = 1, row = 1, colour = "amber" },
+    { id = "score", label = "Score", sub = ["alerts", "truePositives", "attacksDetected"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "bf", to = "rule", label = "implements" },
+    { from = "it", to = "rule", label = "implements" },
+    { from = "pc", to = "rule", label = "implements" },
+    { from = "rule", to = "alert", label = "produces" },
+    { from = "score", to = "alert", label = "judges" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "Why one rule is not enough"
+caption = "Each attack leaves a different trace."
+nodes = [
+    { id = "bf", label = "Brute force", sub = "many failures, one account", col = 0, row = 0, colour = "red" },
+    { id = "spray", label = "Spraying", sub = "few failures, many accounts", col = 1, row = 0, colour = "red" },
+    { id = "travel", label = "Stolen credentials", sub = "a login from far away", col = 2, row = 0, colour = "red" },
+    { id = "priv", label = "After access", sub = "admin granted without a ticket", col = 3, row = 0, colour = "red" },
+]
+edges = [
+    { from = "bf", to = "spray", label = "evades per-account limits" },
+    { from = "spray", to = "travel", label = "one guess works" },
+    { from = "travel", to = "priv", label = "persistence" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Password spraying"
+participants = ["Attacker (one address)", "Accounts", "Spraying rule"]
+steps = [
+    ["Attacker (one address)", "Accounts", "2 guesses each against 40 accounts"],
+    ["Accounts", "Spraying rule", "40 accounts failed from one address"],
+    ["note", "Spraying rule", "8 distinct accounts within 20 minutes"],
+    ["Spraying rule", "Attacker (one address)", "alert at 10:02", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Impossible travel"
+participants = ["Account", "Travel rule"]
+steps = [
+    ["Account", "Travel rule", "login from Madrid at 15:00"],
+    ["Account", "Travel rule", "login from Sydney at 15:25"],
+    ["note", "Travel rule", "17685 km in 25 minutes"],
+    ["Travel rule", "Account", "alert (VPN addresses are skipped)", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Measuring a rule"
+participants = ["Scenario", "Rule", "Score"]
+steps = [
+    ["Scenario", "Rule", "a day of events (with hidden attack labels)"],
+    ["Rule", "Score", "alerts with their evidence"],
+    ["Score", "Score", "true: evidence holds an attack event; false: it does not"],
+    ["Score", "Scenario", "which attacks were noticed", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The company", nodes = ["logs", "rules", "analyst"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "guesses, sprays, uses stolen credentials", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "logs", label = "Audit log", sub = "events", col = 1, row = 0, colour = "client", shape = "store", threats = ["T2"] },
+    { id = "rules", label = "Detection rules", sub = "thresholds, allow-lists", col = 2, row = 0, colour = "amber", threats = ["T1", "T3"] },
+    { id = "analyst", label = "Analyst", sub = "limited attention", col = 3, row = 0, colour = "green", threats = ["T3"] },
+]
+edges = [
+    { from = "attacker", to = "logs", label = "leaves traces", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "logs", to = "rules" },
+    { from = "rules", to = "analyst", label = "alerts", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Rules that read sign-in and admin events. It covers detecting credential attacks and privilege changes and the cost of false alarms.
+It does not cover how logs are collected and protected, or what the company does after an alert.
+"""
+assets = [
+    "Accounts, especially administrators.",
+    "The analyst's time and trust in the alerts.",
+]
+actors = [
+    "An attacker guessing, spraying or using stolen credentials.",
+    "A detection engineer who writes and tunes rules.",
+    "An analyst who reads alerts.",
+]
+boundaries = [
+    "The log: events that were not written cannot be detected.",
+    "Rule configuration: thresholds and allow-lists can be set so that the rule never fires.",
+]
+assumptions = [
+    "The log is complete and its timestamps are right.",
+    "The ground truth in the synthetic day is the same kind of attack as real ones.",
+]
+out_of_scope = [
+    "Attacks that leave no sign-in or admin events.",
+    "Response: incident-response.",
+]
+tests = [
+    "`DetectionTest` checks each rule on hand-made logs with their near misses, the shape of the synthetic day, the tuned set's numbers, the effect of thresholds and the allow-list, and the scoring rule.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, incident-response, picks up when an alert is real: how an organisation contains, removes and learns from an attack.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "Guessing and spraying find a valid credential"
+where = "`BruteForceRule`, `SprayingRule`, `TakeoverRule`"
+control = "Rules by account, by address and on success after failures; rate limits and multi-factor"
+residual = "Low and slow guessing from many addresses"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A valid credential or stolen session is used from far away, and the account is made an administrator"
+where = "`ImpossibleTravelRule`, `PrivilegeChangeRule`"
+control = "Travel rule with a VPN list; admin grants need an approver and a ticket"
+residual = "An attacker who logs in from near the victim"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "Alert fatigue and a stale allow-list make real alerts get ignored"
+where = "Thresholds, allow-lists, the analyst"
+control = "Measure each rule on a normal day, own and review the lists, keep the alert count readable"
+residual = "Tuning that is never revisited"

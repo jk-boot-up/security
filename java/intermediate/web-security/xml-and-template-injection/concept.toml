@@ -1,0 +1,430 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "xml-and-template-injection"
+level = "intermediate"
+module = "web-security"
+title = "XML External Entities and Template Injection"
+short_title = "XXE and Template Injection"
+package = "xmlinj"
+main_class = "XmlTemplateDemo"
+tagline = "A file or a template is a program for its reader"
+bold = "An XML parser and a template engine both run instructions found in their input, so an invoice upload can read the server's files and a customer's name can run inside an e-mail template, unless the parser refuses a DOCTYPE and the engine has no expressions."
+domain = "an online store"
+domain_note = ""
+youtube_description = "XML external entities and server-side template injection, in Java."
+thumb_lines = ["XXE AND TEMPLATE", "INJECTION"]
+thumb_code = "disallow-doctype-decl"
+youtube_title = "XXE and Template Injection in Java"
+youtube_tags = ["xxe", "xml external entity", "ssti", "template injection", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+Two features of a store look like plain data handling: an **invoice upload** in XML and an **e-mail template** with the customer's name in it. Both are read by
+software that runs instructions it finds. An XML file may begin with a **DOCTYPE** that defines an *external entity*, a name whose value is fetched from a file or an address
+on the **server**: that is **XML external entity injection (XXE)**. A template engine that evaluates expressions runs whatever the template says: when the customer's text
+becomes part of the template, that is **server-side template injection (SSTI)**.
+
+The defences, in the order this project shows them:
+- **Refuse the DOCTYPE** in documents that have no use for one, and switch off external DTDs, schemas, XInclude and entity expansion as extra layers.
+- **Limit the size** of an upload before parsing it.
+- **Logic-less templates:** only named, escaped values; no expressions, no reflection, one pass over the template.
+- **Never build a template from customer text.** Pass it in as data.
+
+**Maps to:** OWASP Top 10 (2025) A05 Injection and A02 Security Misconfiguration · CWE-611 · CWE-1336 · OWASP ASVS 5.0, the validation and encoding chapters.
+"""
+analogy = """
+Think of an assistant who types up whatever a letter says to do. A letter that says "enclose a copy of the file in the top drawer" gets the file enclosed, and a form letter
+whose blanks are filled by the customer can be made to say "and read out the safe's code". The fix is an assistant who types up the letter and does not follow it, and a form that has
+blanks only for names.
+"""
+scenario = """
+An online store accepts supplier invoices as XML and sends customers e-mails from templates. The demo uses the JDK's real XML parser against a temporary file that stands for a
+server file, and a small template engine written for the purpose. All secrets are harmless markers.
+"""
+costs = [
+    "**Some XML really needs a DOCTYPE.** Document formats such as XHTML or old SOAP services do; they need a parser configured with entity resolution that is limited by hand.",
+    "**Parser settings differ between libraries,** and defaults change between versions. The safe settings must be written down and tested for every parser the project uses.",
+    "**Logic-less templates are less convenient.** Loops and formatting move into code that prepares the data.",
+    "**Escaping depends on the place** where the value ends up (HTML text, an attribute, a URL), and the right escaper must be chosen for each.",
+    "**Template authors are trusted people.** If customers must write templates, run them in a sandbox with no access to objects at all.",
+]
+too_much = """
+If the invoice can be JSON, use JSON: it has no entities. If the e-mail text never changes, use a plain text file with named holes.
+Do not write a filter for the string `<!ENTITY`; there are many ways to spell it, and refusing the DOCTYPE in the parser settles the question.
+"""
+met_before = [
+    "`DocumentBuilderFactory`, `SAXParserFactory` and `XMLInputFactory` in every Java XML import.",
+    "`<!DOCTYPE foo [ <!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>` in every list of attack strings.",
+    "`${7*7}` and `{{7*7}}` as the first probe in a template injection test.",
+    "A finding titled \"XML External Entity\" with CWE-611 or \"Server-Side Template Injection\" with CWE-1336.",
+]
+where = """
+This project is in [web-security](..) and follows [server-side-request-forgery](../server-side-request-forgery): an external entity can also fetch an address,
+so XXE is one more way to make the server send a request.
+"""
+twin = """
+The XML parser is the JDK's own, so the XXE result is real: the file the entity names is a temporary file the demo writes and deletes, and its name is never printed.
+The template engines are small classes in this project; one evaluates `${a.b.c}` by reflection, as some real engines do, and one does not.
+"""
+test_note = "The temporary file's name is random and never printed, so the demo prints the same text on every run."
+
+[[act]]
+title = "An invoice upload"
+summary = "An honest invoice is read: Ana, 42.50, and a note with an ampersand."
+detail = """
+A supplier uploads a small XML invoice with a customer, a total and a note. The JDK parser, as it comes, reads it and the shop stores the three fields.
+"""
+speech = """
+First demo: an invoice upload. [[slnc 400]] The supplier uploads a small XML file. [[slnc 300]] The parser reads three fields. [[slnc 300]] This is the feature working as intended.
+"""
+rows = { upload = "active ok" }
+console = [
+    ["honest invoice -> accepted: customer=Ana, total=42.50, note=Thanks & see you soon", "ok"],
+]
+
+[[act]]
+title = "The parser reads what the file tells it to"
+summary = "An external entity makes the parser put a server file into the note; an entity bomb is stopped only by the JDK's expansion limit."
+detail = """
+The uploaded file starts with a DOCTYPE that defines the entity xxe as the contents of a file on the server, and the note is `&xxe;`. The parser fetches the file and the shop stores it
+as the note: demo-secret-from-the-server. A second file defines six levels of ten references each; the JDK's default expansion limit stops it, which is luck of the library and not a defence.
+"""
+speech = """
+Second demo: the parser reads what the file tells it to. [[slnc 400]] The file defines a name whose value is a file on the server. [[slnc 300]] The note becomes the contents of that file. [[slnc 600]]
+A second file defines names that expand into names. [[slnc 300]] The library's built-in limit happens to stop it.
+"""
+rows = { xxe = "active wrong" }
+console = [
+    ["external entity (file) -> accepted: note=demo-secret-from-the-server  <- A SERVER FILE", "bad"],
+    ["entity bomb -> refused: stopped by the parser's entity expansion limit", "amber"],
+]
+
+[[act]]
+title = "Refuse the DOCTYPE"
+summary = "The safe parser accepts the honest invoice and refuses both the external entity and the bomb because they need a DOCTYPE."
+detail = """
+An invoice has no use for a DOCTYPE, so the safe parser is told to refuse one. The honest invoice is read as before. The file with the external entity and the bomb are both
+refused with the same message, before any entity is looked at. External DTDs and schemas, XInclude and entity expansion are switched off as well, and uploads over 10,000 characters are refused.
+"""
+speech = """
+Third demo: refuse the doctype. [[slnc 400]] An invoice has no use for one, so the parser refuses it. [[slnc 300]] The honest invoice still works. [[slnc 600]]
+Both attacks fail for the same reason, before any entity is looked at.
+"""
+rows = { doctype = "active ok" }
+console = [
+    ["honest invoice -> accepted: customer=Ana", "ok"],
+    ["external entity (file) -> refused: a DOCTYPE is not allowed in an invoice", "ok"],
+    ["entity bomb -> refused: a DOCTYPE is not allowed in an invoice", "ok"],
+]
+
+[[act]]
+title = "A template engine that evaluates expressions"
+summary = "A name pasted into the template reads the SMTP password and the customer's class name; the same name passed as data stays text."
+detail = """
+The e-mail template engine evaluates `${customer.name}` by walking properties by reflection, and `app` is reachable from every template. The owner's template works. When the code builds the template
+by pasting the customer's name into it, a name of `${app.config.smtpPassword}` prints the demo SMTP password, and `${customer.class.name}` shows the class that holds the data. The same name
+passed to a fixed template as data is not evaluated again.
+"""
+speech = """
+Fourth demo: a template engine that evaluates expressions. [[slnc 400]] The owner's template works. [[slnc 300]] But when the code pastes a customer's name into the template, the name runs. [[slnc 600]]
+It prints the mail password. [[slnc 300]] The same name passed as data stays text.
+"""
+rows = { expr = "active wrong" }
+console = [
+    ["the owner's template -> Hello Ana, your order shipped.", "ok"],
+    ["name pasted into the template -> Hello demo-smtp-password  <- THE APPLICATION'S SECRET", "bad"],
+    ["class name of the customer -> com.jk.explore.security.xmlinj.Customer", "amber"],
+    ["name passed as data -> Hello ${app.config.smtpPassword} (text)", "ok"],
+]
+
+[[act]]
+title = "A logic-less engine keeps data as data"
+summary = "With named, escaped values and no expressions, pasted text stays text and markup is escaped."
+detail = """
+The fixed engine has `{{name}}` and `{{email}}` and nothing else: no expressions, no reflection, one pass. A name pasted into the template stays the text `${app.config.smtpPassword}`.
+Markup in a name is escaped for HTML. The better habit is still to keep customer text out of the template: pass it as a value.
+"""
+speech = """
+Fifth demo: a logic-less engine keeps data as data. [[slnc 400]] There are two named holes and nothing else. [[slnc 300]] A pasted expression stays text, and markup is escaped. [[slnc 600]]
+And the better habit is to pass the customer's text as a value, and never build the template from it.
+"""
+rows = { plain = "active ok" }
+console = [
+    ["the owner's template -> Hello Ana, your order shipped.", "ok"],
+    ["name pasted into the template -> Hello ${app.config.smtpPassword}, your order shipped.  (text)", "ok"],
+    ["a name with markup -> Hello &lt;script&gt;x&lt;/script&gt;", "ok"],
+]
+
+[animation]
+subtitle = "An invoice upload and an e-mail template: two readers that run what they read."
+boxes = [
+    ["upload", "The upload", "the parser reads a file"],
+    ["xxe", "External entities", "a server file in the note"],
+    ["doctype", "Refuse the DOCTYPE", "no entities at all"],
+    ["expr", "Expressions", "pasted text runs in the template"],
+    ["plain", "Logic-less templates", "named, escaped values only"],
+]
+
+[docs.problem]
+scenario = """
+An online store accepts XML invoices from suppliers and sends e-mails built from templates that include the customer's name.
+"""
+naive = """
+Parse the file with the library's defaults, and build the e-mail by putting the customer's name into the template text.
+"""
+deliver = [
+    "An invoice upload with the JDK's real XML parser, as it comes and as it should be configured.",
+    "An external entity that reads a server file, and an entity bomb.",
+    "A reflection-based expression engine, and the leak when customer text becomes part of the template.",
+    "A logic-less engine with escaped, named values.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "A first idea of what XML looks like",
+]
+not_required = [
+    "A web framework",
+    "Any template library: the engines are written for the project",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what a DOCTYPE and an external entity are, and what the parser does with them",
+    "list the parser settings that stop XXE and say why refusing the DOCTYPE comes first",
+    "explain why customer text must never become part of a template",
+    "say what makes a template engine logic-less and why that helps",
+]
+walkthrough = """
+Run act two and ask whose instruction the parser followed. In act four, ask which of the two things in the pasted line was code and which was data. In act five, ask what the engine would need
+to be able to do before the same attack worked again.
+"""
+exercises = [
+    "Add a second field that is read from an attribute, and check that the safe parser handles it.",
+    "Switch off the DOCTYPE refusal in the safe parser and see which of the other settings still stop the file entity.",
+    "Add `{{order_number}}` to the logic-less engine, with a test that its value is escaped.",
+    "Write the template as a file in resources and load it at start-up, so no code path builds one from input.",
+]
+
+[docs.explained]
+sentence = """
+A parser or an engine that runs instructions found in its input must be told not to, so refuse the DOCTYPE, keep templates fixed and logic-less, and pass customer text in as data.
+"""
+verdict = """
+Parse untrusted XML with a DOCTYPE refusal and the external-access properties set to empty, test the configuration of every parser in the project, and prefer JSON when entities are not needed.
+Write templates as fixed files with named, escaped holes. Never concatenate customer text into a template, and never give a template access to application objects.
+"""
+recognise = [
+    "`DocumentBuilderFactory.newInstance()` followed straight by `newDocumentBuilder()`.",
+    "`<!DOCTYPE` and `<!ENTITY` in an uploaded file.",
+    "`String.format` or `+` used to build a template before rendering it.",
+    "A finding titled \"XML External Entity\" with CWE-611 or \"Template Injection\" with CWE-1336.",
+]
+
+[spec]
+purpose = """
+Teach XXE and template injection by reading a server file through an invoice upload and a secret through an e-mail template, then fixing each by refusing what the reader should never run.
+"""
+nongoals = [
+    "XML signatures and SOAP: the saml-basics project covers signature wrapping.",
+    "Sandboxing a template engine that customers must be able to program.",
+    "Other parser libraries: the settings are shown for the JDK's DOM parser.",
+]
+problem = """
+Developers parse files and render templates with default settings, which run instructions found in the input.
+"""
+roles = [["The invoice and its parsers", "`Invoice`, `InvoiceParser`, `NaiveInvoiceParser`, `SafeInvoiceParser`, `InvoiceException`"], ["The data a template can reach", "`Customer`, `App`, `AppConfig`"], ["The template engines", "`TemplateEngine`, `ExpressionEngine`, `LogicLessEngine`"], ["Entry point", "`XmlTemplateDemo`"]]
+requirements = [
+    "The default parser puts a server file into the invoice through an external entity.",
+    "The safe parser refuses any DOCTYPE, oversized uploads and other documents, and still reads honest invoices.",
+    "The expression engine reveals an application secret when customer text is part of the template.",
+    "The logic-less engine leaves such text as text, escapes markup and does not scan its own output.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two readers that run what they read"
+caption = "The file and the template are both input to software that follows instructions in them."
+nodes = [
+    { id = "supplier", label = "Supplier", sub = "uploads XML", col = 0, row = 0, colour = "red" },
+    { id = "parser", label = "XML parser", sub = "entities, DOCTYPE", col = 1, row = 0, colour = "client" },
+    { id = "files", label = "Server files", sub = "reachable by entities", col = 2, row = 0, colour = "green", shape = "store" },
+    { id = "engine", label = "Template engine", sub = "expressions", col = 1, row = 1, colour = "amber" },
+    { id = "app", label = "Application", sub = "config, secrets", col = 2, row = 1, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "supplier", to = "parser", label = "file", colour = "red", dashed = true },
+    { from = "parser", to = "files", label = "reads" },
+    { from = "engine", to = "app", label = "reaches" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Two parsers and two engines, each pair differing in what they are willing to run."
+nodes = [
+    { id = "parser", label = "InvoiceParser", sub = ["parse(xml)", "factory()"], col = 0, row = 0, colour = "accent" },
+    { id = "naive", label = "NaiveInvoiceParser", sub = ["defaults"], col = 1, row = 0, colour = "red" },
+    { id = "safe", label = "SafeInvoiceParser", sub = ["no DOCTYPE", "size limit"], col = 2, row = 0, colour = "green" },
+    { id = "engine", label = "TemplateEngine", sub = ["render(template, customer)"], col = 0, row = 1, colour = "accent" },
+    { id = "expr", label = "ExpressionEngine", sub = ["${a.b.c}"], col = 1, row = 1, colour = "red" },
+    { id = "plain", label = "LogicLessEngine", sub = ["{{name}}", "escapes"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "naive", to = "parser", label = "extends" },
+    { from = "safe", to = "parser", label = "extends" },
+    { from = "expr", to = "engine", label = "implements" },
+    { from = "plain", to = "engine", label = "implements" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The checks an upload passes, in order"
+caption = "The DOCTYPE refusal comes before any entity is looked at."
+nodes = [
+    { id = "size", label = "Size limit", sub = "10,000 characters", col = 0, row = 0, colour = "client" },
+    { id = "doctype", label = "No DOCTYPE", sub = "entities cannot be defined", col = 1, row = 0, colour = "accent" },
+    { id = "shape", label = "Right document", sub = "an invoice element", col = 2, row = 0, colour = "amber" },
+    { id = "fields", label = "Three fields", sub = "customer, total, note", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "size", to = "doctype" },
+    { from = "doctype", to = "shape" },
+    { from = "shape", to = "fields" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "An external entity reads a server file"
+participants = ["Supplier", "Invoice import", "Server file"]
+steps = [
+    ["Supplier", "Invoice import", "invoice with <!ENTITY xxe SYSTEM file> and &xxe;"],
+    ["Invoice import", "Server file", "parser reads the file"],
+    ["Server file", "Invoice import", "its contents", "reply"],
+    ["Invoice import", "Supplier", "note = the file's contents", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The safe parser refuses the DOCTYPE"
+participants = ["Supplier", "Invoice import"]
+steps = [
+    ["Supplier", "Invoice import", "invoice with a DOCTYPE"],
+    ["note", "Invoice import", "disallow-doctype-decl"],
+    ["Invoice import", "Supplier", "refused: a DOCTYPE is not allowed", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Customer text in a template runs"
+caption = "The name was pasted into the template, so the engine evaluated it."
+participants = ["Customer", "Mail code", "Expression engine", "Application"]
+steps = [
+    ["Customer", "Mail code", "name = ${app.config.smtpPassword}"],
+    ["Mail code", "Expression engine", "template with the name pasted in"],
+    ["Expression engine", "Application", "walk app.config.smtpPassword"],
+    ["Application", "Expression engine", "the password", "reply"],
+    ["Expression engine", "Customer", "e-mail containing the password", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["parser", "engine", "files", "app"], colour = "green" },
+    { label = "Outside", nodes = ["supplier", "customer"], colour = "red" },
+]
+nodes = [
+    { id = "supplier", label = "Supplier", sub = "uploads XML", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "parser", label = "XML parser", sub = "reads the file", col = 1, row = 0, colour = "client", threats = ["T1", "T2"] },
+    { id = "files", label = "Server files", sub = "and the network", col = 2, row = 0, colour = "green", shape = "store", threats = ["T1"] },
+    { id = "customer", label = "Customer", sub = "gives a name", col = 0, row = 1, colour = "red", threats = ["T3"] },
+    { id = "engine", label = "Template engine", sub = "renders e-mail", col = 1, row = 1, colour = "amber", threats = ["T3", "T4"] },
+    { id = "app", label = "Application objects", sub = "config, secrets", col = 2, row = 1, colour = "green", shape = "store", threats = ["T3"] },
+]
+edges = [
+    { from = "supplier", to = "parser", label = "XML", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "parser", to = "files", label = "entity", threats = ["T1"] },
+    { from = "customer", to = "engine", label = "name", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "engine", to = "app", label = "expression", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+An online store's XML invoice upload and its e-mail templates. It covers the parser's configuration, the template engine and how customer text reaches them.
+It does not cover other file types, XML signatures, or who may write the owner's templates.
+"""
+assets = [
+    "Files on the server, and what the server can reach on the network.",
+    "The application's configuration and secrets.",
+    "The availability of the import and the mail service.",
+]
+actors = [
+    "A supplier who uploads invoices.",
+    "A customer whose name appears in e-mails.",
+    "The shop owner who writes the templates.",
+]
+boundaries = [
+    "Upload to parser: the file is untrusted, and the parser follows what it says.",
+    "Customer text to template: text becomes code if it is pasted in.",
+]
+assumptions = [
+    "The XML parser honours its configuration, and the same configuration is used for every upload.",
+    "Templates are written by the owner and kept as fixed files.",
+]
+out_of_scope = [
+    "XML signature wrapping: saml-basics.",
+    "Cross-site scripting in the e-mail's HTML: the cross-site-scripting project.",
+]
+tests = [
+    "`XmlTemplateTest` checks both parsers and both engines, including temporary files for the entity, the bomb, size limits and escaping.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, insecure-deserialization, moves to objects that a server rebuilds from bytes a customer sends.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "An external entity reads a server file or fetches an address"
+where = "`NaiveInvoiceParser`"
+control = "`disallow-doctype-decl`, no external DTD or schema access"
+residual = "Another parser in the project with default settings"
+
+[[threat]]
+id = "T2"
+stride = "D"
+threat = "An entity bomb exhausts memory and time"
+where = "`NaiveInvoiceParser`"
+control = "No DOCTYPE, secure processing and a size limit"
+residual = "Very large documents that are within the size limit are still parsed in memory"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "Customer text pasted into a template runs and reads the application's objects"
+where = "`ExpressionEngine`"
+control = "A logic-less engine, and customer text passed as data"
+residual = "A developer who builds templates from input for another engine"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "Markup in a value changes the HTML of the e-mail"
+where = "`LogicLessEngine`"
+control = "Values are escaped for HTML text"
+residual = "A value placed in an attribute or URL needs the escaper for that place"

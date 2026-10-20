@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Insecure Deserialization and Its Defences, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Insecure Deserialization and Its Defences, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Rebuilding objects from bytes the customer controls runs the customer's choice of code, so allow only the classes you expect before they are built, and prefer data-only, signed formats where prices and rights come from the server.</p>
+<h2>The 4 acts</h2>
+<h3>1. A cart in a cookie</h3>
+<p>The first version writes the Java object into the cookie, with each line's price, and reads it back with <code>readObject</code>. A cart of a kettle (twice) and a pan comes back as
+2 lines, 9200 cents. It works, and that is why the design survives.</p>
+<h3>2. The cookie decides what the server builds</h3>
+<p>The customer edits the price and the cart totals 2 cents. A cookie that holds a <code>TempCleaner</code> object is worse: its <code>readObject</code> runs inside the call that reads the cookie and removes the marker
+file. Afterwards the server notices that the object is not a cart and refuses it, but the file is already gone: "marker file exists afterwards: false". Checking the type after
+the read is too late.</p>
+<h3>3. An allow-list filter names the classes a cart is made of</h3>
+<p>An <code>ObjectInputFilter</code> with an allow-list (Cart, its lines, ArrayList, a few basic types, and <code>!*</code> for everything else) plus limits on depth, objects, array size and bytes is set on the stream.
+The cleaner is rejected before it is built: "filter status: REJECTED", and the marker file still exists. Honest carts are read as before. The forged price is still accepted, because the classes are all allowed:
+a filter protects against code, not against lies.</p>
+<h3>4. Data only: names and quantities, signed</h3>
+<p>The cookie now holds <code>v1;KTL-001x2;PAN-002x1</code> in Base64 and an HMAC-SHA-256 signature. The server checks the signature in constant time first, then parses each line with a strict pattern,
+and looks the prices up itself, so there is nothing to forge. A serialized object is not a signed cookie. A changed quantity fails the signature. Unsigned text fails it too.</p>
+<h2>The verdict</h2>
+<p>Do not deserialize Java objects from untrusted sources. If you must, set an allow-list <code>ObjectInputFilter</code> with limits (and a process-wide filter as a safety net). Prefer a data-only format such as JSON with a strict schema,
+sign anything that a customer carries, and keep prices and permissions on the server.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>ObjectInputStream.readObject()</code> on request data, cookies or message queues.</li>
+<li>Base64 starting with <code>rO0</code>.</li>
+<li><code>ObjectInputFilter</code> and <code>jdk.serialFilter</code>.</li>
+<li>A finding titled "Deserialization of Untrusted Data" with CWE-502.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>new ObjectInputStream(request.getInputStream()).readObject()</code> in older code and tutorials.</li>
+<li>Base64 text in cookies or hidden fields that starts with <code>rO0</code> (the Base64 of Java's serialization header).</li>
+<li>Tools that generate gadget chains for common libraries.</li>
+<li>A finding titled "Deserialization of Untrusted Data" with CWE-502.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

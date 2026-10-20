@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Path Traversal, File Upload and Open Redirects — Animated Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #94a3b8; margin: 0 0 20px; max-width: 70ch; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+  .boxes { display: flex; flex-direction: column; gap: 10px; }
+  .row { border: 2px solid #334155; border-radius: 10px; padding: 12px 16px;
+         background: #1e293b; transition: all .25s ease; opacity: .55; }
+  .row .name { font-weight: 700; font-size: 1rem; }
+  .row .job { color: #94a3b8; font-size: .82rem; margin-top: 2px; }
+  .row.active { opacity: 1; box-shadow: 0 0 0 2px currentColor inset; }
+  .row.wrong { border-color: #f87171; color: #f87171; }
+  .row.wrong.active { background: #3f1d24; }
+  .row.ok { border-color: #34d399; color: #34d399; }
+  .row.ok.active { background: #10261f; }
+  .row.amber { border-color: #fbbf24; color: #fbbf24; }
+  .row.amber.active { background: #2a2110; }
+  .row.dim { opacity: .22; }
+  .console { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 16px;
+             font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86rem;
+             line-height: 1.55; overflow-y: auto; min-height: 320px; white-space: pre-wrap; }
+  #console-lines span.ok { color: #34d399; }
+  #console-lines span.bad { color: #f87171; }
+  #console-lines span.amber { color: #fbbf24; }
+  #console-lines span.muted { color: #94a3b8; }
+  .narration { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+               padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px;
+           padding: 10px 18px; font-size: .92rem; cursor: pointer; }
+  button:hover { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button#play { background: #7c3aed; border-color: #7c3aed; }
+  button#play:hover { background: #8b5cf6; }
+  #progress { color: #94a3b8; font-size: .85rem; margin-left: auto; }
+  .step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #a78bfa; font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Path Traversal, File Upload and Open Redirects — Step by Step</h1>
+  <p class="sub">An invoice name, a photo upload and a return link: three things a customer sends that are not what they seem.</p>
+
+  <div class="narration">
+    <div class="step-label" id="step-label">Ready</div>
+    <div id="narration">Press Step or Play to begin.</div>
+  </div>
+
+  <div class="stage">
+    <div class="boxes" id="boxes">
+      <div class="row" id="row-download">
+        <div class="name">Downloading an invoice</div>
+        <div class="job">a name becomes a path</div>
+      </div>
+      <div class="row" id="row-naive">
+        <div class="name">A name with ..</div>
+        <div class="job">climbs out of the folder</div>
+      </div>
+      <div class="row" id="row-prefix">
+        <div class="name">A text prefix</div>
+        <div class="job">is not a path check</div>
+      </div>
+      <div class="row" id="row-safe">
+        <div class="name">Name, path, link</div>
+        <div class="job">checked in layers</div>
+      </div>
+      <div class="row" id="row-upload">
+        <div class="name">Uploads</div>
+        <div class="job">the server names the file and decides its type</div>
+      </div>
+      <div class="row" id="row-redirect">
+        <div class="name">Return links</div>
+        <div class="job">only paths on our own site</div>
+      </div>
+    </div>
+    <div class="console"><div id="console-lines"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="step">Step ▸</button>
+    <button id="play">Play ▶</button>
+    <button id="reset">Reset ↺</button>
+    <span id="progress">0 / 0</span>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+ {
+  "label": "Act 1 — Downloading an invoice",
+  "narration": "First demo: downloading an invoice. The server reads the file with the name the customer gave, from the invoices folder. It works.",
+  "rows": {
+   "download": "active ok"
+  },
+  "console": [
+   [
+    "invoice-1001.txt -> read: Invoice 1001: Ana, 42.50",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 2 — A name with .. leaves the folder",
+  "narration": "Second demo: a name with two dots leaves the folder. The name is joined to the folder and nothing else is checked. So dot dot climbs out. The customer reads the database settings, with nothing more than a longer name.",
+  "rows": {
+   "naive": "active wrong"
+  },
+  "console": [
+   [
+    "../secrets/db.txt -> read: DB_PASSWORD=demo-not-real  <- OUTSIDE THE FOLDER",
+    "bad"
+   ],
+   [
+    "../config/app.properties -> read: admin=ana",
+    "bad"
+   ]
+  ]
+ },
+ {
+  "label": "Act 3 — A text check on the path is not a path check",
+  "narration": "Third demo: a text check on the path is not a path check. The second version checks that the text starts with the invoices folder. Secrets are refused. But a folder called invoices dash private also starts with invoices, and the payroll file is read. Compare paths as paths.",
+  "rows": {
+   "prefix": "active amber"
+  },
+  "console": [
+   [
+    "../secrets/db.txt -> refused: outside the invoice folder",
+    "ok"
+   ],
+   [
+    "../invoices-private/payroll.txt -> read: payroll: demo salaries  <- SAME PREFIX",
+    "bad"
+   ]
+  ]
+ },
+ {
+  "label": "Act 4 — Names, paths and links, all checked",
+  "narration": "Fourth demo: names, paths and links, all checked. The name must look like an invoice name. The path is compared element by element. And links are followed before they are trusted. An encoded dot dot is decoded once, and refused. A link that points at the secrets file passes the first checks, and fails the last.",
+  "rows": {
+   "safe": "active ok"
+  },
+  "console": [
+   [
+    "invoice-1001.txt -> read: Invoice 1001: Ana, 42.50",
+    "ok"
+   ],
+   [
+    "../secrets/db.txt, %2e%2e%2f..., ../invoices-private/... -> refused: not an invoice name",
+    "ok"
+   ],
+   [
+    "invoice-5555.txt, a link to the secrets file: naive read, prefix read -> read: DB_PASSWORD=demo-not-real",
+    "bad"
+   ],
+   [
+    "invoice-5555.txt with the safe version -> refused: link leads outside the invoice folder",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 5 — Uploads",
+  "narration": "Fifth demo: uploads. The first version saves the file under the name the customer chose, in the web root. A script is served as a page on the store's own site. A name with dots replaces the settings. The fixed version looks at the first bytes of the file, makes the name itself, and keeps the file outside the web root. It serves it as a download, with the type it decided.",
+  "rows": {
+   "upload": "active wrong",
+   "safeup": "active ok"
+  },
+  "console": [
+   [
+    "a script called page.html -> served as text/html, inline  <- A PAGE ON OUR OWN SITE",
+    "bad"
+   ],
+   [
+    "a name with .. -> config now reads: admin=mallory",
+    "bad"
+   ],
+   [
+    "fixed: a photo called cat.png -> /photos/photo-0001.png (image/png, download=true, nosniff=true)",
+    "ok"
+   ],
+   [
+    "fixed: a script called page.html, or renamed cat.png -> refused: not a PNG or JPEG image",
+    "ok"
+   ],
+   [
+    "fixed: a name with .. -> ignored; config still reads: admin=ana",
+    "ok"
+   ],
+   [
+    "fixed: an oversized photo -> refused: size not allowed",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 6 — Where to send the customer next",
+  "narration": "Sixth demo: where to send the customer next. The first version sends them wherever the link says. Another site that looks like ours. Slash slash, and slash backslash, are read by browsers as other sites. The fixed version allows only a path on this site, and everything else goes to the account page. And a host is matched exactly, never by its beginning or its end.",
+  "rows": {
+   "redirect": "active ok"
+  },
+  "console": [
+   [
+    "/orders?page=2 -> safe: /orders?page=2",
+    "ok"
+   ],
+   [
+    "https://evil.example/login, //evil.example, /\\evil.example, javascript:steal() -> safe: /account",
+    "ok"
+   ],
+   [
+    "own host, exact match -> true; shop.example.evil.example -> false; shop.example@evil.example -> false",
+    "ok"
+   ]
+  ]
+ }
+];
+const rowIds = ["download", "naive", "prefix", "safe", "upload", "redirect"];
+const stepLabel = document.getElementById("step-label");
+const narrationEl = document.getElementById("narration");
+const consoleEl = document.getElementById("console-lines");
+const progressEl = document.getElementById("progress");
+const playBtn = document.getElementById("play");
+let i = -1, timer = null;
+
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function render() {
+  for (const id of rowIds) document.getElementById("row-" + id).className = "row";
+  if (i < 0) {
+    stepLabel.textContent = "Ready";
+    narrationEl.textContent = "Press Step or Play to begin.";
+    consoleEl.innerHTML = "";
+    progressEl.textContent = "0 / " + STEPS.length;
+    return;
+  }
+  const s = STEPS[i];
+  stepLabel.textContent = s.label;
+  narrationEl.textContent = s.narration;
+  for (const id of rowIds) {
+    const cls = s.rows[id];
+    document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
+  }
+  consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
+  progressEl.textContent = (i + 1) + " / " + STEPS.length;
+}
+function step() { if (i >= STEPS.length - 1) { stopPlay(); return; } i += 1; render(); }
+function reset() { stopPlay(); i = -1; render(); }
+// While a step's narration is playing, Play waits for it to finish.
+function speaking() { return typeof window.vkSpeaking === "function" && window.vkSpeaking(); }
+function startPlay() {
+  if (timer) return;
+  playBtn.textContent = "Pause ❚❚";
+  let quiet = 0;
+  timer = setInterval(() => {
+    if (speaking()) { quiet = 0; return; }
+    if (++quiet < 6) return;                     // 6 × 500 ms of reading time
+    quiet = 0;
+    if (i >= STEPS.length - 1) { stopPlay(); return; }
+    step();
+  }, 500);
+  if (i < 0) step();
+}
+function stopPlay() { if (timer) clearInterval(timer); timer = null; playBtn.textContent = "Play ▶"; }
+
+document.getElementById("step").addEventListener("click", () => { stopPlay(); step(); });
+document.getElementById("reset").addEventListener("click", reset);
+playBtn.addEventListener("click", () => { if (timer) stopPlay(); else startPlay(); });
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Path Traversal, File Upload and Open Redirects</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Path Traversal, File Upload and Open Redirects</h1>
+<pre><code>src/main/java/com/jk/explore/security/files/
+├── Downloads.java        &quot;Download invoice {name}&quot;: returns the text of the file
+├── FilesDemo.java        Runs the invoice download, photo upload and &quot;return to&quot; story in five numbered acts and prints exact, repeatable results
+├── Layout.java           The folders of the store's server, made in a temporary directory so the demo and the tests touch nothing else: &lt;pre&gt; invoices/ what customers may download invoices-private/ a sibling whose name starts the same way secrets/ the database settings config/ the application's settings webroot/ files the web server hands out as they are uploads-private/ where the fixed version keeps uploads, outside the web root &lt;/pre&gt;
+├── NaiveDownloads.java   The first version: the file is whatever the base folder plus the name says, {@code ..} included
+├── NaiveUploads.java     The first version: the file is saved in the web root under the name the customer gave, whatever it contains
+├── PrefixDownloads.java  The second version: it does check the resolved path, but compares &lt;em&gt;text&lt;/em&gt;, so a sibling folder with the same beginning passes
+├── Refused.java          The request was refused
+├── ReturnLink.java       The &quot;return to&quot; address after sign-in or upload: where the customer is sent next
+├── SafeDownloads.java    The fixed version, in layers: the name must look like an invoice name, the path is resolved and compared as a &lt;em&gt;path&lt;/em&gt; (element by element), and the real file, after symbolic links are followed, must still be inside the real folder
+├── SafeUploads.java      The fixed version: size limit, the type decided from the bytes and not from the name, a name the &lt;em&gt;server&lt;/em&gt; makes, storage outside the web root, and downloads that name the type, force a download and forbid the browser to guess
+├── Served.java           What the web server sends back for a file: the type it claims, whether the browser must save instead of show, and the body
+├── Sniffer.java          Decides what a file is from its first bytes, the only part the customer cannot rename
+├── Uploads.java          &quot;Upload a product photo&quot;: the customer sends a file name and bytes
+└── WebRoot.java          The web server's static files: whatever is in the folder is sent as it is, with a type chosen by the file name's extension
+</code></pre>
+<p><strong>A name or a link that a customer sends is not a file or a place you can trust: resolve and compare paths as paths, let the server name uploads and decide their type from the bytes, keep them outside the web root, and send customers only to paths on your own site.</strong></p>
+<p>Three features take a name or a link from a customer: <strong>download invoice {name}</strong>, <strong>upload a product photo</strong>, and <strong>return to {address} after sign-in</strong>. A file name can contain <code>..</code> and walk
+out of its folder (<strong>path traversal</strong>). An uploaded file keeps whatever name and contents the customer chose, so it can replace a settings file or be served as a page with a script in it
+(<strong>unrestricted file upload</strong>). A "return to" address can send a signed-in customer to another site that looks like yours (<strong>open redirect</strong>).</p>
+<p>The defences, in the order this project shows them:
+- <strong>Check the name's shape,</strong> then <strong>resolve the path and compare it as a path</strong> (element by element, not as text), and follow symbolic links before trusting the result.
+- <strong>Decode once,</strong> at one place, and check after decoding.
+- <strong>Uploads:</strong> a size limit, the type decided from the first bytes, a name the server makes, storage outside the web root, and downloads that say the type, force a download and forbid sniffing.
+- <strong>Redirects:</strong> only a path on your own site; <code>//host</code>, <code>/\host</code> and a scheme are other sites; an exact host match if an absolute address must be allowed.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A01 Broken Access Control · CWE-22 · CWE-434 · CWE-601 · OWASP ASVS 5.0, the file handling and validation chapters.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a clerk who fetches a file from the "invoices" drawer when a customer reads out a name. If the customer may say "go up one drawer, and open the one marked secrets", the clerk walks out of the
+drawer. And a clerk who files whatever the customer hands over, under any name, will one day file a forged form over the real one.</p>
+<h2>The scenario</h2>
+<p>An online store lets customers download their invoices, upload product photos and return to the page they came from. The demo builds a small server file tree in a temporary folder, with
+invoices, a sibling folder with a similar name, secrets, settings and a web root, and runs every attack against it.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 6 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Downloading an invoice</td>
+<td>An honest name reads invoice 1001.</td>
+</tr>
+<tr>
+<td>2. A name with .. leaves the folder</td>
+<td>../secrets/db.txt returns the database settings and ../config/app.properties returns the application settings.</td>
+</tr>
+<tr>
+<td>3. A text check on the path is not a path check</td>
+<td>Comparing the resolved path as text refuses ../secrets but accepts ../invoices-private, whose name starts the same way.</td>
+</tr>
+<tr>
+<td>4. Names, paths and links, all checked</td>
+<td>The name must look like an invoice name, the path is compared element by element, and links are followed before being trusted; encoded dots are decoded once and then refused.</td>
+</tr>
+<tr>
+<td>5. Uploads</td>
+<td>The naive upload overwrites the settings and serves a script as a page; the fixed one decides from the bytes, names the file itself, stores it outside the web root and serves it as a download.</td>
+</tr>
+<tr>
+<td>6. Where to send the customer next</td>
+<td>The naive link goes anywhere, including //evil.example and javascript:; the fixed one sends only paths on this site and everything else to /account; absolute hosts are matched exactly.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>FilesTest</code>. The temporary folder's name is random and never printed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The file system is real: the demo makes a temporary folder with the layout above, including a symbolic link, and deletes it afterwards. The folder's name is never printed.
+The web server is a small class that serves files as they are, which is what a naive static server does.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/path-traversal-and-file-upload-explained.html">Path Traversal, File Upload and Open Redirects, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The name becomes a path, the upload becomes a file, the link becomes a redirect.</p>
+<p><img alt="What the server does with a customer's name" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Each feature has a naive version and a fixed one behind the same interface.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each layer catches something the one before it cannot.</p>
+<p><img alt="The layers a download passes, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A name that climbs out of the folder" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Strict names are less flexible.</strong> <code>invoice-NNNN.txt</code> is easy to check, and a system that must accept arbitrary file names needs ids that the server maps to files.</li>
+<li><strong>Content checks are a floor, not a ceiling.</strong> The first bytes show a PNG, but an image can still hold exploits for its viewer; process images with a hardened library, and re-encode if you can.</li>
+<li><strong>Storage outside the web root needs a download handler,</strong> which has to set the type and the headers itself.</li>
+<li><strong>Links and case-insensitive file systems</strong> add cases; test on the platform you deploy to.</li>
+<li><strong>Allow-listing redirect hosts needs upkeep,</strong> and any redirect that is only for convenience is better replaced by a fixed page.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the invoice can be fetched by an id from a database, there is no path to check. If the uploaded photo is re-encoded and stored under a generated name, there is no customer name or content to trust.
+Do not try to strip <code>..</code> from names: <code>....//</code> becomes <code>../</code> after one pass. Reject, don't repair.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>../../etc/passwd</code> in every list of attack strings.</li>
+<li><code>new File(base, userInput)</code> and <code>Paths.get(base, name)</code> in older code.</li>
+<li>A <code>next</code> or <code>returnUrl</code> parameter on every login page.</li>
+<li>Findings titled "Path Traversal" (CWE-22), "Unrestricted Upload" (CWE-434) and "Open Redirect" (CWE-601).</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">web-security</a> and follows <a href="../insecure-deserialization">insecure-deserialization</a>: another thing a customer carries to the server.
+Its upload checks build on <a href="../../secure-coding/input-validation">input-validation</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CORS Done Right</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>CORS Done Right</h1>
+<pre><code>src/main/java/com/jk/explore/security/cors/
+├── BankApi.java      The bank's API on https://bank.example
+├── Browser.java      A model of the browser rules that matter: a page may &lt;em&gt;send&lt;/em&gt; some cross-origin requests without asking, may &lt;em&gt;read&lt;/em&gt; the answer only when the server names the page's origin (and, with cookies, also says credentials are allowed), and asks first with a preflight for anything that is not simple
+├── CorsDemo.java     Runs the bank API story in five numbered acts and prints exact, repeatable results
+├── CorsPolicy.java   Decides which {@code Origin} header values the bank API will name in {@code Access-Control-Allow-Origin}
+├── FetchResult.java  What a script on a page got: did the request reach the bank's code, and was the page allowed to read the answer?
+├── Request.java      A request as the bank API sees it: method, path, headers with lower-case names, and whether the browser attached the session cookie
+└── Response.java     A response: status, headers with lower-case names, and a body
+</code></pre>
+<p><strong>A browser lets any page send many requests to your API but lets it read the answer only if your API names that page's origin, so an allow-list must be exact, never reflect the Origin header, never allow null, and never be mistaken for a defence against forged requests.</strong></p>
+<p>A browser runs pages from many sites in one window. The <strong>same-origin policy</strong> keeps a page on evil.example from <em>reading</em> what your bank's API answers. But sometimes a partner's page really needs to read the API,
+and <strong>CORS</strong> (cross-origin resource sharing) is how the API says so: it names the origin in <code>Access-Control-Allow-Origin</code>, and adds <code>Access-Control-Allow-Credentials: true</code> if cookies are involved.
+Teams that hit the browser's error often "fix" it in the easiest way, and the easy ways are the unsafe ones.</p>
+<p>What goes wrong, in the order this project shows it:
+- <strong>CORS is about reading, not sending.</strong> A simple <code>POST</code> from any page still reaches the bank. CORS is not a CSRF defence.
+- <strong>Reflecting the <code>Origin</code> header</strong> with credentials lets every site read the customer's account.
+- <strong>Allowing <code>null</code></strong> (an opaque origin sandboxed frames and local files have) lets an attacker's page read it too.
+- <strong>Matching a suffix or prefix</strong> passes look-alike domains such as evilbank.example.</p>
+<p>The defences:
+- <strong>An exact, case-sensitive allow-list</strong> of origins, compared as whole strings.
+- <strong><code>Vary: Origin</code></strong> so caches keep one answer for each origin.
+- <strong>A wildcard only for public data without cookies;</strong> browsers refuse <code>*</code> with credentials.
+- <strong>Preflight answers that name only the methods and headers really needed.</strong></p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CWE-942 · OWASP ASVS 5.0, the browser security and API chapters.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of the same-origin policy as a rule that letters from other buildings may be opened only by their own recipient. CORS is the building's list of other buildings whose people may read its mail. Writing
+"anyone who asks" on the list, or "anyone whose address ends in bank", or "anyone with no address at all" is how the mail gets read.</p>
+<h2>The scenario</h2>
+<p>A bank has an API on https://bank.example with an account call that needs the session cookie, a public rates call, and a transfer call. A partner site, an attacker's site and a look-alike site all run scripts in the customer's browser.
+The demo includes a model of the browser rules (simple requests, preflight, reading the response, credentials) so every claim can be tested.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Same origin needs no CORS</td>
+<td>The bank's own page reads its balance.</td>
+</tr>
+<tr>
+<td>2. No CORS headers: a page may send, but not read</td>
+<td>An attacker's page cannot read the account, but its simple POST to /transfer still reaches the bank and is processed; a JSON PUT is stopped by the preflight.</td>
+</tr>
+<tr>
+<td>3. Policies that look like fixes</td>
+<td>Reflecting the origin lets every site read; an exact list that allows null lets a sandboxed page read; a suffix match lets evilbank.example read.</td>
+</tr>
+<tr>
+<td>4. An exact allow-list</td>
+<td>Only partner.example can read, including a JSON PUT after a successful preflight; evil.example, a look-alike and null are blocked; public rates are readable by anyone; responses carry Vary: Origin.</td>
+</tr>
+<tr>
+<td>5. Wildcard and cookies never combine</td>
+<td>A browser refuses Access-Control-Allow-Origin: * when the request carried cookies, and accepts it without them.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>CorsTest</code>, <code>DemoRunsTest</code>. Everything is fixed data, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank API and a model of the browser's CORS rules are plain Java: the Origin header, simple versus preflighted requests, the credentials check on the response and the opaque <code>null</code> origin. The model follows the Fetch standard
+for the cases shown. Sites are logical names and nothing is sent anywhere.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cors-explained.html">CORS Done Right, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The browser sits between the pages and the API and applies the CORS rules to what comes back.</p>
+<p><img alt="Pages, the browser and the bank's API" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A policy decides the header; the browser decides whether to show the answer.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A preflight comes first for anything that is not a simple request.</p>
+<p><img alt="What a cross-origin call goes through" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A reflected origin lets another site read" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>An exact list needs upkeep.</strong> Every new partner is a deploy or a config change, which is the point.</li>
+<li><strong>Wildcard subdomains are risky.</strong> Allowing <code>*.partner.example</code> also allows any subdomain that has a takeover or user content.</li>
+<li><strong>Preflight adds a round trip,</strong> which <code>Access-Control-Max-Age</code> reduces; browsers cap the cache time.</li>
+<li><strong>Credentialed CORS needs the cookie to be sent cross-site,</strong> which SameSite=None requires, and which brings CSRF back as a concern.</li>
+<li><strong>Caches can mix up answers</strong> unless <code>Vary: Origin</code> is set.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the partner can call your API from their server, no CORS is needed at all: a server-to-server call has no browser rules. And if the API and the page are on the same origin (or behind one reverse proxy), leave CORS off.
+Do not "test" CORS by switching it to reflect everything on a shared environment.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The browser console message "has been blocked by CORS policy".</li>
+<li><code>Access-Control-Allow-Origin: *</code> on an API.</li>
+<li><code>@CrossOrigin(origins = "*")</code> or a filter that copies the <code>Origin</code> header into the response.</li>
+<li>A finding titled "Cross-Origin Resource Sharing Misconfiguration" with CWE-942.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">api-security</a>. It builds on <a href="../../web-security/cross-site-request-forgery">cross-site-request-forgery</a>, which covers forged requests that CORS does not stop,
+and <a href="../api-security">api-security</a>, which covers what the API returns in the first place.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,390 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "insecure-deserialization"
+level = "intermediate"
+module = "web-security"
+title = "Insecure Deserialization and Its Defences"
+short_title = "Insecure Deserialization"
+package = "deser"
+main_class = "DeserializationDemo"
+tagline = "Rebuilding an object from bytes runs code the sender chose"
+bold = "Java serialization lets the bytes decide which classes are built and which code runs while they are read, so a cookie of serialized objects is a program written by the customer; filter the classes before they are built, and better, send data only and sign it."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Insecure deserialization and its defences, in Java."
+thumb_lines = ["INSECURE", "DESERIALIZATION"]
+thumb_code = "ObjectInputFilter !*"
+youtube_title = "Insecure Deserialization and Its Defences in Java"
+youtube_tags = ["insecure deserialization", "objectinputfilter", "gadget chain", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+A shopping cart is kept in a cookie, and the easy way to do that in Java is to **serialize** the cart object and put the bytes, in Base64, in the cookie. When the cookie comes back, the server
+calls `readObject`. But the bytes name the classes to build, and some classes run code while they are being read. A customer who edits the cookie can name any serializable class on the
+server's classpath, and a chain of such classes (a **gadget chain**) can end in real damage. That is **insecure deserialization**.
+
+The defences, in the order this project shows them:
+- **An allow-list `ObjectInputFilter`**, set on the stream before reading: only the classes of a cart may be built, with limits on depth, size and number of objects. The check happens before the class is built.
+- **Do not trust what the cookie says about prices:** a filter stops classes, not lies.
+- **Data only:** a plain text format with no classes, validated line by line, with the prices looked up on the server.
+- **A signature (HMAC)** checked, in constant time, before anything is parsed.
+
+**Maps to:** OWASP Top 10 (2025) A08 Software or Data Integrity Failures · CWE-502 · OWASP ASVS 5.0, the validation and data protection chapters.
+"""
+analogy = """
+Think of a kit that arrives in the post with a note: "assemble as shown". If the shop assembles whatever is in the box, a customer can post a box whose parts, once put
+together, do something else entirely. The fix is a packing list: only these parts may be unpacked, and better, no kit at all, just an order form that the shop fills in itself.
+"""
+scenario = """
+An online store keeps the cart in a cookie. The demo uses real Java serialization, a class named `TempCleaner` that stands for a gadget from a library
+(it deletes a temporary marker file while it is being read, which is as far as the demo goes), and the JDK's own `ObjectInputFilter` and HMAC.
+"""
+costs = [
+    "**An allow-list needs upkeep.** A new field or class in the cart must be added to the list, or honest carts are refused.",
+    "**Filters stop classes, not lies.** A cart of the right classes with a price of one cent is still accepted.",
+    "**Serialization formats are fragile.** Changing a class breaks old cookies, which is another reason to avoid it for data that leaves the server.",
+    "**Signing needs a key,** kept out of the code, rotated, and shared by every server that reads the cookie.",
+    "**Server-side sessions avoid the problem:** the cookie holds only a random id, and the cart stays on the server.",
+]
+too_much = """
+If the cart can live on the server, keep it there and put only a session id in the cookie. Nothing needs deserializing then. Do not try to deny-list known gadget classes: new chains
+appear with every library update.
+"""
+met_before = [
+    "`new ObjectInputStream(request.getInputStream()).readObject()` in older code and tutorials.",
+    "Base64 text in cookies or hidden fields that starts with `rO0` (the Base64 of Java's serialization header).",
+    "Tools that generate gadget chains for common libraries.",
+    "A finding titled \"Deserialization of Untrusted Data\" with CWE-502.",
+]
+where = """
+This project is in [web-security](..). It follows [xml-and-template-injection](../xml-and-template-injection): another reader that builds things from instructions in its input.
+"""
+twin = """
+Serialization, the filter and the HMAC are the JDK's real ones. The gadget is a class written for the demo that deletes a marker file in `readObject`, which is how real gadgets start.
+The marker file is temporary and its name is never printed.
+"""
+test_note = "The temporary marker file's name is random and never printed, so the demo prints the same text on every run."
+
+[[act]]
+title = "A cart in a cookie"
+summary = "The cart is serialized into a cookie and read back: two lines, 9200 cents."
+detail = """
+The first version writes the Java object into the cookie, with each line's price, and reads it back with `readObject`. A cart of a kettle (twice) and a pan comes back as
+2 lines, 9200 cents. It works, and that is why the design survives.
+"""
+speech = """
+First demo: a cart in a cookie. [[slnc 400]] The cart is written as a Java object, and read back. [[slnc 300]] Two lines, ninety-two dollars. [[slnc 300]] It works, and that is why the design survives.
+"""
+rows = { cookie = "active ok" }
+console = [
+    ["cart round trip -> 2 lines, total 9200 cents", "ok"],
+]
+
+[[act]]
+title = "The cookie decides what the server builds"
+summary = "A forged price is believed, and a cookie holding a TempCleaner deletes a file while it is being read, before the server sees it is not a cart."
+detail = """
+The customer edits the price and the cart totals 2 cents. A cookie that holds a `TempCleaner` object is worse: its `readObject` runs inside the call that reads the cookie and removes the marker
+file. Afterwards the server notices that the object is not a cart and refuses it, but the file is already gone: "marker file exists afterwards: false". Checking the type after
+the read is too late.
+"""
+speech = """
+Second demo: the cookie decides what the server builds. [[slnc 400]] The customer changes the price, and the cart is two cents. [[slnc 600]]
+A cookie holding a cleaner object deletes a file while it is being read. [[slnc 300]] The server then notices it is not a cart, but the file is gone. [[slnc 300]] Checking after the read is too late.
+"""
+rows = { naive = "active wrong" }
+console = [
+    ["forged price -> 1 lines, total 2 cents", "bad"],
+    ["cookie holds a TempCleaner -> refused (the cookie is not a cart); marker file exists afterwards: false  <- IT ALREADY RAN", "bad"],
+]
+
+[[act]]
+title = "An allow-list filter names the classes a cart is made of"
+summary = "The filter refuses the TempCleaner before it is built and the marker file survives, but a cart with a forged price is still accepted."
+detail = """
+An `ObjectInputFilter` with an allow-list (Cart, its lines, ArrayList, a few basic types, and `!*` for everything else) plus limits on depth, objects, array size and bytes is set on the stream.
+The cleaner is rejected before it is built: "filter status: REJECTED", and the marker file still exists. Honest carts are read as before. The forged price is still accepted, because the classes are all allowed:
+a filter protects against code, not against lies.
+"""
+speech = """
+Third demo: an allow-list names the classes a cart is made of. [[slnc 400]] The cleaner object is rejected before it is built, and the file survives. [[slnc 600]]
+Honest carts still work. [[slnc 300]] But the forged price is still accepted, because every class in it is allowed. [[slnc 300]] A filter protects against code, not against lies.
+"""
+rows = { filter = "active ok", lies = "active amber" }
+console = [
+    ["cart round trip -> 2 lines, total 9200 cents", "ok"],
+    ["cookie holds a TempCleaner -> refused (class refused by the filter); marker file exists afterwards: true", "ok"],
+    ["forged price -> 1 lines, total 2 cents  <- STILL ACCEPTED", "amber"],
+]
+
+[[act]]
+title = "Data only: names and quantities, signed"
+summary = "The cookie holds text and an HMAC; a serialized object, a changed quantity and unsigned text are all refused, and prices come from the server."
+detail = """
+The cookie now holds `v1;KTL-001x2;PAN-002x1` in Base64 and an HMAC-SHA-256 signature. The server checks the signature in constant time first, then parses each line with a strict pattern,
+and looks the prices up itself, so there is nothing to forge. A serialized object is not a signed cookie. A changed quantity fails the signature. Unsigned text fails it too.
+"""
+speech = """
+Fourth demo: data only, signed. [[slnc 400]] The cookie holds product codes and quantities, and a signature. [[slnc 300]] The server checks the signature first, then reads each line, and looks up the prices itself. [[slnc 600]]
+A serialized object is refused. [[slnc 300]] A changed quantity fails the signature. [[slnc 300]] So does unsigned text.
+"""
+rows = { signed = "active ok" }
+console = [
+    ["cart round trip -> 2 lines, total 9200 cents", "ok"],
+    ["a serialized object -> refused: not a signed cookie", "ok"],
+    ["quantity changed -> refused: bad signature", "ok"],
+    ["unsigned text -> refused: bad signature", "ok"],
+]
+
+[animation]
+subtitle = "A shopping cart in a cookie, and what the server builds when it reads one."
+boxes = [
+    ["cookie", "A cart in a cookie", "serialized Java objects"],
+    ["naive", "readObject on anything", "the bytes choose the classes"],
+    ["filter", "An allow-list filter", "only a cart's classes"],
+    ["lies", "Lies about prices", "a filter cannot see them"],
+    ["signed", "Data only, signed", "no classes, no forged prices"],
+]
+
+[docs.problem]
+scenario = """
+An online store keeps each customer's shopping cart in a cookie so that no server has to remember it.
+"""
+naive = """
+Serialize the cart object into the cookie and read it back with `readObject`: it is the same object we wrote.
+"""
+deliver = [
+    "A cart cookie written and read with real Java serialization.",
+    "A gadget class that runs code while it is being read, and a forged price.",
+    "An `ObjectInputFilter` allow-list with limits.",
+    "A data-only, HMAC-signed cookie with server-side prices.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics, including what `Serializable` means",
+    "An idea of what a cookie is",
+]
+not_required = [
+    "Knowledge of real gadget chains",
+    "A web framework",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why `readObject` can run code before the caller sees the object",
+    "write an allow-list `ObjectInputFilter` with limits",
+    "explain what a filter does not stop",
+    "describe a data-only, signed alternative and why the server should own prices",
+]
+walkthrough = """
+Run act two and ask when the marker file was deleted, before or after the server checked the type. In act three, ask what the filter looked at. In act four, ask where the prices come from now.
+"""
+exercises = [
+    "Add a gift note field to the cart and update the allow-list, then watch an old cookie fail.",
+    "Add a version number to the signed cookie and rotate the key without logging everyone out.",
+    "Use a session id in the cookie and keep the cart in a map on the server, then compare what can go wrong.",
+    "Lower `maxdepth` until an honest cart is refused, and explain what you learned.",
+]
+
+[docs.explained]
+sentence = """
+Rebuilding objects from bytes the customer controls runs the customer's choice of code, so allow only the classes you expect before they are built, and prefer data-only, signed formats where prices and rights come from the server.
+"""
+verdict = """
+Do not deserialize Java objects from untrusted sources. If you must, set an allow-list `ObjectInputFilter` with limits (and a process-wide filter as a safety net). Prefer a data-only format such as JSON with a strict schema,
+sign anything that a customer carries, and keep prices and permissions on the server.
+"""
+recognise = [
+    "`ObjectInputStream.readObject()` on request data, cookies or message queues.",
+    "Base64 starting with `rO0`.",
+    "`ObjectInputFilter` and `jdk.serialFilter`.",
+    "A finding titled \"Deserialization of Untrusted Data\" with CWE-502.",
+]
+
+[spec]
+purpose = """
+Teach insecure deserialization by running code through a cart cookie and forging a price, then fixing it with an allow-list filter and a data-only, signed cookie.
+"""
+nongoals = [
+    "Real gadget chains from third-party libraries.",
+    "Jackson and other data formats with type information: the insecure-deserialization-with-jackson project.",
+    "Session storage on the server.",
+]
+problem = """
+Developers read objects from bytes that the customer can change, and the bytes choose which code runs.
+"""
+roles = [["The cart", "`Cart`"], ["The gadget and the attacker", "`TempCleaner`, `Attacker`"], ["The cookies", "`CartCookie`, `SerializedCartCookie`, `SignedTextCartCookie`, `CartRefused`"], ["Entry point", "`DeserializationDemo`"]]
+requirements = [
+    "An unfiltered reader runs the gadget while reading and believes a forged price.",
+    "A filtered reader refuses classes outside the allow-list before they are built, and limits size and depth.",
+    "The signed text cookie refuses objects, changed quantities and unsigned text, and takes prices from the server.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A cart cookie and the server that reads it"
+caption = "The customer holds the cookie between two requests, so it can be changed."
+nodes = [
+    { id = "server1", label = "Server", sub = "writes the cookie", col = 0, row = 0, colour = "green" },
+    { id = "customer", label = "Customer", sub = "can edit it", col = 1, row = 0, colour = "red" },
+    { id = "server2", label = "Server", sub = "reads the cookie", col = 2, row = 0, colour = "client" },
+    { id = "defences", label = "Defences", sub = "filter, data only, signature", col = 2, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "server1", to = "customer", label = "Set-Cookie" },
+    { from = "customer", to = "server2", label = "Cookie (changed)", colour = "red", dashed = true },
+    { from = "defences", to = "server2", label = "decide", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Two readers of the same cart: one builds objects, the other reads text."
+nodes = [
+    { id = "cookie", label = "CartCookie", sub = ["write(cart)", "read(cookie)"], col = 0, row = 0, colour = "accent" },
+    { id = "ser", label = "SerializedCartCookie", sub = ["unfiltered()", "withAllowList()"], col = 1, row = 0, colour = "red" },
+    { id = "signed", label = "SignedTextCartCookie", sub = ["HMAC", "Prices"], col = 2, row = 0, colour = "green" },
+    { id = "cart", label = "Cart", sub = ["Line(sku, quantity, price)"], col = 0, row = 1, colour = "client" },
+    { id = "gadget", label = "TempCleaner", sub = ["readObject() deletes a file"], col = 1, row = 1, colour = "red" },
+]
+edges = [
+    { from = "ser", to = "cookie", label = "implements" },
+    { from = "signed", to = "cookie", label = "implements" },
+    { from = "ser", to = "cart", label = "builds" },
+    { from = "gadget", to = "ser", label = "is built by" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The checks a signed cookie passes, in order"
+caption = "Nothing is parsed before the signature passes."
+nodes = [
+    { id = "size", label = "Shape and size", sub = "body.signature, 1000 characters", col = 0, row = 0, colour = "client" },
+    { id = "sig", label = "Signature", sub = "HMAC, constant time", col = 1, row = 0, colour = "accent" },
+    { id = "lines", label = "Each line", sub = "strict pattern", col = 2, row = 0, colour = "amber" },
+    { id = "prices", label = "Prices", sub = "from the server", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "size", to = "sig" },
+    { from = "sig", to = "lines" },
+    { from = "lines", to = "prices" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A gadget runs while the cookie is read"
+participants = ["Customer", "Server", "ObjectInputStream", "TempCleaner"]
+steps = [
+    ["Customer", "Server", "Cookie: a serialized TempCleaner"],
+    ["Server", "ObjectInputStream", "readObject()"],
+    ["ObjectInputStream", "TempCleaner", "build, call readObject()"],
+    ["note", "TempCleaner", "deletes the marker file"],
+    ["Server", "Customer", "the cookie is not a cart", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The filter refuses the class first"
+participants = ["Customer", "Server", "ObjectInputFilter"]
+steps = [
+    ["Customer", "Server", "Cookie: a serialized TempCleaner"],
+    ["Server", "ObjectInputFilter", "may TempCleaner be built?"],
+    ["ObjectInputFilter", "Server", "REJECTED", "reply"],
+    ["Server", "Customer", "refused: class refused by the filter", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A signed, data-only cookie"
+participants = ["Customer", "Server"]
+steps = [
+    ["Customer", "Server", "Cookie: body.signature (changed)"],
+    ["note", "Server", "HMAC differs"],
+    ["Server", "Customer", "refused: bad signature", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["reader", "classpath"], colour = "green" },
+    { label = "Outside", nodes = ["customer"], colour = "red" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "edits the cookie", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "reader", label = "Cookie reader", sub = "readObject or text", col = 1, row = 0, colour = "client", threats = ["T1", "T3"] },
+    { id = "classpath", label = "Classes on the classpath", sub = "gadgets", col = 2, row = 0, colour = "green", shape = "store", threats = ["T1"] },
+]
+edges = [
+    { from = "customer", to = "reader", label = "cookie", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "reader", to = "classpath", label = "builds", threats = ["T1"] },
+]
+
+[threatmodel]
+scope = """
+An online store's shopping cart cookie and the code that reads it. It covers what the cookie can make the server build and what it can claim.
+It does not cover stolen sessions, cross-site scripting that reads cookies, or other deserialization points such as message queues.
+"""
+assets = [
+    "The server's files and processes.",
+    "The integrity of prices and carts.",
+]
+actors = [
+    "A customer who edits the cookie.",
+]
+boundaries = [
+    "Customer to server: the cookie leaves the server and comes back changed.",
+    "Cookie bytes to objects: the point where the bytes choose the classes.",
+]
+assumptions = [
+    "At least one class with a dangerous `readObject` is on the classpath (here, `TempCleaner`).",
+    "The signing key is secret and held only by the servers.",
+]
+out_of_scope = [
+    "Jackson and JSON polymorphism: insecure-deserialization-with-jackson.",
+    "Server-side session storage: session-management.",
+]
+tests = [
+    "`DeserializationTest` checks both readers with a gadget, a forged price, size limits, garbage and tampered signed cookies.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, path-traversal-and-file-upload, moves to the names and contents of files that customers send.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "The cookie names a class whose readObject runs code"
+where = "`SerializedCartCookie.unfiltered`"
+control = "An allow-list `ObjectInputFilter` set before reading, or no serialization at all"
+residual = "A class on the allow-list that is itself dangerous; keep the list to plain data classes"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "The customer changes the price or quantity in the cookie"
+where = "`Cart.Line`"
+control = "Prices come from the server; the cookie is signed"
+residual = "A leaked signing key lets anyone sign"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "A deeply nested or huge object exhausts memory"
+where = "`SerializedCartCookie.read`"
+control = "Limits on depth, references, array size and bytes; a size limit on the signed cookie"
+residual = "Limits set too high"

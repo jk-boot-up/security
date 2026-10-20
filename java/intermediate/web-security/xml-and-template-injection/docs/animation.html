@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XML External Entities and Template Injection — Animated Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #94a3b8; margin: 0 0 20px; max-width: 70ch; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+  .boxes { display: flex; flex-direction: column; gap: 10px; }
+  .row { border: 2px solid #334155; border-radius: 10px; padding: 12px 16px;
+         background: #1e293b; transition: all .25s ease; opacity: .55; }
+  .row .name { font-weight: 700; font-size: 1rem; }
+  .row .job { color: #94a3b8; font-size: .82rem; margin-top: 2px; }
+  .row.active { opacity: 1; box-shadow: 0 0 0 2px currentColor inset; }
+  .row.wrong { border-color: #f87171; color: #f87171; }
+  .row.wrong.active { background: #3f1d24; }
+  .row.ok { border-color: #34d399; color: #34d399; }
+  .row.ok.active { background: #10261f; }
+  .row.amber { border-color: #fbbf24; color: #fbbf24; }
+  .row.amber.active { background: #2a2110; }
+  .row.dim { opacity: .22; }
+  .console { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 16px;
+             font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86rem;
+             line-height: 1.55; overflow-y: auto; min-height: 320px; white-space: pre-wrap; }
+  #console-lines span.ok { color: #34d399; }
+  #console-lines span.bad { color: #f87171; }
+  #console-lines span.amber { color: #fbbf24; }
+  #console-lines span.muted { color: #94a3b8; }
+  .narration { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+               padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px;
+           padding: 10px 18px; font-size: .92rem; cursor: pointer; }
+  button:hover { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button#play { background: #7c3aed; border-color: #7c3aed; }
+  button#play:hover { background: #8b5cf6; }
+  #progress { color: #94a3b8; font-size: .85rem; margin-left: auto; }
+  .step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #a78bfa; font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>XML External Entities and Template Injection — Step by Step</h1>
+  <p class="sub">An invoice upload and an e-mail template: two readers that run what they read.</p>
+
+  <div class="narration">
+    <div class="step-label" id="step-label">Ready</div>
+    <div id="narration">Press Step or Play to begin.</div>
+  </div>
+
+  <div class="stage">
+    <div class="boxes" id="boxes">
+      <div class="row" id="row-upload">
+        <div class="name">The upload</div>
+        <div class="job">the parser reads a file</div>
+      </div>
+      <div class="row" id="row-xxe">
+        <div class="name">External entities</div>
+        <div class="job">a server file in the note</div>
+      </div>
+      <div class="row" id="row-doctype">
+        <div class="name">Refuse the DOCTYPE</div>
+        <div class="job">no entities at all</div>
+      </div>
+      <div class="row" id="row-expr">
+        <div class="name">Expressions</div>
+        <div class="job">pasted text runs in the template</div>
+      </div>
+      <div class="row" id="row-plain">
+        <div class="name">Logic-less templates</div>
+        <div class="job">named, escaped values only</div>
+      </div>
+    </div>
+    <div class="console"><div id="console-lines"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="step">Step ▸</button>
+    <button id="play">Play ▶</button>
+    <button id="reset">Reset ↺</button>
+    <span id="progress">0 / 0</span>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+ {
+  "label": "Act 1 — An invoice upload",
+  "narration": "First demo: an invoice upload. The supplier uploads a small XML file. The parser reads three fields. This is the feature working as intended.",
+  "rows": {
+   "upload": "active ok"
+  },
+  "console": [
+   [
+    "honest invoice -> accepted: customer=Ana, total=42.50, note=Thanks & see you soon",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 2 — The parser reads what the file tells it to",
+  "narration": "Second demo: the parser reads what the file tells it to. The file defines a name whose value is a file on the server. The note becomes the contents of that file. A second file defines names that expand into names. The library's built-in limit happens to stop it.",
+  "rows": {
+   "xxe": "active wrong"
+  },
+  "console": [
+   [
+    "external entity (file) -> accepted: note=demo-secret-from-the-server  <- A SERVER FILE",
+    "bad"
+   ],
+   [
+    "entity bomb -> refused: stopped by the parser's entity expansion limit",
+    "amber"
+   ]
+  ]
+ },
+ {
+  "label": "Act 3 — Refuse the DOCTYPE",
+  "narration": "Third demo: refuse the doctype. An invoice has no use for one, so the parser refuses it. The honest invoice still works. Both attacks fail for the same reason, before any entity is looked at.",
+  "rows": {
+   "doctype": "active ok"
+  },
+  "console": [
+   [
+    "honest invoice -> accepted: customer=Ana",
+    "ok"
+   ],
+   [
+    "external entity (file) -> refused: a DOCTYPE is not allowed in an invoice",
+    "ok"
+   ],
+   [
+    "entity bomb -> refused: a DOCTYPE is not allowed in an invoice",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 4 — A template engine that evaluates expressions",
+  "narration": "Fourth demo: a template engine that evaluates expressions. The owner's template works. But when the code pastes a customer's name into the template, the name runs. It prints the mail password. The same name passed as data stays text.",
+  "rows": {
+   "expr": "active wrong"
+  },
+  "console": [
+   [
+    "the owner's template -> Hello Ana, your order shipped.",
+    "ok"
+   ],
+   [
+    "name pasted into the template -> Hello demo-smtp-password  <- THE APPLICATION'S SECRET",
+    "bad"
+   ],
+   [
+    "class name of the customer -> com.jk.explore.security.xmlinj.Customer",
+    "amber"
+   ],
+   [
+    "name passed as data -> Hello ${app.config.smtpPassword} (text)",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 5 — A logic-less engine keeps data as data",
+  "narration": "Fifth demo: a logic-less engine keeps data as data. There are two named holes and nothing else. A pasted expression stays text, and markup is escaped. And the better habit is to pass the customer's text as a value, and never build the template from it.",
+  "rows": {
+   "plain": "active ok"
+  },
+  "console": [
+   [
+    "the owner's template -> Hello Ana, your order shipped.",
+    "ok"
+   ],
+   [
+    "name pasted into the template -> Hello ${app.config.smtpPassword}, your order shipped.  (text)",
+    "ok"
+   ],
+   [
+    "a name with markup -> Hello &lt;script&gt;x&lt;/script&gt;",
+    "ok"
+   ]
+  ]
+ }
+];
+const rowIds = ["upload", "xxe", "doctype", "expr", "plain"];
+const stepLabel = document.getElementById("step-label");
+const narrationEl = document.getElementById("narration");
+const consoleEl = document.getElementById("console-lines");
+const progressEl = document.getElementById("progress");
+const playBtn = document.getElementById("play");
+let i = -1, timer = null;
+
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function render() {
+  for (const id of rowIds) document.getElementById("row-" + id).className = "row";
+  if (i < 0) {
+    stepLabel.textContent = "Ready";
+    narrationEl.textContent = "Press Step or Play to begin.";
+    consoleEl.innerHTML = "";
+    progressEl.textContent = "0 / " + STEPS.length;
+    return;
+  }
+  const s = STEPS[i];
+  stepLabel.textContent = s.label;
+  narrationEl.textContent = s.narration;
+  for (const id of rowIds) {
+    const cls = s.rows[id];
+    document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
+  }
+  consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
+  progressEl.textContent = (i + 1) + " / " + STEPS.length;
+}
+function step() { if (i >= STEPS.length - 1) { stopPlay(); return; } i += 1; render(); }
+function reset() { stopPlay(); i = -1; render(); }
+// While a step's narration is playing, Play waits for it to finish.
+function speaking() { return typeof window.vkSpeaking === "function" && window.vkSpeaking(); }
+function startPlay() {
+  if (timer) return;
+  playBtn.textContent = "Pause ❚❚";
+  let quiet = 0;
+  timer = setInterval(() => {
+    if (speaking()) { quiet = 0; return; }
+    if (++quiet < 6) return;                     // 6 × 500 ms of reading time
+    quiet = 0;
+    if (i >= STEPS.length - 1) { stopPlay(); return; }
+    step();
+  }, 500);
+  if (i < 0) step();
+}
+function stopPlay() { if (timer) clearInterval(timer); timer = null; playBtn.textContent = "Play ▶"; }
+
+document.getElementById("step").addEventListener("click", () => { stopPlay(); step(); });
+document.getElementById("reset").addEventListener("click", reset);
+playBtn.addEventListener("click", () => { if (timer) stopPlay(); else startPlay(); });
+render();
+</script>
+</body>
+</html>

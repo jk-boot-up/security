@@ -1,0 +1,410 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "api-security"
+level = "intermediate"
+module = "api-security"
+title = "API Security: Mass Assignment, Data Exposure and Resource Limits"
+short_title = "API Security"
+package = "apisec"
+main_class = "ApiSecurityDemo"
+tagline = "An API owes its callers three limits: what they may set, what they may see, and how much they may ask for"
+bold = "An API that binds every field the caller sends, returns the whole record and answers any request count and size lets a customer promote themselves, read other people's data and exhaust the service, so use explicit request and response models, cap page sizes, and give each caller a budget."
+domain = "a bank API"
+domain_note = ""
+youtube_description = "API security in Java: mass assignment, excessive data exposure and unrestricted resource consumption."
+thumb_lines = ["API SECURITY", "THREE LIMITS"]
+thumb_code = "UpdateProfileRequest.parse(body)"
+youtube_title = "API Security in Java: Mass Assignment, Data Exposure and Rate Limits"
+youtube_tags = ["api security", "mass assignment", "rate limiting", "owasp api top 10", "java", "application security"]
+
+[readme]
+intro = """
+A bank's mobile app talks to a JSON API. Three habits make it easy to build and easy to attack:
+- **Binding every field** the app sends into the database record (**mass assignment**, API3): a caller adds `"role": "admin"` and it works.
+- **Returning the record itself** (**excessive data exposure**, also API3): the response carries the full card number, the PIN hash and the risk score because they are in the entity.
+- **Answering anything, any number of times** (**unrestricted resource consumption**, API4): a page size of a million returns every customer, and a loop of requests is never slowed.
+
+The defences, in the order this project shows them:
+- **An explicit request model:** a few named fields, with types and lengths, and unknown fields refused.
+- **An explicit response model:** the app gets what the app needs, with the card number masked.
+- **Caps and budgets:** a maximum page size, and a token bucket for each caller that returns 429 with `Retry-After`.
+
+**Maps to:** OWASP API Security Top 10 (2023) API3 Broken Object Property Level Authorization and API4 Unrestricted Resource Consumption · API6 Unrestricted Access to Sensitive Business Flows · CWE-915 · CWE-213 · CWE-770.
+"""
+analogy = """
+Think of a counter clerk who, to update your address, hands you your whole file and lets you cross out and rewrite anything in it, including the line that says "customer".
+The fixed counter has a form with two boxes, shows you a card with the few things you need, and serves a limited number of customers per minute.
+"""
+scenario = """
+A bank API has three calls: change my profile, show an account, and list the branch directory. The demo runs the calls in plain Java against 300 fixed accounts, and measures what each version lets a signed-in customer do.
+Ownership of accounts is checked in every version, because that is a different lesson (broken-access-control); this one is about what an owner-or-not caller may set, see and ask for.
+"""
+costs = [
+    "**Explicit models are more code,** and they must be kept in step with the database. Tests that compare the fields of a response with the model catch drift.",
+    "**Refusing unknown fields breaks clients that send extras,** which is why older clients need a version, and why a refusal is better than silently ignoring: silence hides bugs and attacks.",
+    "**Limits need numbers,** and the numbers come from measuring real use. Too low breaks real apps; too high protects nothing.",
+    "**Rate limits live somewhere shared.** With several servers, the buckets must be in a shared store; the with-Redis version shows that.",
+    "**Cost is not only request count.** A call that returns a hundred rows costs more than one that returns one, and so the budget charges per row here.",
+]
+too_much = """
+A rate limit in front of every call is not a substitute for authorization, and a response model is not a substitute for deciding which fields a caller may read in the first place.
+Do not log full request bodies to detect mass assignment; log the names of refused fields.
+"""
+met_before = [
+    "A `PATCH` that copies a JSON map onto an entity with a mapper or `BeanUtils.copyProperties`.",
+    "`return repository.findAll()` and `return entity` in a controller.",
+    "A `limit` or `pageSize` parameter with no upper bound.",
+    "HTTP 429 and the `Retry-After` header.",
+]
+where = """
+This project is in [api-security](..) and follows the web-security projects. It builds on [broken-access-control](../../web-security/broken-access-control) for ownership,
+and prepares the Redis-backed rate limiter in api-security-with-spring-boot-and-redis.
+"""
+twin = """
+There is no HTTP server: the API is a Java interface whose calls take the user and the parsed JSON, which keeps the focus on the rules. The clock is simulated, so the rate limiter's numbers are exact
+and the demo prints the same text on every run.
+"""
+test_note = "Time is simulated and the data is fixed, so the demo prints the same text on every run."
+
+[[act]]
+title = "A profile call that works"
+summary = "Ana changes her display name and gets her account back."
+detail = """
+Ana's app sends `{"displayName": "Ana Ruiz"}` and the API answers 200 with the updated account. Nothing looks wrong, but look at what came back: eight fields.
+"""
+speech = """
+First demo: a profile call that works. [[slnc 400]] Ana's app changes her display name. [[slnc 300]] The API answers with the updated account. [[slnc 300]] Look at what came back: eight fields.
+"""
+rows = { call = "active ok" }
+console = [
+    ["PATCH displayName -> 200 fields [displayName, email, role, balanceCents, creditLimitCents, riskScore, cardNumber, pinHash]", "amber"],
+]
+
+[[act]]
+title = "Whatever the caller sends becomes a field"
+summary = "Adding role and creditLimitCents to the JSON makes Ana an admin with a limit of a million dollars."
+detail = """
+The same call with two extra keys, `role` and `creditLimitCents`, copies them onto the account. Ana is now an admin with a credit limit of 100,000,000 cents. The API never decided that these fields were the caller's to change;
+it only copied what it was given.
+"""
+speech = """
+Second demo: whatever the caller sends becomes a field. [[slnc 400]] The same call, with two extra keys. [[slnc 300]] Role, and credit limit. [[slnc 600]]
+Ana is now an admin with a very large credit limit. [[slnc 300]] The API never decided those fields were hers to change.
+"""
+rows = { mass = "active wrong" }
+console = [
+    ["PATCH role, creditLimit -> 200 ... role=admin, creditLimitCents=100000000  <- NOT HERS TO CHANGE", "bad"],
+]
+
+[[act]]
+title = "The response is the whole record, and a list has no end"
+summary = "The account response includes the card number and PIN hash; a page size of a million returns 300 accounts; 1000 requests are all answered."
+detail = """
+The API returns the account entity: the full card number, the PIN hash, the risk score. Anything stored becomes anything shown. The branch directory takes the page size from the caller, so size=1,000,000 returns
+all 300 accounts with every field. A loop of 1000 requests is answered 1000 times without slowing down.
+"""
+speech = """
+Third demo: the response is the whole record, and a list has no end. [[slnc 400]] The account response includes the full card number and the PIN hash. [[slnc 600]]
+A page size of a million returns every customer, with every field. [[slnc 300]] And a thousand requests in a loop are all answered.
+"""
+rows = { expose = "active wrong" }
+console = [
+    ["GET /accounts/acc-0001 -> 200 ... cardNumber, pinHash, riskScore", "bad"],
+    ["GET /accounts?size=1000000 -> 200 300 accounts, every field  <- EVERY CUSTOMER", "bad"],
+    ["1000 requests in a loop -> 1000 answered, none slowed down", "bad"],
+]
+
+[[act]]
+title = "Explicit models, a page cap and a budget"
+summary = "Unknown fields are refused with 400 and nothing changes; the response shows five fields with the card masked; a page is capped at 50 and shows only ids and names."
+detail = """
+The fixed API reads a request into `UpdateProfileRequest` with two named fields, checks their type and length, and refuses anything else with 400 and no change: Ana's role afterwards is still customer. The response is an
+`AccountView` with five fields and the card as ****0001. The list is capped at 50 whatever the caller asks for, and shows the directory view: ids and display names, not balances or cards.
+"""
+speech = """
+Fourth demo: explicit models, a page cap and a budget. [[slnc 400]] The request has two named fields, and anything else is refused. [[slnc 300]] The role is still customer. [[slnc 600]]
+The response has five fields, with the card masked. [[slnc 300]] The list is capped at fifty, and shows only names.
+"""
+rows = { models = "active ok", cap = "active ok" }
+console = [
+    ["PATCH displayName -> 200 fields [id, displayName, email, balanceCents, cardLast4], card ****0001", "ok"],
+    ["PATCH role, creditLimit -> 400 unknown field; role afterwards: customer", "ok"],
+    ["GET /accounts?size=1000000 -> 200 50 accounts, id and name only", "ok"],
+]
+
+[[act]]
+title = "The budget runs out, and refills"
+summary = "Of 1000 requests in a loop 49 are answered and the rest get 429 with Retry-After 1s; after waiting the call works again, and another customer is not affected."
+detail = """
+Each caller has a token bucket: a burst of 100 rows, refilled at 100 a minute, and a list costs a token per row. The earlier calls used 51 of them; of the next 1000 requests, 49 are answered, and then the API says 429
+with `Retry-After: 1`. After waiting that long the call works again. Another customer has their own bucket and is not affected.
+"""
+speech = """
+Fifth demo: the budget runs out, and refills. [[slnc 400]] Each caller has a bucket of tokens. [[slnc 300]] A list costs a token for every row. [[slnc 600]]
+Of a thousand requests, forty-nine are answered, and then the API says too many requests, and tells the app how long to wait. [[slnc 300]] After waiting, the call works. [[slnc 300]] And another customer is not affected.
+"""
+rows = { budget = "active ok" }
+console = [
+    ["1000 requests in a loop -> 49 answered, then 429 with Retry-After 1s", "ok"],
+    ["after waiting that long -> 200 ...", "ok"],
+    ["another customer meanwhile -> 200 5 accounts, id and name only", "ok"],
+]
+
+[animation]
+subtitle = "A bank API and the three limits it owes its callers."
+boxes = [
+    ["call", "A profile call", "what the app sends"],
+    ["mass", "Mass assignment", "every key becomes a field"],
+    ["expose", "The whole record", "and a list with no end"],
+    ["models", "Explicit models", "named fields in, a view out"],
+    ["cap", "Caps", "a page size limit"],
+    ["budget", "Budgets", "tokens per caller, 429 and Retry-After"],
+]
+
+[docs.problem]
+scenario = """
+A bank's mobile app uses a JSON API to update a profile, show an account and list the branch directory.
+"""
+naive = """
+Copy the JSON onto the record, return the record, and take the page size from the caller: the app is ours, so it only sends what we expect.
+"""
+deliver = [
+    "A naive API with mass assignment, a whole-record response and an unlimited page size.",
+    "An explicit request model with unknown fields refused.",
+    "An explicit response model with a masked card, and a directory view for lists.",
+    "A token-bucket rate limiter with a simulated clock, charging per row.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what a JSON API and an HTTP status code are",
+]
+not_required = [
+    "A web framework: the API is a Java interface",
+    "Redis: that comes in the next project",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain mass assignment and how an explicit request model stops it",
+    "explain excessive data exposure and why a response model is a security control",
+    "choose a page cap and say why a list costs more than one row",
+    "describe a token bucket, 429 and Retry-After",
+]
+walkthrough = """
+Run act two and ask who decided that "role" was a field the caller could set. In act three, count the fields in the response and ask which the app really uses. In act five, ask what a caller who
+sends one request every 0.6 seconds would see.
+"""
+exercises = [
+    "Add a `phone` field to the request model with a pattern, and refuse an unknown country code.",
+    "Charge a transfer more tokens than a read, and show the effect on a loop of transfers.",
+    "Return a JSON error with the name of the refused field, and decide whether that is safe to show.",
+    "Add a maximum request body size and refuse larger bodies with 413.",
+]
+
+[docs.explained]
+sentence = """
+An API should say which fields a caller may set, which fields it may see, and how much it may ask for, in code, and not leave those decisions to whatever the database record happens to contain.
+"""
+verdict = """
+Write a request model for every write, refuse unknown fields, write a response model for every read, never return an entity, cap page sizes, and put a budget on every caller and every expensive or business-sensitive call.
+Return 429 with `Retry-After` and keep the numbers in configuration.
+"""
+recognise = [
+    "`BeanUtils.copyProperties(request, entity)` or `objectMapper.readerForUpdating(entity)`.",
+    "Controllers that return repository entities.",
+    "`@RequestParam int size` with no maximum.",
+    "Findings with API3, API4 or API6.",
+]
+
+[spec]
+purpose = """
+Teach three API weaknesses by promoting a customer through extra JSON keys, reading a whole record and all customers, and hammering the API, then fixing each with an explicit model, a cap and a budget.
+"""
+nongoals = [
+    "Object-level authorization (ownership): the broken-access-control project.",
+    "A real HTTP server or a shared rate-limit store: the with-Spring-Boot-and-Redis version.",
+    "Authentication.",
+]
+problem = """
+Developers let the shape of the database record decide what an API accepts and returns, and let callers decide how much work a request does.
+"""
+roles = [["The data", "`Account`, `Bank`"], ["The API and its answers", "`Api`, `ApiResponse`, `NaiveApi`, `SafeApi`"], ["Models", "`UpdateProfileRequest`, `AccountView`, `DirectoryEntry`"], ["Limits", "`RateLimiter`, `SimClock`"], ["Entry point", "`ApiSecurityDemo`"]]
+requirements = [
+    "The naive API sets any field, returns every field and any number of rows, and answers any number of requests.",
+    "The safe API refuses unknown or invalid fields with 400 and changes nothing.",
+    "The safe API returns only the view fields, with the card masked, and a directory view in lists.",
+    "The page size is capped, and calls are limited per caller, charging per row, with 429 and Retry-After.",
+    "Ownership is still checked in both versions.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where the three limits sit"
+caption = "Each limit is a rule in the API, between the app and the data."
+nodes = [
+    { id = "app", label = "Mobile app", sub = "or an attacker's script", col = 0, row = 0, colour = "red" },
+    { id = "api", label = "Bank API", sub = "request model, view, budget", col = 1, row = 0, colour = "client" },
+    { id = "data", label = "Account records", sub = "role, limit, card, PIN hash", col = 2, row = 0, colour = "green", shape = "store" },
+    { id = "limits", label = "Limits", sub = "fields in, fields out, rows and rate", col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "app", to = "api", label = "JSON", colour = "red", dashed = true },
+    { from = "api", to = "data", label = "reads and writes" },
+    { from = "limits", to = "api", label = "enforce", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Two implementations of one API; the safe one uses models and a limiter."
+nodes = [
+    { id = "api", label = "Api", sub = ["patchProfile()", "getAccount()", "listAccounts()"], col = 0, row = 0, colour = "accent" },
+    { id = "naive", label = "NaiveApi", sub = ["copies all keys", "returns entities"], col = 1, row = 0, colour = "red" },
+    { id = "safe", label = "SafeApi", sub = ["models", "caps", "budgets"], col = 2, row = 0, colour = "green" },
+    { id = "req", label = "UpdateProfileRequest", sub = ["parse(body)"], col = 0, row = 1, colour = "client" },
+    { id = "view", label = "AccountView, DirectoryEntry", sub = ["what is shown"], col = 1, row = 1, colour = "client" },
+    { id = "rl", label = "RateLimiter", sub = ["tryTake(key, cost)"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "naive", to = "api", label = "implements" },
+    { from = "safe", to = "api", label = "implements" },
+    { from = "safe", to = "req", label = "parses with" },
+    { from = "safe", to = "view", label = "returns" },
+    { from = "safe", to = "rl", label = "asks" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What a safe call passes, in order"
+caption = "The budget is checked first, so a refused or expensive call costs little."
+nodes = [
+    { id = "budget", label = "Budget", sub = "tokens for this caller", col = 0, row = 0, colour = "amber" },
+    { id = "owner", label = "Owner", sub = "may this caller touch it?", col = 1, row = 0, colour = "accent" },
+    { id = "model", label = "Request model", sub = "named fields, types, lengths", col = 2, row = 0, colour = "client" },
+    { id = "view", label = "Response model", sub = "only what the app needs", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "budget", to = "owner" },
+    { from = "owner", to = "model" },
+    { from = "model", to = "view" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Mass assignment"
+participants = ["Ana's app", "API", "Account record"]
+steps = [
+    ["Ana's app", "API", "PATCH {displayName, role: admin}"],
+    ["API", "Account record", "set every key"],
+    ["API", "Ana's app", "200 role=admin", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "An explicit request model"
+participants = ["Ana's app", "API"]
+steps = [
+    ["Ana's app", "API", "PATCH {displayName, role: admin}"],
+    ["note", "API", "role is not a field of UpdateProfileRequest"],
+    ["API", "Ana's app", "400 unknown field", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A budget that runs out"
+participants = ["Script", "API", "RateLimiter"]
+steps = [
+    ["Script", "API", "GET /accounts/acc-0001 (many times)"],
+    ["API", "RateLimiter", "tryTake(ana, 1)"],
+    ["RateLimiter", "API", "wait 1 second", "reply"],
+    ["API", "Script", "429 Retry-After: 1", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The bank", nodes = ["api", "data"], colour = "green" },
+    { label = "Outside", nodes = ["caller"], colour = "red" },
+]
+nodes = [
+    { id = "caller", label = "Caller", sub = "any JSON, any rate", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "api", label = "API", sub = "binds, shows, serves", col = 1, row = 0, colour = "client", threats = ["T1", "T2", "T3"] },
+    { id = "data", label = "Records", sub = "role, limit, card", col = 2, row = 0, colour = "green", shape = "store", threats = ["T1", "T2"] },
+]
+edges = [
+    { from = "caller", to = "api", label = "requests", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "api", to = "data", label = "binds and reads", threats = ["T1", "T2"] },
+]
+
+[threatmodel]
+scope = """
+A bank's customer-facing JSON API: profile update, account view and directory list. It covers the fields accepted and returned and the amount of work a caller can cause.
+It does not cover ownership checks, authentication, or the network.
+"""
+assets = [
+    "Roles, limits and balances.",
+    "Card numbers, PIN hashes and risk scores.",
+    "The API's availability for other customers.",
+]
+actors = [
+    "Ana, a customer using the official app.",
+    "A customer who sends hand-made requests.",
+]
+boundaries = [
+    "Caller to API: the JSON, the page size and the request rate are untrusted.",
+    "API to records: the shape of the record must not decide the shape of the API.",
+]
+assumptions = [
+    "Authentication and ownership are enforced elsewhere (and are checked in the demo).",
+    "One server instance; shared limits come with the Redis version.",
+]
+out_of_scope = [
+    "Object-level authorization: broken-access-control.",
+    "Distributed rate limiting: api-security-with-spring-boot-and-redis.",
+]
+tests = [
+    "`ApiSecurityTest` checks both APIs: mass assignment, response shape, masking, page caps, validation, ownership, the budget, 429 and refill.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, cors, covers which other sites a browser lets read these answers.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A caller sets fields it may not change, such as role and credit limit"
+where = "`NaiveApi.patchProfile`"
+control = "An explicit request model that refuses unknown fields"
+residual = "A field added to the model later without a decision about who may set it"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "Responses reveal fields the app does not need: full card, PIN hash, risk score"
+where = "`NaiveApi.getAccount`, `listAccounts`"
+control = "Response models and a directory view"
+residual = "A view that grows fields over time; compare responses with the model in tests"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "Huge pages and request loops exhaust the service and scrape data"
+where = "`NaiveApi.listAccounts`"
+control = "A page cap and per-caller token buckets charged per row, with 429 and Retry-After"
+residual = "Many accounts together (distributed callers); monitor totals and block patterns"

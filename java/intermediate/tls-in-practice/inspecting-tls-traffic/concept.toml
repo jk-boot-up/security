@@ -1,0 +1,423 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "inspecting-tls-traffic"
+level = "intermediate"
+module = "tls-in-practice"
+title = "Inspecting TLS Traffic with a Key Log"
+short_title = "TLS Key Logs"
+package = "tlslog"
+main_class = "TlsLogDemo"
+tagline = "A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral"
+bold = "An encrypted capture is unreadable without keys, but a key log file (SSLKEYLOGFILE) holds the traffic secrets of the connections it lists and nothing else, so it is a debugging tool that must never run in production; and forward secrecy is why a leaked server key does not open recorded ephemeral sessions."
+domain = "an online shop's login"
+domain_note = ""
+youtube_description = "Inspecting TLS traffic in Java: what a capture shows, what a key log decrypts, and why forward secrecy matters."
+thumb_lines = ["INSPECTING TLS", "WITH A KEY LOG"]
+thumb_code = "CLIENT_TRAFFIC_SECRET_0"
+youtube_title = "Inspecting TLS Traffic with a Key Log (SSLKEYLOGFILE) in Java"
+youtube_tags = ["tls", "sslkeylogfile", "wireshark", "key log", "forward secrecy", "hkdf", "java", "application security"]
+
+[readme]
+intro = """
+When a developer needs to see what an HTTPS client really sent, a packet capture alone shows only encrypted records. The standard answer is a **key log**: browsers, curl and many libraries write the connection's traffic secrets to the file named by the
+`SSLKEYLOGFILE` environment variable, and tools such as Wireshark read it to decrypt the capture. It is a very useful tool and a dangerous file: it is a recording key for every connection it lists.
+
+This project builds the whole thing in plain Java so that nothing is a black box: a **TLS 1.3 style key schedule** (HKDF-SHA-256 with the real `tls13 ` labels, X25519 key exchange), **AES-128-GCM records** with the real nonce and header rules, a **capture** of what a network observer sees, the **NSS key log format**, and a
+**decryptor** that works on a capture with different things in hand: nothing, a key log, or the server's long-term private key.
+
+What it shows, in order:
+- A capture without keys: lengths and the hello values in the clear, but no plaintext.
+- The key log lines, and a client that refuses to write them in production.
+- The capture decrypted with the log: a login request with its password.
+- A log opens only the connections whose lines it holds, and one direction at a time.
+- **Forward secrecy:** a leaked long-term server key opens recorded *static RSA* sessions, and nothing from ephemeral key exchange.
+
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-312 · CWE-532 · RFC 8446 (TLS 1.3), RFC 5869 (HKDF), RFC 8448 (example traces) · the NSS key log format.
+"""
+analogy = """
+A recorded phone call is noise until somebody has the key to the scrambler. A key log is a note with that key for specific calls: it lets an engineer listen to the call they are debugging, and it lets anyone who finds the note listen to the same calls.
+A phone company that uses a fresh scrambler key for each call, and throws it away, cannot be forced to decode last year's recordings even if its master key is stolen.
+"""
+scenario = """
+A customer logs in to a shop over an encrypted connection, and a developer captures the traffic. The demo creates connections with repeatable keys, captures what the wire shows, and plays three roles: an observer with no keys, a developer with the key log,
+and an attacker who later steals the server's long-term key.
+"""
+costs = [
+    "**A key log is a plaintext secret.** Anyone who can read the file and the capture can read the sessions; protect it like a password file and delete it after use.",
+    "**Debugging in production is tempting and wrong.** Make the setting impossible there, as the demo's check does, and monitor for the variable.",
+    "**Forward secrecy needs ephemeral key exchange,** which every TLS 1.3 connection has; older configurations that still offer static RSA give it up.",
+    "**Decrypting traffic you may not read is a privacy matter** as well as a technical one: inspect only your own test traffic.",
+    "**Key logs are per connection,** so long captures need many lines, and a log that is missing a line for a resumed or renegotiated session gives an incomplete picture.",
+]
+too_much = """
+If you only need to know what a library sent, log at the application layer (the request object) in a test, and leave TLS alone. A proxy you control and your own test CA is another way to see your client's traffic without writing secrets to disk.
+"""
+met_before = [
+    "Wireshark's \"Pre-Master-Secret log filename\" setting.",
+    "`SSLKEYLOGFILE=/tmp/keys.log` before starting a browser or `curl`.",
+    "Java's `-Djavax.net.debug=ssl` output, which prints handshake detail (and in some versions secrets).",
+    "The advice to turn off static RSA cipher suites.",
+]
+where = """
+This project is in [tls-in-practice](..) and follows [tls-misconfigurations](../tls-misconfigurations), which flags suites without forward secrecy. It builds on the beginner
+[tls-handshake](../../../beginner/transport-security/tls-handshake) project, and on the hashing and key-exchange ideas in the beginner cryptography track.
+"""
+twin = """
+The key exchange (X25519, RSA-OAEP), HKDF, AES-GCM and the key log format are real and standard; the handshake messages are reduced to the values the key schedule needs (random values, key shares and a hash of the hellos), and certificates are left out because the lesson is about keys.
+Keys come from a labelled generator so that the bytes, and the demo's output, are the same on every run. That generator must never be used for real keys.
+"""
+test_note = "Keys come from a labelled generator and the RSA key is never printed, so the demo prints the same text on every run."
+
+[[act]]
+title = "What the wire shows"
+summary = "An observer sees the hello values and two encrypted records of 70 and 52 bytes; the plaintext, including the word password, is nowhere, and without keys nothing can be decrypted."
+detail = """
+The client sends a login request and the server answers. A capture holds the client and server random values (sent in the clear), the key shares, and two records of 70 and 52 bytes, each beginning with the record header 17 03 03: "application data", because TLS 1.3 hides the real content type inside the encrypted part.
+Searching the bytes for "password" finds nothing, and the decryptor with no keys returns nothing. Lengths and timing are still visible, which is a limit of TLS.
+"""
+speech = """
+First demo: what the wire shows. [[slnc 400]] The observer sees the hello values, and two encrypted records. [[slnc 300]] Their sizes are visible. [[slnc 300]] Their contents are not. [[slnc 600]]
+Searching for the word password finds nothing, and without keys, nothing can be decrypted.
+"""
+rows = { wire = "active ok" }
+console = [
+    ["client -> server: 70 bytes, starts 1703030041 (application data)", "muted"],
+    ["server -> client: 52 bytes, starts 170303002f (application data)", "muted"],
+    ["contains the word \"password\"? false", "ok"],
+    ["decrypted without any key -> []", "ok"],
+]
+
+[[act]]
+title = "Writing a key log"
+summary = "The key log variable is ignored when unset, honoured in development and refused in production; each connection gets a client line and a server line named by the client random."
+detail = """
+A client that supports key logging reads SSLKEYLOGFILE. Here it returns nothing when the variable is not set, the path in development, and refuses to start in production. The file has one line per direction: a label, the client random in hex, and the traffic secret in hex. The client random
+names the connection, and the secret is what the record keys are derived from.
+"""
+speech = """
+Second demo: writing a key log. [[slnc 400]] The variable is ignored when it is not set, and honoured in development. [[slnc 300]] In production, the client refuses to start. [[slnc 600]]
+The file holds one line for each direction: a label, the connection's random value, and a secret.
+"""
+rows = { log = "active amber" }
+console = [
+    ["SSLKEYLOGFILE not set -> Optional.empty", "muted"],
+    ["SSLKEYLOGFILE=/tmp/keys.log in development -> Optional[/tmp/keys.log]", "amber"],
+    ["SSLKEYLOGFILE=/tmp/keys.log in production -> refused: SSLKEYLOGFILE is set in production; refusing to start", "ok"],
+    ["CLIENT_TRAFFIC_SECRET_0 3bd68db30791... 7c6da57caa88...", "muted"],
+]
+
+[[act]]
+title = "Reading the capture with the key log"
+summary = "With the log the capture reads POST /login with user=ana&password=hunter2, and the reply with the session."
+detail = """
+The decryptor finds the lines for this capture's client random, derives the record keys and nonces from the secrets, and opens the records in order. The login request appears with its password, and the reply with the session cookie value.
+This is exactly what a developer needs for debugging, and exactly what an attacker gets by finding the file.
+"""
+speech = """
+Third demo: reading the capture with the key log. [[slnc 400]] The decryptor finds the lines for this connection, derives the record keys, and opens the records. [[slnc 600]]
+The login request appears, with the password. [[slnc 300]] That is what a developer needs for debugging, and what an attacker gets by finding the file.
+"""
+rows = { read = "active wrong" }
+console = [
+    ["client: POST /login HTTP/1.1 | user=ana&password=hunter2", "bad"],
+    ["server: HTTP/1.1 200 OK | session=7f3a", "bad"],
+]
+
+[[act]]
+title = "A key log opens its own connections and no others"
+summary = "Session one's log reads nothing of session two; session two reads with its own lines; with only the client line of session one, only the client's records open."
+detail = """
+Each connection has its own random values and key shares, so its secrets are unrelated to every other connection's. Session one's log decrypts nothing in session two's capture. Adding session two's lines opens it. Giving the decryptor only the client line of session one
+opens the client's request and not the server's reply, because the two directions have separate secrets.
+"""
+speech = """
+Fourth demo: a key log opens its own connections and no others. [[slnc 400]] Each connection has its own secrets. [[slnc 300]] The first log opens nothing of the second connection. [[slnc 600]]
+And each direction has its own secret, so a client line alone opens only the request.
+"""
+rows = { scope = "active ok" }
+console = [
+    ["session two with session one's key log -> []", "ok"],
+    ["session two with its own lines -> [client: GET /orders HTTP/1.1, server: HTTP/1.1 200 OK | 3 orders]", "amber"],
+    ["only the client line of session one -> [client: POST /login ...]", "amber"],
+]
+
+[[act]]
+title = "Why the server's own key is a different matter"
+summary = "A server key that leaks a year later decrypts a recorded static-RSA connection completely and an ephemeral one not at all."
+detail = """
+With static RSA key exchange, the client encrypts the secret it chose under the server's long-term public key. An attacker who recorded the connection last year and steals the server's private key today decrypts the premaster secret, derives the same keys, and reads the login.
+With ephemeral key exchange (X25519) the long-term key only signs the handshake: the traffic secrets came from values that were thrown away, so the stolen key opens nothing. That is forward secrecy, and the reason static RSA is gone from TLS 1.3 and a finding in the previous project.
+"""
+speech = """
+Fifth demo: why the server's own key is a different matter. [[slnc 400]] With static r s a, the client encrypts its secret under the server's long-term key. [[slnc 300]] An attacker who recorded last year's connection and steals the key today reads the login. [[slnc 600]]
+With an ephemeral exchange, the long-term key only signed the handshake. [[slnc 300]] The stolen key opens nothing. That is forward secrecy.
+"""
+rows = { fs = "active ok" }
+console = [
+    ["recorded last year, static RSA key exchange; the server key leaks today -> [client: POST /login ..., server: HTTP/1.1 200 OK ...]", "bad"],
+    ["recorded last year, ephemeral key exchange; the same key leaks today -> []", "ok"],
+]
+
+[animation]
+subtitle = "A captured login, a key log, and a stolen server key."
+boxes = [
+    ["wire", "The wire", "encrypted records, hello values in the clear"],
+    ["log", "A key log", "one line per direction per connection"],
+    ["read", "Reading the capture", "the password appears"],
+    ["scope", "Scope of a log", "its own connections only"],
+    ["fs", "Forward secrecy", "a stolen server key opens nothing ephemeral"],
+]
+
+[docs.problem]
+scenario = """
+A developer needs to see the contents of an encrypted login for debugging, and the security team needs to know what that costs and what an attacker with recorded traffic could do.
+"""
+naive = """
+Capture the traffic and ask for the server's private key, or set SSLKEYLOGFILE everywhere, including production, so that anything can be debugged later.
+"""
+deliver = [
+    "A TLS 1.3 style key schedule with real HKDF labels and X25519, and AES-GCM records.",
+    "Captures of ephemeral and static-RSA connections, and a decryptor for each kind of key material.",
+    "The NSS key log format, and a check that refuses the variable in production.",
+    "A demonstration of forward secrecy against a leaked long-term key.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The beginner tls-handshake project, or an idea of key exchange and symmetric encryption",
+]
+not_required = [
+    "Wireshark: the decryptor is written in Java",
+    "Knowledge of HKDF: the project explains it",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "say what a packet capture of TLS 1.3 reveals and what it hides",
+    "describe the key log format and what a line allows",
+    "explain forward secrecy with a leaked long-term key",
+    "list the controls that keep key logs out of production",
+]
+walkthrough = """
+Run act one and ask what an observer learns from the sizes alone. In act four, ask what a developer would have to collect to debug a long session. In act five, ask which of the two connections an attacker with a year-old recording would choose to attack, and why.
+"""
+exercises = [
+    "Add a second record to each direction and check that sequence numbers matter when records are reordered.",
+    "Add a TLS 1.3 key update that changes the traffic secret after N records, and extend the key log with a second label.",
+    "Make the decryptor report which direction it could not open and why.",
+    "Write a check that fails a startup health test when SSLKEYLOGFILE is present in the process environment of a production container.",
+]
+
+[docs.explained]
+sentence = """
+A TLS capture is unreadable without keys; a key log holds the traffic secrets of exactly the connections it lists and must stay out of production; and forward secrecy means a stolen long-term server key cannot open recorded ephemeral connections.
+"""
+verdict = """
+Use key logs only for your own traffic in development and delete them after use. Make the setting fail loudly in production. Offer only ephemeral key exchange (TLS 1.3, or ECDHE in TLS 1.2), so that a future key theft does not unlock recordings.
+"""
+recognise = [
+    "`SSLKEYLOGFILE` in an environment, a Dockerfile or a run script.",
+    "Lines starting `CLIENT_RANDOM`, `CLIENT_TRAFFIC_SECRET_0` or `SERVER_TRAFFIC_SECRET_0`.",
+    "Wireshark's TLS protocol preference \"(Pre)-Master-Secret log filename\".",
+    "A finding about private keys or secrets written to log files, CWE-532.",
+]
+
+[spec]
+purpose = """
+Teach what a TLS capture shows and hides by building the key schedule, the records, the key log format and a decryptor, and by showing forward secrecy against a leaked server key.
+"""
+nongoals = [
+    "A full TLS implementation: certificates, extensions and handshake encryption are left out.",
+    "Wireshark: the with-Wireshark version uses tshark on a real capture.",
+    "Man-in-the-middle proxies.",
+]
+problem = """
+Developers need to see encrypted traffic, and the tools that allow it leave behind files that can decrypt it again.
+"""
+roles = [["Key schedule and records", "`Hkdf`, `Secrets`, `Records`"], ["Connections and captures", "`Connection`, `Capture`, `Packet`, `LabelledRandom`"], ["Key log and decryptor", "`KeyLog`, `Decryptor`, `Hex`"], ["Entry point", "`TlsLogDemo`"]]
+requirements = [
+    "HKDF matches the RFC 5869 test vector, and records use the TLS 1.3 nonce and header rules.",
+    "A capture reveals no plaintext and no content type, and cannot be decrypted without keys.",
+    "A key log decrypts exactly the connections and directions it has lines for.",
+    "A leaked long-term key decrypts a static-RSA connection and nothing ephemeral.",
+    "The key log variable is refused when the environment is production.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Who holds what"
+caption = "The observer sees records; the endpoints hold the secrets; the key log is a copy of the secrets."
+nodes = [
+    { id = "client", label = "Client", sub = "writes a key log", col = 0, row = 0, colour = "client" },
+    { id = "wire", label = "The wire", sub = "records, hello values", col = 1, row = 0, colour = "amber", shape = "store" },
+    { id = "server", label = "Server", sub = "long-term key signs the handshake", col = 2, row = 0, colour = "green" },
+    { id = "log", label = "Key log file", sub = "traffic secrets", col = 0, row = 1, colour = "red", shape = "store" },
+    { id = "analyst", label = "Analyst or attacker", sub = "capture + log", col = 1, row = 1, colour = "red" },
+]
+edges = [
+    { from = "client", to = "wire", label = "encrypted" },
+    { from = "wire", to = "server" },
+    { from = "client", to = "log", label = "SSLKEYLOGFILE", dashed = true },
+    { from = "log", to = "analyst", label = "opens the capture", colour = "red", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "A connection makes secrets and a capture; the decryptor works from the capture and a key source."
+nodes = [
+    { id = "conn", label = "Connection", sub = ["ecdhe()", "staticRsa()"], col = 0, row = 0, colour = "green" },
+    { id = "secrets", label = "Secrets", sub = ["derive(shared, transcript)"], col = 1, row = 0, colour = "accent" },
+    { id = "records", label = "Records", sub = ["seal()", "open()"], col = 2, row = 0, colour = "amber" },
+    { id = "capture", label = "Capture", sub = ["randoms, key shares", "packets"], col = 0, row = 1, colour = "client" },
+    { id = "keylog", label = "KeyLog", sub = ["lines()", "find()", "pathFor(env)"], col = 1, row = 1, colour = "red" },
+    { id = "dec", label = "Decryptor", sub = ["withKeyLog()", "withServerLongTermKey()"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "conn", to = "secrets", label = "derives" },
+    { from = "conn", to = "capture", label = "makes" },
+    { from = "dec", to = "keylog", label = "reads" },
+    { from = "dec", to = "records", label = "opens with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a shared secret to a decrypted record"
+caption = "Anyone who holds a traffic secret can run the last two steps."
+nodes = [
+    { id = "shared", label = "Shared secret", sub = "X25519, or the RSA premaster", col = 0, row = 0, colour = "client" },
+    { id = "schedule", label = "Key schedule", sub = "HKDF with tls13 labels", col = 1, row = 0, colour = "accent" },
+    { id = "traffic", label = "Traffic secrets", sub = "one for each direction", col = 2, row = 0, colour = "red" },
+    { id = "record", label = "Record keys", sub = "key, IV, record number", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "shared", to = "schedule" },
+    { from = "schedule", to = "traffic" },
+    { from = "traffic", to = "record" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A login captured and decrypted"
+participants = ["Client", "Server", "Analyst"]
+steps = [
+    ["Client", "Server", "hello + X25519 key share"],
+    ["Server", "Client", "hello + X25519 key share", "reply"],
+    ["Client", "Server", "encrypted: POST /login"],
+    ["note", "Client", "writes CLIENT_TRAFFIC_SECRET_0 to the key log"],
+    ["Analyst", "Analyst", "capture + key log: POST /login in clear"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A stolen server key and a static RSA session"
+participants = ["Client", "Server", "Attacker"]
+steps = [
+    ["Client", "Server", "premaster encrypted under the server's long-term key"],
+    ["Attacker", "Attacker", "records the connection"],
+    ["note", "Attacker", "a year later, the server key leaks"],
+    ["Attacker", "Attacker", "decrypts the premaster, derives the keys, reads the login"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "The same theft against an ephemeral session"
+participants = ["Client", "Server", "Attacker"]
+steps = [
+    ["Client", "Server", "X25519 key share (thrown away after the handshake)"],
+    ["Attacker", "Attacker", "records the connection"],
+    ["note", "Attacker", "a year later, the server key leaks"],
+    ["Attacker", "Attacker", "the long-term key only signed the handshake: nothing to decrypt"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The client machine", nodes = ["client", "log"], colour = "amber" },
+    { label = "The network", nodes = ["observer"], colour = "red" },
+    { label = "The server", nodes = ["server"], colour = "green" },
+]
+nodes = [
+    { id = "client", label = "Client process", sub = "knows the secrets", col = 0, row = 0, colour = "client", threats = ["T1"] },
+    { id = "log", label = "Key log file", sub = "secrets in plaintext", col = 0, row = 1, colour = "red", shape = "store", threats = ["T1", "T2"] },
+    { id = "observer", label = "Observer or recorder", sub = "sees records", col = 1, row = 0, colour = "red", threats = ["T2", "T3"] },
+    { id = "server", label = "Server", sub = "long-term key", col = 2, row = 0, colour = "green", threats = ["T3"] },
+]
+edges = [
+    { from = "client", to = "observer", label = "encrypted records", threats = ["T3"] },
+    { from = "client", to = "log", label = "writes", dashed = true, threats = ["T1"] },
+    { from = "observer", to = "server", label = "records", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Encrypted connections between a client and a server, a capture of them, and the key material that can open them: a key log and the server's long-term key.
+It does not cover the application's own data protection, or metadata such as sizes and timing.
+"""
+assets = [
+    "The contents of login requests and replies, including passwords and sessions.",
+    "The traffic secrets of live and recorded connections.",
+    "The server's long-term private key.",
+]
+actors = [
+    "A developer debugging their own client.",
+    "A network observer who records traffic.",
+    "An attacker who later obtains a key log or the server's private key.",
+]
+boundaries = [
+    "The client process to the file system: a key log is a copy of the secrets outside the process.",
+    "The network: everything on it can be recorded.",
+]
+assumptions = [
+    "The cryptography (X25519, HKDF, AES-GCM, RSA-OAEP) is sound.",
+    "Recordings are kept for a long time.",
+]
+out_of_scope = [
+    "Traffic analysis from sizes and timing.",
+    "Attacks on the client machine that read secrets from memory.",
+]
+tests = [
+    "`TlsLogTest` checks HKDF against the RFC test vector, record sealing and its failures, wire contents, key schedule determinism, key log scope and format, the static RSA and ephemeral cases, the production check and the encodings.",
+    "`DemoRunsTest` compares the whole demo with the golden output and checks that it is repeatable.",
+]
+next = """
+The next project, certificate-pinning, covers the opposite control: a client that accepts only a known key, which also stops this kind of inspection by a proxy.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A key log file is read by someone other than the developer"
+where = "`KeyLog`, the file"
+control = "Development only (the variable is refused in production), restricted file permissions, delete after use"
+residual = "Developers' laptops are not production but hold real credentials too"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A capture and a key log together reveal passwords and sessions"
+where = "`Decryptor.withKeyLog`"
+control = "Keep the two apart, use test accounts, and rotate any credential seen in a log"
+residual = "Anything seen in a capture is exposed to everyone who saw it"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "A recorded connection is decrypted after the server's long-term key leaks"
+where = "`Decryptor.withServerLongTermKey`"
+control = "Ephemeral key exchange only (forward secrecy)"
+residual = "Static RSA suites that remain enabled for old clients"

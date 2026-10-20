@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linux Hardening Checker</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Linux Hardening Checker</h1>
+<pre><code>src/main/java/com/jk/explore/security/linuxhard/
+├── Finding.java             One thing the checker found
+├── Fixture.java             A prepared file system with the usual mistakes, made in a temporary directory: stands in for a container image mounted at a path
+├── LinuxHardeningDemo.java  Runs the host-checking story in four numbered acts and prints exact, repeatable results
+├── Modes.java               Reads and sets the Unix permission bits of a file, including the set-user-id, set-group-id and sticky bits that the POSIX permission set leaves out
+├── Policy.java              What this host is allowed to have
+├── Scanner.java             A host checker
+└── Severity.java            How bad a finding is
+</code></pre>
+<p><strong>A Linux host or container image is secure only if its file permissions, accounts, SSH settings, kernel options and listening ports are what they should be; a checker reads them all with the JDK, separates the permission fixes a machine can make safely from the decisions a person must make, and runs again in every build.</strong></p>
+<p>A server image is built once and runs for years. Over time it collects the settings that nobody chose: a file that was made world-writable to get a deployment working, a test account with no password, a root login over SSH left on from the install, a database port that listens on every interface,
+a copy of a shell with the set-user-id bit. Each is small. Together they are the usual first step of an intrusion and the usual finding of an audit.</p>
+<p>This project is a <strong>host checker</strong>. It reads a root directory (a live system's <code>/</code>, a mounted container image, or the prepared test tree used here) and checks, in five groups:
+- <strong>File permissions:</strong> unexpected <strong>set-user-id</strong> or set-group-id files, world-writable files and directories without the sticky bit, secrets and keys that are not private enough, cron scripts a group can write.
+- <strong>Accounts:</strong> a second UID 0 account, logins with an empty password, well-known default account names with a shell.
+- <strong>SSH daemon:</strong> root login, password authentication, empty passwords, X11 forwarding.
+- <strong>Kernel settings:</strong> address space randomization, SYN cookies, ICMP redirects.
+- <strong>Listening ports:</strong> services that listen on every interface and are not on the allow-list.</p>
+<p>Then it separates what a machine can fix (a permission change is mechanical and safe) from what needs a person (removing an account, changing a service, deciding a policy), applies the first group, and shows that the report shrinks to the decisions.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CIS Benchmarks for Linux (sections on file permissions, user accounts, SSH and network parameters) · CWE-732 · CWE-250 · NIST SP 800-123 · NIST CSF Protect.</p>
+<h2>The idea in everyday terms</h2>
+<p>A building inspector with a checklist who also carries a screwdriver: they tighten the loose handrail on the spot, and write a note for the owner about the missing fire exit. A re-inspection every month catches the handrail that someone loosens again.</p>
+<h2>The scenario</h2>
+<p>A server image for a small web shop, built from a base image plus the shop's application. The demo builds a prepared copy of such an image in a temporary directory, with real Unix permission bits (including set-user-id), account files, an SSH configuration, kernel settings and a table of listening ports,
+and scans it before and after the fixes.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What the checker finds on a typical image</td>
+<td>20 findings: 7 critical, 8 high, 3 medium and 2 low, of which 7 can be fixed mechanically.</td>
+</tr>
+<tr>
+<td>2. The fixes a machine can make</td>
+<td>Seven permission changes are applied and 13 findings are left, none of them permissions: accounts, SSH, kernel settings and ports.</td>
+</tr>
+<tr>
+<td>3. The decisions a person makes</td>
+<td>After removing the second root account and the test account, switching off passwords and root login for SSH, setting the kernel options and closing the extra ports, the scan reports 0 findings.</td>
+</tr>
+<tr>
+<td>4. Running it again</td>
+<td>A second scan of the hardened tree reports 0 findings, and the same scan in the build makes a regression fail it.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>16 tests in <code>DemoRunsTest</code>, <code>LinuxHardeningTest</code>. The temporary directory's name is never printed, and the tests are skipped on systems without Unix file modes.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The file permissions are real Unix mode bits set and read through the JDK (the <code>unix</code> file attribute view, so the tests need Linux or macOS and are skipped elsewhere). The account, SSH, kernel and port files are small text files in the formats of the real ones, including a <code>/proc/net/tcp</code> style table. The fixture is built in a temporary directory that is removed afterwards.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/linux-hardening-explained.html">Linux Hardening Checker, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>It reads a root directory; it changes only file modes.</p>
+<p><img alt="The checker and what it reads" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A scanner uses a policy to turn files into findings; the fixture builds a test tree.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each round removes a kind of finding.</p>
+<p><img alt="From scan to clean" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="An attacker uses a set-user-id shell" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Automatic fixes can break things.</strong> Removing the set-user-id bit from a tool that needs it, or tightening a file that another service reads, stops that service. Fix mechanically only what is on a reviewed list and run the tests after.</li>
+<li><strong>The allow-lists are the work.</strong> Which set-user-id programs, ports and file modes are right depends on the host; the policy must be written, versioned and reviewed.</li>
+<li><strong>A scan is a snapshot.</strong> The same scan belongs in the image build and on running hosts, or the next change undoes the work.</li>
+<li><strong>Containers change the picture.</strong> Many host checks (kernel settings, ports) belong to the host, not the image; the container-hardening project covers the container side.</li>
+<li><strong>Benchmarks are long.</strong> The CIS benchmarks have hundreds of checks; start with the ones that stop the common attacks and grow from there.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For production, use maintained tools (OpenSCAP, Lynis, CIS-CAT, the distribution's hardening guides, or your configuration management with tested roles) and their reports. Writing your own checker is for understanding what they check and for adding the few rules that are specific to your platform.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>find / -perm -4000</code> in privilege escalation guides.</li>
+<li><code>PermitRootLogin no</code> and <code>PasswordAuthentication no</code> in every SSH hardening list.</li>
+<li>Lynis, OpenSCAP and CIS-CAT reports.</li>
+<li><code>chmod 600</code> on private keys, and "unprotected private key file" errors from ssh.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">platform-hardening</a> and is followed by <a href="../container-hardening">container-hardening</a>, which looks at the same ideas from inside a container. The Docker version (linux-hardening-with-docker) runs these checks against a hardened image.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

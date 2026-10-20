@@ -7,6 +7,8 @@ A breach that nobody notices lasts longest. This module covers OWASP Top 10 (202
 | # | Project | What it shows | Maps to |
 | --- | --- | --- | --- |
 | 1 | [security-logging](security-logging) | Structured security events, secrets kept out of logs, forged lines stopped by structured output, and a hash-chained, append-only log | A09, CWE-778, CWE-117, CWE-532 |
+| 2 | [detecting-attacks](detecting-attacks) | A detection rule is a hypothesis about an attacker, and it must be measured against a normal day | A09 |
+| 3 | [incident-response](incident-response) | The outcome of an incident is mostly decided before it starts, and by the order of the first hour | A09 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

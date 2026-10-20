@@ -1,0 +1,413 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "certificate-pinning"
+level = "intermediate"
+module = "tls-in-practice"
+title = "Certificate Pinning and What It Costs"
+short_title = "Certificate Pinning"
+package = "pinning"
+main_class = "PinningDemo"
+tagline = "A pin trusts one key instead of every authority, and the price is paid on the day the key changes"
+bold = "Pinning a server's public key stops interception by a certificate authority the device trusts but the app's author did not expect, and it also locks every app out the day the server changes keys unless backup pins, a sensible choice of key and a way to update were planned; that cost is why browsers dropped server-set pins."
+domain = "a mobile banking app"
+domain_note = ""
+youtube_description = "Certificate pinning in Java: SPKI pins, backup pins, rotation outages and why browsers dropped HPKP."
+thumb_lines = ["CERTIFICATE", "PINNING"]
+thumb_code = "pin-sha256 + backup pin"
+youtube_title = "Certificate Pinning in Java: Backup Pins, Rotation Outages and Why HPKP Died"
+youtube_tags = ["certificate pinning", "hpkp", "spki", "tls", "mobile security", "java", "application security"]
+
+[readme]
+intro = """
+A device trusts dozens of **certificate authorities**, and a company proxy, a debugging tool or malware can add one more. Any of them can sign a valid certificate for your bank's name, so ordinary TLS validation passes for an interceptor. **Certificate pinning** narrows trust: the app ships
+with the hash of a **public key** (the SPKI hash) and refuses a server whose chain contains no pinned key, however valid the chain looks.
+
+It is powerful and it has a price, which is what this project measures:
+- **The pin stops an interceptor** whose root the device trusts, and a pin cannot make a bad chain good, because validation still runs first.
+- **Changing the server's key breaks every app** that pinned the old one. With 10,000 installs, all 10,000 fail at once, and 1,500 stay locked out a week later because they have not updated.
+- **Pinning choices soften the price:** pin an issuing CA's key (changes rarely), or the leaf plus a **backup pin** for a key that is generated, kept offline and not yet in use. A **report-only** mode shows what would break before it does.
+- **Pins set by the server** (the old `Public-Key-Pins` header, HPKP) let anyone who controls one response, or a site that loses its own keys, lock visitors out for up to a year. Browsers removed the feature for that reason.
+
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · RFC 8470 and Certificate Transparency as the modern alternatives.
+"""
+analogy = """
+Instead of letting any notary in the country vouch for your bank, you carry a photo of the one banker you know. A forger with a perfectly genuine notary stamp is turned away. But if the bank changes its banker, everyone who carries the old photo
+walks away from the real bank too, until they get a new photo.
+"""
+scenario = """
+A mobile banking app talks to api.bank.example. The demo builds real certificate chains (a public root, an issuing CA, the bank's leaf, and a second chain from a root that a company proxy installed on the device) and runs a client with different pin policies against them, plus a fleet calculation and a model of header-set pins.
+"""
+costs = [
+    "**Rotation becomes a project.** Every key change needs an app release that went out before the change, with enough time for users to update.",
+    "**Backup pins need a key that exists.** Generate it ahead of time and keep it offline, or the backup pin protects nothing.",
+    "**Pinning the issuing CA trusts everything that CA signs,** which is weaker than pinning the leaf but survives renewals.",
+    "**Users cannot work around a pin,** which is the point against interception and the pain when you are wrong. Ship a way to update, and consider a signed remote switch to turn enforcement off in an emergency.",
+    "**Testing with interception tools needs the pin disabled in debug builds,** and that switch must not exist in release builds.",
+]
+too_much = """
+For most apps, ordinary validation plus Certificate Transparency monitoring, CAA records and short-lived certificates is enough, and costs far less when something changes. Pin when the threat is real (banking, health, high-value targets), when you control the app's update path,
+and when your team has tested a rotation. Do not pin for a website in a browser: use the modern controls.
+"""
+met_before = [
+    "`CertificatePinner` in OkHttp and the `<pin-set>` in Android's network security configuration.",
+    "`NSPinnedDomains` in iOS.",
+    "\"SSL pinning bypass\" in mobile penetration-testing guides.",
+    "The 2017–2018 removal of HPKP from Chrome and Firefox.",
+]
+where = """
+This project is in [tls-in-practice](..) and follows [inspecting-tls-traffic](../inspecting-tls-traffic): a pin is also what stops an interception proxy from inspecting your own app's traffic. It uses the chains of [local-certificate-authority](../local-certificate-authority) (with a small copy of the encoder, so each project stands alone).
+"""
+twin = """
+The chains are real X.509 certificates built in the project and validated with the JDK's PKIX code. The pins are real SPKI SHA-256 hashes in Base64, as in HPKP and OkHttp. The fleet and the header store are small models. Keys are random and never printed; the clock is fixed.
+"""
+test_note = "Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run."
+
+[[act]]
+title = "An app that trusts the device"
+summary = "Without pins, the app accepts the genuine server and also an interceptor whose root the device trusts."
+detail = """
+The device trusts the public root and one more root, installed by a company proxy. An app that only validates the chain accepts the genuine server, and accepts the proxy's certificate for api.bank.example too: both chains are valid for the device's trust store.
+"""
+speech = """
+First demo: an app that trusts the device. [[slnc 400]] The device trusts a public root, and one more, added by a company proxy. [[slnc 300]] The app accepts the genuine server. [[slnc 300]] It accepts the proxy's certificate too, because both chains are valid.
+"""
+rows = { trust = "active wrong" }
+console = [
+    ["genuine server -> ACCEPTED", "ok"],
+    ["interception by the device's extra root -> ACCEPTED  <- VALID, FOR THE WRONG PARTY", "bad"],
+]
+
+[[act]]
+title = "An app that pins the server's key"
+summary = "With the leaf key pinned, the interceptor is refused by the pin; on a clean device the interceptor fails ordinary validation anyway."
+detail = """
+The app ships the SPKI hash of the server's leaf key. The genuine server's chain contains that key and is accepted. The interceptor's chain validates against the extra root, but contains no pinned key, so the app refuses it by the pin. On a device without the extra root the same chain
+never gets as far as the pin check: validation refuses it first. A pin adds a condition to validation and never replaces it.
+"""
+speech = """
+Second demo: an app that pins the server's key. [[slnc 400]] The app ships the hash of the server's public key. [[slnc 300]] The genuine server matches. [[slnc 600]]
+The interceptor's chain is valid for the device, but contains no pinned key, so the app refuses it. [[slnc 300]] A pin adds a condition to validation. It never replaces it.
+"""
+rows = { pin = "active ok" }
+console = [
+    ["genuine server -> ACCEPTED", "ok"],
+    ["interception by the device's extra root -> REFUSED_BY_PIN", "ok"],
+    ["interception on a clean device -> REFUSED_BY_VALIDATION", "ok"],
+]
+
+[[act]]
+title = "The server renews with a new key"
+summary = "The app pinned to the old leaf key refuses the renewed certificate; of 10,000 installs, all 10,000 fail on day 0 and 1,500 are still locked out after a week."
+detail = """
+On day 80 the server renews its certificate and, as security advice says, generates a new key. The new chain is perfectly valid, and the app that pinned the old leaf key refuses it. Every installed copy fails at the same moment. If 85% of users update within a week, 1,500 of
+10,000 are still locked out after seven days, and the bank's support line and reputation pay for it.
+"""
+speech = """
+Third demo: the server renews with a new key. [[slnc 400]] The new certificate is perfectly valid. [[slnc 300]] The app that pinned the old key refuses it. [[slnc 600]]
+Every installed copy fails at the same moment. [[slnc 300]] Of ten thousand installs, fifteen hundred are still locked out after a week.
+"""
+rows = { rotate = "active wrong" }
+console = [
+    ["app pinned to the old leaf key -> REFUSED_BY_PIN", "bad"],
+    ["fleet of 10000 installs, 85% update within a week -> locked out on day 0: 10000, after a week: 1500", "bad"],
+]
+
+[[act]]
+title = "Pins chosen so that rotation does not break the app"
+summary = "Pinning the issuing CA survives the renewal and still refuses the interceptor; a leaf pin plus a backup pin survives a switch to the backup key; report-only mode accepts and records a mismatch."
+detail = """
+Pinning the issuing CA's key keeps working through renewals and key changes of the leaf, and the interceptor still fails, because its chain does not contain that key. Pinning the leaf together with a backup pin (a key made in advance and kept offline) lets the server switch to the backup key with no app update.
+In report-only mode, a mismatch is recorded and the connection is accepted: a way to learn what a pin policy would have broken before it enforces anything.
+"""
+speech = """
+Fourth demo: pins chosen so that rotation does not break the app. [[slnc 400]] Pinning the issuing authority survives renewals, and still refuses the interceptor. [[slnc 600]]
+Pinning the leaf together with a backup key lets the server switch keys with no update. [[slnc 600]]
+And report only mode records a mismatch without blocking anyone, so you learn what a policy would break before it does.
+"""
+rows = { choices = "active ok" }
+console = [
+    ["pin the issuing CA's key -> ACCEPTED (after renewal)", "ok"],
+    ["interception, same app -> REFUSED_BY_PIN", "ok"],
+    ["pin leaf + backup, server switches to the backup key -> ACCEPTED", "ok"],
+    ["report-only mode, after a key change -> ACCEPTED_REPORT_ONLY; reports collected -> 1", "amber"],
+]
+
+[[act]]
+title = "Why browsers stopped letting servers set pins"
+summary = "One response with a pin header for the meddler's keys blocks the genuine site for every returning visitor for up to a year; a site that loses its pinned keys locks itself out the same way."
+detail = """
+With HPKP the server's response told the browser which keys to pin and for how long. A meddler who answers just one request with a header naming the meddler's keys and a max-age of a year makes returning visitors refuse the genuine server for up to a year: the genuine site is blocked on day 30
+and accepted again only after the pin expires. A site that pins its own key and then loses it (and its backup) locks itself out in the same way. The risk to sites was larger than the protection, and browsers removed the feature in favour of Certificate Transparency.
+"""
+speech = """
+Fifth demo: why browsers stopped letting servers set pins. [[slnc 400]] The server's own response told the browser which keys to pin, for up to a year. [[slnc 600]]
+A meddler who answers a single request can pin the meddler's keys, and the genuine site is refused by every returning visitor. [[slnc 600]]
+A site that loses its own pinned keys locks itself out the same way. [[slnc 300]] The risk was bigger than the protection, and browsers took the feature out.
+"""
+rows = { hpkp = "active wrong" }
+console = [
+    ["a meddler answers one request with a pin header for the meddler's keys, max-age one year", "amber"],
+    ["the genuine server, 30 days later -> blocked for every returning visitor", "bad"],
+    ["the genuine server, 400 days later -> accepted again", "muted"],
+    ["a site pins its own key and then loses it -> blocked for up to a year", "bad"],
+]
+
+[animation]
+subtitle = "A banking app, an extra root on the device, and the day the server changes its key."
+boxes = [
+    ["trust", "Trust the device", "valid for any root it holds"],
+    ["pin", "Pin the key", "interception refused"],
+    ["rotate", "The key changes", "every pinned app fails"],
+    ["choices", "Better pins", "issuer, backup, report-only"],
+    ["hpkp", "Server-set pins", "a year-long lockout"],
+]
+
+[docs.problem]
+scenario = """
+A mobile banking app talks to the bank's API, on devices whose trust stores the bank does not control.
+"""
+naive = """
+Rely on ordinary TLS validation: a valid chain means we are talking to the bank.
+"""
+deliver = [
+    "Real certificate chains for a public hierarchy and for an interception proxy.",
+    "A client that validates and then checks SPKI pins, with report-only mode.",
+    "A calculation of the fleet lockout when the key changes.",
+    "A model of server-set (HPKP-style) pins and the lockouts they cause.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The beginner tls-handshake project, or an idea of certificates and chains",
+]
+not_required = [
+    "Android or iOS: the client is plain Java",
+    "A real proxy: the interceptor is a second certificate chain",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what a pin adds to certificate validation and what it does not replace",
+    "choose between pinning a leaf, an issuing CA and a backup key",
+    "describe the rotation outage and how to plan for it",
+    "explain why server-set pins were dropped by browsers",
+]
+walkthrough = """
+Run act two and ask who the pin protects against, and who it does not. In act three, ask what the bank could have done before the change. In act five, ask who controls the response that sets the pin.
+"""
+exercises = [
+    "Add a pin set with an enforcement date, and refuse the policy once the date has passed without an update.",
+    "Add a signed remote switch that turns enforcement off, and decide what an attacker can do with it.",
+    "Write the rotation procedure for the bank: which key is generated when, and which app release carries which pin.",
+    "Add Certificate Transparency checking as an alternative and compare the failure modes.",
+]
+
+[docs.explained]
+sentence = """
+A pin narrows trust from every authority on the device to a key you chose, so it stops interception by a trusted-but-unexpected root, and costs a planned rotation, backup pins and an update path.
+"""
+verdict = """
+Use pinning in apps where the threat is real and you control updates: pin the issuing CA's key or the leaf with a backup key, keep a report-only mode and a tested rotation, and have a way to update users. Never accept server-set pins for a website; use Certificate Transparency, CAA and short-lived certificates.
+"""
+recognise = [
+    "`CertificatePinner.Builder().add(host, \"sha256/...\")` in OkHttp.",
+    "`<pin-set expiration=\"...\"><pin digest=\"SHA-256\">` in Android network security configuration.",
+    "`Public-Key-Pins` headers in old captures.",
+    "\"SSL pinning bypass\" in a mobile security report.",
+]
+
+[spec]
+purpose = """
+Teach certificate pinning by showing it stop an interceptor with a trusted root, then measuring the rotation outage it causes, and the choices that soften it.
+"""
+nongoals = [
+    "Android or iOS APIs.",
+    "Bypassing pins on a device.",
+    "Certificate Transparency and CAA, which are mentioned as alternatives.",
+]
+problem = """
+Teams rely on the device's trust store, which an interceptor may have extended, or pin one key and cannot change it without breaking their users.
+"""
+roles = [["Certificates and pins", "`Pki`, `Der`, `Spki`, `PinPolicy`"], ["The client and its outcomes", "`PinnedClient`, `Outcome`"], ["Rotation cost and header pins", "`Fleet`, `PinStore`"], ["Entry point", "`PinningDemo`"]]
+requirements = [
+    "A pin adds to validation: a bad chain is refused whatever it contains, and a valid chain without a pinned key is refused by the pin.",
+    "An interceptor with a root the device trusts is stopped by a pin.",
+    "Renewing with a new key breaks a leaf pin and not an issuer pin; a backup pin allows a switch.",
+    "Report-only mode accepts and records.",
+    "Header-set pins lock out the genuine site until they expire.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two chains for the same name"
+caption = "Both chains validate against the device's trust store; only one contains the pinned key."
+nodes = [
+    { id = "app", label = "Banking app", sub = "validates, then checks the pin", col = 0, row = 0, colour = "client" },
+    { id = "bank", label = "Genuine bank", sub = "public root → issuing CA → leaf", col = 1, row = 0, colour = "green" },
+    { id = "proxy", label = "Interceptor", sub = "proxy root → proxy CA → leaf", col = 1, row = 1, colour = "red" },
+    { id = "device", label = "Device trust store", sub = "public root + proxy root", col = 2, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "app", to = "bank", label = "connects" },
+    { from = "app", to = "proxy", label = "intercepted", colour = "red", dashed = true },
+    { from = "app", to = "device", label = "validates against" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The client validates with the device roots, then applies the pin policy."
+nodes = [
+    { id = "client", label = "PinnedClient", sub = ["connect(chain, host, now)", "reports()"], col = 0, row = 0, colour = "client" },
+    { id = "policy", label = "PinPolicy", sub = ["pins", "reportOnly"], col = 1, row = 0, colour = "accent" },
+    { id = "spki", label = "Spki", sub = ["pin(key)"], col = 2, row = 0, colour = "amber" },
+    { id = "pki", label = "Pki", sub = ["root()", "intermediate()", "leaf()"], col = 0, row = 1, colour = "green" },
+    { id = "store", label = "PinStore", sub = ["onResponse(header)", "allows(chain)"], col = 1, row = 1, colour = "red" },
+    { id = "fleet", label = "Fleet", sub = ["lockedOutAtDay0()"], col = 2, row = 1, colour = "red" },
+]
+edges = [
+    { from = "client", to = "policy", label = "applies" },
+    { from = "policy", to = "spki", label = "compares hashes from" },
+    { from = "pki", to = "client", label = "chains for" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the client checks, in order"
+caption = "The pin is checked after ordinary validation, never instead of it."
+nodes = [
+    { id = "chain", label = "Chain", sub = "to a root on the device", col = 0, row = 0, colour = "client" },
+    { id = "dates", label = "Dates and name", sub = "valid now, SAN matches", col = 1, row = 0, colour = "accent" },
+    { id = "pin", label = "Pin", sub = "a key in the chain is pinned", col = 2, row = 0, colour = "amber" },
+    { id = "ok", label = "Connect", sub = "or report only", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "chain", to = "dates" },
+    { from = "dates", to = "pin" },
+    { from = "pin", to = "ok" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A pinned app meets an interceptor"
+participants = ["App", "Interceptor", "Device trust store"]
+steps = [
+    ["App", "Interceptor", "TLS to api.bank.example"],
+    ["Interceptor", "App", "chain from the proxy root"],
+    ["App", "Device trust store", "validate: the proxy root is trusted"],
+    ["note", "App", "no key in the chain matches a pin"],
+    ["App", "Interceptor", "connection refused", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A renewal with a new key"
+participants = ["Bank", "App (old pin)", "App (updated)"]
+steps = [
+    ["Bank", "Bank", "renews with a new key on day 80"],
+    ["App (old pin)", "Bank", "connect"],
+    ["Bank", "App (old pin)", "chain with a new leaf key"],
+    ["note", "App (old pin)", "no pinned key: refused"],
+    ["App (updated)", "Bank", "connect (backup pin matches)"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A pin set by a meddler"
+participants = ["Meddler", "Browser", "Genuine site"]
+steps = [
+    ["Meddler", "Browser", "Public-Key-Pins: the meddler's keys, max-age one year"],
+    ["Browser", "Genuine site", "connect, 30 days later"],
+    ["Genuine site", "Browser", "genuine chain"],
+    ["note", "Browser", "does not match the stored pin: refused"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The customer's device", nodes = ["app", "store"], colour = "amber" },
+    { label = "The network", nodes = ["proxy"], colour = "red" },
+    { label = "The bank", nodes = ["bank"], colour = "green" },
+]
+nodes = [
+    { id = "app", label = "Banking app", sub = "ships with pins", col = 0, row = 0, colour = "client", threats = ["T1", "T2"] },
+    { id = "store", label = "Trust store", sub = "may hold extra roots", col = 0, row = 1, colour = "amber", shape = "store", threats = ["T1"] },
+    { id = "proxy", label = "Interceptor", sub = "valid chain from an extra root", col = 1, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "bank", label = "Bank server", sub = "may change keys", col = 2, row = 0, colour = "green", threats = ["T2", "T3"] },
+]
+edges = [
+    { from = "app", to = "proxy", label = "intercepted", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "app", to = "bank", label = "TLS", threats = ["T2", "T3"] },
+]
+
+[threatmodel]
+scope = """
+A mobile app's TLS connection to its own API, with pins shipped in the app. It covers interception by roots on the device and the cost of changing keys.
+It does not cover a compromised device (which can disable pinning), or a compromised bank server.
+"""
+assets = [
+    "The confidentiality of the app's traffic.",
+    "The app's availability to customers.",
+]
+actors = [
+    "The customer.",
+    "A proxy, tool or malware with a root on the customer's device.",
+    "The bank's operations team, who renew and rotate keys.",
+]
+boundaries = [
+    "The app to the network: the chain it receives is untrusted until validated and pinned.",
+    "The device's trust store: it is not under the app author's control.",
+]
+assumptions = [
+    "The app binary is genuine and its pins are intact.",
+    "An attacker on the device with full control can remove the pins; pinning is not protection against that.",
+]
+out_of_scope = [
+    "Pinning bypass tools and jailbroken devices.",
+    "Certificate Transparency and CAA.",
+]
+tests = [
+    "`PinningTest` checks the pin format, validation before pinning, interception with and without pins, renewal with a new key, backup pins, report-only mode, the fleet numbers and the header-set pin store.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, secure-coding, goes back to the code itself, with secrets that leak through errors and logs.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "An interceptor with a root the device trusts reads the app's traffic"
+where = "`PinnedClient` without a pin"
+control = "An SPKI pin checked after validation"
+residual = "An attacker with full control of the device can remove the pin"
+
+[[threat]]
+id = "T2"
+stride = "D"
+threat = "A key change locks every app that pinned the old key out"
+where = "`PinPolicy`, `Fleet`"
+control = "Pin the issuing CA or a backup key made in advance; report-only mode; release before rotating"
+residual = "Users who do not update before the change"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "Header-set pins from a meddler or a lost key block the real site for up to a year"
+where = "`PinStore`"
+control = "Do not accept server-set pins; use Certificate Transparency, CAA and short-lived certificates"
+residual = "Old clients that still implement HPKP"

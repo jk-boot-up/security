@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Container Hardening</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Container Hardening</h1>
+<pre><code>src/main/java/com/jk/explore/security/container/
+├── Attack.java            One thing an attacker with code execution inside the container tries
+├── Attacker.java          &quot;What can a process do once it is taken over?&quot; For each attack, a rule that says whether this container's settings allow it
+├── ContainerDemo.java     Runs the container story in five numbered acts and prints exact, repeatable results
+├── ContainerSpec.java     The settings of a container that matter when the process inside is taken over: who it runs as, what it may do to the kernel, what it can write, what of the host it can see, and how much it may use
+├── Outcome.java           Whether an attack works against a container, and the setting that decides it
+├── PodSecurityLevel.java  The three Kubernetes Pod Security Standards levels, strictest last
+├── Renderer.java          Writes the settings as Docker flags and as a Kubernetes container {@code securityContext}, so the checked configuration is the one that is deployed
+└── Seccomp.java           Which system calls the container may make
+</code></pre>
+<p><strong>A container is a process with settings, so decide what a hijacked process can do before it happens: run as a non-root user, drop all capabilities, forbid new privileges, make the root file system read-only, keep the host out, and set limits; each setting removes specific attacks, and the Pod Security Standards name the levels.</strong></p>
+<p>An attacker who finds a flaw in the shop's application gets code execution <strong>inside the container</strong>. What they can do next depends on the container's settings, and the defaults are generous: a plain <code>docker run</code> gives root inside the container, 14 Linux capabilities, a writable file system, and no limits on memory or processes.
+Tutorials add more to "make it work": <code>--privileged</code>, the Docker socket, the host network. Each setting is a door for the attacker.</p>
+<p>This project turns the question into code. A <code>ContainerSpec</code> holds the settings that matter (user, capabilities, privileged, read-only file system, privilege escalation, seccomp, host mounts and namespaces, memory and process limits, how secrets are passed, the image), and an
+<strong>attacker model</strong> asks thirteen questions of it: can a hijacked process read secrets, tamper with the app, drop and run a tool, become root, use dangerous system calls, sniff the network, mount host things, talk to the Docker socket, touch host files, reach the host network, see host processes, exhaust memory, fork without limit? Each answer names the setting that decides it.</p>
+<p>What the project shows, in order:
+- <strong>Defaults:</strong> 7 of the 13 attacks are possible. <strong>The tutorial configuration:</strong> all 13.
+- <strong>Hardening one setting at a time</strong>, with the effect of each: host access, seccomp, capabilities, non-root user, no new privileges, read-only root, limits, down to 1 of 13.
+- <strong>Pod Security Standards:</strong> the Privileged, Baseline and Restricted levels, with the reasons a container fails the next level, and the same settings rendered as Docker flags and as a Kubernetes <code>securityContext</code>.
+- <strong>What is left:</strong> the application's own secrets. Hardening limits the blast radius; it does not make the application safe.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CIS Docker and Kubernetes Benchmarks · Kubernetes Pod Security Standards · NIST SP 800-190 (Application Container Security) · CWE-250 · CWE-269.</p>
+<h2>The idea in everyday terms</h2>
+<p>A guest in a hotel room can do what the room allows: with the master key and the service lift (privileged, host mounts), they can reach every floor; with a plain key, only their room; with a room that has no phone line to the safe and a lock on the minibar, much less. You design the room for the day a guest turns out to be a thief.</p>
+<h2>The scenario</h2>
+<p>A containerised web shop with a flaw that gives an attacker code execution. The demo evaluates five configurations: Docker's defaults, the configuration from the tutorial, eight steps of hardening, the hardened container, and two settings that look harmless.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What 'docker run' with no options gives an attacker</td>
+<td>7 of 13 attacks are possible and the level is Baseline: root, a writable file system, raw sockets, and no memory or process limits.</td>
+</tr>
+<tr>
+<td>2. The configuration from the tutorial</td>
+<td>--privileged, the Docker socket, the host's /etc, the host network and PID namespace, and unconfined seccomp make all 13 attacks possible; the level is Privileged.</td>
+</tr>
+<tr>
+<td>3. One setting at a time</td>
+<td>Removing host access takes 13 down to 9, seccomp 8, dropping capabilities 6, a non-root user alone changes nothing, no new privileges 5, a read-only root 3, and limits 1.</td>
+</tr>
+<tr>
+<td>4. The hardened container</td>
+<td>The result as Docker flags and a Kubernetes securityContext, at the Restricted level; the one thing still possible is reading the secrets the application needs.</td>
+</tr>
+<tr>
+<td>5. Settings that look harmless</td>
+<td>NET_RAW added to the hardened container drops it to Baseline with 1 attack possible because it is not root; root with SYS_ADMIN makes it Privileged with 3 possible.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>ContainerTest</code>, <code>DemoRunsTest</code>. Everything is fixed data, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The attacks are rules, not a kernel: each rule states the documented effect of a Linux or Docker setting (capabilities, user namespaces, seccomp, mounts, cgroup limits). That keeps the project runnable anywhere and the output exact. The Pod Security Standards checks follow the Baseline and Restricted profiles of the Kubernetes documentation.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/container-hardening-explained.html">Container Hardening, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Each layer is a setting; the hardened container has all of them.</p>
+<p><img alt="What stands between a hijacked process and the host" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A spec goes into the attacker model and the level check, and comes out as flags and YAML.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step removes specific attacks; the user change alone removes none.</p>
+<p><img alt="The hardening steps and the attacks left" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The Docker socket" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Read-only file systems need writable scratch space</strong> (a tmpfs for <code>/tmp</code>, volumes for data), and applications that write next to their code must be changed.</li>
+<li><strong>Non-root needs the image prepared:</strong> file ownership, ports above 1024 (or the NET_BIND_SERVICE capability), and a user that exists.</li>
+<li><strong>Limits need numbers</strong> from load tests; too low gives out-of-memory kills, too high protects nothing.</li>
+<li><strong>The default seccomp profile is generous on purpose.</strong> A custom profile for your application is stronger and costs maintenance.</li>
+<li><strong>Hardening is not isolation.</strong> Containers share the host kernel: a kernel bug can still escape. For hostile code use a sandboxed runtime or virtual machines.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Do not turn every flag on at once without tests: add one setting, run the application's tests and a smoke test, and record the result. And do not mistake the container for the whole defence: network policy, secrets management and patching still apply.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>docker run --privileged</code> and <code>-v /var/run/docker.sock:/var/run/docker.sock</code> in tutorials.</li>
+<li><code>securityContext</code> in Kubernetes manifests, and Pod Security admission labels.</li>
+<li>Distroless and non-root base images.</li>
+<li>A scanner report titled "container runs as root".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">platform-hardening</a> and follows <a href="../linux-hardening">linux-hardening</a>: the host settings below the container. The Docker and kind version (container-hardening-with-docker-and-kind) applies these flags to real containers and enforces Pod Security Standards.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

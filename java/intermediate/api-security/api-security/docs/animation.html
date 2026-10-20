@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Security: Mass Assignment, Data Exposure and Resource Limits — Animated Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #94a3b8; margin: 0 0 20px; max-width: 70ch; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+  .boxes { display: flex; flex-direction: column; gap: 10px; }
+  .row { border: 2px solid #334155; border-radius: 10px; padding: 12px 16px;
+         background: #1e293b; transition: all .25s ease; opacity: .55; }
+  .row .name { font-weight: 700; font-size: 1rem; }
+  .row .job { color: #94a3b8; font-size: .82rem; margin-top: 2px; }
+  .row.active { opacity: 1; box-shadow: 0 0 0 2px currentColor inset; }
+  .row.wrong { border-color: #f87171; color: #f87171; }
+  .row.wrong.active { background: #3f1d24; }
+  .row.ok { border-color: #34d399; color: #34d399; }
+  .row.ok.active { background: #10261f; }
+  .row.amber { border-color: #fbbf24; color: #fbbf24; }
+  .row.amber.active { background: #2a2110; }
+  .row.dim { opacity: .22; }
+  .console { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 16px;
+             font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86rem;
+             line-height: 1.55; overflow-y: auto; min-height: 320px; white-space: pre-wrap; }
+  #console-lines span.ok { color: #34d399; }
+  #console-lines span.bad { color: #f87171; }
+  #console-lines span.amber { color: #fbbf24; }
+  #console-lines span.muted { color: #94a3b8; }
+  .narration { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+               padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px;
+           padding: 10px 18px; font-size: .92rem; cursor: pointer; }
+  button:hover { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button#play { background: #7c3aed; border-color: #7c3aed; }
+  button#play:hover { background: #8b5cf6; }
+  #progress { color: #94a3b8; font-size: .85rem; margin-left: auto; }
+  .step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #a78bfa; font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>API Security: Mass Assignment, Data Exposure and Resource Limits — Step by Step</h1>
+  <p class="sub">A bank API and the three limits it owes its callers.</p>
+
+  <div class="narration">
+    <div class="step-label" id="step-label">Ready</div>
+    <div id="narration">Press Step or Play to begin.</div>
+  </div>
+
+  <div class="stage">
+    <div class="boxes" id="boxes">
+      <div class="row" id="row-call">
+        <div class="name">A profile call</div>
+        <div class="job">what the app sends</div>
+      </div>
+      <div class="row" id="row-mass">
+        <div class="name">Mass assignment</div>
+        <div class="job">every key becomes a field</div>
+      </div>
+      <div class="row" id="row-expose">
+        <div class="name">The whole record</div>
+        <div class="job">and a list with no end</div>
+      </div>
+      <div class="row" id="row-models">
+        <div class="name">Explicit models</div>
+        <div class="job">named fields in, a view out</div>
+      </div>
+      <div class="row" id="row-cap">
+        <div class="name">Caps</div>
+        <div class="job">a page size limit</div>
+      </div>
+      <div class="row" id="row-budget">
+        <div class="name">Budgets</div>
+        <div class="job">tokens per caller, 429 and Retry-After</div>
+      </div>
+    </div>
+    <div class="console"><div id="console-lines"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="step">Step ▸</button>
+    <button id="play">Play ▶</button>
+    <button id="reset">Reset ↺</button>
+    <span id="progress">0 / 0</span>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+ {
+  "label": "Act 1 — A profile call that works",
+  "narration": "First demo: a profile call that works. Ana's app changes her display name. The API answers with the updated account. Look at what came back: eight fields.",
+  "rows": {
+   "call": "active ok"
+  },
+  "console": [
+   [
+    "PATCH displayName -> 200 fields [displayName, email, role, balanceCents, creditLimitCents, riskScore, cardNumber, pinHash]",
+    "amber"
+   ]
+  ]
+ },
+ {
+  "label": "Act 2 — Whatever the caller sends becomes a field",
+  "narration": "Second demo: whatever the caller sends becomes a field. The same call, with two extra keys. Role, and credit limit. Ana is now an admin with a very large credit limit. The API never decided those fields were hers to change.",
+  "rows": {
+   "mass": "active wrong"
+  },
+  "console": [
+   [
+    "PATCH role, creditLimit -> 200 ... role=admin, creditLimitCents=100000000  <- NOT HERS TO CHANGE",
+    "bad"
+   ]
+  ]
+ },
+ {
+  "label": "Act 3 — The response is the whole record, and a list has no end",
+  "narration": "Third demo: the response is the whole record, and a list has no end. The account response includes the full card number and the PIN hash. A page size of a million returns every customer, with every field. And a thousand requests in a loop are all answered.",
+  "rows": {
+   "expose": "active wrong"
+  },
+  "console": [
+   [
+    "GET /accounts/acc-0001 -> 200 ... cardNumber, pinHash, riskScore",
+    "bad"
+   ],
+   [
+    "GET /accounts?size=1000000 -> 200 300 accounts, every field  <- EVERY CUSTOMER",
+    "bad"
+   ],
+   [
+    "1000 requests in a loop -> 1000 answered, none slowed down",
+    "bad"
+   ]
+  ]
+ },
+ {
+  "label": "Act 4 — Explicit models, a page cap and a budget",
+  "narration": "Fourth demo: explicit models, a page cap and a budget. The request has two named fields, and anything else is refused. The role is still customer. The response has five fields, with the card masked. The list is capped at fifty, and shows only names.",
+  "rows": {
+   "models": "active ok",
+   "cap": "active ok"
+  },
+  "console": [
+   [
+    "PATCH displayName -> 200 fields [id, displayName, email, balanceCents, cardLast4], card ****0001",
+    "ok"
+   ],
+   [
+    "PATCH role, creditLimit -> 400 unknown field; role afterwards: customer",
+    "ok"
+   ],
+   [
+    "GET /accounts?size=1000000 -> 200 50 accounts, id and name only",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 5 — The budget runs out, and refills",
+  "narration": "Fifth demo: the budget runs out, and refills. Each caller has a bucket of tokens. A list costs a token for every row. Of a thousand requests, forty-nine are answered, and then the API says too many requests, and tells the app how long to wait. After waiting, the call works. And another customer is not affected.",
+  "rows": {
+   "budget": "active ok"
+  },
+  "console": [
+   [
+    "1000 requests in a loop -> 49 answered, then 429 with Retry-After 1s",
+    "ok"
+   ],
+   [
+    "after waiting that long -> 200 ...",
+    "ok"
+   ],
+   [
+    "another customer meanwhile -> 200 5 accounts, id and name only",
+    "ok"
+   ]
+  ]
+ }
+];
+const rowIds = ["call", "mass", "expose", "models", "cap", "budget"];
+const stepLabel = document.getElementById("step-label");
+const narrationEl = document.getElementById("narration");
+const consoleEl = document.getElementById("console-lines");
+const progressEl = document.getElementById("progress");
+const playBtn = document.getElementById("play");
+let i = -1, timer = null;
+
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function render() {
+  for (const id of rowIds) document.getElementById("row-" + id).className = "row";
+  if (i < 0) {
+    stepLabel.textContent = "Ready";
+    narrationEl.textContent = "Press Step or Play to begin.";
+    consoleEl.innerHTML = "";
+    progressEl.textContent = "0 / " + STEPS.length;
+    return;
+  }
+  const s = STEPS[i];
+  stepLabel.textContent = s.label;
+  narrationEl.textContent = s.narration;
+  for (const id of rowIds) {
+    const cls = s.rows[id];
+    document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
+  }
+  consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
+  progressEl.textContent = (i + 1) + " / " + STEPS.length;
+}
+function step() { if (i >= STEPS.length - 1) { stopPlay(); return; } i += 1; render(); }
+function reset() { stopPlay(); i = -1; render(); }
+// While a step's narration is playing, Play waits for it to finish.
+function speaking() { return typeof window.vkSpeaking === "function" && window.vkSpeaking(); }
+function startPlay() {
+  if (timer) return;
+  playBtn.textContent = "Pause ❚❚";
+  let quiet = 0;
+  timer = setInterval(() => {
+    if (speaking()) { quiet = 0; return; }
+    if (++quiet < 6) return;                     // 6 × 500 ms of reading time
+    quiet = 0;
+    if (i >= STEPS.length - 1) { stopPlay(); return; }
+    step();
+  }, 500);
+  if (i < 0) step();
+}
+function stopPlay() { if (timer) clearInterval(timer); timer = null; playBtn.textContent = "Play ▶"; }
+
+document.getElementById("step").addEventListener("click", () => { stopPlay(); step(); });
+document.getElementById("reset").addEventListener("click", reset);
+playBtn.addEventListener("click", () => { if (timer) stopPlay(); else startPlay(); });
+render();
+</script>
+</body>
+</html>

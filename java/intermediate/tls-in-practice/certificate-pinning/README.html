@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Certificate Pinning and What It Costs</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Certificate Pinning and What It Costs</h1>
+<pre><code>src/main/java/com/jk/explore/security/pinning/
+├── Der.java           The few ASN.1 DER encodings an X.509 certificate and a revocation list need
+├── Fleet.java         The installed apps of a bank, and how many of them still carry an old pin when the server changes its key
+├── Outcome.java       What the client did with a server's chain
+├── PinPolicy.java     The pins an app ships with: at least one key in the chain must match one of them
+├── PinStore.java      Dynamic pinning as browsers once did it (HPKP): the &lt;em&gt;server&lt;/em&gt; tells the browser which keys to pin and for how long, in a response header, and the browser remembers it
+├── PinnedClient.java  A mobile-style client
+├── PinningDemo.java   Runs the pinning story in five numbered acts and prints exact, repeatable results
+├── Pki.java           Just enough certificate making to build chains for the demo: a root, an intermediate and a leaf, as real X.509 DER read back by the JDK
+└── Spki.java          The pin of a key: the SHA-256 hash of its SubjectPublicKeyInfo, in Base64 (the form used by HPKP, OkHttp and Android's network security configuration)
+</code></pre>
+<p><strong>Pinning a server's public key stops interception by a certificate authority the device trusts but the app's author did not expect, and it also locks every app out the day the server changes keys unless backup pins, a sensible choice of key and a way to update were planned; that cost is why browsers dropped server-set pins.</strong></p>
+<p>A device trusts dozens of <strong>certificate authorities</strong>, and a company proxy, a debugging tool or malware can add one more. Any of them can sign a valid certificate for your bank's name, so ordinary TLS validation passes for an interceptor. <strong>Certificate pinning</strong> narrows trust: the app ships
+with the hash of a <strong>public key</strong> (the SPKI hash) and refuses a server whose chain contains no pinned key, however valid the chain looks.</p>
+<p>It is powerful and it has a price, which is what this project measures:
+- <strong>The pin stops an interceptor</strong> whose root the device trusts, and a pin cannot make a bad chain good, because validation still runs first.
+- <strong>Changing the server's key breaks every app</strong> that pinned the old one. With 10,000 installs, all 10,000 fail at once, and 1,500 stay locked out a week later because they have not updated.
+- <strong>Pinning choices soften the price:</strong> pin an issuing CA's key (changes rarely), or the leaf plus a <strong>backup pin</strong> for a key that is generated, kept offline and not yet in use. A <strong>report-only</strong> mode shows what would break before it does.
+- <strong>Pins set by the server</strong> (the old <code>Public-Key-Pins</code> header, HPKP) let anyone who controls one response, or a site that loses its own keys, lock visitors out for up to a year. Browsers removed the feature for that reason.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · RFC 8470 and Certificate Transparency as the modern alternatives.</p>
+<h2>The idea in everyday terms</h2>
+<p>Instead of letting any notary in the country vouch for your bank, you carry a photo of the one banker you know. A forger with a perfectly genuine notary stamp is turned away. But if the bank changes its banker, everyone who carries the old photo
+walks away from the real bank too, until they get a new photo.</p>
+<h2>The scenario</h2>
+<p>A mobile banking app talks to api.bank.example. The demo builds real certificate chains (a public root, an issuing CA, the bank's leaf, and a second chain from a root that a company proxy installed on the device) and runs a client with different pin policies against them, plus a fleet calculation and a model of header-set pins.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. An app that trusts the device</td>
+<td>Without pins, the app accepts the genuine server and also an interceptor whose root the device trusts.</td>
+</tr>
+<tr>
+<td>2. An app that pins the server's key</td>
+<td>With the leaf key pinned, the interceptor is refused by the pin; on a clean device the interceptor fails ordinary validation anyway.</td>
+</tr>
+<tr>
+<td>3. The server renews with a new key</td>
+<td>The app pinned to the old leaf key refuses the renewed certificate; of 10,000 installs, all 10,000 fail on day 0 and 1,500 are still locked out after a week.</td>
+</tr>
+<tr>
+<td>4. Pins chosen so that rotation does not break the app</td>
+<td>Pinning the issuing CA survives the renewal and still refuses the interceptor; a leaf pin plus a backup pin survives a switch to the backup key; report-only mode accepts and records a mismatch.</td>
+</tr>
+<tr>
+<td>5. Why browsers stopped letting servers set pins</td>
+<td>One response with a pin header for the meddler's keys blocks the genuine site for every returning visitor for up to a year; a site that loses its pinned keys locks itself out the same way.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>PinningTest</code>. Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The chains are real X.509 certificates built in the project and validated with the JDK's PKIX code. The pins are real SPKI SHA-256 hashes in Base64, as in HPKP and OkHttp. The fleet and the header store are small models. Keys are random and never printed; the clock is fixed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/certificate-pinning-explained.html">Certificate Pinning and What It Costs, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Both chains validate against the device's trust store; only one contains the pinned key.</p>
+<p><img alt="Two chains for the same name" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The client validates with the device roots, then applies the pin policy.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The pin is checked after ordinary validation, never instead of it.</p>
+<p><img alt="What the client checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A pinned app meets an interceptor" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Rotation becomes a project.</strong> Every key change needs an app release that went out before the change, with enough time for users to update.</li>
+<li><strong>Backup pins need a key that exists.</strong> Generate it ahead of time and keep it offline, or the backup pin protects nothing.</li>
+<li><strong>Pinning the issuing CA trusts everything that CA signs,</strong> which is weaker than pinning the leaf but survives renewals.</li>
+<li><strong>Users cannot work around a pin,</strong> which is the point against interception and the pain when you are wrong. Ship a way to update, and consider a signed remote switch to turn enforcement off in an emergency.</li>
+<li><strong>Testing with interception tools needs the pin disabled in debug builds,</strong> and that switch must not exist in release builds.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For most apps, ordinary validation plus Certificate Transparency monitoring, CAA records and short-lived certificates is enough, and costs far less when something changes. Pin when the threat is real (banking, health, high-value targets), when you control the app's update path,
+and when your team has tested a rotation. Do not pin for a website in a browser: use the modern controls.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>CertificatePinner</code> in OkHttp and the <code>&lt;pin-set&gt;</code> in Android's network security configuration.</li>
+<li><code>NSPinnedDomains</code> in iOS.</li>
+<li>"SSL pinning bypass" in mobile penetration-testing guides.</li>
+<li>The 2017–2018 removal of HPKP from Chrome and Firefox.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">tls-in-practice</a> and follows <a href="../inspecting-tls-traffic">inspecting-tls-traffic</a>: a pin is also what stops an interception proxy from inspecting your own app's traffic. It uses the chains of <a href="../local-certificate-authority">local-certificate-authority</a> (with a small copy of the encoder, so each project stands alone).</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
