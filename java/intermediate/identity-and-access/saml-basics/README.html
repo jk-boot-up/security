@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SAML Single Sign-On and Signature Wrapping</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SAML Single Sign-On and Signature Wrapping</h1>
+<pre><code>src/main/java/com/jk/explore/security/saml/
+├── Attacks.java                   Edits of a genuine response, the way an attacker with a text editor would make them
+├── Idp.java                       An identity provider: it signs the &lt;em&gt;assertion&lt;/em&gt; (the statement &quot;this is ana@bank.example&quot;) with its private key
+├── PinnedKeyServiceProvider.java  The second version: it trusts only the identity provider's own key, which fixes the self-signed response
+├── SamlDemo.java                  Runs the single sign-on story in four numbered acts and prints exact, repeatable results
+├── SamlRefused.java               The sign-in response was refused
+├── ServiceProvider.java           The shop's side of single sign-on: reads the identity provider's response and decides who the customer is
+├── SignatureCheck.java            Validates one XML signature and says which URI it covers
+├── StrictServiceProvider.java     The fixed version
+├── TrustingServiceProvider.java   The first version: any valid signature will do, with the key it carries, and then the first assertion in the file is the one believed
+└── Xml.java                       XML helpers shared by the identity provider and the service providers
+</code></pre>
+<p><strong>A SAML service provider must trust only the identity provider's own key and then read only the element that the signature covers, because a valid signature somewhere in an XML document says nothing about the assertion that code happens to read.</strong></p>
+<p><strong>SAML</strong> is the older single sign-on standard that many companies and banks still use. A customer signs in at an <strong>identity provider (IdP)</strong>, which sends the shop (the <strong>service provider, SP</strong>) an XML <strong>assertion</strong>: "this is ana@bank.example",
+signed with the IdP's private key. The shop's job is to be sure that the statement came from the IdP, is about the right person, and is fresh. XML makes that hard, because a signature covers <em>an element</em>, and an XML document can hold many.</p>
+<p>What goes wrong, in the order this project shows it:
+- <strong>Trusting the key in the signature.</strong> The signature carries a public key in <code>KeyInfo</code>. If the SP trusts that key, anybody can sign anything.
+- <strong>Reading a different element than the one that was signed</strong> (<strong>XML signature wrapping</strong>): the genuine signed assertion is moved aside, an unsigned forged one is put first, and the SP checks "is some signature valid?" and then reads "the first assertion".
+- <strong>Skipping the statement's own checks:</strong> expiry, audience, which request it answers, where it was sent, and replay.</p>
+<p>The defences:
+- <strong>Pin the IdP's key</strong> and ignore the one in the message.
+- <strong>Use only what the signature covers:</strong> exactly one assertion, the signature inside it, and the validated reference is the element that is read.
+- <strong>Check the conditions</strong> and remember used assertion ids. Refuse a DOCTYPE.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures and A08 Software or Data Integrity Failures · CWE-347 · CWE-345 · OWASP ASVS 5.0, the authentication and SAML requirements · OASIS SAML 2.0 Web Browser SSO profile.</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a notary's stamp on one page of a bundle. A clerk who checks "the bundle has a genuine stamp somewhere" and then signs for the first page is fooled by a bundle whose first page is forged and whose stamped page is tucked in the back.
+The careful clerk reads only the page under the stamp, and first checks that the stamp is the notary's own and not one the visitor brought.</p>
+<h2>The scenario</h2>
+<p>A shop lets customers sign in through their bank. The demo builds real SAML-style responses and signs them with the JDK's XML signature API (RSA-SHA256, enveloped, exclusive canonicalization). It then runs three service providers
+against genuine, self-signed, edited, wrapped and stale responses.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Signing in through the bank</td>
+<td>A genuine response signs Ana in with both the trusting provider and the strict one.</td>
+</tr>
+<tr>
+<td>2. A valid signature is not the same as the bank's signature</td>
+<td>A response the attacker signs with their own key signs them in as admin at the trusting provider; a provider that pins the bank's key refuses it, and any edit of a signed name breaks the signature.</td>
+</tr>
+<tr>
+<td>3. A valid signature on one assertion, and another one read</td>
+<td>Signature wrapping fools the pinned-key provider into signing in the attacker as admin; the strict provider refuses the wrapped response, a self-signed one and an edited one.</td>
+</tr>
+<tr>
+<td>4. The statement itself is checked</td>
+<td>The strict provider refuses a replayed response, an expired assertion, one for another shop, one that answers another request, and a document with a DOCTYPE.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>10 tests in <code>DemoRunsTest</code>, <code>SamlTest</code>. Keys and ids are random and never printed, and the clock is fixed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The signatures are real: the JDK's <code>javax.xml.crypto.dsig</code> API signs and validates the assertions with RSA-2048 and SHA-256. The responses are shaped like SAML 2.0 responses with the elements that matter here, not the full schema.
+Keys and ids are random and never printed; the clock is fixed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/saml-basics-explained.html">SAML Single Sign-On and Signature Wrapping, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The response passes through the customer's browser, so the shop must treat it as untrusted until it is checked.</p>
+<p><img alt="Single sign-on through the browser" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Three service providers share an interface; they differ in what they trust and what they read.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Structure first, then the signature, then the statement.</p>
+<p><img alt="What the strict provider checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Signature wrapping" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/saml-basics-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>XML signatures are hard to use correctly.</strong> Canonicalization, references and IDs are easy to get subtly wrong, which is why most teams use a vetted SAML library. This project shows what the library must be doing.</li>
+<li><strong>Pinning needs key rotation:</strong> the SP must accept a new IdP key with an overlap period, from signed metadata.</li>
+<li><strong>Clock skew</strong> makes strict time windows fail; a small allowance (here 60 seconds) is the usual compromise.</li>
+<li><strong>Replay protection needs state</strong> shared by all SP servers, kept at least as long as the assertion is valid.</li>
+<li><strong>Encrypted assertions, logout and attribute mapping</strong> add more code that this project does not show.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the shop can use OpenID Connect instead, do: JSON tokens and a simpler validation story. If SAML is required, use a maintained library with strict defaults and test it with the attacks here. Never write your own SAML validation for production.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>&lt;saml:Assertion&gt;</code>, <code>&lt;ds:Signature&gt;</code> and <code>&lt;saml:AudienceRestriction&gt;</code> in browser traffic of enterprise sign-in.</li>
+<li>"XML signature wrapping" in lists of famous SSO vulnerabilities.</li>
+<li>SAML metadata files and certificates exchanged during setup.</li>
+<li>A finding titled "Improper Verification of Cryptographic Signature" with CWE-347.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">identity-and-access</a> and follows <a href="../../web-security/xml-and-template-injection">xml-and-template-injection</a>, whose DOCTYPE refusal it reuses.
+The OAuth and OIDC projects (<a href="../oauth2-authorization-code-pkce">oauth2-authorization-code-pkce</a>, <a href="../openid-connect">openid-connect</a>) are the modern version of the same job.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

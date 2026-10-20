@@ -10,6 +10,7 @@ and NIST SSDF practices.
 | --- | --- | --- | --- |
 | 1 | [secrets-management](secrets-management) | Secrets found in files, environment variables and image layers; run-time injection from an owner-only file, redaction, leased per-app logins, rotation and the blast radius of a leak | A02, A04, CWE-798, CWE-522 |
 | 2 | [artifact-signing](artifact-signing) | Signed release statements over exact digests, keys pinned per channel with rotation and revocation, and a Merkle transparency log with inclusion and consistency proofs | A08, A03, CWE-494, SLSA |
+| 3 | [sbom-and-provenance](sbom-and-provenance) | Know what is inside a release, and prove where it came from | A03, A08 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

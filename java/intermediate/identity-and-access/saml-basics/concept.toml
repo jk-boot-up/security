@@ -1,0 +1,409 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "saml-basics"
+level = "intermediate"
+module = "identity-and-access"
+title = "SAML Single Sign-On and Signature Wrapping"
+short_title = "SAML Basics"
+package = "saml"
+main_class = "SamlDemo"
+tagline = "A valid signature is not the same as the statement you believed"
+bold = "A SAML service provider must trust only the identity provider's own key and then read only the element that the signature covers, because a valid signature somewhere in an XML document says nothing about the assertion that code happens to read."
+domain = "single sign-on through a bank"
+domain_note = ""
+youtube_description = "SAML single sign-on in Java: signed assertions, self-signed responses and XML signature wrapping."
+thumb_lines = ["SAML SIGNATURE", "WRAPPING"]
+thumb_code = "read only what was signed"
+youtube_title = "SAML Basics: Signed Assertions and Signature Wrapping in Java"
+youtube_tags = ["saml", "xml signature", "signature wrapping", "sso", "xmldsig", "java", "application security"]
+
+[readme]
+intro = """
+**SAML** is the older single sign-on standard that many companies and banks still use. A customer signs in at an **identity provider (IdP)**, which sends the shop (the **service provider, SP**) an XML **assertion**: "this is ana@bank.example",
+signed with the IdP's private key. The shop's job is to be sure that the statement came from the IdP, is about the right person, and is fresh. XML makes that hard, because a signature covers *an element*, and an XML document can hold many.
+
+What goes wrong, in the order this project shows it:
+- **Trusting the key in the signature.** The signature carries a public key in `KeyInfo`. If the SP trusts that key, anybody can sign anything.
+- **Reading a different element than the one that was signed** (**XML signature wrapping**): the genuine signed assertion is moved aside, an unsigned forged one is put first, and the SP checks "is some signature valid?" and then reads "the first assertion".
+- **Skipping the statement's own checks:** expiry, audience, which request it answers, where it was sent, and replay.
+
+The defences:
+- **Pin the IdP's key** and ignore the one in the message.
+- **Use only what the signature covers:** exactly one assertion, the signature inside it, and the validated reference is the element that is read.
+- **Check the conditions** and remember used assertion ids. Refuse a DOCTYPE.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures and A08 Software or Data Integrity Failures · CWE-347 · CWE-345 · OWASP ASVS 5.0, the authentication and SAML requirements · OASIS SAML 2.0 Web Browser SSO profile.
+"""
+analogy = """
+Think of a notary's stamp on one page of a bundle. A clerk who checks "the bundle has a genuine stamp somewhere" and then signs for the first page is fooled by a bundle whose first page is forged and whose stamped page is tucked in the back.
+The careful clerk reads only the page under the stamp, and first checks that the stamp is the notary's own and not one the visitor brought.
+"""
+scenario = """
+A shop lets customers sign in through their bank. The demo builds real SAML-style responses and signs them with the JDK's XML signature API (RSA-SHA256, enveloped, exclusive canonicalization). It then runs three service providers
+against genuine, self-signed, edited, wrapped and stale responses.
+"""
+costs = [
+    "**XML signatures are hard to use correctly.** Canonicalization, references and IDs are easy to get subtly wrong, which is why most teams use a vetted SAML library. This project shows what the library must be doing.",
+    "**Pinning needs key rotation:** the SP must accept a new IdP key with an overlap period, from signed metadata.",
+    "**Clock skew** makes strict time windows fail; a small allowance (here 60 seconds) is the usual compromise.",
+    "**Replay protection needs state** shared by all SP servers, kept at least as long as the assertion is valid.",
+    "**Encrypted assertions, logout and attribute mapping** add more code that this project does not show.",
+]
+too_much = """
+If the shop can use OpenID Connect instead, do: JSON tokens and a simpler validation story. If SAML is required, use a maintained library with strict defaults and test it with the attacks here. Never write your own SAML validation for production.
+"""
+met_before = [
+    "`<saml:Assertion>`, `<ds:Signature>` and `<saml:AudienceRestriction>` in browser traffic of enterprise sign-in.",
+    "\"XML signature wrapping\" in lists of famous SSO vulnerabilities.",
+    "SAML metadata files and certificates exchanged during setup.",
+    "A finding titled \"Improper Verification of Cryptographic Signature\" with CWE-347.",
+]
+where = """
+This project is in [identity-and-access](..) and follows [xml-and-template-injection](../../web-security/xml-and-template-injection), whose DOCTYPE refusal it reuses.
+The OAuth and OIDC projects ([oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce), [openid-connect](../openid-connect)) are the modern version of the same job.
+"""
+twin = """
+The signatures are real: the JDK's `javax.xml.crypto.dsig` API signs and validates the assertions with RSA-2048 and SHA-256. The responses are shaped like SAML 2.0 responses with the elements that matter here, not the full schema.
+Keys and ids are random and never printed; the clock is fixed.
+"""
+test_note = "Keys and ids are random and never printed, and the clock is fixed, so the demo prints the same text on every run."
+
+[[act]]
+title = "Signing in through the bank"
+summary = "A genuine response signs Ana in with both the trusting provider and the strict one."
+detail = """
+The IdP signs the assertion for ana@bank.example and the shop checks it. All providers accept a genuine response: the weaknesses only show when somebody edits the document.
+"""
+speech = """
+First demo: signing in through the bank. [[slnc 400]] The identity provider signs a statement about Ana. [[slnc 300]] Every provider accepts a genuine response. [[slnc 300]] The weaknesses only show when someone edits the document.
+"""
+rows = { genuine = "active ok" }
+console = [
+    ["trusting provider, genuine response -> signed in as ana@bank.example", "ok"],
+    ["strict provider, genuine response -> signed in as ana@bank.example", "ok"],
+]
+
+[[act]]
+title = "A valid signature is not the same as the bank's signature"
+summary = "A response the attacker signs with their own key signs them in as admin at the trusting provider; a provider that pins the bank's key refuses it, and any edit of a signed name breaks the signature."
+detail = """
+The signature carries the signer's public key. A provider that validates with that key proves only that someone signed the document, and the attacker signs "admin@bank.example" with their own key: the trusting provider signs them in as admin.
+A provider that pins the identity provider's key refuses it. Editing the name inside a genuine signed assertion changes what the signature covers, and every provider refuses that.
+"""
+speech = """
+Second demo: a valid signature is not the same as the bank's signature. [[slnc 400]] The signature carries the signer's own public key. [[slnc 300]] The attacker signs a statement about the admin with their own key. [[slnc 600]]
+The trusting provider checks the signature against the key in the message, and signs them in. [[slnc 300]] A provider that pins the bank's key refuses it. [[slnc 300]] And editing a signed name breaks the signature.
+"""
+rows = { trust = "active wrong" }
+console = [
+    ["trusting provider, self-signed -> signed in as admin@bank.example  <- ANYONE CAN SIGN", "bad"],
+    ["pinned-key provider, self-signed -> refused: signature is not valid", "ok"],
+    ["pinned-key provider, edited name -> refused: signature is not valid", "ok"],
+]
+
+[[act]]
+title = "A valid signature on one assertion, and another one read"
+summary = "Signature wrapping fools the pinned-key provider into signing in the attacker as admin; the strict provider refuses the wrapped response, a self-signed one and an edited one."
+detail = """
+The attacker leaves the genuine signed assertion intact but moves it into an Extensions element, and puts an unsigned copy naming admin@bank.example first. The pinned-key provider asks "is the first signature valid?" (yes, the genuine one, with the bank's key)
+and then reads the first assertion in the file, which is the forged one: signed in as admin. The strict provider requires exactly one assertion, directly under the response, with its own signature inside it, whose validated reference is that same element. The wrapped response has two
+assertions and is refused.
+"""
+speech = """
+Third demo: a valid signature on one assertion, and another one read. [[slnc 400]] The attacker keeps the genuine signed assertion, and moves it aside. [[slnc 300]] An unsigned copy, with another name, goes first. [[slnc 600]]
+The provider checks that a signature is valid. It is. [[slnc 300]] Then it reads the first assertion, which is the forged one. [[slnc 600]]
+The strict provider reads only the element the signature covers, and refuses a response with two assertions.
+"""
+rows = { wrap = "active wrong", strict = "active ok" }
+console = [
+    ["pinned-key provider, wrapped -> signed in as admin@bank.example  <- CHECKED ONE ELEMENT, READ ANOTHER", "bad"],
+    ["strict provider, wrapped -> refused: exactly one assertion is required", "ok"],
+    ["strict provider, self-signed -> refused: signature is not valid", "ok"],
+    ["strict provider, edited name -> refused: signature is not valid", "ok"],
+]
+
+[[act]]
+title = "The statement itself is checked"
+summary = "The strict provider refuses a replayed response, an expired assertion, one for another shop, one that answers another request, and a document with a DOCTYPE."
+detail = """
+A genuine assertion with a valid signature can still be unfit: a response used a second time (the provider remembers assertion ids), an assertion past its NotOnOrAfter, one meant for a different audience, one that answers a request this browser did not make
+(InResponseTo), and one sent to another address. A response with a DOCTYPE is refused before it is parsed any further.
+"""
+speech = """
+Fourth demo: the statement itself is checked. [[slnc 400]] The first sign-in works. [[slnc 300]] The same response used again is refused. [[slnc 600]]
+An expired assertion is refused. [[slnc 300]] So is one meant for another shop, and one that answers a different request. [[slnc 600]]
+And a document with a doctype is refused before it is read.
+"""
+rows = { checks = "active ok" }
+console = [
+    ["genuine response, first time -> signed in as ana@bank.example", "ok"],
+    ["the same response replayed -> refused: assertion already used", "ok"],
+    ["expired assertion -> refused: assertion is outside its validity period", "ok"],
+    ["meant for another shop -> refused: assertion is for another audience", "ok"],
+    ["answers another request -> refused: assertion answers another request", "ok"],
+    ["response with a DOCTYPE -> refused: not well-formed XML or has a DOCTYPE", "ok"],
+]
+
+[animation]
+subtitle = "Single sign-on through a bank: a signed statement, and three ways a shop can read it."
+boxes = [
+    ["genuine", "A genuine response", "signed by the bank"],
+    ["trust", "Trusting the embedded key", "anyone can sign"],
+    ["wrap", "Signature wrapping", "check one element, read another"],
+    ["strict", "Read only what was signed", "pinned key, one assertion"],
+    ["checks", "The statement's own checks", "time, audience, request, replay"],
+]
+
+[docs.problem]
+scenario = """
+A shop lets customers sign in through their bank using SAML. The bank's identity provider sends a signed XML response to the shop through the customer's browser.
+"""
+naive = """
+Check that the response has a valid signature, then read the user's name from the assertion.
+"""
+deliver = [
+    "An identity provider that signs SAML-shaped responses with the JDK's XML signature API.",
+    "Three service providers: trusting the embedded key, pinning the key but reading the wrong element, and strict.",
+    "A self-signed response, an edited one, a wrapped one, and stale, replayed and misdirected ones.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of public-key signatures and of what XML looks like",
+]
+not_required = [
+    "A SAML library or a real identity provider",
+    "The full SAML schema",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why the key in a signature cannot be the key you trust",
+    "describe signature wrapping and why checking one element and reading another is the bug",
+    "list what a service provider must check in an assertion besides the signature",
+    "say why a vetted library is the production answer",
+]
+walkthrough = """
+Run act two and ask whose key validated the self-signed response. In act three, point at the two assertions and ask which one the signature covers and which one the provider read. In act four, ask what each check would let an attacker do if it were missing.
+"""
+exercises = [
+    "Add a second wrapping variant: put the forged assertion after the genuine one, and see which providers read it.",
+    "Add a duplicate-ID variant with two elements with the same ID attribute, and watch the strict provider's count.",
+    "Add key rotation: let the strict provider pin two keys, and test with each.",
+    "Sign the response element too, and decide what that adds.",
+]
+
+[docs.explained]
+sentence = """
+A service provider must trust only the identity provider's pinned key, read only the element that the signature covers, and check the statement's issuer, audience, time, request, destination and freshness, using a maintained library.
+"""
+verdict = """
+Prefer OpenID Connect. If you must accept SAML: use a maintained library, pin keys from signed metadata, require exactly one signed assertion that is the element you read, validate conditions and replay, refuse DOCTYPEs, and test with wrapping and
+self-signing attacks.
+"""
+recognise = [
+    "`ds:Signature` with `ds:KeyInfo` in SAML responses.",
+    "`getElementsByTagName(\"Assertion\").item(0)` after a signature check.",
+    "`InResponseTo`, `Audience` and `NotOnOrAfter` in assertions.",
+    "A finding titled \"XML Signature Wrapping\" or CWE-347.",
+]
+
+[spec]
+purpose = """
+Teach SAML validation by building signed responses and attacking three service providers with a self-signed response, an edited assertion and signature wrapping, then fixing the validation.
+"""
+nongoals = [
+    "The full SAML schema, logout, encryption and metadata handling.",
+    "The Keycloak version: the saml-basics-with-keycloak project.",
+    "Writing your own SAML library for production.",
+]
+problem = """
+Developers check that a signature is valid and then read an assertion, without making sure that the signature covers the assertion they read and was made by the key they trust.
+"""
+roles = [["The identity provider", "`Idp`"], ["Signature validation", "`SignatureCheck`"], ["The service providers", "`ServiceProvider`, `TrustingServiceProvider`, `PinnedKeyServiceProvider`, `StrictServiceProvider`"], ["XML helpers and attacks", "`Xml`, `Attacks`, `SamlRefused`"], ["Entry point", "`SamlDemo`"]]
+requirements = [
+    "The trusting provider accepts a response signed with an attacker's key.",
+    "The pinned-key provider refuses it but is fooled by a wrapped response.",
+    "The strict provider refuses self-signed, edited and wrapped responses, and accepts a genuine one.",
+    "The strict provider checks issuer, time, audience, destination, request and replay, and refuses a DOCTYPE.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Single sign-on through the browser"
+caption = "The response passes through the customer's browser, so the shop must treat it as untrusted until it is checked."
+nodes = [
+    { id = "idp", label = "Identity provider", sub = "signs the assertion", col = 0, row = 0, colour = "green" },
+    { id = "browser", label = "Customer's browser", sub = "carries the response", col = 1, row = 0, colour = "client" },
+    { id = "sp", label = "Shop (service provider)", sub = "checks and reads it", col = 2, row = 0, colour = "green", shape = "ellipse" },
+    { id = "attacker", label = "Attacker", sub = "can edit what the browser carries", col = 1, row = 1, colour = "red" },
+]
+edges = [
+    { from = "idp", to = "browser", label = "signed response" },
+    { from = "browser", to = "sp", label = "POST /acs" },
+    { from = "attacker", to = "browser", label = "edits", colour = "red", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Three service providers share an interface; they differ in what they trust and what they read."
+nodes = [
+    { id = "idp", label = "Idp", sub = ["response()", "signedBy(key)"], col = 0, row = 0, colour = "green" },
+    { id = "sp", label = "ServiceProvider", sub = ["login(xml, requestId)"], col = 1, row = 0, colour = "accent" },
+    { id = "check", label = "SignatureCheck", sub = ["validate(doc, signature, keys)"], col = 2, row = 0, colour = "amber" },
+    { id = "trusting", label = "TrustingServiceProvider", sub = ["embedded key"], col = 0, row = 1, colour = "red" },
+    { id = "pinned", label = "PinnedKeyServiceProvider", sub = ["pinned key, first assertion"], col = 1, row = 1, colour = "red" },
+    { id = "strict", label = "StrictServiceProvider", sub = ["covered element", "conditions", "replay"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "trusting", to = "sp", label = "implements" },
+    { from = "pinned", to = "sp", label = "implements" },
+    { from = "strict", to = "sp", label = "implements" },
+    { from = "strict", to = "check", label = "uses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the strict provider checks, in order"
+caption = "Structure first, then the signature, then the statement."
+nodes = [
+    { id = "shape", label = "Shape", sub = "no DOCTYPE, one assertion, own signature", col = 0, row = 0, colour = "client" },
+    { id = "sig", label = "Signature", sub = "pinned key, covers this element", col = 1, row = 0, colour = "accent" },
+    { id = "stmt", label = "Statement", sub = "issuer, time, audience, request", col = 2, row = 0, colour = "amber" },
+    { id = "once", label = "Once only", sub = "assertion id remembered", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "shape", to = "sig" },
+    { from = "sig", to = "stmt" },
+    { from = "stmt", to = "once" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Signature wrapping"
+participants = ["Attacker", "Pinned-key provider"]
+steps = [
+    ["Attacker", "Pinned-key provider", "response: forged assertion first, genuine signed one in Extensions"],
+    ["note", "Pinned-key provider", "first signature is valid (the bank's key)"],
+    ["note", "Pinned-key provider", "reads the first assertion: admin"],
+    ["Pinned-key provider", "Attacker", "signed in as admin", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The strict provider"
+participants = ["Attacker", "Strict provider"]
+steps = [
+    ["Attacker", "Strict provider", "the wrapped response"],
+    ["note", "Strict provider", "two assertions in the document"],
+    ["Strict provider", "Attacker", "refused: exactly one assertion is required", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A self-signed response"
+participants = ["Attacker", "Trusting provider", "Pinned-key provider"]
+steps = [
+    ["Attacker", "Trusting provider", "assertion signed with the attacker's key"],
+    ["Trusting provider", "Attacker", "signed in as admin (trusts KeyInfo)", "reply"],
+    ["Attacker", "Pinned-key provider", "the same response"],
+    ["Pinned-key provider", "Attacker", "refused: signature is not valid", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The bank", nodes = ["idp"], colour = "green" },
+    { label = "The shop", nodes = ["sp"], colour = "green" },
+    { label = "Customer's side", nodes = ["browser", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "idp", label = "Identity provider", sub = "private key", col = 0, row = 0, colour = "green", threats = ["T1"] },
+    { id = "browser", label = "Browser", sub = "carries the response", col = 1, row = 0, colour = "client", threats = ["T2", "T4"] },
+    { id = "sp", label = "Service provider", sub = "validation", col = 2, row = 0, colour = "green", shape = "ellipse", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "attacker", label = "Attacker", sub = "edits XML", col = 1, row = 1, colour = "red", threats = ["T1", "T2"] },
+]
+edges = [
+    { from = "idp", to = "browser", label = "response" },
+    { from = "browser", to = "sp", label = "POST /acs", threats = ["T2", "T3", "T4"] },
+    { from = "attacker", to = "browser", label = "forged, wrapped, replayed", colour = "red", dashed = true, threats = ["T1", "T2", "T4"] },
+]
+
+[threatmodel]
+scope = """
+A shop's SAML service provider that accepts responses through the customer's browser. It covers the validation of signed assertions.
+It does not cover the identity provider's security, SAML logout or encryption, or the customer's device.
+"""
+assets = [
+    "The shop's accounts, and the identity they are given to.",
+    "The identity provider's signing key.",
+]
+actors = [
+    "A customer signing in.",
+    "An attacker who can edit and replay the response on its way through their own browser.",
+]
+boundaries = [
+    "Identity provider to shop, through the customer's browser: everything in the response is untrusted until validated.",
+]
+assumptions = [
+    "The identity provider's public key was obtained out of band and pinned.",
+    "The shop's clock is correct to within the allowed skew.",
+]
+out_of_scope = [
+    "A compromised identity provider.",
+    "SAML logout, encrypted assertions and attribute mapping.",
+]
+tests = [
+    "`SamlTest` checks every provider against genuine, self-signed, edited, wrapped, replayed, expired, misdirected and malformed responses and unsigned or misplaced signatures.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, tls-in-practice, looks at the certificates and channels underneath all of these exchanges, starting with a local certificate authority.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A response signed by the attacker's own key is accepted"
+where = "`TrustingServiceProvider`"
+control = "Pin the identity provider's key; ignore KeyInfo"
+residual = "A compromised or mis-pinned key"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "Signature wrapping: the signed element is not the one that is read"
+where = "`PinnedKeyServiceProvider`"
+control = "One assertion, signature inside it, validated reference equals the element read, unique ID"
+residual = "Parser differences between the signature library and the code that reads the document"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "A captured response is replayed, or used for another shop or request"
+where = "`StrictServiceProvider`"
+control = "Audience, recipient, InResponseTo, validity period and remembered assertion ids"
+residual = "Replay state lost on restart; keep it as long as the assertion is valid"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "Entities in the response read files or exhaust memory"
+where = "`Xml.parse`"
+control = "DOCTYPE refused, secure processing on"
+residual = "Very large documents within the size limit of the web server"

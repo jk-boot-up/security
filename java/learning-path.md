@@ -142,13 +142,13 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 69 | jwt-done-right-with-nimbus-jose-jwt | With tools: nimbus jose jwt | *planned*: the same checks with a standard library and a JWKS endpoint | A07, CWE-347 |
 | 70 | [oauth2-authorization-code-pkce](intermediate/identity-and-access/oauth2-authorization-code-pkce) | Plain | Give an app access without giving it your password | RFC 9700, A07 |
 | 71 | oauth2-authorization-code-pkce-with-keycloak | With tools: keycloak | *planned*: the same flow against a real authorization server | RFC 9700, A07 |
-| 72 | openid-connect | Plain | *planned*: ID tokens and access tokens, `nonce`, discovery, userinfo and logout | A07 |
+| 72 | [openid-connect](intermediate/identity-and-access/openid-connect) | Plain | Access is not identity | A07 |
 | 73 | openid-connect-with-spring-security-and-keycloak | With tools: spring security and keycloak | *planned*: OIDC login in Spring Boot, with back-channel logout | A07 |
 | 74 | [tokens-in-the-browser](intermediate/identity-and-access/tokens-in-the-browser) | Plain | A token a script can read is a token an attacker can take | OAuth for browser-based apps, RFC 9449 |
 | 75 | tokens-in-the-browser-with-spring-boot | With tools: spring boot | *planned*: a small BFF in front of the bank API | OAuth for browser-based apps, RFC 9449 |
 | 76 | [passkeys](intermediate/identity-and-access/passkeys) | Plain | A key that only signs for the real site | A07, NIST SP 800-63B |
 | 77 | passkeys-with-spring-security | With tools: spring security | *planned*: passkey registration and login with Spring Security's WebAuthn support | A07, NIST SP 800-63B |
-| 78 | saml-basics | Plain | *planned*: Assertions, signatures and signature-wrapping attacks on a small XML signer: why legacy single sign-on needs care | A07, CWE-347 |
+| 78 | [saml-basics](intermediate/identity-and-access/saml-basics) | Plain | A valid signature is not the same as the statement you believed | A07, CWE-347 |
 | 79 | saml-basics-with-keycloak | With tools: keycloak | *planned*: a SAML service provider against Keycloak | A07, CWE-347 |
 
 ### 5. tls-in-practice
@@ -185,7 +185,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 97 | secrets-management-with-openbao | With tools: openbao | *planned*: dynamic database credentials with leases from a local OpenBao | A02, CWE-798 |
 | 98 | [artifact-signing](intermediate/secrets-and-supply-chain/artifact-signing) | Plain | Run only what the release team signed, and only what the world can see they signed | A08, SLSA |
 | 99 | artifact-signing-with-cosign | With tools: cosign | *planned*: signing a container image and refusing an unsigned one | A08, SLSA |
-| 100 | sbom-and-provenance | Plain | *planned*: A bill of materials and a provenance statement for a build, and checking them before deploying | A03, SLSA, SSDF |
+| 100 | [sbom-and-provenance](intermediate/secrets-and-supply-chain/sbom-and-provenance) | Plain | Know what is inside a release, and prove where it came from | A03, SLSA, SSDF |
 | 101 | sbom-and-provenance-with-syft-and-grype | With tools: syft and grype | *planned*: generating and scanning the SBOM of a local image | A03, SLSA, SSDF |
 | 102 | dependency-confusion | Plain | *planned*: A private package name that a public repository can shadow; repository order, scoping and verification | A03, CWE-427 |
 | 103 | dependency-confusion-with-gradle | With tools: gradle | *planned*: repository content filtering and dependency verification | A03, CWE-427 |
