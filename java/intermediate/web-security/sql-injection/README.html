@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SQL Injection and Its Defences</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SQL Injection and Its Defences</h1>
+<pre><code>src/main/java/com/jk/explore/security/sqli/
+├── MiniDb.java            A tiny SQL engine, just enough to show injection with the JDK alone
+├── SafeSearch.java        The fixed search: the statement is constant text, the customer's words travel as a parameter, and the sort comes from a list
+├── Shop.java              The shop's database: public products, hidden products, customer accounts and orders
+├── SortColumn.java        The only columns a customer may sort by
+├── SqlException.java      A statement the database refused: bad syntax, an unknown table or column, or a table the database user may not read
+├── SqlInjectionDemo.java  Runs the product search story in four numbered acts and prints exact, repeatable results
+└── UnsafeSearch.java      The first version of the product search: the customer's text is pasted into the statement
+</code></pre>
+<p><strong>A search box that pastes the customer's words into a SQL statement lets a quote turn those words into commands, so the statement must be fixed text, the words must travel as parameters, names must come from a list, and the database user must be able to do very little.</strong></p>
+<p>A database reads a statement as one piece of text and splits it into words and symbols before it acts. If a program builds that text by pasting a
+customer's input into it, a single quote closes the string the program opened, and everything after it is read as <strong>SQL code</strong>, not as the customer's words.
+That is <strong>SQL injection</strong>: the customer is no longer searching, but writing part of the program.</p>
+<p>The defences, in the order this project shows them:
+- <strong>Parameters</strong> (prepared statements): the statement is fixed text with <code>?</code> holes, and the values travel separately. A value is never parsed as SQL.
+- <strong>Allow-lists for names</strong>: a column or table name cannot be a parameter, so a sort column is chosen from a fixed list.
+- <strong>Least privilege</strong>: the database user for the search page can read only the product table, so a mistake elsewhere leaks little.
+- <strong>No stacked statements</strong>: one call runs one statement.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A05 Injection · CWE-89 · OWASP ASVS 5.0, the validation and sanitization chapter (parameterized queries).</p>
+<h2>The idea in everyday terms</h2>
+<p>Think of a waiter who writes the order on a slip for the kitchen. If the customer may dictate the slip word for word, "a soup, and also give me
+the safe's key" ends up on it in the waiter's handwriting, and the kitchen obeys. With a printed form, the customer can only fill the blanks.</p>
+<h2>The scenario</h2>
+<p>An online store has a product search with a sort option. The demo runs a small SQL engine written in plain Java, so the whole story fits the JDK alone: it
+tokenizes a statement the way a real database does, supports <code>UNION</code>, <code>--</code> comments and <code>?</code> parameters, and checks which tables a database user may read.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 4 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A search that works</td>
+<td>An honest search for kettle finds the two listed kettles.</td>
+</tr>
+<tr>
+<td>2. A quote turns text into code</td>
+<td>A quote and a comment reveal the unlisted Prototype Toaster, a UNION leaks the e-mail addresses of customers, and a second statement is refused only by luck.</td>
+</tr>
+<tr>
+<td>3. Parameters keep text as text</td>
+<td>With a fixed statement, a parameter and a sort list, the same attacks find nothing and the honest search still works.</td>
+</tr>
+<tr>
+<td>4. Few rights limit the damage</td>
+<td>If the statement is still built by pasting, a search user that may read only products gets permission denied for the users table.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>SqlInjectionTest</code>. All data is fixed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The database is a small Java SQL engine, not a real product. It has the behaviour that matters for injection: statements are split into tokens first,
+<code>--</code> ends a statement, <code>UNION</code> appends rows, a <code>;</code> starts a second statement that is refused, and a database user has a list of readable tables.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/sql-injection-explained.html">SQL Injection and Its Defences, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Pasted text is parsed together with the program's SQL; a parameter is not.</p>
+<p><img alt="How a search reaches the database" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>MiniDb runs statements; the two searches differ only in how they build them.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step narrows what a mistake can do.</p>
+<p><img alt="The steps a statement passes, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A union that leaks the users table" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/sql-injection-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Names cannot be parameters.</strong> A sort column or table name must be checked against a list, which has to be kept in step with the schema.</li>
+<li><strong>Parameters do not fix everything.</strong> A <code>LIKE</code> pattern still treats <code>%</code> and <code>_</code> in the customer's text as wildcards unless they are escaped.</li>
+<li><strong>Least privilege needs separate database users</strong> and a schema that does not put everything in one place.</li>
+<li><strong>Dynamic reports are hard.</strong> Queries built from many optional filters need a builder that adds fixed fragments and parameters, never raw text.</li>
+<li><strong>Error messages teach attackers.</strong> Showing the database's message hands out table and column names.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A fixed query with a parameter for every value is enough for most pages. Escaping quotes by hand is not a defence: it is easy to miss one case,
+and the right fix is the parameter. Do not add a web application firewall as a substitute for fixing the query.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>PreparedStatement</code> and <code>?</code> placeholders in JDBC, and named parameters in <code>JdbcTemplate</code>.</li>
+<li><code>' OR '1'='1</code> in every list of attack strings.</li>
+<li>Breach reports that begin with a search box or a login form.</li>
+<li>A finding titled "SQL Injection" with CWE-89.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">web-security</a> and builds on <a href="../../secure-coding/input-validation">input-validation</a>, which showed why input is checked,
+and the beginner <a href="../../../beginner/identity/authentication-vs-authorization">authentication-vs-authorization</a> project.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

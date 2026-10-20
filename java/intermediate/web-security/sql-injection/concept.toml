@@ -1,0 +1,406 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "sql-injection"
+level = "intermediate"
+module = "web-security"
+title = "SQL Injection and Its Defences"
+short_title = "SQL Injection"
+package = "sqli"
+main_class = "SqlInjectionDemo"
+tagline = "Text typed by a customer must never become code"
+bold = "A search box that pastes the customer's words into a SQL statement lets a quote turn those words into commands, so the statement must be fixed text, the words must travel as parameters, names must come from a list, and the database user must be able to do very little."
+domain = "an online store"
+domain_note = ""
+youtube_description = "SQL injection and its defences, in Java."
+thumb_lines = ["SQL INJECTION", "AND ITS DEFENCES"]
+thumb_code = "WHERE name LIKE ?"
+youtube_title = "SQL Injection and Its Defences in Java"
+youtube_tags = ["sql injection", "prepared statements", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+A database reads a statement as one piece of text and splits it into words and symbols before it acts. If a program builds that text by pasting a
+customer's input into it, a single quote closes the string the program opened, and everything after it is read as **SQL code**, not as the customer's words.
+That is **SQL injection**: the customer is no longer searching, but writing part of the program.
+
+The defences, in the order this project shows them:
+- **Parameters** (prepared statements): the statement is fixed text with `?` holes, and the values travel separately. A value is never parsed as SQL.
+- **Allow-lists for names**: a column or table name cannot be a parameter, so a sort column is chosen from a fixed list.
+- **Least privilege**: the database user for the search page can read only the product table, so a mistake elsewhere leaks little.
+- **No stacked statements**: one call runs one statement.
+
+**Maps to:** OWASP Top 10 (2025) A05 Injection · CWE-89 · OWASP ASVS 5.0, the validation and sanitization chapter (parameterized queries).
+"""
+analogy = """
+Think of a waiter who writes the order on a slip for the kitchen. If the customer may dictate the slip word for word, "a soup, and also give me
+the safe's key" ends up on it in the waiter's handwriting, and the kitchen obeys. With a printed form, the customer can only fill the blanks.
+"""
+scenario = """
+An online store has a product search with a sort option. The demo runs a small SQL engine written in plain Java, so the whole story fits the JDK alone: it
+tokenizes a statement the way a real database does, supports `UNION`, `--` comments and `?` parameters, and checks which tables a database user may read.
+"""
+costs = [
+    "**Names cannot be parameters.** A sort column or table name must be checked against a list, which has to be kept in step with the schema.",
+    "**Parameters do not fix everything.** A `LIKE` pattern still treats `%` and `_` in the customer's text as wildcards unless they are escaped.",
+    "**Least privilege needs separate database users** and a schema that does not put everything in one place.",
+    "**Dynamic reports are hard.** Queries built from many optional filters need a builder that adds fixed fragments and parameters, never raw text.",
+    "**Error messages teach attackers.** Showing the database's message hands out table and column names.",
+]
+too_much = """
+A fixed query with a parameter for every value is enough for most pages. Escaping quotes by hand is not a defence: it is easy to miss one case,
+and the right fix is the parameter. Do not add a web application firewall as a substitute for fixing the query.
+"""
+met_before = [
+    "`PreparedStatement` and `?` placeholders in JDBC, and named parameters in `JdbcTemplate`.",
+    "`' OR '1'='1` in every list of attack strings.",
+    "Breach reports that begin with a search box or a login form.",
+    "A finding titled \"SQL Injection\" with CWE-89.",
+]
+where = """
+This project is in [web-security](..) and builds on [input-validation](../../secure-coding/input-validation), which showed why input is checked,
+and the beginner [authentication-vs-authorization](../../../beginner/identity/authentication-vs-authorization) project.
+"""
+twin = """
+The database is a small Java SQL engine, not a real product. It has the behaviour that matters for injection: statements are split into tokens first,
+`--` ends a statement, `UNION` appends rows, a `;` starts a second statement that is refused, and a database user has a list of readable tables.
+"""
+test_note = "All data is fixed, so the demo prints the same text on every run."
+
+[[act]]
+title = "A search that works"
+summary = "An honest search for kettle finds the two listed kettles."
+detail = """
+The first version of the search pastes the customer's words into the statement. A search for kettle finds the Blue Kettle and the Red Kettle, sorted by price.
+Nothing looks wrong, which is why the flaw survives testing.
+"""
+speech = """
+First demo: a search that works. [[slnc 400]] The search pastes the customer's words into the statement. [[slnc 300]] A search for kettle finds two kettles. [[slnc 600]]
+Nothing looks wrong, and that is why the flaw survives testing.
+"""
+rows = { paste = "active ok" }
+console = [
+    ["search 'kettle' -> [Blue Kettle, Red Kettle]", "ok"],
+    ["the statement is built by pasting the words into the text", "muted"],
+]
+
+[[act]]
+title = "A quote turns text into code"
+summary = "A quote and a comment reveal the unlisted Prototype Toaster, a UNION leaks the e-mail addresses of customers, and a second statement is refused only by luck."
+detail = """
+A search for `zzz' OR listed = 0 --` closes the string, adds a condition, and comments out the rest, so the unlisted Prototype Toaster appears. A search for
+`zzz' UNION SELECT email, password_hash FROM users --` appends the users table to the answer: the page now lists ana@shop.example and ben@shop.example.
+A sort value with `; DROP TABLE products` is refused, but only because this engine, like most drivers, accepts one statement per call.
+"""
+speech = """
+Second demo: a quote turns text into code. [[slnc 400]] A quote and a comment reveal a product that is not for sale. [[slnc 600]]
+A union adds the users table to the answer, and the page lists customers' e-mail addresses. [[slnc 600]]
+A second statement is refused, but only because this engine accepts one statement per call.
+"""
+rows = { inject = "active wrong" }
+console = [
+    ["search \"zzz' OR listed = 0 --\" -> [Prototype Toaster]  <- AN UNLISTED PRODUCT", "bad"],
+    ["search \"zzz' UNION SELECT email, password_hash FROM users --\" -> [ana@shop.example, ben@shop.example]  <- CUSTOMERS", "bad"],
+    ["sort \"price; DROP TABLE products\" -> refused: one statement only", "amber"],
+]
+
+[[act]]
+title = "Parameters keep text as text"
+summary = "With a fixed statement, a parameter and a sort list, the same attacks find nothing and the honest search still works."
+detail = """
+The fixed version has a constant statement with a `?` for the words, and the sort column comes from a list of two names. The honest search is unchanged.
+The same quote and the same union are now just words that no product contains, so the answer is empty. The bad sort value falls back to the default.
+"""
+speech = """
+Third demo: parameters keep text as text. [[slnc 400]] The statement is fixed, and the customer's words travel separately. [[slnc 600]]
+The same attacks are now only words that no product contains. [[slnc 300]] The bad sort value falls back to the default.
+"""
+rows = { param = "active ok", allow = "active ok" }
+console = [
+    ["search 'kettle' -> [Blue Kettle, Red Kettle]", "ok"],
+    ["the quote attack -> [no results]", "ok"],
+    ["the union attack -> [no results]", "ok"],
+    ["the bad sort value falls back to the default order", "ok"],
+]
+
+[[act]]
+title = "Few rights limit the damage"
+summary = "If the statement is still built by pasting, a search user that may read only products gets permission denied for the users table."
+detail = """
+Defence in depth: the search page connects as a database user that may read only the products table. If somebody later writes a vulnerable query,
+the union with the users table is refused with permission denied. This does not replace parameters; it limits what one mistake can reach.
+"""
+speech = """
+Fourth demo: few rights limit the damage. [[slnc 400]] The search page connects as a user that can read only products. [[slnc 600]]
+Even with a vulnerable query, the union with the users table is refused. [[slnc 300]] This limits one mistake, it does not replace parameters.
+"""
+rows = { least = "active ok" }
+console = [
+    ["a vulnerable query as a user that reads only products", "muted"],
+    ["the union attack -> refused: permission denied for table users", "ok"],
+]
+
+[animation]
+subtitle = "An online store's product search, a quote, and the defences that keep text as text."
+boxes = [
+    ["paste", "Pasted text", "the words become part of the statement"],
+    ["inject", "A quote", "closes the string and adds code"],
+    ["param", "Parameters", "values are never parsed as SQL"],
+    ["allow", "Name lists", "sort columns come from a list"],
+    ["least", "Least privilege", "a database user with few rights"],
+]
+
+[docs.problem]
+scenario = """
+An online store has a product search and a sort option, backed by a database that also holds customer accounts and orders.
+"""
+naive = """
+Build the statement by joining text: the search words are only text, so pasting them in must be harmless.
+"""
+deliver = [
+    "A small SQL engine in plain Java that reads statements the way a real database does.",
+    "A search built by pasting, and three attacks on it: a hidden product, a union that leaks accounts, and a stacked statement.",
+    "The fixed search: parameters for values and an allow-list for the sort column.",
+    "A least-privilege database user that limits what one mistake can reach.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "A first idea of what a SELECT statement does",
+]
+not_required = [
+    "A real database: the demo uses a small engine written for this project",
+    "Any framework",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain how a quote changes the meaning of a pasted statement",
+    "describe why a parameter is never parsed as SQL",
+    "say why column names need an allow-list and not a parameter",
+    "explain what least privilege adds when the query is already fixed",
+]
+walkthrough = """
+Run act two and ask which part of the text the customer wrote and which part the program wrote. Run act three and ask what changed in the statement,
+not in the input. In act four, ask what an attacker would need next if the users table were readable.
+"""
+exercises = [
+    "Add a filter by maximum price and keep the statement fixed.",
+    "Escape `%` and `_` in the search words so that the customer's text is matched literally.",
+    "Add a table the search user may not read, and write a test that a union with it is refused.",
+    "Make the engine's error messages generic, and see what an attacker learns from the original ones.",
+]
+
+[docs.explained]
+sentence = """
+A statement that includes the customer's text can be rewritten by that text, so statements are fixed, values are parameters, names come from a list, and the database user can do very little.
+"""
+verdict = """
+Use parameters for every value, always, with the driver or the framework's own binding. Choose names (columns, tables, sort directions) from an allow-list.
+Run each application with its own database user and the fewest rights. Keep error details out of the response.
+"""
+recognise = [
+    "String concatenation or `String.format` inside a `Statement.executeQuery` call.",
+    "`PreparedStatement` with `?` placeholders.",
+    "`ORDER BY` built from a request parameter.",
+    "A finding titled \"SQL Injection\" with CWE-89.",
+]
+
+[spec]
+purpose = """
+Teach SQL injection by attacking a pasted product search with a quote, a comment and a union, then fixing it with parameters, an allow-list and a least-privilege database user.
+"""
+nongoals = [
+    "A real database or driver: the engine is a model of the rules that matter here.",
+    "Object-relational mappers and their query languages: the sql-injection-with-hibernate-and-postgres project.",
+    "Blind and time-based injection, which need a real server to measure.",
+]
+problem = """
+Developers join text to build statements, and so a customer can change what the statement means.
+"""
+roles = [["The SQL engine", "`MiniDb`, `SqlException`"], ["The shop's data and database users", "`Shop`"], ["The vulnerable search", "`UnsafeSearch`"], ["The fixed search", "`SafeSearch`, `SortColumn`"], ["Entry point", "`SqlInjectionDemo`"]]
+requirements = [
+    "The pasted search can be made to show an unlisted product and the users table.",
+    "The fixed search returns nothing for the same inputs, and honest searches, including a quote in a name, still work.",
+    "A sort column is chosen from a list and anything else falls back to the default.",
+    "A database user without rights on a table cannot read it even through a vulnerable query.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "How a search reaches the database"
+caption = "Pasted text is parsed together with the program's SQL; a parameter is not."
+nodes = [
+    { id = "customer", label = "Customer", sub = "types a search", col = 0, row = 0, colour = "red" },
+    { id = "page", label = "Search page", sub = "builds the statement", col = 1, row = 0, colour = "client" },
+    { id = "db", label = "Database", sub = "parses the statement", col = 2, row = 0, colour = "green", shape = "store" },
+    { id = "defences", label = "Defences", sub = "parameters, name list, least privilege", col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "customer", to = "page", label = "words", colour = "red", dashed = true },
+    { from = "page", to = "db", label = "statement" },
+    { from = "defences", to = "page", label = "shape", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "MiniDb runs statements; the two searches differ only in how they build them."
+nodes = [
+    { id = "db", label = "MiniDb", sub = ["createTable()", "insert()", "connect(tables)"], col = 0, row = 0, colour = "green" },
+    { id = "conn", label = "Connection", sub = ["query(sql, params)"], col = 1, row = 0, colour = "accent" },
+    { id = "unsafe", label = "UnsafeSearch", sub = ["search(term, sort)"], col = 0, row = 1, colour = "red" },
+    { id = "safe", label = "SafeSearch", sub = ["search(term, sort)"], col = 1, row = 1, colour = "client" },
+    { id = "sort", label = "SortColumn", sub = ["NAME", "PRICE", "parse(text)"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "db", to = "conn", label = "opens" },
+    { from = "unsafe", to = "conn", label = "pastes" },
+    { from = "safe", to = "conn", label = "binds" },
+    { from = "safe", to = "sort", label = "asks" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The steps a statement passes, in order"
+caption = "Each step narrows what a mistake can do."
+nodes = [
+    { id = "tokens", label = "Tokens", sub = "text becomes words and symbols", col = 0, row = 0, colour = "client" },
+    { id = "syntax", label = "One statement", sub = "a second statement is refused", col = 1, row = 0, colour = "accent" },
+    { id = "grants", label = "Grants", sub = "only readable tables", col = 2, row = 0, colour = "amber" },
+    { id = "rows", label = "Rows", sub = "only what the query selects", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "tokens", to = "syntax" },
+    { from = "syntax", to = "grants" },
+    { from = "grants", to = "rows" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A union that leaks the users table"
+participants = ["Customer", "Search page", "Database"]
+steps = [
+    ["Customer", "Search page", "zzz' UNION SELECT email, password_hash FROM users --"],
+    ["Search page", "Database", "SELECT ... LIKE '%zzz' UNION SELECT ... --%' ..."],
+    ["note", "Database", "the quote ended the string; -- hides the rest"],
+    ["Database", "Search page", "rows of products and users", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The parameter keeps it text"
+caption = "The statement and the value are sent separately."
+participants = ["Customer", "Search page", "Database"]
+steps = [
+    ["Customer", "Search page", "zzz' UNION SELECT ..."],
+    ["Search page", "Database", "SELECT ... LIKE ? + the value as data"],
+    ["note", "Database", "the value is never parsed"],
+    ["Database", "Search page", "no rows", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "Least privilege stops a mistake"
+caption = "The search user cannot read users, even if the query is vulnerable."
+participants = ["Customer", "Search page", "Database"]
+steps = [
+    ["Customer", "Search page", "a union with users"],
+    ["Search page", "Database", "pasted statement as the search user"],
+    ["Database", "Search page", "permission denied for table users", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The store", nodes = ["page", "db"], colour = "green" },
+    { label = "Outside", nodes = ["customer"], colour = "red" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "types the search", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "page", label = "Search page", sub = "builds the statement", col = 1, row = 0, colour = "client", threats = ["T1", "T3"] },
+    { id = "db", label = "Database", sub = "products, users, orders", col = 2, row = 0, colour = "green", shape = "store", threats = ["T4"] },
+]
+edges = [
+    { from = "customer", to = "page", label = "words", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "page", to = "db", label = "statement", threats = ["T4"] },
+]
+
+[threatmodel]
+scope = """
+An online store's product search and sort, and the database user it runs as. It covers input that reaches a SQL statement.
+It does not cover a compromised server, stolen database passwords, or injection into other interpreters.
+"""
+assets = [
+    "Customer accounts and password hashes.",
+    "Unlisted products and orders.",
+    "The products table's integrity.",
+]
+actors = [
+    "An honest customer.",
+    "An attacker who can type into the search box and the sort option.",
+]
+boundaries = [
+    "Customer to search page: all input is untrusted.",
+    "Search page to database: the statement crosses it, and the database cannot tell the program's text from the customer's.",
+]
+assumptions = [
+    "The driver or framework binds parameters as data.",
+    "The database enforces the rights of its users.",
+]
+out_of_scope = [
+    "Injection through ORMs: sql-injection-with-hibernate-and-postgres.",
+    "Password storage: the beginner passwords project.",
+]
+tests = [
+    "`SqlInjectionTest` checks the three attacks, the fixed search, the sort list, the refused second statement and the least-privilege user.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, server-side-request-forgery, moves from the database to the network: a customer makes the server fetch an address.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Text typed into the search changes the meaning of the statement"
+where = "`UnsafeSearch.search`"
+control = "A fixed statement with parameters (`SafeSearch`)"
+residual = "Any other place that still joins text into a statement"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A union appends the users table to the answer"
+where = "`UnsafeSearch.search`"
+control = "Parameters, and a search user without rights on users"
+residual = "A user with wider rights makes a later mistake costly"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "The sort option carries SQL, which a parameter cannot hold"
+where = "`SafeSearch`, `SortColumn`"
+control = "The column is chosen from a list; anything else falls back"
+residual = "The list must follow the schema"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "A vulnerable query runs with more rights than the page needs"
+where = "`Shop.searchConnection`"
+control = "A database user that may read only products"
+residual = "Rights granted later to the same user"
