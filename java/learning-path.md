@@ -205,7 +205,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 108 | [security-logging](intermediate/detection-and-response/security-logging) | Plain | A log is only useful if it can answer who did it, and only safe if it holds no secrets | A09, ASVS V16 |
 | 109 | security-logging-with-loki-and-grafana | With tools: loki and grafana | *planned*: shipping, querying and alerting locally | A09, ASVS V16 |
-| 110 | detecting-attacks | Plain | *planned*: Detection rules over a log stream: password spraying, impossible travel, privilege changes, and measuring false positives | A09, CSF Detect |
+| 110 | [detecting-attacks](intermediate/detection-and-response/detecting-attacks) | Plain | A detection rule is a hypothesis about an attacker, and it must be measured against a normal day | A09, CSF Detect |
 | 111 | detecting-attacks-with-opensearch | With tools: opensearch | *planned*: the same detections as saved queries and alerts | A09, CSF Detect |
 | 112 | incident-response | Plain | *on hold* A simulated breach timeline: prepare, detect, contain, eradicate, recover and learn, and the evidence each step needs | CSF Respond, NIST SP 800-61 |
 
