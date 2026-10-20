@@ -1,0 +1,450 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "path-traversal-and-file-upload"
+level = "intermediate"
+module = "web-security"
+title = "Path Traversal, File Upload and Open Redirects"
+short_title = "Files and Redirects"
+package = "files"
+main_class = "FilesDemo"
+tagline = "A file name from a customer is a path until proven otherwise"
+bold = "A name or a link that a customer sends is not a file or a place you can trust: resolve and compare paths as paths, let the server name uploads and decide their type from the bytes, keep them outside the web root, and send customers only to paths on your own site."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Path traversal, unsafe file upload and open redirects, in Java."
+thumb_lines = ["PATH TRAVERSAL AND", "FILE UPLOAD"]
+thumb_code = "path.normalize().startsWith(base)"
+youtube_title = "Path Traversal, File Upload and Open Redirects in Java"
+youtube_tags = ["path traversal", "file upload", "open redirect", "owasp top 10", "java", "application security"]
+
+[readme]
+intro = """
+Three features take a name or a link from a customer: **download invoice {name}**, **upload a product photo**, and **return to {address} after sign-in**. A file name can contain `..` and walk
+out of its folder (**path traversal**). An uploaded file keeps whatever name and contents the customer chose, so it can replace a settings file or be served as a page with a script in it
+(**unrestricted file upload**). A "return to" address can send a signed-in customer to another site that looks like yours (**open redirect**).
+
+The defences, in the order this project shows them:
+- **Check the name's shape,** then **resolve the path and compare it as a path** (element by element, not as text), and follow symbolic links before trusting the result.
+- **Decode once,** at one place, and check after decoding.
+- **Uploads:** a size limit, the type decided from the first bytes, a name the server makes, storage outside the web root, and downloads that say the type, force a download and forbid sniffing.
+- **Redirects:** only a path on your own site; `//host`, `/\\host` and a scheme are other sites; an exact host match if an absolute address must be allowed.
+
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control · CWE-22 · CWE-434 · CWE-601 · OWASP ASVS 5.0, the file handling and validation chapters.
+"""
+analogy = """
+Think of a clerk who fetches a file from the "invoices" drawer when a customer reads out a name. If the customer may say "go up one drawer, and open the one marked secrets", the clerk walks out of the
+drawer. And a clerk who files whatever the customer hands over, under any name, will one day file a forged form over the real one.
+"""
+scenario = """
+An online store lets customers download their invoices, upload product photos and return to the page they came from. The demo builds a small server file tree in a temporary folder, with
+invoices, a sibling folder with a similar name, secrets, settings and a web root, and runs every attack against it.
+"""
+costs = [
+    "**Strict names are less flexible.** `invoice-NNNN.txt` is easy to check, and a system that must accept arbitrary file names needs ids that the server maps to files.",
+    "**Content checks are a floor, not a ceiling.** The first bytes show a PNG, but an image can still hold exploits for its viewer; process images with a hardened library, and re-encode if you can.",
+    "**Storage outside the web root needs a download handler,** which has to set the type and the headers itself.",
+    "**Links and case-insensitive file systems** add cases; test on the platform you deploy to.",
+    "**Allow-listing redirect hosts needs upkeep,** and any redirect that is only for convenience is better replaced by a fixed page.",
+]
+too_much = """
+If the invoice can be fetched by an id from a database, there is no path to check. If the uploaded photo is re-encoded and stored under a generated name, there is no customer name or content to trust.
+Do not try to strip `..` from names: `....//` becomes `../` after one pass. Reject, don't repair.
+"""
+met_before = [
+    "`../../etc/passwd` in every list of attack strings.",
+    "`new File(base, userInput)` and `Paths.get(base, name)` in older code.",
+    "A `next` or `returnUrl` parameter on every login page.",
+    "Findings titled \"Path Traversal\" (CWE-22), \"Unrestricted Upload\" (CWE-434) and \"Open Redirect\" (CWE-601).",
+]
+where = """
+This project is in [web-security](..) and follows [insecure-deserialization](../insecure-deserialization): another thing a customer carries to the server.
+Its upload checks build on [input-validation](../../secure-coding/input-validation).
+"""
+twin = """
+The file system is real: the demo makes a temporary folder with the layout above, including a symbolic link, and deletes it afterwards. The folder's name is never printed.
+The web server is a small class that serves files as they are, which is what a naive static server does.
+"""
+test_note = "The temporary folder's name is random and never printed, so the demo prints the same text on every run."
+
+[[act]]
+title = "Downloading an invoice"
+summary = "An honest name reads invoice 1001."
+detail = """
+The download takes a name and reads that file from the invoices folder. invoice-1001.txt returns "Invoice 1001: Ana, 42.50".
+"""
+speech = """
+First demo: downloading an invoice. [[slnc 400]] The server reads the file with the name the customer gave, from the invoices folder. [[slnc 300]] It works.
+"""
+rows = { download = "active ok" }
+console = [
+    ["invoice-1001.txt -> read: Invoice 1001: Ana, 42.50", "ok"],
+]
+
+[[act]]
+title = "A name with .. leaves the folder"
+summary = "../secrets/db.txt returns the database settings and ../config/app.properties returns the application settings."
+detail = """
+The name is joined to the folder's path and nothing else is checked, so `..` climbs out: `../secrets/db.txt` returns DB_PASSWORD=demo-not-real and `../config/app.properties` returns the settings.
+The customer never needed a vulnerability in the database, only a longer name.
+"""
+speech = """
+Second demo: a name with two dots leaves the folder. [[slnc 400]] The name is joined to the folder and nothing else is checked. [[slnc 300]] So dot dot climbs out. [[slnc 600]]
+The customer reads the database settings, with nothing more than a longer name.
+"""
+rows = { naive = "active wrong" }
+console = [
+    ["../secrets/db.txt -> read: DB_PASSWORD=demo-not-real  <- OUTSIDE THE FOLDER", "bad"],
+    ["../config/app.properties -> read: admin=ana", "bad"],
+]
+
+[[act]]
+title = "A text check on the path is not a path check"
+summary = "Comparing the resolved path as text refuses ../secrets but accepts ../invoices-private, whose name starts the same way."
+detail = """
+The second version resolves the path, normalizes it and checks that the text starts with the invoices folder. `../secrets/db.txt` is refused. But `/…/invoices-private/payroll.txt`
+also starts with `/…/invoices`, so the payroll file is read. Comparing paths as text treats a folder's name as a prefix; `Path.startsWith` compares whole elements.
+"""
+speech = """
+Third demo: a text check on the path is not a path check. [[slnc 400]] The second version checks that the text starts with the invoices folder. [[slnc 300]] Secrets are refused. [[slnc 600]]
+But a folder called invoices dash private also starts with invoices, and the payroll file is read. [[slnc 300]] Compare paths as paths.
+"""
+rows = { prefix = "active amber" }
+console = [
+    ["../secrets/db.txt -> refused: outside the invoice folder", "ok"],
+    ["../invoices-private/payroll.txt -> read: payroll: demo salaries  <- SAME PREFIX", "bad"],
+]
+
+[[act]]
+title = "Names, paths and links, all checked"
+summary = "The name must look like an invoice name, the path is compared element by element, and links are followed before being trusted; encoded dots are decoded once and then refused."
+detail = """
+The fixed version first decodes the name exactly once, then requires `invoice-NNNN.txt`. Then it resolves against the real invoices folder, normalizes and compares as a path. Finally it follows symbolic links
+and checks the real file: a link named invoice-5555.txt that points at the secrets file passes the first checks and is refused with "link leads outside the invoice folder", while both older versions read it.
+The encoded `%2e%2e%2f` is decoded and refused as not an invoice name.
+"""
+speech = """
+Fourth demo: names, paths and links, all checked. [[slnc 400]] The name must look like an invoice name. [[slnc 300]] The path is compared element by element. [[slnc 300]] And links are followed before they are trusted. [[slnc 600]]
+An encoded dot dot is decoded once, and refused. [[slnc 300]] A link that points at the secrets file passes the first checks, and fails the last.
+"""
+rows = { safe = "active ok" }
+console = [
+    ["invoice-1001.txt -> read: Invoice 1001: Ana, 42.50", "ok"],
+    ["../secrets/db.txt, %2e%2e%2f..., ../invoices-private/... -> refused: not an invoice name", "ok"],
+    ["invoice-5555.txt, a link to the secrets file: naive read, prefix read -> read: DB_PASSWORD=demo-not-real", "bad"],
+    ["invoice-5555.txt with the safe version -> refused: link leads outside the invoice folder", "ok"],
+]
+
+[[act]]
+title = "Uploads"
+summary = "The naive upload overwrites the settings and serves a script as a page; the fixed one decides from the bytes, names the file itself, stores it outside the web root and serves it as a download."
+detail = """
+The naive upload saves under the name the customer gave, in the web root. A file named `page.html` with a script in it is served as text/html, inline: a page on the store's own site with the customer's script.
+A name of `../../config/app.properties` replaces the settings, which now read admin=mallory. The fixed version limits the size, decides the type from the first bytes (PNG or JPEG only), makes the name itself
+(photo-0001.png), ignores the customer's name entirely, stores the file outside the web root, and serves it as image/png with a download header and nosniff. The script renamed cat.png is refused for what it contains,
+and a `../..` name is just ignored: the settings still read admin=ana.
+"""
+speech = """
+Fifth demo: uploads. [[slnc 400]] The first version saves the file under the name the customer chose, in the web root. [[slnc 300]] A script is served as a page on the store's own site. [[slnc 300]] A name with dots replaces the settings. [[slnc 600]]
+The fixed version looks at the first bytes of the file, makes the name itself, and keeps the file outside the web root. [[slnc 300]] It serves it as a download, with the type it decided.
+"""
+rows = { upload = "active wrong", safeup = "active ok" }
+console = [
+    ["a script called page.html -> served as text/html, inline  <- A PAGE ON OUR OWN SITE", "bad"],
+    ["a name with .. -> config now reads: admin=mallory", "bad"],
+    ["fixed: a photo called cat.png -> /photos/photo-0001.png (image/png, download=true, nosniff=true)", "ok"],
+    ["fixed: a script called page.html, or renamed cat.png -> refused: not a PNG or JPEG image", "ok"],
+    ["fixed: a name with .. -> ignored; config still reads: admin=ana", "ok"],
+    ["fixed: an oversized photo -> refused: size not allowed", "ok"],
+]
+
+[[act]]
+title = "Where to send the customer next"
+summary = "The naive link goes anywhere, including //evil.example and javascript:; the fixed one sends only paths on this site and everything else to /account; absolute hosts are matched exactly."
+detail = """
+After sign-in or upload, the store sends the customer to the `return to` address. The naive version sends them wherever it says: a look-alike site at https://evil.example/login, `//evil.example` (a browser reads it
+as another site), `/\\evil.example` (browsers treat the backslash as a slash) or `javascript:`. The fixed version allows only a path that starts with a single slash, has no backslash or control characters, and has no scheme
+or authority; everything else becomes /account. If an absolute address must be allowed, its host is compared exactly: shop.example.evil.example and shop.example@evil.example are refused.
+"""
+speech = """
+Sixth demo: where to send the customer next. [[slnc 400]] The first version sends them wherever the link says. [[slnc 300]] Another site that looks like ours. [[slnc 600]]
+Slash slash, and slash backslash, are read by browsers as other sites. [[slnc 300]] The fixed version allows only a path on this site, and everything else goes to the account page. [[slnc 600]]
+And a host is matched exactly, never by its beginning or its end.
+"""
+rows = { redirect = "active ok" }
+console = [
+    ["/orders?page=2 -> safe: /orders?page=2", "ok"],
+    ["https://evil.example/login, //evil.example, /\\evil.example, javascript:steal() -> safe: /account", "ok"],
+    ["own host, exact match -> true; shop.example.evil.example -> false; shop.example@evil.example -> false", "ok"],
+]
+
+[animation]
+subtitle = "An invoice name, a photo upload and a return link: three things a customer sends that are not what they seem."
+boxes = [
+    ["download", "Downloading an invoice", "a name becomes a path"],
+    ["naive", "A name with ..", "climbs out of the folder"],
+    ["prefix", "A text prefix", "is not a path check"],
+    ["safe", "Name, path, link", "checked in layers"],
+    ["upload", "Uploads", "the server names the file and decides its type"],
+    ["redirect", "Return links", "only paths on our own site"],
+]
+
+[docs.problem]
+scenario = """
+An online store lets customers download invoices by name, upload product photos, and return to the page they came from after signing in.
+"""
+naive = """
+Join the customer's name to the folder, save the upload under the customer's name, and redirect to the address in the link.
+"""
+deliver = [
+    "A real temporary file tree with invoices, a similar sibling folder, secrets, settings and a web root.",
+    "Three download implementations: naive, text-prefix and layered.",
+    "Naive and fixed uploads, with magic-byte detection and a download handler.",
+    "A return-link check and an exact host match.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics, including `java.nio.file.Path`",
+    "An idea of what a web root and a redirect are",
+]
+not_required = [
+    "A web framework",
+    "Image-processing libraries",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain how `..`, encoded dots and symbolic links lead out of a folder",
+    "say why comparing paths as text fails and what `Path.startsWith` does differently",
+    "list what an upload handler should decide for itself and what it must never take from the customer",
+    "explain why `//host` and `/\\host` are other sites, and why the fixed redirect accepts only simple paths",
+]
+walkthrough = """
+Run act three and ask what "starts with" compared. In act four, ask which of the layers stopped each attempt. In act five, ask which part of the customer's upload the fixed version actually used.
+"""
+exercises = [
+    "Add a case-insensitive file system rule to the check and test it with `INVOICE-1001.TXT`.",
+    "Make uploads re-encode the image and compare the bytes.",
+    "Store the type next to the upload on disk instead of in memory.",
+    "Add an allow-list of two partner hosts to the redirect and test look-alike names.",
+]
+
+[docs.explained]
+sentence = """
+A file name or link from a customer is untrusted: check its shape, resolve it and compare paths as paths, let the server name and classify uploads and keep them out of the web root, and redirect only to paths on your own site.
+"""
+verdict = """
+Prefer ids to names, and mapping tables to paths. If you must use names: allow-list the shape, decode once, resolve against the real base folder, compare with `Path.startsWith`, and check the real path after links.
+For uploads: size limit, magic-byte type, server-made name, storage outside the web root, `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`. For redirects: relative paths only, or an exact allow-list.
+"""
+recognise = [
+    "`new File(base, name)`, `Paths.get(base, name)` or `base.resolve(name)` with request data.",
+    "`getOriginalFilename()` used to build a path.",
+    "A parameter named `next`, `url`, `redirect` or `returnTo` passed to a redirect.",
+    "Findings with CWE-22, CWE-434 or CWE-601.",
+]
+
+[spec]
+purpose = """
+Teach path traversal, unrestricted upload and open redirects by attacking a store's invoice download, photo upload and return link in a real temporary folder, then fixing each in layers.
+"""
+nongoals = [
+    "Malware scanning and image processing libraries.",
+    "Cloud object storage.",
+    "The Spring multipart version: the path-traversal-and-file-upload-with-spring-boot project.",
+]
+problem = """
+Developers join customer text to paths and addresses, and save what customers send, so the customer decides where files go and where people are sent.
+"""
+roles = [["The file tree", "`Layout`"], ["Downloads", "`Downloads`, `NaiveDownloads`, `PrefixDownloads`, `SafeDownloads`"], ["Uploads and serving", "`Uploads`, `NaiveUploads`, `SafeUploads`, `Sniffer`, `WebRoot`, `Served`"], ["Redirects", "`ReturnLink`"], ["Entry point", "`FilesDemo`"]]
+requirements = [
+    "The naive download reads files outside the invoices folder.",
+    "A text-prefix check still reads a sibling folder with a similar name.",
+    "The safe download refuses `..`, encoded dots, other folders and links that lead outside, and still reads honest invoices.",
+    "The naive upload replaces a settings file and serves a script inline; the safe one ignores the customer's name, decides by the bytes, limits size and serves as a download.",
+    "The safe return link only allows paths on this site, and the host check is exact.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "What the server does with a customer's name"
+caption = "The name becomes a path, the upload becomes a file, the link becomes a redirect."
+nodes = [
+    { id = "customer", label = "Customer", sub = "sends names, files, links", col = 0, row = 0, colour = "red" },
+    { id = "server", label = "Store server", sub = "joins, saves, redirects", col = 1, row = 0, colour = "client" },
+    { id = "disk", label = "File system", sub = "invoices, secrets, web root", col = 2, row = 0, colour = "green", shape = "store" },
+    { id = "checks", label = "Checks", sub = "shape, path, bytes, host", col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "customer", to = "server", label = "name, file, link", colour = "red", dashed = true },
+    { from = "server", to = "disk", label = "reads and writes" },
+    { from = "checks", to = "server", label = "decide", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Each feature has a naive version and a fixed one behind the same interface."
+nodes = [
+    { id = "downloads", label = "Downloads", sub = ["read(name)"], col = 0, row = 0, colour = "accent" },
+    { id = "dn", label = "NaiveDownloads, PrefixDownloads", sub = ["join", "text prefix"], col = 1, row = 0, colour = "red" },
+    { id = "ds", label = "SafeDownloads", sub = ["shape", "path", "real path"], col = 2, row = 0, colour = "green" },
+    { id = "uploads", label = "Uploads", sub = ["save(name, bytes)"], col = 0, row = 1, colour = "accent" },
+    { id = "un", label = "NaiveUploads", sub = ["web root"], col = 1, row = 1, colour = "red" },
+    { id = "us", label = "SafeUploads", sub = ["sniff", "own name", "fetch(id)"], col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "dn", to = "downloads", label = "implements" },
+    { from = "ds", to = "downloads", label = "implements" },
+    { from = "un", to = "uploads", label = "implements" },
+    { from = "us", to = "uploads", label = "implements" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "The layers a download passes, in order"
+caption = "Each layer catches something the one before it cannot."
+nodes = [
+    { id = "decode", label = "Decode once", sub = "then check", col = 0, row = 0, colour = "client" },
+    { id = "shape", label = "Shape", sub = "invoice-NNNN.txt", col = 1, row = 0, colour = "accent" },
+    { id = "path", label = "Path", sub = "normalize, startsWith", col = 2, row = 0, colour = "amber" },
+    { id = "real", label = "Real path", sub = "after links", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "decode", to = "shape" },
+    { from = "shape", to = "path" },
+    { from = "path", to = "real" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A name that climbs out of the folder"
+participants = ["Customer", "Download", "File system"]
+steps = [
+    ["Customer", "Download", "../secrets/db.txt"],
+    ["Download", "File system", "read invoices/../secrets/db.txt"],
+    ["File system", "Download", "DB_PASSWORD=...", "reply"],
+    ["Download", "Customer", "the secret file", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A fixed upload"
+participants = ["Customer", "Upload", "File system"]
+steps = [
+    ["Customer", "Upload", "page.html (a script)"],
+    ["note", "Upload", "first bytes are not PNG or JPEG"],
+    ["Upload", "Customer", "refused", "reply"],
+    ["Customer", "Upload", "cat.png (a PNG)"],
+    ["Upload", "File system", "write uploads-private/photo-0001.png"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "An open redirect"
+caption = "The look-alike site shows a sign-in page to a customer who has just come from the real one."
+participants = ["Customer", "Store", "Look-alike site"]
+steps = [
+    ["Customer", "Store", "sign in, returnTo=https://evil.example/login"],
+    ["Store", "Customer", "302 to https://evil.example/login", "reply"],
+    ["Customer", "Look-alike site", "GET /login"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The server", nodes = ["server", "invoices", "secrets", "webroot"], colour = "green" },
+    { label = "Outside", nodes = ["customer"], colour = "red" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "names, files, links", col = 0, row = 0, colour = "red", threats = ["T1", "T3", "T4"] },
+    { id = "server", label = "Handlers", sub = "download, upload, redirect", col = 1, row = 0, colour = "client", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "invoices", label = "Invoices", sub = "customers' documents", col = 2, row = 0, colour = "green", shape = "store", threats = ["T2"] },
+    { id = "secrets", label = "Secrets and settings", sub = "outside the folder", col = 2, row = 1, colour = "green", shape = "store", threats = ["T1"] },
+    { id = "webroot", label = "Web root", sub = "served as it is", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T3"] },
+]
+edges = [
+    { from = "customer", to = "server", label = "name, file, link", colour = "red", dashed = true, threats = ["T1", "T3", "T4"] },
+    { from = "server", to = "invoices", label = "reads", threats = ["T2"] },
+    { from = "server", to = "secrets", label = "must not read", dashed = true, threats = ["T1"] },
+    { from = "server", to = "webroot", label = "writes", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+An online store's invoice download, photo upload and return-to redirect, and the folders of the server. It covers names, file contents and addresses sent by customers.
+It does not cover malware in uploaded images, the web server's own configuration, or access to the invoices themselves (who may read which invoice).
+"""
+assets = [
+    "Secrets and settings on the server.",
+    "Other customers' invoices and documents.",
+    "The store's pages and the trust customers place in its address.",
+]
+actors = [
+    "A customer downloading and uploading.",
+    "An attacker who sends names, files and links, or who crafts a link for another customer to click.",
+]
+boundaries = [
+    "Customer to handler: all names, bytes and addresses are untrusted.",
+    "Handler to file system: a path crosses it, and the file system follows `..` and links.",
+]
+assumptions = [
+    "The server process can read more than the invoices folder (that is why traversal matters).",
+    "The static web server serves files as they are, with a type from the extension.",
+]
+out_of_scope = [
+    "Which customer may read which invoice: the broken-access-control project.",
+    "Antivirus scanning and image-parser exploits.",
+]
+tests = [
+    "`FilesTest` checks every download version against names, encodings, siblings and links, both upload versions, the sniffer and the return-link rules.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, secure-configuration, moves from what customers send to how the server itself is set up.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A name with .. or an encoded form reads files outside the folder"
+where = "`NaiveDownloads`, `PrefixDownloads`"
+control = "Name shape, normalized path compared as a path, real path after links"
+residual = "Anything that can write a link into the folder"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A sibling folder with a similar name passes a text check"
+where = "`PrefixDownloads`"
+control = "`Path.startsWith` compares whole elements"
+residual = "None known in the model"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "An upload replaces a settings file or is served as a script on our own site"
+where = "`NaiveUploads`, `WebRoot`"
+control = "Server-made name, type from the bytes, storage outside the web root, download headers"
+residual = "An image that exploits the program that opens it"
+
+[[threat]]
+id = "T4"
+stride = "S"
+threat = "A return link sends a signed-in customer to a look-alike site"
+where = "`ReturnLink.naive`"
+control = "Only paths on this site, exact host matching when absolute"
+residual = "Pages on our own site that themselves redirect to a parameter"

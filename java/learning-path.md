@@ -99,18 +99,18 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | ---: | --- | --- | --- | --- |
 | 42 | [broken-access-control](intermediate/web-security/broken-access-control) | Plain | Signed in is not the same as allowed | A01, API1, CWE-639, CWE-862 |
 | 43 | [broken-access-control-with-spring-security](intermediate/web-security/broken-access-control-with-spring-security) | With tools: spring security | A framework enforces exactly the rules it is given | A01, API1, CWE-639, CWE-862 |
-| 44 | sql-injection | Plain | *on hold* A product search built by string concatenation leaks every order; prepared statements, allow-listed sort columns, and a least-privilege database user | A05, CWE-89 |
+| 44 | [sql-injection](intermediate/web-security/sql-injection) | Plain | Text typed by a customer must never become code | A05, CWE-89 |
 | 45 | sql-injection-with-hibernate-and-postgres | With tools: hibernate and postgres | *planned*: JPQL, Criteria and native-query injection in Hibernate 7 against a real PostgreSQL | A05, CWE-89 |
 | 46 | [cross-site-scripting](intermediate/web-security/cross-site-scripting) | Plain | Text from a customer must stay text | A05, CWE-79 |
 | 47 | [cross-site-scripting-with-spring-boot](intermediate/web-security/cross-site-scripting-with-spring-boot) | With tools: spring boot | Let the template escape, and know the one switch that stops it | A05, CWE-79 |
 | 48 | [cross-site-request-forgery](intermediate/web-security/cross-site-request-forgery) | Plain | A cookie proves who is asking, not what they meant | A01, CWE-352 |
 | 49 | cross-site-request-forgery-with-spring-security | With tools: spring security | *on hold* CSRF tokens, the SPA cookie mode, and what disabling CSRF costs | A01, CWE-352 |
-| 50 | server-side-request-forgery | Plain | *on hold* "Import a product image from a URL" reaches the metadata address and internal services; allow-lists, checking the address after DNS resolution, and DNS rebinding | A01, CWE-918 |
+| 50 | [server-side-request-forgery](intermediate/web-security/server-side-request-forgery) | Plain | When the server fetches an address for a customer, it fetches it from inside | A01, CWE-918 |
 | 51 | server-side-request-forgery-with-spring-boot | With tools: spring boot | *planned*: `RestClient` with a guarded resolver, no redirects and egress limits | A01, CWE-918 |
-| 52 | xml-and-template-injection | Plain | *planned*: XXE in an invoice upload, and server-side template injection in an e-mail template; secure parser settings and logic-less templates | A05, CWE-611, CWE-1336 |
-| 53 | insecure-deserialization | Plain | *planned*: A cart cookie of Java serialized objects runs a gadget chain; `ObjectInputFilter` allow-lists and data-only formats | A08, CWE-502 |
+| 52 | [xml-and-template-injection](intermediate/web-security/xml-and-template-injection) | Plain | A file or a template is a program for its reader | A05, CWE-611, CWE-1336 |
+| 53 | [insecure-deserialization](intermediate/web-security/insecure-deserialization) | Plain | Rebuilding an object from bytes runs code the sender chose | A08, CWE-502 |
 | 54 | insecure-deserialization-with-jackson | With tools: jackson | *planned*: polymorphic typing traps in Jackson 3 | A08, CWE-502 |
-| 55 | path-traversal-and-file-upload | Plain | *planned*: Invoice downloads with `../`, uploads that overwrite files or carry scripts; canonical paths, generated names and storage outside the web root | A01, CWE-22, CWE-434, CWE-601 |
+| 55 | [path-traversal-and-file-upload](intermediate/web-security/path-traversal-and-file-upload) | Plain | A file name from a customer is a path until proven otherwise | A01, CWE-22, CWE-434, CWE-601 |
 | 56 | path-traversal-and-file-upload-with-spring-boot | With tools: spring boot | *planned*: multipart limits, content checks and an open-redirect check on the "return to" link | A01, CWE-22, CWE-434, CWE-601 |
 
 ### 2. secure-configuration: misconfiguration and exceptional conditions (OWASP A02, A10)
