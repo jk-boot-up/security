@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Local Certificate Authority</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>A Local Certificate Authority</h1>
+<pre><code>src/main/java/com/jk/explore/security/ca/
+├── CaDemo.java        Runs the local certificate authority story in five numbered acts and prints exact, repeatable results
+├── Certificates.java  Builds X.509 version 3 certificates and version 2 revocation lists as real DER, signed with ECDSA and SHA-256, and reads them back with the JDK
+├── Der.java           The few ASN.1 DER encodings an X.509 certificate and a revocation list need
+├── LocalCa.java       A small certificate authority: one root key, a serial number counter, a list of revoked serials, and a revocation list it can publish
+└── Verifier.java      What a client does with a server's certificate: build the chain to a trusted root, check the dates and the revocation list at a given moment, check the name in the &lt;em&gt;subject alternative name&lt;/em&gt; (never the common name), and check that the certificate may be used for a TLS server
+</code></pre>
+<p><strong>A certificate authority signs the claim that a key belongs to a name; a client trusts the authority's root, checks the chain, the dates, the name in the subject alternative name and a current revocation list, and short-lived certificates make most revocation unnecessary.</strong></p>
+<p>A <strong>certificate</strong> is a signed statement: "this public key belongs to shop.example". The signer is a <strong>certificate authority (CA)</strong>, and a client that trusts the CA's <strong>root certificate</strong> can trust every certificate that CA signs.
+This project builds a small CA in plain Java, with real <strong>X.509 version 3 certificates</strong> and <strong>version 2 revocation lists (CRLs)</strong> written as DER bytes by hand and read back by the JDK's own PKIX code, so every check is the one a real client performs.</p>
+<p>What the CA does, and what a client does with it, in the order this project shows them:
+- <strong>Issue</strong> a server certificate with a serial number, dates, a <strong>subject alternative name</strong> list and the <em>server authentication</em> usage; the CA key never leaves the CA.
+- <strong>Verify</strong> like a client: the chain to a trusted root, the dates at a given moment, the signature, whether each certificate may sign others (<strong>basic constraints</strong>), the name in the SAN (never the common name), and the usage.
+- <strong>Revoke</strong> a certificate and <strong>publish a list</strong>. A client with no current list refuses (<strong>hard fail</strong>); a client that accepts "no list" is trusting a stolen key.
+- <strong>Renew</strong> before expiry, for the same key and names, with a new serial number.
+- <strong>Short-lived certificates</strong> (hours, not months) cut the exposure window without any list.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-299 · RFC 5280 (X.509 and CRL profile) · RFC 6125 (names in certificates) · NIST SP 800-57.</p>
+<h2>The idea in everyday terms</h2>
+<p>A passport office stamps a passport that says this photo belongs to this name. A border guard trusts the office, not the traveller. The guard also checks that the passport is not expired, that the name matches, that the stamp is genuine, and that the passport
+is not on this morning's list of lost ones. A passport that lasts one day would need no list.</p>
+<h2>The scenario</h2>
+<p>A shop runs its own internal services on names like shop.example and wants TLS between them without a public CA. The demo builds a root CA, issues and renews certificates, and runs a client verifier against honest and dishonest certificates,
+using a fixed clock so that expiry and revocation are exact.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Issue a certificate and trust the root</td>
+<td>The CA issues a 90-day certificate for shop.example and *.shop.example, and the client that trusts the root accepts it.</td>
+</tr>
+<tr>
+<td>2. What a client refuses</td>
+<td>A wildcard covers one label, not two; other names, expired, other-authority, forged, self-signed certificates and a leaf that signs another certificate are all refused.</td>
+</tr>
+<tr>
+<td>3. Revocation</td>
+<td>On day 10 the key is stolen and the CA revokes serial 1000: the client refuses with the new list, and also with a stale list or no list at all.</td>
+</tr>
+<tr>
+<td>4. Renewal</td>
+<td>Serial 1000 is renewed as serial 1001 with the same key; on day 100 the old certificate is expired and the renewed one is accepted.</td>
+</tr>
+<tr>
+<td>5. Short-lived certificates instead of revocation</td>
+<td>With daily lists a stolen key works up to 24 hours after the theft is noticed; with 8-hour certificates it stops after at most 8 hours with no list; a nine-hour-old certificate is expired.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>CaTest</code>, <code>DemoRunsTest</code>. Keys are random and never printed, serial numbers count from 1000, and the clock is fixed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The certificates and lists are real DER built by the project's own small encoder and read back by <code>CertificateFactory</code>; chain and revocation checking is the JDK's PKIX <code>CertPathValidator</code>. Keys are ECDSA P-256 and are random; the clock is fixed so the output is exact.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/local-certificate-authority-explained.html">A Local Certificate Authority, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Clients are given the root once; after that every certificate the CA signs is trusted until it expires or is listed.</p>
+<p><img alt="A private CA and the clients that trust it" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The CA builds; the client verifies; the DER encoder is shared.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Any failure ends the connection.</p>
+<p><img alt="What a client checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Issuing and using a certificate" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/local-certificate-authority-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The root key is the whole system.</strong> Keep it offline and use an intermediate for daily issuing; this project keeps one key to stay small.</li>
+<li><strong>Revocation lists must be fetched and fresh.</strong> A client that cannot get one either fails (safe, but an outage) or ignores it (unsafe). Browsers moved away from CRLs for this reason.</li>
+<li><strong>Short-lived certificates need automation:</strong> renewal must be unattended and monitored, or short lives become outages.</li>
+<li><strong>Every client must be given the root,</strong> and removing it later is hard. Scope it: one root for one purpose, and constrain names where the tools allow.</li>
+<li><strong>Wildcards widen the damage of one stolen key</strong> to every name under the domain.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For public websites use a public CA and ACME; do not run your own. Run a private CA for internal service-to-service TLS, device identity and tests, and prefer an existing tool (step-ca, Vault PKI) to this teaching code in production.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>The padlock and "Certificate details" in a browser.</li>
+<li><code>keytool -genkeypair</code>, <code>openssl req -x509</code> and <code>-----BEGIN CERTIFICATE-----</code>.</li>
+<li>"Your connection is not private" with NET::ERR_CERT_DATE_INVALID or a name mismatch.</li>
+<li>CRL and OCSP in the certificate's authority information.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">tls-in-practice</a> and builds on the beginner <a href="../../../beginner/transport-security/tls-handshake">tls-handshake</a> project, which explained certificates and the chain of trust from the client's side.
+The with-step-ca version runs the same ideas against a real CA with ACME.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

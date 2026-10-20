@@ -10,7 +10,7 @@ the OWASP API Security Top 10, ASVS 5.0, the CWE Top 25, OAuth 2.0 security best
 | [secure-configuration](secure-configuration) | misconfiguration, failing closed |
 | [api-security](api-security) | API Top 10, sessions, CORS, webhooks |
 | [identity-and-access](identity-and-access) | JWT, OAuth 2.0 with PKCE, OpenID Connect, tokens in the browser, passkeys, SAML |
-| tls-in-practice | a local CA, TLS servers, misconfigurations, traffic inspection, pinning |
+| [tls-in-practice](tls-in-practice) | a local CA, TLS servers, misconfigurations, traffic inspection, pinning |
 | [secure-coding](secure-coding) | validation, race conditions, secrets in logs, fuzzing |
 | [secrets-and-supply-chain](secrets-and-supply-chain) | secrets management, signing, SBOMs and provenance, dependency confusion |
 | platform-hardening | Linux and container hardening |

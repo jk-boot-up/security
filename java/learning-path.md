@@ -155,7 +155,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
-| 80 | local-certificate-authority | Plain | *planned*: A small CA in Java: issue, renew, revoke and publish a CRL, with short-lived certificates as the alternative to revocation | A04 |
+| 80 | [local-certificate-authority](intermediate/tls-in-practice/local-certificate-authority) | Plain | A certificate is a signed claim about a name, and revocation is only as good as the list the client has | A04 |
 | 81 | local-certificate-authority-with-step-ca | With tools: step ca | *planned*: a local step-ca with ACME and automatic renewal | A04 |
 | 82 | tls-servers-in-practice-with-nginx-and-caddy | With tools: nginx and caddy | *planned*: the same shop behind nginx and Caddy, automatic HTTPS from the local CA, HSTS and OCSP stapling | A02, A04 |
 | 83 | tls-misconfigurations | Plain | *planned*: A checker for weak protocols, weak ciphers, missing names, expired and incomplete chains | A02, A04 |
