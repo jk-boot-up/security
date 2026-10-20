@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Fuzzing: Finding the Inputs Nobody Tested</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Fuzzing: Finding the Inputs Nobody Tested</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.</p>
+<h2>Scope</h2>
+<p>The online store's two parsers of outside input, for order import lines and for carts, and the fuzzing that tests them. It covers anyone who can send a file or a request with crafted bytes. It does not
+cover the business rules applied to parsed values, which are checked by other tests.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The store's availability: a crash or a stack overflow stops an import or a checkout.</li>
+<li>Order totals, which an overflow can turn negative.</li>
+<li>The trust that parsed values have the shape the code expects.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>The warehouse and the site, sending ordinary input.</li>
+<li>An attacker sending crafted bytes.</li>
+<li>The fuzzer, playing the attacker in the build.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>Outside input to the parsers: every byte crosses it unchecked.</li>
+<li>Parsed values to the store's logic: only values of the right shape should cross it.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Denial of service</td>
+<td>A line with missing fields crashes the import with an index error</td>
+<td><code>OrderLine.parseCareless</code></td>
+<td>The fixed parser checks the number of fields, and the smallest input is a regression test</td>
+<td>Every new field needs the same check</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Tampering</td>
+<td>A large quantity times a price overflows an int and gives a negative total</td>
+<td><code>OrderLine.parseCareless</code>, <code>Money</code></td>
+<td>Range limits and Math.multiplyExact on longs; Money refuses a negative total</td>
+<td>Other arithmetic needs the same care</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Denial of service</td>
+<td>Deeply nested brackets overflow the stack</td>
+<td><code>CartParser.value</code></td>
+<td>A depth limit of 32 refuses the input before recursion can overflow</td>
+<td>Limits on input size belong in front of the parser too</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>A gift message without a colon crashes the cart parser</td>
+<td><code>CartParser.giftMessage</code></td>
+<td>The fixed parser checks the message's shape, and coverage-guided fuzzing reaches the code</td>
+<td>Code the fuzzer never reaches is never tested, so coverage is watched</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Tampering</td>
+<td>A value that parses cleanly is still wrong for the business, such as a quantity of -5</td>
+<td>the store logic after parsing</td>
+<td>None here: fuzzing finds crashes and broken properties, not wrong decisions</td>
+<td>Business rules need their own tests and properties</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>Only a ParseException is an expected failure; any other throwable is a bug.</li>
+<li>The fuzzer runs with stack traces kept, so crashes are named by where they happened.</li>
+<li>In the demo, inputs come from fixed seeds and a seeded random number generator.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Business rules for parsed values, such as a negative quantity: the race-conditions-and-business-logic project.</li>
+<li>Native code and memory corruption.</li>
+<li>Bytecode instrumentation: the -with-jazzer version.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>ParsersTest</code> holds the example tests both versions pass.</li>
+<li><code>FuzzerTest</code> checks repeatability, the bugs blind and guided fuzzing find, and that the fixed parsers survive.</li>
+<li><code>MinimizerTest</code> checks that crashes shrink to inputs that crash the same way.</li>
+<li><code>RegressionTest</code> keeps the smallest crashing inputs, which the fixed parsers refuse.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The -with-jazzer version runs the same harnesses under Jazzer, with real bytecode instrumentation and JUnit's fuzz tests.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

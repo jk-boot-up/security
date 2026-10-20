@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuzzing: Finding the Inputs Nobody Tested, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Fuzzing: Finding the Inputs Nobody Tested, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Fuzzing runs a program on large numbers of mutated inputs, keeps the ones that reach new code, and records every failure other than an expected refusal, so that each crash can be shrunk to its smallest input, fixed and kept as a regression test.</p>
+<h2>The 5 acts</h2>
+<h3>1. The example tests pass</h3>
+<p>The store's two parsers, for order import lines and for carts, pass all 6 of their 6 example tests: SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid.
+But a line with only a product code, "SHO-1042", crashes the order parser with an ArrayIndexOutOfBoundsException: an input nobody wrote a test for. A parser may refuse input; anything else it throws is a bug.</p>
+<h3>2. A mutation fuzzer</h3>
+<p>The fuzzer flips bits, inserts, deletes and replaces characters, swaps numbers for boundary values and nests brackets deeply, with random numbers from L64X128MixRandom and seed 7, so every run finds the same crashes in the same order.
+In 20000 runs from 2 seed inputs, the order parser shows 2 distinct crashes: at run 86 an ArrayIndexOutOfBoundsException from "SHO-1042,28990", a line missing its comma, and at run 548 an IllegalArgumentException
+from "BAG-0007,999999999,4500", where the quantity times the price overflows an int into a negative total. In 100000 runs the cart parser shows 1 distinct crash: at run 1223 a StackOverflowError from an input of
+200039 characters starting with a wall of opening brackets. Each crash is a bug the example tests missed, found without anyone guessing the input.</p>
+<h3>3. Guided by coverage</h3>
+<p>The gift-message bug needs a field named note and a value starting with #: four letters and one more, all right at once. Blind, in 100000 runs, the fuzzer reaches 14 branches and never finds it.
+Guided by coverage, keeping every input that reaches a new branch, it reaches 18 branches with 10 inputs kept, and finds the bug at run 49776 with the input [{"note":"#AG-0007","qty"1}]. The parser compares the
+field name one letter at a time, so each letter matched is a new branch, and the fuzzer keeps the input that reached it. The work is counted in runs, not seconds, so the comparison is the same on every machine.</p>
+<h3>4. From crash to fix</h3>
+<p>Delta debugging removes pieces of each crashing input for as long as it still crashes the same way. The missing-field crash shrinks from 14 characters to "SHO-1042", which the fixed parser refuses because a line has three fields.
+The overflow shrinks from 23 characters to "BAG-0007,999999999,4", refused because the quantity is 1 to 99. The gift-message crash shrinks from 28 characters to {"note":"#", refused because a gift message is #to:message.
+The nesting crash is kept as it is, because how deep is too deep depends on the stack; the fixed parser refuses it as nested deeper than 32. Each smallest input is now a regression test. Under the same fuzzer the
+fixed parsers show 0 crashes in 20000 runs and 0 in 100000, and a property check, parse, print and parse again, gives the same cart for 2000 of 2000 inputs the fuzzer found valid.</p>
+<h3>5. What fuzzing does not find</h3>
+<p>A cart with a quantity of -5 parses: no crash, so no report. Whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions. Every parser needs its own harness, and
+this store wrote 2, one for each. In a build, a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new branches. Coverage-guided tools such as Jazzer add the branch counters
+to the bytecode by themselves, which is the -with-jazzer version.</p>
+<h2>The verdict</h2>
+<p>Fuzz every parser that reads outside input. Write one harness per parser that treats only the parser's own refusal as expected. Keep stack traces, seed the fuzzer from real inputs, and let coverage
+guide it. Shrink every crash, keep the smallest input as a test, fix the cause, and fuzz again. Give every build a budget of runs, run longer at night, and use properties to catch wrong answers as well as crashes.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>@FuzzTest</code> methods and Jazzer in Java projects.</li>
+<li>OSS-Fuzz badges and "found by fuzzing" in advisories.</li>
+<li>A <code>corpus</code> folder of interesting inputs next to a test.</li>
+<li>Regression tests named after a crash, with a strange-looking input.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>OSS-Fuzz, which fuzzes thousands of open-source projects continuously.</li>
+<li>Jazzer and JUnit's <code>@FuzzTest</code> for Java, and libFuzzer and AFL++ for C and C++.</li>
+<li>Security advisories that begin "found by fuzzing".</li>
+<li>Property-based testing libraries such as jqwik, which generate inputs from rules.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
