@@ -52,7 +52,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 | Act | What it shows |
 | --- | --- |
 | 1. One Monday of logs | 772 events: 768 logins and 4 role grants; 113 of them belong to 4 real attacks (spraying, brute force, impossible travel, privilege change). |
-| 2. A first version of each rule | The first versions notice all four attacks but raise 29 alerts, 17 of them false: impossible travel flags the VPN, success-after-failures flags every typo. |
+| 2. A first version of each rule | The first versions notice all four attacks but raise 29 alerts, 21 of them false: impossible travel flags the VPN, success-after-failures flags every typo. |
 | 3. Tuning one threshold | Brute-force thresholds of 3 and 5 raise 2 false alarms (two people who forgot their password); 10 and 25 catch the attack with none; 40 misses it. |
 | 4. The tuned set, and what it tells the analyst | Five tuned rules give 9 alerts for the day, 7 true and 2 false, and every attack (A, B, C, D) is noticed; the false ones are a break-glass admin grant and a phone placed in the wrong city. |
 
