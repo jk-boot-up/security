@@ -126,11 +126,11 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
-| 61 | api-security | Plain | *planned*: Mass assignment, excessive data exposure, unlimited page sizes and missing rate limits in a bank API; explicit request and response models, and budgets | API3, API4, API6 |
+| 61 | [api-security](intermediate/api-security/api-security) | Plain | An API owes its callers three limits: what they may set, what they may see, and how much they may ask for | API3, API4, API6 |
 | 62 | api-security-with-spring-boot-and-redis | With tools: spring boot and redis | *planned*: validation, response shaping and a Redis-backed rate limiter | API3, API4, API6 |
 | 63 | [session-management](intermediate/api-security/session-management) | Plain | A session id is a password that the server hands out | A07, CWE-384 |
 | 64 | session-management-with-spring-session-and-redis | With tools: spring session and redis | *planned*: sessions in Redis and limits on concurrent sessions | A07, CWE-384 |
-| 65 | cors | Plain | *planned*: Reflected origins, the `null` origin and credentials expose a bank API to any site; an exact allow-list | A02, CWE-942 |
+| 65 | [cors](intermediate/api-security/cors) | Plain | CORS decides who may read an answer, not who may send a request | A02, CWE-942 |
 | 66 | cors-with-spring-boot | With tools: spring boot | *planned*: Spring's CORS configuration, done right and done wrong | A02, CWE-942 |
 | 67 | [webhook-security](intermediate/api-security/webhook-security) | Plain | A message to a public address proves nothing until it is verified | API8, API10, CWE-345 |
 
