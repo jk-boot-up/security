@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API Security: Mass Assignment, Data Exposure and Resource Limits, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>API Security: Mass Assignment, Data Exposure and Resource Limits, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>An API should say which fields a caller may set, which fields it may see, and how much it may ask for, in code, and not leave those decisions to whatever the database record happens to contain.</p>
+<h2>The 5 acts</h2>
+<h3>1. A profile call that works</h3>
+<p>Ana's app sends <code>{"displayName": "Ana Ruiz"}</code> and the API answers 200 with the updated account. Nothing looks wrong, but look at what came back: eight fields.</p>
+<h3>2. Whatever the caller sends becomes a field</h3>
+<p>The same call with two extra keys, <code>role</code> and <code>creditLimitCents</code>, copies them onto the account. Ana is now an admin with a credit limit of 100,000,000 cents. The API never decided that these fields were the caller's to change;
+it only copied what it was given.</p>
+<h3>3. The response is the whole record, and a list has no end</h3>
+<p>The API returns the account entity: the full card number, the PIN hash, the risk score. Anything stored becomes anything shown. The branch directory takes the page size from the caller, so size=1,000,000 returns
+all 300 accounts with every field. A loop of 1000 requests is answered 1000 times without slowing down.</p>
+<h3>4. Explicit models, a page cap and a budget</h3>
+<p>The fixed API reads a request into <code>UpdateProfileRequest</code> with two named fields, checks their type and length, and refuses anything else with 400 and no change: Ana's role afterwards is still customer. The response is an
+<code>AccountView</code> with five fields and the card as ****0001. The list is capped at 50 whatever the caller asks for, and shows the directory view: ids and display names, not balances or cards.</p>
+<h3>5. The budget runs out, and refills</h3>
+<p>Each caller has a token bucket: a burst of 100 rows, refilled at 100 a minute, and a list costs a token per row. The earlier calls used 51 of them; of the next 1000 requests, 49 are answered, and then the API says 429
+with <code>Retry-After: 1</code>. After waiting that long the call works again. Another customer has their own bucket and is not affected.</p>
+<h2>The verdict</h2>
+<p>Write a request model for every write, refuse unknown fields, write a response model for every read, never return an entity, cap page sizes, and put a budget on every caller and every expensive or business-sensitive call.
+Return 429 with <code>Retry-After</code> and keep the numbers in configuration.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>BeanUtils.copyProperties(request, entity)</code> or <code>objectMapper.readerForUpdating(entity)</code>.</li>
+<li>Controllers that return repository entities.</li>
+<li><code>@RequestParam int size</code> with no maximum.</li>
+<li>Findings with API3, API4 or API6.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A <code>PATCH</code> that copies a JSON map onto an entity with a mapper or <code>BeanUtils.copyProperties</code>.</li>
+<li><code>return repository.findAll()</code> and <code>return entity</code> in a controller.</li>
+<li>A <code>limit</code> or <code>pageSize</code> parameter with no upper bound.</li>
+<li>HTTP 429 and the <code>Retry-After</code> header.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
