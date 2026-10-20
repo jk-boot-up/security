@@ -160,7 +160,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 82 | tls-servers-in-practice-with-nginx-and-caddy | With tools: nginx and caddy | *planned*: the same shop behind nginx and Caddy, automatic HTTPS from the local CA, HSTS and OCSP stapling | A02, A04 |
 | 83 | [tls-misconfigurations](intermediate/tls-in-practice/tls-misconfigurations) | Plain | A server's TLS is a set of choices, and a checker can read all of them | A02, A04 |
 | 84 | tls-misconfigurations-with-testssl | With tools: testssl | *planned*: testssl.sh against deliberately misconfigured local servers | A02, A04 |
-| 85 | inspecting-tls-traffic | Plain | *planned*: `SSLKEYLOGFILE` from a Java client, and what a key log gives away | A04 |
+| 85 | [inspecting-tls-traffic](intermediate/tls-in-practice/inspecting-tls-traffic) | Plain | A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral | A04 |
 | 86 | inspecting-tls-traffic-with-wireshark | With tools: wireshark | *planned*: decrypting a local capture with tshark | A04 |
 | 87 | certificate-pinning | Plain | *planned*: Pinning a public key in a mobile-style Java client, backup pins, and the outage a pin causes when keys rotate: why browsers dropped it | A04, CWE-295 |
 
