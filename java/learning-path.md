@@ -162,7 +162,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 84 | tls-misconfigurations-with-testssl | With tools: testssl | *planned*: testssl.sh against deliberately misconfigured local servers | A02, A04 |
 | 85 | [inspecting-tls-traffic](intermediate/tls-in-practice/inspecting-tls-traffic) | Plain | A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral | A04 |
 | 86 | inspecting-tls-traffic-with-wireshark | With tools: wireshark | *planned*: decrypting a local capture with tshark | A04 |
-| 87 | certificate-pinning | Plain | *planned*: Pinning a public key in a mobile-style Java client, backup pins, and the outage a pin causes when keys rotate: why browsers dropped it | A04, CWE-295 |
+| 87 | [certificate-pinning](intermediate/tls-in-practice/certificate-pinning) | Plain | A pin trusts one key instead of every authority, and the price is paid on the day the key changes | A04, CWE-295 |
 
 ### 6. secure-coding
 
