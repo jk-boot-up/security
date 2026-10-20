@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dependency Confusion, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Dependency Confusion, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A build must decide by name which repository may supply a package, fail closed when it is missing there, and check the exact bytes against a lockfile, because the highest version or the first answer may come from an attacker.</p>
+<h2>The 5 acts</h2>
+<h3>1. A build that works</h3>
+<p>json-lib 2.0.1 comes from the public registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from the private repository. A lockfile records the three versions with their SHA-256 digests. Everything is as intended, and nothing yet shows the danger.</p>
+<h3>2. Somebody registers the company's package name in the public registry</h3>
+<p>The attacker registers shop-pricing 99.0.0 (and shop-newlib 1.0.0, a name the company has not published yet) in the public registry, each with an install script. A build that asks every repository and takes the highest version in range, for a requirement written as "at least 1.0", installs
+the attacker's package: "INSTALL SCRIPT RAN" on the build machine, which holds the CI secrets, signing keys and deployment credentials.</p>
+<h3>3. Repository order helps only until a name is missing</h3>
+<p>Asking the repositories in order and taking the first that has the package fixes the version race: shop-pricing 1.4.2 comes from the private repository. But shop-newlib, an internal library that is not in the private repository yet, falls through to the public registry and the attacker's script runs.
+And in a configuration with the public registry first, the attacker copies the exact version number the company pinned (shop-audit 3.1.0), and the pin does not help: the attacker's copy comes first.</p>
+<h3>4. Names decide where a package may come from</h3>
+<p>Each repository declares which names it may supply: names that start with shop- come only from the private repository, everything else only from the public one. The build installs the right versions from the right places. The unpublished internal library is refused with a clear message
+("an internal name; the private repository has no ..."): the build fails closed, and the attacker's package is never even looked at.</p>
+<h3>5. Locked digests, and watching the names</h3>
+<p>A resolver that wraps another and compares every result with the lockfile refuses the attacker's shop-pricing 99.0.0 (the lock says 1.4.2 with a given digest) even when the underlying tool would have picked it. If someone tampers with the private repository so that shop-pricing 1.4.2
+has different contents, the digest no longer matches and the build stops. Last, a name watch asks the public registry for each internal name and reports shop-newlib and shop-pricing: somebody has registered them, and the security team should know the same day.</p>
+<h2>The verdict</h2>
+<p>Route internal names to the private repository only (content filtering or a proxying repository manager with rules), keep CI from reaching the public registry directly, lock and verify digests, disable install scripts in CI where you can, reserve your names publicly, and alert when a public registry
+has one of your internal names.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>--extra-index-url</code> or several <code>repositories {}</code> blocks without content filters.</li>
+<li>Requirements written as "&gt;=1.0" for internal packages.</li>
+<li><code>exclusiveContent</code>, scoped packages and <code>--require-hashes</code> in build files.</li>
+<li>A finding titled "Dependency Confusion" or CWE-427.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>--extra-index-url</code> in a <code>pip</code> command or <code>requirements.txt</code>.</li>
+<li><code>repositories { mavenCentral(); maven { url ... } }</code> in a Gradle build.</li>
+<li>Scoped npm packages such as <code>@company/pricing</code>.</li>
+<li>The 2021 write-up by Alex Birsan, which popularised the name "dependency confusion".</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dependency Confusion</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Dependency Confusion</h1>
+<pre><code>src/main/java/com/jk/explore/security/depconf/
+├── Artifact.java                  A published package: a name, a version, its contents, and an optional install script that the build runs when it installs the package (npm {@code postinstall}, Python {@code setup.py})
+├── Build.java                     A CI build: it resolves each dependency, installs it, and runs the package's install script, which has the build machine's secrets in its environment
+├── ContentFilteringResolver.java  The fix for the names: each repository declares which package names it may supply
+├── DepConfusionDemo.java          Runs the build story in five numbered acts and prints exact, repeatable results
+├── FirstRepositoryResolver.java   Goes through the repositories in order and takes the highest matching version from the first one that has the package: how Maven and Gradle behave by default
+├── HighestVersionResolver.java    Asks every repository and takes the highest version in range: how pip with {@code --extra-index-url} and several other tools behave
+├── Lockfile.java                  The exact version and digest of every dependency, recorded from a build someone trusted
+├── NameWatch.java                 Detection: for each internal package name, does a public repository also have it?
+├── Repository.java                A place packages are published to
+├── ResolutionException.java       The build refused to resolve a dependency
+├── Resolved.java                  Which artifact a build picked, and from which repository
+├── Resolver.java                  Chooses an artifact for a dependency from the configured repositories
+├── VerifyingResolver.java         Wraps another resolver and refuses anything whose version or digest differs from the lockfile, or that is not in it (dependency verification)
+├── Version.java                   A version like 1.4.2, compared number by number (so 1.10.0 is higher than 1.9.0)
+└── VersionRange.java              An allowed range of versions: {@code [from, below)}
+</code></pre>
+<p><strong>A build that asks several repositories for a package, takes the highest version, or falls through to a public repository when the private one lacks a name, will run an attacker's package registered under the company's internal name; let names decide which repository may supply them, lock exact digests, and watch for your names in public.</strong></p>
+<p>A company writes internal libraries (<code>shop-pricing</code>, <code>shop-audit</code>) and publishes them to its <strong>private repository</strong>. Its builds also fetch open-source libraries from a <strong>public registry</strong>. Both are configured as sources. Now somebody who has never seen the company's code, only the <em>names</em> (in a leaked
+<code>package.json</code>, a public repository, a job posting), registers <code>shop-pricing</code> version 99.0.0 in the public registry, with an <strong>install script</strong> that sends the build machine's environment, including its secrets, to the attacker's server.</p>
+<p>Whether the company's next build installs it depends on how its tool chooses between repositories. That is <strong>dependency confusion</strong> (or <em>namespace confusion</em>, a supply chain attack disclosed in 2021 that hit dozens of large companies). This project simulates the tools' rules and the fixes:</p>
+<ul>
+<li><strong>Highest version wins</strong> across all repositories: the attacker's 99.0.0 beats the real 1.4.2. (Several tools behave like this; pip with an extra index is the famous one.)</li>
+<li><strong>Repository order:</strong> the private repository first protects names it has, but a <strong>new internal library</strong> that has not been published yet, or a misconfigured order, falls through to the public registry. And an attacker can copy an <strong>exact version number</strong>.</li>
+<li><strong>Content filtering by name</strong> (Gradle <code>exclusiveContent</code>, Maven repository managers' routing rules, npm scopes): internal names come only from the private repository and fail <strong>closed</strong> if it lacks them; public names never go to the private repository.</li>
+<li><strong>A lockfile with digests</strong> (Gradle dependency verification, <code>package-lock.json</code> integrity, <code>pip --require-hashes</code>): the build gets the same bytes it recorded, or it stops.</li>
+<li><strong>Watching your names:</strong> a check that the public registry has none of your internal names.</li>
+</ul>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A03 Software Supply Chain Failures · CWE-427 · CWE-829 · SLSA · NIST SSDF PS.1, PW.4 · OWASP Software Component Verification Standard.</p>
+<h2>The idea in everyday terms</h2>
+<p>A company mailroom is told "get the pricing binder" and asks every supplier in town; the supplier with the highest edition number wins. A prankster prints a binder titled Pricing with edition 99, and the mailroom puts it on the CEO's desk. The fix is a rule that names starting with the company's name
+are only ever fetched from the company's own shelves, and a record of the exact binder that was approved.</p>
+<h2>The scenario</h2>
+<p>A company's build needs <code>json-lib</code> (public), <code>shop-pricing</code> and <code>shop-audit</code> (internal). The demo has a private and a public repository, five resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A build that works</td>
+<td>The build gets json-lib from the public registry and the two internal libraries from the private repository, and records their digests in a lockfile.</td>
+</tr>
+<tr>
+<td>2. Somebody registers the company's package name in the public registry</td>
+<td>With highest-version-wins across repositories, shop-pricing 99.0.0 from the public registry is installed and its install script runs on the build machine.</td>
+</tr>
+<tr>
+<td>3. Repository order helps only until a name is missing</td>
+<td>With the private repository first, existing names are safe; but a new internal library falls through to the public registry, and with the public registry first an attacker's copy of an exact version number wins.</td>
+</tr>
+<tr>
+<td>4. Names decide where a package may come from</td>
+<td>With content filtering, internal names come only from the private repository and the missing library is a build error, not an install; public names never go to the private repository.</td>
+</tr>
+<tr>
+<td>5. Locked digests, and watching the names</td>
+<td>The lockfile rejects the squatted shop-pricing even under highest-version-wins, and rejects a changed artifact with the same version number; a name watch lists the shadowed internal names.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>DepConfusionTest</code>. Nothing is random and no script is run, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Repositories, artifacts and builds are plain Java classes: no network and no real packages. Each resolver implements a rule that a real tool uses, so the outcomes match what the tools do with the same configuration. Digests are real SHA-256 values.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/dependency-confusion-explained.html">Dependency Confusion, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The attacker can publish to one of them.</p>
+<p><img alt="A build with two sources" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Resolvers differ in how they choose; the verifying resolver wraps any of them.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The name picks the repository; the lockfile checks the bytes.</p>
+<p><img alt="A safe resolution, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Highest version wins" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/dependency-confusion-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Content filters must be kept in sync with naming.</strong> If internal names do not follow a pattern, list them; a naming convention (a group id, a scope, a prefix) makes this easy.</li>
+<li><strong>Failing closed means builds break</strong> when a new internal library has not been published yet. That is the right failure, and the fix is to publish it.</li>
+<li><strong>Lockfiles need updating</strong> whenever a dependency changes, and the update is a review step: who looks at a digest that changed?</li>
+<li><strong>Reserving your names in the public registry</strong> (claiming them with an empty package) costs little and stops the easy case, but you cannot reserve every name.</li>
+<li><strong>Install scripts are the dangerous part.</strong> Disabling them (<code>--ignore-scripts</code>) in CI removes one of the biggest risks, at the cost of packages that need them.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A single private registry that proxies the public one, with routing rules by name and no direct access to the public registry from CI, is both simpler and stronger than configuring each build tool. Do that if you can.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>--extra-index-url</code> in a <code>pip</code> command or <code>requirements.txt</code>.</li>
+<li><code>repositories { mavenCentral(); maven { url ... } }</code> in a Gradle build.</li>
+<li>Scoped npm packages such as <code>@company/pricing</code>.</li>
+<li>The 2021 write-up by Alex Birsan, which popularised the name "dependency confusion".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project is in <a href="..">secrets-and-supply-chain</a> and follows <a href="../sbom-and-provenance">sbom-and-provenance</a>, which lists what is in a release; this one decides what may go in. The with-Gradle version applies repository content filtering and dependency verification in a real build.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

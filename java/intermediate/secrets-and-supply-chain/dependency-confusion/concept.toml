@@ -1,0 +1,414 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "dependency-confusion"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "Dependency Confusion"
+short_title = "Dependency Confusion"
+package = "depconf"
+main_class = "DepConfusionDemo"
+tagline = "If a build can find your private name in a public place, someone else will put a package there"
+bold = "A build that asks several repositories for a package, takes the highest version, or falls through to a public repository when the private one lacks a name, will run an attacker's package registered under the company's internal name; let names decide which repository may supply them, lock exact digests, and watch for your names in public."
+domain = "a company's build pipeline"
+domain_note = ""
+youtube_description = "Dependency confusion in Java: how a private package name is shadowed by a public one, and how repository content filtering and locked digests stop it."
+thumb_lines = ["DEPENDENCY", "CONFUSION"]
+thumb_code = "exclusiveContent { shop-* }"
+youtube_title = "Dependency Confusion: How a Public Package Hijacks a Private Name (and How to Stop It)"
+youtube_tags = ["dependency confusion", "supply chain", "gradle", "repository", "lockfile", "dependency verification", "java", "application security"]
+
+[readme]
+intro = """
+A company writes internal libraries (`shop-pricing`, `shop-audit`) and publishes them to its **private repository**. Its builds also fetch open-source libraries from a **public registry**. Both are configured as sources. Now somebody who has never seen the company's code, only the *names* (in a leaked
+`package.json`, a public repository, a job posting), registers `shop-pricing` version 99.0.0 in the public registry, with an **install script** that sends the build machine's environment, including its secrets, to the attacker's server.
+
+Whether the company's next build installs it depends on how its tool chooses between repositories. That is **dependency confusion** (or *namespace confusion*, a supply chain attack disclosed in 2021 that hit dozens of large companies). This project simulates the tools' rules and the fixes:
+
+- **Highest version wins** across all repositories: the attacker's 99.0.0 beats the real 1.4.2. (Several tools behave like this; pip with an extra index is the famous one.)
+- **Repository order:** the private repository first protects names it has, but a **new internal library** that has not been published yet, or a misconfigured order, falls through to the public registry. And an attacker can copy an **exact version number**.
+- **Content filtering by name** (Gradle `exclusiveContent`, Maven repository managers' routing rules, npm scopes): internal names come only from the private repository and fail **closed** if it lacks them; public names never go to the private repository.
+- **A lockfile with digests** (Gradle dependency verification, `package-lock.json` integrity, `pip --require-hashes`): the build gets the same bytes it recorded, or it stops.
+- **Watching your names:** a check that the public registry has none of your internal names.
+
+**Maps to:** OWASP Top 10 (2025) A03 Software Supply Chain Failures · CWE-427 · CWE-829 · SLSA · NIST SSDF PS.1, PW.4 · OWASP Software Component Verification Standard.
+"""
+analogy = """
+A company mailroom is told "get the pricing binder" and asks every supplier in town; the supplier with the highest edition number wins. A prankster prints a binder titled Pricing with edition 99, and the mailroom puts it on the CEO's desk. The fix is a rule that names starting with the company's name
+are only ever fetched from the company's own shelves, and a record of the exact binder that was approved.
+"""
+scenario = """
+A company's build needs `json-lib` (public), `shop-pricing` and `shop-audit` (internal). The demo has a private and a public repository, five resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.
+"""
+costs = [
+    "**Content filters must be kept in sync with naming.** If internal names do not follow a pattern, list them; a naming convention (a group id, a scope, a prefix) makes this easy.",
+    "**Failing closed means builds break** when a new internal library has not been published yet. That is the right failure, and the fix is to publish it.",
+    "**Lockfiles need updating** whenever a dependency changes, and the update is a review step: who looks at a digest that changed?",
+    "**Reserving your names in the public registry** (claiming them with an empty package) costs little and stops the easy case, but you cannot reserve every name.",
+    "**Install scripts are the dangerous part.** Disabling them (`--ignore-scripts`) in CI removes one of the biggest risks, at the cost of packages that need them.",
+]
+too_much = """
+A single private registry that proxies the public one, with routing rules by name and no direct access to the public registry from CI, is both simpler and stronger than configuring each build tool. Do that if you can.
+"""
+met_before = [
+    "`--extra-index-url` in a `pip` command or `requirements.txt`.",
+    "`repositories { mavenCentral(); maven { url ... } }` in a Gradle build.",
+    "Scoped npm packages such as `@company/pricing`.",
+    "The 2021 write-up by Alex Birsan, which popularised the name \"dependency confusion\".",
+]
+where = """
+This project is in [secrets-and-supply-chain](..) and follows [sbom-and-provenance](../sbom-and-provenance), which lists what is in a release; this one decides what may go in. The with-Gradle version applies repository content filtering and dependency verification in a real build.
+"""
+twin = """
+Repositories, artifacts and builds are plain Java classes: no network and no real packages. Each resolver implements a rule that a real tool uses, so the outcomes match what the tools do with the same configuration. Digests are real SHA-256 values.
+"""
+test_note = "Nothing is random and no script is run, so the demo prints the same text on every run."
+
+[[act]]
+title = "A build that works"
+summary = "The build gets json-lib from the public registry and the two internal libraries from the private repository, and records their digests in a lockfile."
+detail = """
+json-lib 2.0.1 comes from the public registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from the private repository. A lockfile records the three versions with their SHA-256 digests. Everything is as intended, and nothing yet shows the danger.
+"""
+speech = """
+First demo: a build that works. [[slnc 400]] One open-source library from the public registry. [[slnc 300]] Two internal libraries from the private repository. [[slnc 300]] A lockfile records their digests.
+"""
+rows = { works = "active ok" }
+console = [
+    ["json-lib 2.0.1 from public-registry", "ok"],
+    ["shop-pricing 1.4.2 from company-private", "ok"],
+    ["shop-audit 3.1.0 from company-private", "ok"],
+    ["the lockfile records 3 dependencies with their digests", "muted"],
+]
+
+[[act]]
+title = "Somebody registers the company's package name in the public registry"
+summary = "With highest-version-wins across repositories, shop-pricing 99.0.0 from the public registry is installed and its install script runs on the build machine."
+detail = """
+The attacker registers shop-pricing 99.0.0 (and shop-newlib 1.0.0, a name the company has not published yet) in the public registry, each with an install script. A build that asks every repository and takes the highest version in range, for a requirement written as "at least 1.0", installs
+the attacker's package: "INSTALL SCRIPT RAN" on the build machine, which holds the CI secrets, signing keys and deployment credentials.
+"""
+speech = """
+Second demo: somebody registers the company's package name in the public registry. [[slnc 400]] Version ninety-nine. [[slnc 300]] A build that asks every repository and takes the highest version installs it. [[slnc 600]]
+The install script runs on the build machine, which holds the company's secrets.
+"""
+rows = { highest = "active wrong" }
+console = [
+    ["installed shop-pricing 99.0.0 from public-registry", "bad"],
+    ["INSTALL SCRIPT RAN -> shop-pricing: send CI secrets to attacker.example  <- ATTACKER'S CODE ON THE BUILD MACHINE", "bad"],
+]
+
+[[act]]
+title = "Repository order helps only until a name is missing"
+summary = "With the private repository first, existing names are safe; but a new internal library falls through to the public registry, and with the public registry first an attacker's copy of an exact version number wins."
+detail = """
+Asking the repositories in order and taking the first that has the package fixes the version race: shop-pricing 1.4.2 comes from the private repository. But shop-newlib, an internal library that is not in the private repository yet, falls through to the public registry and the attacker's script runs.
+And in a configuration with the public registry first, the attacker copies the exact version number the company pinned (shop-audit 3.1.0), and the pin does not help: the attacker's copy comes first.
+"""
+speech = """
+Third demo: repository order helps only until a name is missing. [[slnc 400]] With the private repository first, existing names are safe. [[slnc 300]] But a new internal library, not published yet, falls through to the public registry. [[slnc 600]]
+And with the public registry first, the attacker copies the exact version the company pinned. [[slnc 300]] A pin does not help when the name comes from the wrong place.
+"""
+rows = { order = "active amber" }
+console = [
+    ["private first: shop-pricing 1.4.2 from company-private", "ok"],
+    ["shop-newlib 1.0.0 from public-registry -> INSTALL SCRIPT RAN  <- A NAME NOT YET PUBLISHED PRIVATELY", "bad"],
+    ["public first: shop-audit 3.1.0 from public-registry -> INSTALL SCRIPT RAN  <- THE EXACT VERSION, COPIED", "bad"],
+]
+
+[[act]]
+title = "Names decide where a package may come from"
+summary = "With content filtering, internal names come only from the private repository and the missing library is a build error, not an install; public names never go to the private repository."
+detail = """
+Each repository declares which names it may supply: names that start with shop- come only from the private repository, everything else only from the public one. The build installs the right versions from the right places. The unpublished internal library is refused with a clear message
+("an internal name; the private repository has no ..."): the build fails closed, and the attacker's package is never even looked at.
+"""
+speech = """
+Fourth demo: names decide where a package may come from. [[slnc 400]] Names that start with the company's prefix come only from the private repository. [[slnc 300]] Everything else comes only from the public one. [[slnc 600]]
+The unpublished library is a build error, with a clear message. [[slnc 300]] The attacker's package is never even looked at.
+"""
+rows = { filter = "active ok" }
+console = [
+    ["installed shop-pricing 1.4.2 from company-private; no script ran", "ok"],
+    ["refused: shop-newlib is an internal name; the private repository has no >= 0.0.0", "ok"],
+]
+
+[[act]]
+title = "Locked digests, and watching the names"
+summary = "The lockfile rejects the squatted shop-pricing even under highest-version-wins, and rejects a changed artifact with the same version number; a name watch lists the shadowed internal names."
+detail = """
+A resolver that wraps another and compares every result with the lockfile refuses the attacker's shop-pricing 99.0.0 (the lock says 1.4.2 with a given digest) even when the underlying tool would have picked it. If someone tampers with the private repository so that shop-pricing 1.4.2
+has different contents, the digest no longer matches and the build stops. Last, a name watch asks the public registry for each internal name and reports shop-newlib and shop-pricing: somebody has registered them, and the security team should know the same day.
+"""
+speech = """
+Fifth demo: locked digests, and watching the names. [[slnc 400]] The lockfile records the exact bytes. [[slnc 300]] The attacker's version is refused, even if the tool would have chosen it. [[slnc 600]]
+A package with the same version number and different contents is refused too. [[slnc 600]]
+And a name watch reports the internal names that the public registry now has.
+"""
+rows = { lock = "active ok", watch = "active ok" }
+console = [
+    ["refused: shop-pricing 99.0.0 from public-registry does not match the lockfile", "ok"],
+    ["refused: shop-pricing 1.4.2 from company-private does not match the lockfile (changed bytes)", "ok"],
+    ["internal names that the public registry also has -> [shop-newlib, shop-pricing]", "amber"],
+]
+
+[animation]
+subtitle = "A private package name, a public registry, and a build that has to decide whom to believe."
+boxes = [
+    ["works", "A build that works", "private and public packages"],
+    ["highest", "Highest version wins", "version 99 from the public registry"],
+    ["order", "Repository order", "new names fall through"],
+    ["filter", "Names decide", "internal names only from private"],
+    ["lock", "Locked digests", "the same bytes, or stop"],
+]
+
+[docs.problem]
+scenario = """
+A company's CI build pulls internal libraries from a private repository and open-source libraries from a public registry, and runs install scripts.
+"""
+naive = """
+Configure both repositories and let the tool find the best version: the private names are ours, so nobody else can have them.
+"""
+deliver = [
+    "Repositories, artifacts with install scripts, versions and ranges.",
+    "Resolvers for highest-version, first-repository and content-filtered behaviour.",
+    "A lockfile and a verifying resolver using SHA-256 digests.",
+    "A build that reports the scripts it ran, and a name watch.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "An idea of what a package repository and a dependency are",
+]
+not_required = [
+    "Gradle, npm or pip: the resolvers model their rules",
+    "A network",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain how a public package can replace a private one",
+    "say which tool behaviours are vulnerable and why",
+    "describe content filtering by name and why it fails closed",
+    "explain what a lockfile digest adds to a pinned version",
+]
+walkthrough = """
+Run act two and ask what the attacker needed to know and what they needed to own. In act three, ask what a pin protects and what it does not. In act five, ask who reviews a changed digest.
+"""
+exercises = [
+    "Add a second internal prefix and update the filter, with a test that an old name is still routed correctly.",
+    "Add typosquatting detection: report public names within one edit of an internal name.",
+    "Make the build refuse install scripts from public packages unless they are on an allow-list.",
+    "Write the check that fails CI when a lockfile entry changes without a matching review note.",
+]
+
+[docs.explained]
+sentence = """
+A build must decide by name which repository may supply a package, fail closed when it is missing there, and check the exact bytes against a lockfile, because the highest version or the first answer may come from an attacker.
+"""
+verdict = """
+Route internal names to the private repository only (content filtering or a proxying repository manager with rules), keep CI from reaching the public registry directly, lock and verify digests, disable install scripts in CI where you can, reserve your names publicly, and alert when a public registry
+has one of your internal names.
+"""
+recognise = [
+    "`--extra-index-url` or several `repositories {}` blocks without content filters.",
+    "Requirements written as \">=1.0\" for internal packages.",
+    "`exclusiveContent`, scoped packages and `--require-hashes` in build files.",
+    "A finding titled \"Dependency Confusion\" or CWE-427.",
+]
+
+[spec]
+purpose = """
+Teach dependency confusion by registering a public package under a private name and watching five resolvers, then fixing the build with name-based routing, locked digests and a name watch.
+"""
+nongoals = [
+    "A real registry, build tool or network.",
+    "Typosquatting and malicious maintainers of legitimate packages.",
+    "The Gradle version: the dependency-confusion-with-gradle project.",
+]
+problem = """
+Build tools choose between repositories by rules that were designed for convenience, and an attacker can satisfy those rules from outside.
+"""
+roles = [["Packages and repositories", "`Version`, `VersionRange`, `Artifact`, `Repository`, `Resolved`"], ["Resolvers", "`Resolver`, `HighestVersionResolver`, `FirstRepositoryResolver`, `ContentFilteringResolver`, `VerifyingResolver`"], ["Locking and detection", "`Lockfile`, `NameWatch`"], ["The build", "`Build`, `ResolutionException`"], ["Entry point", "`DepConfusionDemo`"]]
+requirements = [
+    "Highest-version-wins installs a public package that has an internal name and a higher version.",
+    "Repository order does not protect a name missing from the private repository or a public-first order, even with an exact pinned version.",
+    "Content filtering supplies internal names only from the private repository, fails closed when missing, and never asks the private repository for public names.",
+    "A lockfile with digests rejects a different source, version or contents.",
+    "A name watch lists internal names that the public registry has.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A build with two sources"
+caption = "The attacker can publish to one of them."
+nodes = [
+    { id = "build", label = "CI build", sub = "has secrets, runs install scripts", col = 0, row = 0, colour = "client" },
+    { id = "private", label = "Private repository", sub = "shop-pricing 1.4.2", col = 1, row = 0, colour = "green", shape = "store" },
+    { id = "public", label = "Public registry", sub = "anyone can publish", col = 1, row = 1, colour = "red", shape = "store" },
+    { id = "attacker", label = "Attacker", sub = "publishes shop-pricing 99.0.0", col = 2, row = 1, colour = "red" },
+]
+edges = [
+    { from = "build", to = "private", label = "asks" },
+    { from = "build", to = "public", label = "asks" },
+    { from = "attacker", to = "public", label = "publishes", colour = "red", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Resolvers differ in how they choose; the verifying resolver wraps any of them."
+nodes = [
+    { id = "resolver", label = "Resolver", sub = ["resolve(name, range, repositories)"], col = 0, row = 0, colour = "accent" },
+    { id = "highest", label = "HighestVersionResolver", sub = ["all repositories, highest"], col = 1, row = 0, colour = "red" },
+    { id = "first", label = "FirstRepositoryResolver", sub = ["first that has it"], col = 2, row = 0, colour = "amber" },
+    { id = "filter", label = "ContentFilteringResolver", sub = ["internal names: private only"], col = 0, row = 1, colour = "green" },
+    { id = "verify", label = "VerifyingResolver", sub = ["lockfile check"], col = 1, row = 1, colour = "green" },
+    { id = "lock", label = "Lockfile", sub = ["version + digest"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "highest", to = "resolver", label = "implements" },
+    { from = "first", to = "resolver", label = "implements" },
+    { from = "filter", to = "resolver", label = "implements" },
+    { from = "verify", to = "lock", label = "compares with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "A safe resolution, in order"
+caption = "The name picks the repository; the lockfile checks the bytes."
+nodes = [
+    { id = "name", label = "Package name", sub = "internal or not", col = 0, row = 0, colour = "client" },
+    { id = "repo", label = "Allowed repository", sub = "private only, or public only", col = 1, row = 0, colour = "accent" },
+    { id = "range", label = "Version in range", sub = "highest in that repository", col = 2, row = 0, colour = "amber" },
+    { id = "lock", label = "Lockfile", sub = "same version and digest", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "name", to = "repo" },
+    { from = "repo", to = "range" },
+    { from = "range", to = "lock" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Highest version wins"
+participants = ["Build", "Private repository", "Public registry"]
+steps = [
+    ["Build", "Private repository", "shop-pricing >= 1.0?"],
+    ["Private repository", "Build", "1.4.2", "reply"],
+    ["Build", "Public registry", "shop-pricing >= 1.0?"],
+    ["Public registry", "Build", "99.0.0 (the attacker's)", "reply"],
+    ["note", "Build", "installs 99.0.0 and runs its install script"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Content filtering"
+participants = ["Build", "Resolver", "Private repository", "Public registry"]
+steps = [
+    ["Build", "Resolver", "shop-pricing >= 1.0"],
+    ["note", "Resolver", "shop- is an internal name"],
+    ["Resolver", "Private repository", "shop-pricing >= 1.0?"],
+    ["Private repository", "Resolver", "1.4.2", "reply"],
+    ["Resolver", "Build", "1.4.2 (the public registry is never asked)", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram-2"
+kind = "sequence"
+title = "A lockfile stops the wrong bytes"
+participants = ["Build", "Verifying resolver", "Lockfile"]
+steps = [
+    ["Build", "Verifying resolver", "resolve shop-pricing"],
+    ["Verifying resolver", "Lockfile", "expected version and digest?"],
+    ["Lockfile", "Verifying resolver", "1.4.2, 9f3c...", "reply"],
+    ["note", "Verifying resolver", "the artifact found has another digest"],
+    ["Verifying resolver", "Build", "refused: does not match the lockfile", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The company", nodes = ["build", "private"], colour = "green" },
+    { label = "The public internet", nodes = ["public", "attacker"], colour = "red" },
+]
+nodes = [
+    { id = "build", label = "CI build", sub = "secrets and signing keys", col = 0, row = 0, colour = "client", threats = ["T1", "T2", "T3"] },
+    { id = "private", label = "Private repository", sub = "internal packages", col = 1, row = 0, colour = "green", shape = "store", threats = ["T3"] },
+    { id = "public", label = "Public registry", sub = "open to all", col = 2, row = 0, colour = "red", shape = "store", threats = ["T1", "T2"] },
+    { id = "attacker", label = "Attacker", sub = "knows only the names", col = 2, row = 1, colour = "red", threats = ["T1", "T2"] },
+]
+edges = [
+    { from = "attacker", to = "public", label = "publishes", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "build", to = "public", label = "falls through to", dashed = true, threats = ["T1", "T2"] },
+    { from = "build", to = "private", label = "asks", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+How a build chooses between a private repository and a public registry, and what it runs after installing. It covers internal package names and the integrity of what is installed.
+It does not cover typosquatting of public names, or a compromised maintainer of a legitimate public package.
+"""
+assets = [
+    "The build machine's secrets, signing keys and deployment credentials.",
+    "The integrity of the software that is built and released.",
+]
+actors = [
+    "The company's developers and CI.",
+    "An attacker who can publish to the public registry and knows the names of internal packages.",
+]
+boundaries = [
+    "The public registry to the build: anyone can publish there.",
+    "The build's dependency list: names and ranges that decide which repository answers.",
+]
+assumptions = [
+    "Internal package names can be learned by outsiders.",
+    "Install scripts run with the build's privileges.",
+]
+out_of_scope = [
+    "Compromise of the private repository's own storage (the lockfile helps against it).",
+    "Malicious but correctly named public packages.",
+]
+tests = [
+    "`DepConfusionTest` checks versions and ranges, digests, each resolver against the squatted names, exact-version copies, fail-closed behaviour, the lockfile and the name watch.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, platform-hardening, moves from the code and the build to the machines and containers they run on.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A public package with an internal name and a higher version is installed"
+where = "`HighestVersionResolver`"
+control = "Route internal names to the private repository only (`ContentFilteringResolver`)"
+residual = "Internal names that do not follow a convention"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A name missing from the private repository, or an exact version copied to the public one, falls through"
+where = "`FirstRepositoryResolver`"
+control = "Fail closed for internal names; keep CI from reaching the public registry directly; reserve names"
+residual = "Developers' machines that are configured differently from CI"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A package's contents change while the version number stays the same"
+where = "`Repository`, `Artifact`"
+control = "A lockfile with SHA-256 digests (`VerifyingResolver`), reviewed when it changes"
+residual = "A lockfile regenerated without review"

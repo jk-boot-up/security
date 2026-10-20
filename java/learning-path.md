@@ -187,7 +187,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 99 | artifact-signing-with-cosign | With tools: cosign | *planned*: signing a container image and refusing an unsigned one | A08, SLSA |
 | 100 | [sbom-and-provenance](intermediate/secrets-and-supply-chain/sbom-and-provenance) | Plain | Know what is inside a release, and prove where it came from | A03, SLSA, SSDF |
 | 101 | sbom-and-provenance-with-syft-and-grype | With tools: syft and grype | *planned*: generating and scanning the SBOM of a local image | A03, SLSA, SSDF |
-| 102 | dependency-confusion | Plain | *planned*: A private package name that a public repository can shadow; repository order, scoping and verification | A03, CWE-427 |
+| 102 | [dependency-confusion](intermediate/secrets-and-supply-chain/dependency-confusion) | Plain | If a build can find your private name in a public place, someone else will put a package there | A03, CWE-427 |
 | 103 | dependency-confusion-with-gradle | With tools: gradle | *planned*: repository content filtering and dependency verification | A03, CWE-427 |
 
 ### 8. platform-hardening
