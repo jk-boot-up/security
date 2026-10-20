@@ -5,6 +5,7 @@ framework comes straight after its plain version, so the idea comes first and th
 
 Every built project has the same parts: a README, runnable Java 25 code with tests, diagrams, a threat model, an animated walkthrough and a
 narrated video script. Start with the project's README, run `./gradlew run`, then read its `docs/` folder.
+The projects added most recently (from sql-injection onward in the intermediate track) have all of these parts except the narrated video and its script.
 
 Legend: **Plain** means written with the JDK only. **With tools** means the same idea using a library, framework or local tool.
 *Planned* projects are not built yet; *on hold* projects were started and set aside for now.
