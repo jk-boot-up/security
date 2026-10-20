@@ -13,7 +13,7 @@ the OWASP API Security Top 10, ASVS 5.0, the CWE Top 25, OAuth 2.0 security best
 | [tls-in-practice](tls-in-practice) | a local CA, TLS servers, misconfigurations, traffic inspection, pinning |
 | [secure-coding](secure-coding) | validation, race conditions, secrets in logs, fuzzing |
 | [secrets-and-supply-chain](secrets-and-supply-chain) | secrets management, signing, SBOMs and provenance, dependency confusion |
-| platform-hardening | Linux and container hardening |
+| [platform-hardening](platform-hardening) | Linux and container hardening |
 | [detection-and-response](detection-and-response) | security logging, detection, incident response |
 | [secure-design](secure-design) | threat modeling, attack trees and abuse cases, ASVS requirements |
 
