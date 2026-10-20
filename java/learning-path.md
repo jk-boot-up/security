@@ -158,7 +158,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 80 | [local-certificate-authority](intermediate/tls-in-practice/local-certificate-authority) | Plain | A certificate is a signed claim about a name, and revocation is only as good as the list the client has | A04 |
 | 81 | local-certificate-authority-with-step-ca | With tools: step ca | *planned*: a local step-ca with ACME and automatic renewal | A04 |
 | 82 | tls-servers-in-practice-with-nginx-and-caddy | With tools: nginx and caddy | *planned*: the same shop behind nginx and Caddy, automatic HTTPS from the local CA, HSTS and OCSP stapling | A02, A04 |
-| 83 | tls-misconfigurations | Plain | *planned*: A checker for weak protocols, weak ciphers, missing names, expired and incomplete chains | A02, A04 |
+| 83 | [tls-misconfigurations](intermediate/tls-in-practice/tls-misconfigurations) | Plain | A server's TLS is a set of choices, and a checker can read all of them | A02, A04 |
 | 84 | tls-misconfigurations-with-testssl | With tools: testssl | *planned*: testssl.sh against deliberately misconfigured local servers | A02, A04 |
 | 85 | inspecting-tls-traffic | Plain | *planned*: `SSLKEYLOGFILE` from a Java client, and what a key log gives away | A04 |
 | 86 | inspecting-tls-traffic-with-wireshark | With tools: wireshark | *planned*: decrypting a local capture with tshark | A04 |

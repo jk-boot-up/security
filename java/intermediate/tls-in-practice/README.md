@@ -8,6 +8,7 @@ real X.509 certificates, the misconfigurations that a checker should find, what 
 | # | Project | What it shows | Maps to |
 | --- | --- | --- | --- |
 | 1 | [local-certificate-authority](local-certificate-authority) | A certificate is a signed claim about a name, and revocation is only as good as the list the client has | A04, CWE-295, CWE-299 |
+| 2 | [tls-misconfigurations](tls-misconfigurations) | A server's TLS is a set of choices, and a checker can read all of them | A02, A04, CWE-326, CWE-327, CWE-295 |
 
 ## How the module is judged
 
