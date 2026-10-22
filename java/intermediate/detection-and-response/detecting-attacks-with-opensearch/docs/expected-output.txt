@@ -1,0 +1,46 @@
+ONE. One Monday of logs, in OpenSearch.
+  772 events loaded with the bulk API: 768 logins, 4 role grants; 113 of them belong to 4 real attacks (A: spraying, B: brute force, C: impossible travel, D: privilege change)
+  the attack label is in the index only so that this lesson can score its rules; no rule reads it
+  the fields the rules filter and group by are keywords and the time is a date, set by a mapping before the first event
+TWO. A first version of each rule, as a query.
+rule                         alerts  true false  attacks noticed
+brute-force(3)                    3     1     2  [B]
+spraying(8)                       1     1     0  [A]
+privilege-change                  2     1     1  [D]
+success-after-failures(1)        23     2    21  [A, B]
+  a rule is a query: a filter, a group by the subject, a bucket of time, and a threshold that keeps the buckets worth looking at
+THREE. Tuning one threshold.
+rule                         alerts  true false  attacks noticed
+brute-force(3)                    3     1     2  [B]
+brute-force(5)                    3     1     2  [B]
+brute-force(10)                   1     1     0  [B]
+brute-force(25)                   1     1     0  [B]
+brute-force(40)                   0     0     0  []
+  changing the threshold is changing one number in the query; the table says what it costs and what it misses
+FOUR. The tuned set as monitors of the alerting plugin.
+rule                         alerts  true false  attacks noticed
+brute-force(10)                   1     1     0  [B]
+spraying(8)                       1     1     0  [A]
+success-after-failures(20)        2     2     0  [A, B]
+privilege-change                  2     1     1  [D]
+  4 monitors are saved in the cluster, each with a schedule of one minute; here each is run once with dryrun, so that nothing is sent and the result is the same every time
+impossible-travel (code)          4     3     1  [A, B, C]
+together: 10 alerts for the day, 8 true, 2 false; attacks noticed: [A, B, C, D] of [A, B, C, D]
+  impossible travel compares each login with the same person's last one: a query cannot say "the previous one", so the events are read back from OpenSearch in order and a few lines of code decide
+the alerts, in time order:
+  03:00 privilege-change   u060 by ops1, no ticket   <- FALSE POSITIVE
+  08:20 impossible-travel  Madrid to Frankfurt, 1446 km in 20 minutes   <- FALSE POSITIVE
+  10:00 spraying(8)        75 failed logins from 203.0.113.50 on many accounts in twenty minutes
+  10:00 success-after-failures(20) logins from 203.0.113.50: 80 in the hour, failures and a success
+  10:11 impossible-travel  London to Singapore, 10848 km in 56 minutes
+  10:40 privilege-change   u117 by u117, no ticket
+  12:00 brute-force(10)    u042 failed 30 times in five minutes
+  12:00 success-after-failures(20) logins from 198.51.100.7: 31 in the hour, failures and a success
+  12:04 impossible-travel  London to Singapore, 10848 km in 221 minutes
+  15:25 impossible-travel  Madrid to Sydney, 17685 km in 25 minutes
+FIVE. The bill.
+  the same events loaded with no mapping, grouped by user: 400, Text fields are not optimised for operations that require per-document field data like aggregations and sorting, so these operations are disabled by default. Please use a keyword field instead. ...
+  grouped by user.keyword, which dynamic mapping adds next to the text: 200, 3 groups  <- A MAPPING DECIDES WHAT A RULE CAN SAY
+  thirty failures in four minutes that cross a five-minute boundary at 13:30, rule 'at least 20': fixed buckets 0 alerts, a sliding window 1  <- THE ATTACK FALLS BETWEEN TWO BUCKETS
+  the monitors run on a schedule, so an attack is noticed up to a minute and a bucket later, and a schedule that stops, or a query that is changed in the console, leaves no trace in the code
+  keep the queries as files under version control and load them with the API, test each with a known bad day, and treat the thresholds as tuned for this one Monday

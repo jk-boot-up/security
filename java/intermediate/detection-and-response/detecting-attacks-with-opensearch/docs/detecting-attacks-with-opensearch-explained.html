@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Detecting Attacks with OpenSearch, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Detecting Attacks with OpenSearch, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A detection is a question asked of the log on a schedule; a query can count and group, but it cannot remember the previous event.</p>
+<h2>The 5 acts</h2>
+<h3>1. One Monday of logs, in OpenSearch</h3>
+<p>772 events are loaded with the bulk API: 768 logins and 4 role grants; 113 of them belong to 4 real attacks (A: spraying, B: brute force, C: impossible travel, D: privilege change). The attack label is in the index only so that this lesson can score its rules; no rule reads it. The fields the rules filter and group by are keywords and the time is a date, set by a mapping before the first event.</p>
+<h3>2. A first version of each rule, as a query</h3>
+<p>Brute-force(3): 3 alerts, 1 true, 2 false (the two people back from holiday). Spraying(8): 1 alert, true. Privilege-change: 2 alerts, 1 true. Success-after-failures(1): 23 alerts, 2 true. A rule is a query: a filter, a group by the subject, a bucket of time, and a threshold that keeps the buckets worth looking at.</p>
+<h3>3. Tuning one threshold</h3>
+<p>brute-force at 3, 5, 10, 25 and 40: 3 alerts with 1 true at 3 and 5; 1 alert, true, at 10 and 25; nothing at 40, where the attack is lost. Changing the threshold is changing one number in the query; the table says what it costs and what it misses.</p>
+<h3>4. The tuned set as monitors of the alerting plugin</h3>
+<p>The tuned set is saved as monitors of the alerting plugin, each with a schedule of one minute, and each is run once with dryrun, so that nothing is sent. brute-force(10): 1 alert, true; spraying(8): 1, true; success-after-failures(20): 2, true; privilege-change: 2, 1 true. Impossible travel compares each login with the same person's last one: a query cannot say the previous one, so the events are read back from OpenSearch in order and a few lines of code decide: 4 alerts, 3 true. Together: 10 alerts for the day, 8 true, 2 false; all four attacks noticed.</p>
+<h3>5. The bill</h3>
+<p>The same events loaded with no mapping, grouped by user: 400, text fields are not optimised for aggregations. Grouped by user.keyword, which dynamic mapping adds next to the text: 200 and 3 groups. Thirty failures in four minutes that cross a five-minute boundary at 13:30, with the rule at least 20: fixed buckets give 0 alerts, a sliding window gives 1. The monitors run on a schedule, so an attack is noticed up to a minute and a bucket later. Keep the queries as files under version control, test each with a known bad day, and treat the thresholds as tuned for this one Monday.</p>
+<h2>The verdict</h2>
+<p>Map the fields before loading, write each detection as a query with a threshold, tune against known attacks, run monitors on a schedule and keep their definitions in version control, do sequences in code or in an engine that has them, and test each rule with a known bad day.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>date_histogram</code> and <code>bucket_selector</code> in a saved search.</li>
+<li>A monitor with a trigger in an alerting plugin.</li>
+<li>A threshold that someone tuned last year.</li>
+<li>An alert that fires every Monday at three.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A Kibana or OpenSearch Dashboards "Discover" screen.</li>
+<li>A saved search with a count and a threshold.</li>
+<li>A rule list in a SIEM with names like "Brute force" and "Impossible travel".</li>
+<li>A false alert at three in the morning.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
