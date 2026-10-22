@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Network Isolation</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Network Isolation</h1>
+<pre><code>src/main/java/com/jk/explore/security/netiso/
+├── Intent.java                What the design says may talk: pairs of services
+├── Lab.java                   Real Docker networks and containers: each service is a container of the alpine image running busybox nc on its port (listening for ever, one connection after another), attached to the networks the layout gives it
+├── NetworkIsolationDemo.java  
+├── Service.java               One service of the shop: a name, the port it listens on and what it is
+└── Sh.java                    The docker command, as a program
+</code></pre>
+<p><strong>On real Docker networks, a taken-over front on one flat network reaches the database, the cache, the admin panel and the build server (15 of 15 pairs can talk, the design wanted 6); three coarse networks cut that to 8 pairs and the front reaches only the application, but members of one network reach each other, so 2 pairs nobody asked for exist; a layout built from the design as code, one internal network for each allowed pair, measures exactly 6 pairs, and a service joined to one more network is found as drift by measuring against the intent; internal networks have no way out, the front keeps one; reachable is not authorised and the Docker socket is worth more than every rule.</strong></p>
+<p>Every cloud calls it something different (a VPC, a security group, a subnet, a network policy), and they all answer one question: <strong>if this service is taken over, what can it reach?</strong> This project answers it by measuring. It builds real Docker networks for a shop of six services, each a container listening on its port, and tries to connect from inside each container. It needs Docker; the tests are tagged <code>integration</code> (the intent tests are not): <code>./gradlew integrationTest</code>. The demo takes about two minutes, most of it connection attempts that time out, which is how a closed port looks from inside.</p>
+<p>What it shows:
+- <strong>One flat network.</strong> Six containers, one network. The taken-over front reaches the application, the database, the cache, the admin panel and the build server; <strong>15 of 15 pairs</strong> can talk, and the design wanted 6.
+- <strong>Three coarse networks.</strong> Front (web, app), back (app, db, cache, admin, internal) and management (admin, ci, internal). The front reaches only the application, by name and by address. But everything on a network reaches everything else on it: <strong>8 pairs</strong>, of which 2 nobody asked for (<code>admin-cache</code>, <code>cache-db</code>).
+- <strong>The design as code, and a layout built from it.</strong> The intent is six pairs. One internal network for each pair, each service on the networks of its pairs: measured <strong>6 pairs, 0 extra, 0 missing</strong>. Someone with the Docker socket joins web and db to one more network, and measuring against the intent finds <code>db-web</code> at once.
+- <strong>The edge.</strong> Only the front is published to the host (and only on a network that is not internal); of the six, only the front can reach a server on the internet side: internal networks have no way out.
+- <strong>The bill.</strong> A service on several networks is a pivot; reachable is not authorised; the Docker socket beats every rule; one network for each pair does not scale, which is why clouds have security groups and clusters network policies; and the network is what you measure, not what you draw.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Protect (PR.IR network integrity) · CIS Benchmarks (Docker, cloud network sections) · CWE-923, CWE-1327 (binding to an unrestricted address) · MITRE ATT&amp;CK lateral movement (TA0008).</p>
+<h2>The idea in everyday terms</h2>
+<p>A building where every door is unlocked from the inside. If a burglar gets into the lobby, can they reach the vault? Painting the corridors different colours changes nothing; walking the corridors with a stopwatch, from every room, tells you what a burglar could do.</p>
+<h2>The scenario</h2>
+<p>An online store with a web front, an application, a database, a cache, an admin panel and a build server. The demo takes over the front, then the rest, and counts what each can reach.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. One flat network</td>
+<td>A taken-over front reaches the database, the cache, the admin panel and the build server; 15 of 15 pairs can talk.</td>
+</tr>
+<tr>
+<td>2. Three networks: front, back, management</td>
+<td>The front reaches only the application, but members of one network reach each other: 8 pairs, 2 of them unwanted.</td>
+</tr>
+<tr>
+<td>3. The design as code, and a layout built from it</td>
+<td>One internal network for each wanted pair measures exactly 6 pairs; a service joined to one more network is drift.</td>
+</tr>
+<tr>
+<td>4. The edge: what is published, and what can leave</td>
+<td>Only the front is published to the host, and only the front can reach a server on the internet side.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Pivots, reachable is not authorised, the Docker socket beats every rule, and a diagram of the network is a wish.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>8 tests in <code>DemoRunsTest</code>, <code>IntentTest</code>, <code>IsolationTest</code>. The intent and the comparison are tested with no Docker. The rest create real networks and containers and remove them (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The networks and containers are real; the checks are connections from inside the containers, made with nc. Names and addresses are never printed, only which services reach which, so the output is the same on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/network-isolation-explained.html">Network Isolation, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The intent builds the networks; the measurement checks them.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A service, an intent and a lab.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Pairs that can talk.</p>
+<p><img alt="From flat to exact" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Measuring reachability" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/network-isolation-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>More networks mean more to manage,</strong> and a layout that is not generated drifts.</li>
+<li><strong>The measurement takes time:</strong> a closed port is found by waiting.</li>
+<li><strong>A service on two networks is a bridge</strong> between them.</li>
+<li><strong>Segmentation is not authentication:</strong> a reachable port still has to say no to the wrong caller.</li>
+<li><strong>Egress is easy to forget,</strong> and it is how stolen data leaves.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A development laptop with three containers does not need a network design. Segment when the services are not equally trusted: when one is on the internet and another holds data.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A compose file with a single default network.</li>
+<li>A security group with 0.0.0.0/0 on every port.</li>
+<li>An internal flag on a Docker network.</li>
+<li>A firewall change that was made in the console and never written down.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the second project of the <a href="..">cloud-security-without-a-cloud</a> module, after <a href="../cloud-iam-models">cloud-iam-models</a>. The same question for Kubernetes is the subject of kubernetes-network-policies.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
