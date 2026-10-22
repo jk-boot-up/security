@@ -5,6 +5,7 @@
                                      YouTube sheet, spec and the HTML twins
     conceptkit.sh build <project> --no-media    the same without the video and the narration audio
     conceptkit.sh html  <project>    only the .html twins of the Markdown files
+    conceptkit.sh progress           the built and planned counts at the top of java/learning-path.md (and its .html)
     conceptkit.sh site               the .html twins of every Markdown file under java/ (every level)
     conceptkit.sh scaffold <module> <project> <package> <MainClass>
                                      <module> is a beginner module (identity) or <level>/<module> (intermediate/web-security)
@@ -22,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import generate, publish_docs, site
+from . import generate, progress, publish_docs, site
 
 REPO = Path(__file__).resolve().parents[3]
 VIDEOKIT = REPO / "tools" / "videokit" / "videokit.sh"
@@ -211,6 +212,10 @@ def main(argv):
         build(rest[0], media="--no-media" not in rest)
     elif cmd == "scaffold":
         print(scaffold(*rest))
+    elif cmd == "progress":
+        lp = REPO / "java" / "learning-path.md"
+        print("built %d, planned %d" % progress.update(lp))
+        lp.with_suffix(".html").write_text(site.to_html(lp.read_text()))
     elif cmd == "site":
         print("%d HTML twins" % site.tree(REPO / "java"))
     elif cmd == "html":

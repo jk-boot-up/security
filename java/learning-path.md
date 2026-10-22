@@ -9,6 +9,46 @@ narrated video script. Start with the project's README, run `./gradlew run`, the
 Legend: **Plain** means written with the JDK only. **With tools** means the same idea using a library, framework or local tool.
 *Planned* projects are not built yet; *on hold* projects were started and set aside for now.
 
+<!-- status:start -->
+## Status
+
+**Built: 88 projects. Planned: 64 projects.** Counted from the tables below by `conceptkit.sh progress`.
+
+| Level | Module | Built | Planned | Total |
+| --- | --- | ---: | ---: | ---: |
+| **Beginner** | | **41** | **0** | **41** |
+| | Foundations | 2 | 0 | 2 |
+| | Identity | 3 | 0 | 3 |
+| | Passwords and multi-factor | 6 | 0 | 6 |
+| | Cryptography | 8 | 0 | 8 |
+| | Networking | 7 | 0 | 7 |
+| | Transport security | 7 | 0 | 7 |
+| | Safe habits | 8 | 0 | 8 |
+| **Intermediate** | | **47** | **29** | **76** |
+| | web-security | 15 | 0 | 15 |
+| | secure-configuration | 2 | 2 | 4 |
+| | api-security | 4 | 3 | 7 |
+| | identity-and-access | 6 | 6 | 12 |
+| | tls-in-practice | 4 | 4 | 8 |
+| | secure-coding | 4 | 4 | 8 |
+| | secrets-and-supply-chain | 4 | 4 | 8 |
+| | platform-hardening | 2 | 2 | 4 |
+| | detection-and-response | 3 | 2 | 5 |
+| | secure-design | 3 | 2 | 5 |
+| **Advanced** | | **0** | **35** | **35** |
+| | cloud-security-without-a-cloud | 0 | 3 | 3 |
+| | infrastructure-as-code-security | 0 | 2 | 2 |
+| | kubernetes-and-container-security | 0 | 4 | 4 |
+| | devsecops-pipelines | 0 | 4 | 4 |
+| | service-identity-and-zero-trust | 0 | 4 | 4 |
+| | applied-cryptography-and-pki | 0 | 5 | 5 |
+| | detection-engineering | 0 | 3 | 3 |
+| | offensive-security-methodology | 0 | 4 | 4 |
+| | resilience-and-recovery | 0 | 2 | 2 |
+| | governance-risk-and-compliance | 0 | 4 | 4 |
+| **All** | | **88** | **64** | **152** |
+<!-- status:end -->
+
 ## Beginner: foundations and core concepts
 
 Track index: [beginner](beginner/README.md). Plan: [beginner plan](../docs/beginner-plan.md).
@@ -111,7 +151,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 53 | [insecure-deserialization](intermediate/web-security/insecure-deserialization) | Plain | Rebuilding an object from bytes runs code the sender chose | A08, CWE-502 |
 | 54 | [insecure-deserialization-with-jackson](intermediate/web-security/insecure-deserialization-with-jackson) | With tools: jackson | JSON is data until a type id tells Jackson which class to build, and then the cookie is choosing code | A08, CWE-502 |
 | 55 | [path-traversal-and-file-upload](intermediate/web-security/path-traversal-and-file-upload) | Plain | A file name from a customer is a path until proven otherwise | A01, CWE-22, CWE-434, CWE-601 |
-| 56 | path-traversal-and-file-upload-with-spring-boot | With tools: spring boot | *planned*: multipart limits, content checks and an open-redirect check on the "return to" link | A01, CWE-22, CWE-434, CWE-601 |
+| 56 | [path-traversal-and-file-upload-with-spring-boot](intermediate/web-security/path-traversal-and-file-upload-with-spring-boot) | With tools: spring boot | Spring hands you the file name exactly as the customer sent it, and its static handler follows a link out of the folder | A01, CWE-22, CWE-434, CWE-601 |
 
 ### 2. secure-configuration: misconfiguration and exceptional conditions (OWASP A02, A10)
 
