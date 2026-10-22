@@ -10,6 +10,7 @@ continuously, and code that fails closed when something goes wrong.
 | --- | --- | --- | --- |
 | 1 | [security-misconfiguration](security-misconfiguration) | Default credentials, a debug page, directory listing and stack traces found by a checker; a hardened profile, a startup gate and a drift check | A02, CWE-16, CWE-1188, CWE-209, CWE-548 |
 | 2 | [fail-closed-error-handling](fail-closed-error-handling) | A payment check that fails open when a service is down; default deny, timeouts, all-or-nothing transfers, safe error pages and a circuit breaker that fails closed | A10, CWE-636, CWE-755 |
+| 3 | [security-misconfiguration-with-spring-boot-actuator](security-misconfiguration-with-spring-boot-actuator) | One line that exposes every actuator endpoint hands a stranger the environment, the route map and the memory of the store | A02, CWE-16 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

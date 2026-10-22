@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Misconfiguration with Spring Boot Actuator</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Security Misconfiguration with Spring Boot Actuator</h1>
+<pre><code>src/main/java/com/jk/explore/security/actuatorspring/
+├── ActuatorChecker.java     Tests a running store from outside, as a scanner would, and scores it
+├── ActuatorSpringDemo.java  Runs the store story in five numbered acts against real Spring Boot servers on the loopback interface
+├── Running.java             A store started on free loopback ports with the given profile
+├── ShopController.java      The store's own endpoints
+├── StoreApp.java            
+├── StoreSecurity.java       Two filter chains: one that lets everything through, as in a store where nobody wrote rules for the actuator, and one with rules
+└── Wire.java                A plain HTTP client for the loopback servers
+</code></pre>
+<p><strong>Spring Boot Actuator is the part of a store that was built to be looked into, so a stranger who reaches it can read the payment key, list the unlisted routes, download the heap and stop the store; Spring Boot hides values and keeps the dangerous endpoints off by default, and the rest is the store's job: another port, a short list, login rules, read-only access and a checker that runs on every change.</strong></p>
+<p>The plain <a href="../security-misconfiguration">security-misconfiguration</a> project builds the settings checker from scratch. This one uses the part of a real Spring Boot store that was made to be looked into: <strong>Spring Boot Actuator 4.1</strong>, in real servers on the loopback address.</p>
+<p>What it shows:
+- <strong>The setting from a tutorial</strong>, <code>management.endpoints.web.exposure.include=*</code>, with values shown, health details on and two switches turned on. A stranger reads the <strong>payment key and the database password</strong> from <code>/actuator/env</code>, sees the unlisted refund route in <code>/actuator/mappings</code>, downloads a <strong>heap dump</strong> that contains the key, changes a log level and stops the store with <code>POST /actuator/shutdown</code>. The checker scores it 0 of 8.
+- <strong>What Spring Boot already does.</strong> With no settings the list offers <code>health</code> only and shows a status, not components. With <code>include=*</code> alone values are masked as <code>******</code>, and <code>heapdump</code> and <code>shutdown</code> stay off until their access is set. But names and routes are still open, and once the dump is allowed it contains the key that the environment page masked.
+- <strong>The hardened store.</strong> Operations on their <strong>own loopback port</strong>, an explicit list (<code>health</code>, <code>info</code>, <code>loggers</code>), Spring Security rules (health open, everything else for the <code>OPS</code> role), health details only for that role, and <code>loggers</code> set to <strong>read-only access</strong>. The checker scores it 8 of 8.
+- <strong>Who may read and who may change.</strong> A customer login is not an operator login, and an operator who posts a new log level gets 405.
+- <strong>The bill.</strong> One line of <code>include=*</code> added "to debug something" costs a check, and the login rules still keep strangers out, which is why the port, the list, the rules and the access levels are four separate settings.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CWE-16 · CWE-200 · CWE-215 (sensitive information in debugging code) · OWASP ASVS 5.0, the configuration chapter · Spring Boot's own production-ready features guide.</p>
+<h2>The idea in everyday terms</h2>
+<p>A shop where the staff-only door has a sign that says "STAFF" and no lock, and behind it hang the safe's combination, the plan of every back room and a camera feed of the stockroom. The sign is a setting. The lock is another one.</p>
+<h2>The scenario</h2>
+<p>An online store on Spring Boot with Actuator for its health checks. The demo starts the real application five times, in different configurations, and talks to it over HTTP the way a scanner would.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Expose everything</td>
+<td>With the tutorial setting, a stranger reads the payment key and the database password, lists the unlisted refund route, downloads a heap dump containing the key, changes a log level and stops the store; the checker scores 0 of 8.</td>
+</tr>
+<tr>
+<td>2. What Spring Boot already does</td>
+<td>With no settings only health is listed, with include=* values are masked and the heap dump and shutdown stay off, but names and routes are open and an allowed heap dump contains the key that env masked.</td>
+</tr>
+<tr>
+<td>3. Hardened: another port, a short list, rules</td>
+<td>Operations sit on their own loopback port with health, info and loggers only; strangers see a status, nothing else is reachable even for an operator, and the checker scores 8 of 8.</td>
+</tr>
+<tr>
+<td>4. Who may read, and who may change</td>
+<td>Loggers are for operators only, health details too, and the loggers endpoint is read-only: an operator who posts a new level gets 405 and the level stays.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>One line of include=* added to the hardened store costs a check, the login rules still keep strangers out, and the checker belongs in CI.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>ActuatorSpringTest</code>, <code>DemoRunsTest</code>. Each test starts a real store on free loopback ports and stops it. Nothing is printed that changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The stores are real Spring Boot applications on Tomcat, with Actuator and Spring Security 7. The secrets are fixed demo values. Only statuses and booleans are printed, never ports, paths or disk sizes, so the demo prints the same text on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-actuator</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/security-misconfiguration-with-spring-boot-actuator-explained.html">Security Misconfiguration with Spring Boot Actuator, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Customers reach the shop routes; operators reach health, info and loggers on another loopback port, behind a role.</p>
+<p><img alt="Two ports in the hardened store" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The security rules differ by profile; the controller and the checker are the same in every store.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Four separate settings, in the order a request meets them.</p>
+<p><img alt="What decides whether a request is answered" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A stranger asks the shipped store for its secrets" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/security-misconfiguration-with-spring-boot-actuator-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A separate port needs a firewall rule or a network policy,</strong> and the monitoring system must be told where to look.</li>
+<li><strong>Operators need accounts,</strong> and every account is something to rotate and to remove when someone leaves.</li>
+<li><strong>A short list means a request to add an endpoint,</strong> and someone must review it, which is slower than typing <code>*</code>.</li>
+<li><strong>Read-only access removes conveniences</strong> such as changing a log level on a running store; a deployment or a restart replaces them.</li>
+<li><strong>A passing score is not a secure store.</strong> The checker proves its eight checks pass; anything else is still open.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a laptop demo, exposing everything is fine, and that is exactly why tutorials do it. For anything reachable from a network, the separate port, the list and the rules are the minimum, and the checker is cheap enough to run on every change.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>management.endpoints.web.exposure.include=*</code> in a copied tutorial.</li>
+<li><code>/actuator/health</code> used as a load balancer check, with details switched on.</li>
+<li>A heap dump attached to a support ticket.</li>
+<li>An internal URL that was never meant to be internal, found by a scanner.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../security-misconfiguration">security-misconfiguration</a>, in the <a href="..">secure-configuration</a> module. It follows the same story, an online store whose shipped settings give too much away, on a real framework.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

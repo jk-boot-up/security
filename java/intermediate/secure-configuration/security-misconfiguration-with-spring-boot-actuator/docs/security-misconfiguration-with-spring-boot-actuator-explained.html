@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Misconfiguration with Spring Boot Actuator, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Security Misconfiguration with Spring Boot Actuator, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Actuator is a window into the running store, so the settings that decide who can look through it, and at what, are the security of the store.</p>
+<h2>The 5 acts</h2>
+<h3>1. Expose everything</h3>
+<p>The store starts with <code>include=*</code>, values shown, health details on, and the heap dump and shutdown switches turned on. The list at <code>/actuator</code> offers env, heapdump, mappings and shutdown, and the customers' port and the operations port are the same port. <code>/actuator/env</code> shows the payment key and the database password. <code>/actuator/mappings</code> lists <code>/internal/refunds</code>. The health page shows its components. The heap dump downloads with status 200 and contains the payment key. A post to the loggers endpoint changes a level with no login. The checker scores the store 0 of 8, and a post to <code>/actuator/shutdown</code> returns 200 and the store stops answering.</p>
+<h3>2. What Spring Boot already does</h3>
+<p>With no settings at all the list offers <code>health</code> only, <code>/actuator/env</code> is 404 and health shows a status, not components. With <code>include=*</code> and nothing else the payment key is shown as <code>******</code>, but the property names and the route map are still open, and <code>/actuator/heapdump</code> and <code>POST /actuator/shutdown</code> answer 404 until their access is set. With one more line, heapdump access unrestricted, the key is masked in the environment page and yet the dump contains it: masking hides values, not memory.</p>
+<h3>3. Hardened: another port, a short list, rules</h3>
+<p>The hardened store puts operations on a different port from the customers. <code>GET /products</code> works on the customers' port, and <code>/actuator/health</code> there is refused whether or not the caller has a login. On the operations port health answers 200 with status UP and no components, and env, heapdump, mappings, beans and shutdown are refused even for an operator. The checker scores the store 8 of 8.</p>
+<h3>4. Who may read, and who may change</h3>
+<p><code>GET /actuator/loggers/ROOT</code> answers 401 with no login, 403 for a customer and 200 for an operator. Health shows its components to the operator and not to the customer. The operator posts DEBUG to the loggers endpoint and gets 405, and the level is still OFF, because <code>management.endpoint.loggers.access=read-only</code> removes the write operation even for the role that may read.</p>
+<h3>5. The bill</h3>
+<p>A developer adds <code>include=*</code> to the hardened store to debug something. The checker scores 7 of 8: the route map is now readable by an operator. A stranger asking for <code>/actuator/env</code> still gets 401, because the port, the list, the rules and the access levels are four separate settings and one of them failed while the others held. The same checks belong in CI on every change, because a dependency can add endpoints and a property can switch them on. A passing score means these 8 checks pass, not that the store is secure.</p>
+<h2>The verdict</h2>
+<p>Never expose everything on a port that customers can reach. Put operations on their own port, list the endpoints you need, require a role for all but health, show details only to that role, make read-only what must not change, leave the heap dump and shutdown off, and run the checker on every change.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>exposure.include=*</code> in a copied tutorial.</li>
+<li>Health details shown to everyone because a load balancer needed them.</li>
+<li>A heap dump sent to a support team.</li>
+<li>A <code>management.endpoint.*.access=unrestricted</code> line with no comment.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>management.endpoints.web.exposure.include=*</code> in a copied tutorial.</li>
+<li><code>/actuator/health</code> used as a load balancer check, with details switched on.</li>
+<li>A heap dump attached to a support ticket.</li>
+<li>An internal URL that was never meant to be internal, found by a scanner.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
