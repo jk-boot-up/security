@@ -1,0 +1,434 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "sql-injection-with-hibernate-and-postgres"
+level = "intermediate"
+module = "web-security"
+title = "SQL Injection with Hibernate and PostgreSQL"
+short_title = "SQL Injection with Hibernate"
+package = "sqlihibernate"
+main_class = "SqlHibernateDemo"
+tagline = "Hibernate does not make a query safe: only parameters do, and a database user with few rights limits the damage of a mistake"
+bold = "An object-relational mapper is not a shield. A JPQL or native query built by pasting text into it is injectable, JPQL can reach every entity and not just the one it names, and the fix is the same as ever: bind parameters, choose sort keys from a list, and connect as a database user who can only do what the page needs."
+domain = "an online store's product search"
+domain_note = ""
+youtube_description = "SQL injection in Hibernate 7 against PostgreSQL: concatenated JPQL, native queries, parameters, Criteria and least privilege."
+thumb_lines = ["HIBERNATE", "SQL INJECTION"]
+thumb_code = "where name like :term"
+youtube_title = "SQL Injection in Hibernate: JPQL, Native Queries and PostgreSQL Least Privilege"
+youtube_tags = ["sql injection", "hibernate", "jpql", "postgresql", "java", "application security"]
+
+[readme]
+intro = """
+The plain [sql-injection](../sql-injection) project injects into a toy database. This one does it where real Java shops are: **Hibernate ORM 7** talking to a real **PostgreSQL 18** that the demo starts in Docker on the loopback address and removes afterwards.
+
+What it shows:
+- **Hibernate is not a shield.** `createQuery("... like '%" + term + "%'")` and `createNativeQuery(...)` take a string, and a quote in the customer's text ends the literal and becomes query language.
+- **JPQL reaches further than the entity it names.** One concatenated product search can ask a yes or no question about the *account* table (does any password hash start with `pbkdf2$ana`?), so a hole in the product page leaks data from other entities.
+- **Native SQL is the whole database.** A `union select` returns every email and password hash.
+- **Parameters fix it in all three styles.** Named parameters in JPQL, named parameters in native SQL and the Criteria API keep every payload as plain text. A sort key is the one thing a parameter cannot carry, so it comes from a fixed list.
+- **A database user with few rights limits a mistake.** The search page connects as `shop_search`, who may only read the product table: the same injection is refused by PostgreSQL with `permission denied for table users`.
+
+**Maps to:** OWASP Top 10 (2025) A05 Injection · CWE-89 · OWASP ASVS 5.0 V1 (Encoding and Sanitization) · OWASP API Security API8.
+"""
+analogy = """
+A librarian who fetches books for you. If the slip you hand over is copied word for word into the librarian's own instruction sheet, a slip that says "this book, and also the staff files" is followed. If the slip is only ever read as a title, it cannot give orders. And a
+librarian who has no key to the staff room cannot fetch from it even when fooled.
+"""
+scenario = """
+An online store's product search page. The demo starts PostgreSQL 18 in a container, creates the tables with Hibernate, loads four products (one not yet for sale) and two accounts, and runs the search four ways with attacker text, as two different database users.
+"""
+costs = [
+    "**Docker is needed to run the demo and the integration tests;** the unit tests do not need it.",
+    "**Parameters cannot carry a table, column or sort direction,** so those come from an enum or an allow-list.",
+    "**A least-privilege database user means more than one connection setup:** schema changes use an admin user, the application another.",
+    "**The Criteria API is verbose,** which is why teams drift back to string-built JPQL.",
+    "**Review is needed for every native query and every string that reaches `createQuery`.**",
+]
+too_much = """
+Almost all application queries should use derived or annotated repository methods with bound parameters, and never need string building. Reserve native queries for things the mapper cannot express, and parameterise those too.
+"""
+met_before = [
+    "`@Query(\"... where p.name like :term\")` in Spring Data repositories.",
+    "`entityManager.createNativeQuery(\"... \" + input)` in code reviews.",
+    "`GRANT SELECT ON ... TO ...` in a database setup script.",
+    "HQL injection write-ups.",
+]
+where = """
+This is the tools version of [sql-injection](../sql-injection), in the [web-security](..) module. It follows the same four acts, so the numbers can be compared one for one.
+"""
+twin = """
+Everything runs for real: Hibernate 7.4 builds and runs the queries and PostgreSQL 18 enforces its permissions. Only the data is small and fixed. The container uses a random loopback port and is removed on exit, so the demo prints the same text on every run.
+"""
+test_note = "Unit tests need nothing; the PostgreSQL tests are tagged `integration` and run with `./gradlew integrationTest`. They start a container and always remove it."
+
+[[act]]
+title = "A search that works"
+summary = "Concatenated JPQL answers an honest search for Kettle with two products."
+detail = """
+The first version of the search builds a JPQL string from the customer's text. For the word Kettle it returns the Blue Kettle and the Red Kettle, the unlisted Prototype Toaster stays hidden, and nothing looks wrong. This is why the hole survives testing.
+"""
+speech = """
+First demo: a search that works. [[slnc 400]] The first version builds a query string from the customer's words. [[slnc 300]] For the word Kettle it returns two kettles, and the unlisted product stays hidden. [[slnc 300]] Nothing looks wrong, which is why the hole survives testing.
+"""
+rows = { works = "active ok" }
+console = [
+    ["jpql search 'Kettle' -> [Blue Kettle, Red Kettle]", "ok"],
+]
+
+[[act]]
+title = "Hibernate does not stop a quote"
+summary = "A quote shows the unlisted product, asks questions about the account table in JPQL, and a native union returns every email and password hash."
+detail = """
+A quote in the search box ends the string literal and the rest is JPQL: the unlisted Prototype Toaster appears. Because JPQL can name any entity, the same hole asks the account table whether any hash starts with `pbkdf2$ana` (every product comes back, so yes) and `pbkdf2$zed`
+(nothing comes back, so no): data is read one yes or no at a time from a page that only searches products. In the native query, `union select` returns the emails and password hashes of both accounts.
+"""
+speech = """
+Second demo: Hibernate does not stop a quote. [[slnc 400]] A quote ends the string, and the rest is query language. [[slnc 600]]
+The unlisted product appears. [[slnc 300]] The same hole asks the account table yes or no questions, because J P Q L can name any entity. [[slnc 600]]
+In the native query, a union returns every email and password hash.
+"""
+rows = { quote = "active wrong" }
+console = [
+    ["jpql search \"zzz' or p.listed = false ...\" -> [Prototype Toaster]", "bad"],
+    ["jpql guess that a hash starts pbkdf2$ana -> all four products", "bad"],
+    ["jpql guess that a hash starts pbkdf2$zed -> [no results]", "muted"],
+    ["native search with union select -> [ana@shop.example pbkdf2$ana$9f2c, ben@shop.example pbkdf2$ben$41d0]", "bad"],
+]
+
+[[act]]
+title = "Parameters keep text as text"
+summary = "Named parameters in JPQL and native SQL and the Criteria API return nothing for every payload; a sort key outside the list falls back to the default."
+detail = """
+The fixed searches have constant query text and send the customer's words as a named parameter, so the payloads are only odd product names that match nothing. The Criteria API binds the values it is given in the same way. The sort key is the one part a parameter cannot carry, so it is
+chosen from an enum, and a trick such as `price; drop table products` just gets the default order.
+"""
+speech = """
+Third demo: parameters keep text as text. [[slnc 400]] The query text is constant, and the customer's words travel as a parameter. [[slnc 600]]
+Named parameters in J P Q L, named parameters in native S Q L, and the Criteria A P I all return nothing for every payload. [[slnc 600]]
+The sort key comes from a list, because a parameter cannot carry it.
+"""
+rows = { params = "active ok" }
+console = [
+    ["jpql search 'Kettle' -> [Blue Kettle, Red Kettle]", "ok"],
+    ["jpql, native and criteria with the payloads -> [no results]", "ok"],
+    ["sort \"price; drop table products\" -> [no results] (default order, nothing dropped)", "ok"],
+]
+
+[[act]]
+title = "Few rights limit the damage"
+summary = "As shop_search, which may only read products, the same injections are refused by PostgreSQL with permission denied for table users."
+detail = """
+The careless searches run again, this time connected as `shop_search`, who has been granted `select` on the product table and nothing else. The union and the JPQL question about accounts are both refused by PostgreSQL itself with permission denied for table users. The mistake is still
+there, but it can read less. This is a second wall, not a replacement for parameters.
+"""
+speech = """
+Fourth demo: few rights limit the damage. [[slnc 400]] The search page connects as a database user who can only read products. [[slnc 600]]
+The same injections are refused by PostgreSQL itself. [[slnc 300]] The mistake is still there, but it can read less.
+"""
+rows = { rights = "active ok" }
+console = [
+    ["native union as shop_search -> refused: permission denied for table users", "ok"],
+    ["jpql guess as shop_search -> refused: permission denied for table users", "ok"],
+]
+
+[animation]
+subtitle = "Hibernate, PostgreSQL in Docker, and the customer's text that becomes code."
+boxes = [
+    ["works", "It works", "honest search"],
+    ["quote", "A quote", "JPQL and native SQL injected"],
+    ["params", "Parameters", "JPQL, native, Criteria"],
+    ["rights", "Few rights", "shop_search, products only"],
+]
+
+[docs.problem]
+scenario = """
+An online store's product search is written with Hibernate, and the team believes the mapper protects it.
+"""
+naive = """
+Build the JPQL or native query string from the customer's text; the ORM will keep it safe.
+"""
+deliver = [
+    "A real PostgreSQL started in Docker and removed afterwards.",
+    "Concatenated JPQL and native queries that leak data, with the payloads shown.",
+    "Fixed versions with named parameters, the Criteria API and an allow-list for sort keys.",
+    "A database user with read access to one table and the refusal it causes.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain sql-injection project, for the idea of injection",
+    "Docker running locally, for the demo and the integration tests",
+]
+not_required = [
+    "Spring: Hibernate is used directly",
+    "A PostgreSQL installation: the demo starts and removes its own",
+]
+install = [
+    "Docker, with the image `postgres:18.6-alpine` (pulled on first use)",
+]
+
+[docs.session]
+objectives = [
+    "explain why JPQL and native queries built from strings are injectable",
+    "show how JPQL can read entities that the query does not name",
+    "fix a query with named parameters, Criteria or an allow-list",
+    "explain what a least-privilege database user adds",
+]
+walkthrough = """
+Run act two and ask what the page was supposed to be able to see. Ask why the account question needs no table name in the query. In act four, ask who should own the grant statement.
+"""
+exercises = [
+    "Add a Spring Data style repository method and check that it binds the parameter.",
+    "Make `shop_search` read a view instead of the products table and decide what the view should hide.",
+    "Add a test that fails if any class in the project calls `createQuery` or `createNativeQuery` with a concatenated string.",
+    "Write a native query with an `in` list as a parameter.",
+]
+
+[docs.explained]
+sentence = """
+Hibernate runs the text it is given: parameters keep the customer's words as data, an allow-list covers the parts a parameter cannot, and a database user with few rights is the second wall.
+"""
+verdict = """
+Use derived or annotated queries with bound parameters, the Criteria API where queries are built dynamically, an enum for sort keys, and a least-privilege database user for the application. Treat every string passed to createQuery or createNativeQuery as a code review finding.
+"""
+recognise = [
+    "`createQuery(\"... '\" + value + \"'\")` in a review.",
+    "`@Query(nativeQuery = true, value = \"... \" + ...)` or `@Query` text built with `String.format`.",
+    "`GRANT ... TO app_user` in a database script.",
+    "`javax.persistence`/`jakarta.persistence` imports next to string concatenation.",
+]
+
+[spec]
+purpose = """
+Teach SQL injection through Hibernate 7 and PostgreSQL: concatenated JPQL and native queries, the fixes, and a database user with few rights.
+"""
+nongoals = [
+    "Spring Data repositories (named in the exercises).",
+    "Blind and time-based extraction techniques.",
+    "Database hardening beyond a read-only user.",
+]
+problem = """
+Teams trust the ORM and build queries as strings, and run the application as a database user that can read everything.
+"""
+roles = [["Entities and data", "`Product`, `Account`, `Shop`"], ["Vulnerable searches", "`UnsafeSearch`"], ["Fixed searches", "`SafeSearch`, `SortColumn`"], ["The database", "`PostgresLab`"], ["Entry point", "`SqlHibernateDemo`"]]
+requirements = [
+    "Concatenated JPQL reveals an unlisted product and answers questions about another entity.",
+    "Concatenated native SQL returns accounts through a union.",
+    "Named parameters and the Criteria API return nothing for every payload.",
+    "A sort key outside the list gets the default order.",
+    "The search user is refused by PostgreSQL when it reads the account table.",
+    "The container is removed after the demo and after every test run.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Hibernate and PostgreSQL on the loopback address"
+caption = "The page connects as shop_search; the schema is created as the admin user."
+nodes = [
+    { id = "page", label = "Search page", sub = "customer text", col = 0, row = 0, colour = "client" },
+    { id = "hib", label = "Hibernate 7", sub = "JPQL, native, Criteria", col = 1, row = 0, colour = "accent" },
+    { id = "pg", label = "PostgreSQL 18", sub = "in Docker, 127.0.0.1", col = 2, row = 0, colour = "amber", shape = "store" },
+    { id = "admin", label = "Admin user", sub = "creates tables", col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "page", to = "hib", label = "text" },
+    { from = "hib", to = "pg", label = "SQL as shop_search" },
+    { from = "admin", to = "pg", label = "schema" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The unsafe and safe searches share the entities and the factories."
+nodes = [
+    { id = "unsafe", label = "UnsafeSearch", sub = ["jpql(term, sort)", "nativeSql(term)"], col = 0, row = 0, colour = "red" },
+    { id = "safe", label = "SafeSearch", sub = ["jpql()", "nativeSql()", "criteria()"], col = 1, row = 0, colour = "green" },
+    { id = "sort", label = "SortColumn", sub = ["parse(text)"], col = 2, row = 0, colour = "amber" },
+    { id = "shop", label = "Shop", sub = ["load(lab)", "admin()", "searchUser()"], col = 0, row = 1, colour = "client" },
+    { id = "lab", label = "PostgresLab", sub = ["start()", "close()"], col = 1, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "safe", to = "sort", label = "sort key from" },
+    { from = "shop", to = "lab", label = "connects to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "Where the customer's text goes"
+caption = "In the safe version the text never becomes part of the query."
+nodes = [
+    { id = "text", label = "Customer text", sub = "untrusted", col = 0, row = 0, colour = "red" },
+    { id = "bind", label = "Bind", sub = "named parameter", col = 1, row = 0, colour = "green" },
+    { id = "stmt", label = "Statement", sub = "constant text", col = 2, row = 0, colour = "accent" },
+    { id = "perm", label = "Permissions", sub = "products only", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "text", to = "bind" },
+    { from = "bind", to = "stmt" },
+    { from = "stmt", to = "perm" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A union through a native query"
+participants = ["Attacker", "Search page", "PostgreSQL"]
+steps = [
+    ["Attacker", "Search page", "zzz' union select email ..."],
+    ["Search page", "PostgreSQL", "select name ... like '%zzz' union select ..."],
+    ["PostgreSQL", "Search page", "emails and password hashes", "reply"],
+    ["Search page", "Attacker", "shows them"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The same injection as the search user"
+participants = ["Attacker", "Search page", "PostgreSQL"]
+steps = [
+    ["Attacker", "Search page", "zzz' union select email ..."],
+    ["Search page", "PostgreSQL", "as shop_search"],
+    ["note", "PostgreSQL", "select on products only"],
+    ["PostgreSQL", "Search page", "permission denied for table users", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The internet", nodes = ["attacker"], colour = "red" },
+    { label = "The application", nodes = ["page", "hib"], colour = "accent" },
+    { label = "The database", nodes = ["pg"], colour = "amber" },
+]
+nodes = [
+    { id = "attacker", label = "Customer text", sub = "may be hostile", col = 0, row = 0, colour = "red", threats = ["T1"] },
+    { id = "page", label = "Search page", sub = "builds the query", col = 1, row = 0, colour = "client", threats = ["T1"] },
+    { id = "hib", label = "Hibernate", sub = "runs what it is given", col = 1, row = 1, colour = "accent", threats = ["T2"] },
+    { id = "pg", label = "PostgreSQL", sub = "enforces grants", col = 2, row = 0, colour = "amber", shape = "store", threats = ["T3"] },
+]
+edges = [
+    { from = "attacker", to = "page", label = "search term", threats = ["T1"] },
+    { from = "page", to = "hib", label = "query string", threats = ["T2"] },
+    { from = "hib", to = "pg", label = "SQL", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+The product search of an online store, written with Hibernate 7 against PostgreSQL 18. It covers JPQL, native SQL, Criteria queries and the database user the page connects as.
+It does not cover the rest of the application, the network between the application and the database, or injection into other stores.
+"""
+assets = [
+    "Account emails and password hashes.",
+    "Unlisted products.",
+    "The product table's integrity.",
+]
+actors = [
+    "A customer who types in the search box.",
+    "A developer who adds a new query.",
+]
+boundaries = [
+    "The customer's text to the application: untrusted until bound as a parameter.",
+    "The application to the database: only the rights of the search user.",
+]
+assumptions = [
+    "The container is local and its admin password is a lab value.",
+    "Hibernate and the PostgreSQL driver are current and unmodified.",
+]
+out_of_scope = [
+    "Second-order injection and stored procedures.",
+    "Denial of service from expensive queries.",
+]
+tests = [
+    "`SortColumnTest` needs no database and checks the sort allow-list.",
+    "`HibernateInjectionTest` (tagged `integration`) checks each payload against the unsafe and the safe searches and the refusal for the search user.",
+    "`DemoRunsTest` (tagged `integration`) compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, cross-site-scripting, moves from the database to the browser: the same untrusted text, this time becoming script.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Customer text becomes part of a JPQL or native query"
+where = "`UnsafeSearch`"
+control = "Named parameters, the Criteria API and an allow-list for sort keys"
+residual = "A new query written by string concatenation"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "JPQL reads entities the page was never meant to show"
+where = "`UnsafeSearch.jpql`"
+control = "Constant query text; review of every string reaching createQuery"
+residual = "Dynamic queries that need a builder"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "The application's database user can read every table"
+where = "The database user"
+control = "A search user with select on the product table only"
+residual = "Tables the search page legitimately needs to read"
+
+[poster]
+headline = [["HIBERNATE", "text"], ["SQL INJECTION", "accent"]]
+taglines = [["Hibernate does not make a query safe: only parameters do, and a database user with few rig", "gold"]]
+before = { code = "jpql search 'Kettle' -> [Blue Kettle, Red Kettle]", note = "A search that works", tag = "BEFORE" }
+after = { code = "where name like :term", note = "Few rights limit the damage", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "SQL Injection with Hibernate and PostgreSQL"
+narration = "Hello, and welcome. [[slnc 400]] This video explains S Q L Injection with Hibernate, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] An object-relational mapper is not a shield. A J P Q L or native query built by pasting text into it is injectable, J P Q L can reach every entity and not just the one it names, and the fix is the same as ever: bind parameters, choose sort keys from a list, and connect as a database user who can only do what the page needs. [[slnc 600]] Think of it this way. [[slnc 300]] A librarian who fetches books for you. If the slip you hand over is copied word for word into the librarian's own instruction sheet, a slip that says \"this book, and also the staff files\" is followed. If the slip is only ever read as a title, it cannot give orders. And a librarian who has no key to the staff room cannot fetch from it even when fooled. [[slnc 700]] In this video, the domain is an online store's product search. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why J P Q L and native queries built from strings are injectable. [[slnc 300]] Show how J P Q L can read entities that the query does not name. [[slnc 300]] Fix a query with named parameters, Criteria or an allow-list."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store's product search page.", "The demo starts PostgreSQL 18 in a", "container, creates the tables with", "Hibernate, loads four products (one not yet", "for sale) and two accounts, and runs the", "search four ways with attacker text, as two", "different database users."]
+narration = "Here is the scenario. [[slnc 400]] An online store's product search page. [[slnc 400]] The demo starts PostgreSQL 18 in a container, creates the tables with Hibernate, loads four products (one not yet for sale) and two accounts, and runs the search four ways with attacker text, as two different database users."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Docker is needed to run the demo and the integration", "tests", "Parameters cannot carry a table, column or sort", "direction", "A least-privilege database user means more than one", "connection setup", "The Criteria API is verbose", "Review is needed for every native query and every", "string that reaches createQuery"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Docker is needed to run the demo and the integration tests. [[slnc 500]] Parameters cannot carry a table, column or sort direction. [[slnc 500]] A least-privilege database user means more than one connection setup. [[slnc 500]] The Criteria A P I is verbose. [[slnc 500]] Review is needed for every native query and every string that reaches createQuery."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Entities and data: Product, Account, Shop", "Vulnerable searches: UnsafeSearch", "Fixed searches: SafeSearch, SortColumn", "The database: PostgresLab", "Entry point: SqlHibernateDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Entities and data is in Product and Account and Shop. [[slnc 500]] Vulnerable searches is in UnsafeSearch. [[slnc 500]] Fixed searches is in SafeSearch and SortColumn. [[slnc 500]] The database is in PostgresLab. [[slnc 500]] Entry point is in SqlHibernateDemo."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why JPQL and native queries built from strings", "are injectable", "Show how JPQL can read entities that the query does", "not name", "Fix a query with named parameters, Criteria or an", "allow-list", "Explain what a least-privilege database user adds"]
+narration = "So, how do you use it? [[slnc 400]] Use derived or annotated queries with bound parameters, the Criteria A P I where queries are built dynamically, an enum for sort keys, and a least-privilege database user for the application. [[slnc 500]] Treat every string passed to createQuery or createNativeQuery as a code review finding."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's S Q L Injection with Hibernate. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Hibernate runs the text it is given: parameters keep the customer's words as data, an allow-list covers the parts a parameter cannot, and a database user with few rights is the second wall. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a Spring Data style repository method and check that it binds the parameter. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
