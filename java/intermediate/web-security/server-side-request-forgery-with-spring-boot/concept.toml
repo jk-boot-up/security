@@ -1,0 +1,450 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "server-side-request-forgery-with-spring-boot"
+level = "intermediate"
+module = "web-security"
+title = "Server-Side Request Forgery with Spring Boot"
+short_title = "SSRF with Spring Boot"
+package = "ssrfspring"
+main_class = "SsrfSpringDemo"
+tagline = "A Spring RestClient fetches whatever it is told, so the address must be judged after resolution and the connection must go to the address that was judged"
+bold = "When a Spring Boot shop fetches an image from a customer's address, the server's network position becomes the attacker's; a name blocklist is read one way by the check and another by the network, so the fix is to resolve the name once, judge every resulting address, connect to the address that was judged, revalidate each redirect, and limit the type, size and time of the answer."
+domain = "an online store's product image import"
+domain_note = ""
+youtube_description = "SSRF in Spring Boot 4: RestClient, a blocklist that fails, resolving and pinning the address, redirects, DNS rebinding and limits."
+thumb_lines = ["SSRF WITH", "SPRING BOOT"]
+thumb_code = "judge the address, then connect to it"
+youtube_title = "SSRF in Spring Boot: RestClient, Resolved Addresses, Redirects and DNS Rebinding"
+youtube_tags = ["ssrf", "spring boot", "restclient", "dns rebinding", "java", "application security"]
+
+[readme]
+intro = """
+The plain [server-side-request-forgery](../server-side-request-forgery) project simulates the network. This one uses the real thing: **Spring Boot 4.1** with Spring's **`RestClient`** fetching from real HTTP servers on the loopback address. A small *invented internet* maps public, metadata and intranet addresses onto those servers, so the attacks work for real without leaving the machine.
+
+What it shows:
+- **A staff form "import an image from a web address"** lets the server fetch the cloud metadata address, localhost and the office admin page, because the server sits inside the network that the attacker cannot reach.
+- **A blocklist of names is read as text,** while the network layer reads an address. A decimal spelling, `127.1`, a mapped IPv6 address, a name that points inside and a redirect from an outside address all walk round it.
+- **The fix judges the resolved address.** The name is resolved once, every address it resolves to is checked, and the connection goes to the address that was checked, with the original host in the `Host` header. Each redirect is judged again, user info and odd ports are refused, and the answer must be a small image that arrives in time.
+- **Check-then-connect is not enough.** A name server that answers a public address first and a private one next defeats a client that resolves the name twice.
+
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control, which now includes server-side request forgery · CWE-918 · OWASP ASVS 5.0 V5 (File Handling) · OWASP SSRF Prevention Cheat Sheet.
+"""
+analogy = """
+A receptionist who will phone any number a visitor writes on a slip. The visitor cannot enter the back office, but the receptionist's phone can reach every extension. If the receptionist checks the slip for the word "payroll" and the visitor writes the extension number instead, the call goes through.
+"""
+scenario = """
+An online store lets staff import a product image from a web address. The demo starts the real shop five times, with a different importer each time, and posts addresses to it. The addresses lead into a small invented internet of local servers.
+"""
+costs = [
+    "**Connecting to a chosen address needs the Host header,** and an HTTPS client must keep the name for the certificate check, which a plain address-literal URL does not.",
+    "**Real DNS can change between lookups,** so the lookup and the connection must use the same answer.",
+    "**Redirects need judging again** or are not followed at all, and some honest hosts redirect.",
+    "**Allow-lists of hosts are stronger than address checks** where the shop knows its image hosts, but staff ask for new ones.",
+    "**Egress rules in the network are the second wall,** because code can still be wrong.",
+]
+too_much = """
+If the shop knows which hosts it imports from, keep an allow-list of hosts and let the network refuse everything else. The address checks in this project are for a feature that must accept any public address.
+"""
+met_before = [
+    "`RestClient.get().uri(url)` with a URL from a request parameter.",
+    "A cloud metadata address in an incident report.",
+    "`InetAddress.isSiteLocalAddress()` in a validation helper.",
+    "A webhook or image import form that takes a URL.",
+]
+where = """
+This is the tools version of [server-side-request-forgery](../server-side-request-forgery), in the [web-security](..) module. It follows the same five stories and prints the same lines where the stories match.
+"""
+twin = """
+The shop is a real Spring Boot application, the client is Spring's `RestClient` over the JDK HTTP client, and the answers come from real HTTP servers on loopback. Only the addresses are invented: the demo's name server and router send a connection for an invented address to a local server. Ports are never printed.
+"""
+test_note = "Each server answers on its own thread, and the timeouts are generous, so the demo prints the same text on every run."
+
+[[act]]
+title = "Importing an image from a web address"
+summary = "An honest address fetches the image."
+detail = """
+Staff paste an address into a form. The Spring Boot shop posts it to the importer, which fetches the address with RestClient and returns the image bytes. The honest address gives PNG-cat.
+"""
+speech = """
+First demo: importing an image from a web address. [[slnc 400]] Staff paste an address into a form. [[slnc 300]] The shop fetches it with Spring's Rest Client. [[slnc 300]] The honest address gives a cat picture.
+"""
+rows = { honest = "active ok" }
+console = [
+    ["honest address -> imported: PNG-cat", "ok"],
+]
+
+[[act]]
+title = "The server fetches whatever it is told"
+summary = "The metadata address, localhost and the office admin page all answer the importer with their secrets."
+detail = """
+The first version fetches any address. The cloud metadata address returns a demo access key, localhost returns a demo database password, and the office admin page returns its customer list. None of these can be reached from outside, but the shop's server can.
+"""
+speech = """
+Second demo: the server fetches whatever it is told. [[slnc 400]] The metadata address answers with a key. [[slnc 300]] Localhost answers with a database password. [[slnc 300]] The office page answers with its customer list. [[slnc 600]] The attacker cannot reach them, but the shop's server can.
+"""
+rows = { naive = "active wrong" }
+console = [
+    ["metadata address -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", "bad"],
+    ["localhost -> imported: DB_PASSWORD=demo-not-real", "bad"],
+    ["office admin page -> imported: internal admin panel: 3 customers", "bad"],
+]
+
+[[act]]
+title = "A blocklist of names is easy to walk around"
+summary = "The listed name is refused; a decimal spelling, 127.1, a mapped IPv6 address, a name that points inside and a redirect all get through."
+detail = """
+The second version refuses a list of host names. The metadata address is refused by name. The same address written as the decimal number 2852039166, localhost as 127.1, the metadata address as a mapped IPv6 address, an attacker's name that resolves to the office address, and a redirect from an outside address all
+get through, because the list compares text and the network layer reads an address.
+"""
+speech = """
+Third demo: a blocklist of names. [[slnc 400]] The listed name is refused. [[slnc 600]] The same address as a decimal number gets through. [[slnc 300]] So does a short form of localhost, a mapped I P version six address, a name that points inside, and a redirect. [[slnc 600]] The list compares text, and the network reads an address.
+"""
+rows = { blocklist = "active wrong" }
+console = [
+    ["metadata address -> refused: blocked host name 169.254.169.254", "ok"],
+    ["decimal spelling -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", "bad"],
+    ["short loopback -> imported: DB_PASSWORD=demo-not-real", "bad"],
+    ["redirect from outside -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", "bad"],
+]
+
+[[act]]
+title = "Check the address the connection really uses"
+summary = "The importer resolves the name once, judges every address, connects to the judged address and judges each redirect again; every disguise is refused and the honest address still works."
+detail = """
+The guarded importer resolves the host name once and judges every address it resolves to. The decimal spelling, 127.1, the mapped IPv6 address, the name that points inside, the redirect and a name with two answers (one private) are all refused, with the address they resolved to in the message.
+User info in the address is refused. The attacker's own image from a name that rebinds is fetched, and nothing else, because the connection goes to the address that was judged. The honest address still imports.
+"""
+speech = """
+Fourth demo: check the address the connection really uses. [[slnc 400]] The importer resolves the name once and judges every address it resolves to. [[slnc 600]] Every disguise is refused, with the real address in the message. [[slnc 300]] A redirect is judged again from the start. [[slnc 600]] The honest address still works.
+"""
+rows = { guarded = "active ok" }
+console = [
+    ["decimal spelling -> refused: 2852039166 resolves to a private address 169.254.169.254", "ok"],
+    ["redirect from outside -> refused: 169.254.169.254 resolves to a private address 169.254.169.254", "ok"],
+    ["two answers, one private -> refused", "ok"],
+    ["honest address -> imported: PNG-cat", "ok"],
+]
+
+[[act]]
+title = "Limits, and why checking and then connecting is not enough"
+summary = "Odd ports, pages that are not images, large answers and slow answers are refused; a client that checks and then connects by name is beaten by a rebinding name server."
+detail = """
+The guarded importer allows only ports 80 and 443, only images, at most 1024 bytes, and an answer within 1500 milliseconds. A web page, a 5000 byte answer and a slow server are each refused. The last row shows the mistake that looks like a fix: a client that resolves the name, judges it and
+then resolves the name again to connect. The attacker's name server answers a public address first and the private office address next, so the office page is imported.
+"""
+speech = """
+Fifth demo: limits, and why checking and then connecting is not enough. [[slnc 400]] Only two ports, only small images, and only an answer that comes in time. [[slnc 600]] Then the mistake that looks like a fix. [[slnc 300]] A client that checks the name and then looks it up again can be given a public address first and a private one next. [[slnc 600]] Connecting to the address that was judged closes that gap.
+"""
+rows = { limits = "active wrong" }
+console = [
+    ["a web page, not an image -> refused: not an image (text/html)", "ok"],
+    ["an answer of 5000 bytes -> refused: larger than 1024 bytes", "ok"],
+    ["an answer that takes 3 seconds -> refused: no answer within 1500 ms", "ok"],
+    ["check, then connect by name -> imported: internal admin panel: 3 customers", "bad"],
+]
+
+[animation]
+subtitle = "A shop's image import, an invented internet, and the address that is really used."
+boxes = [
+    ["honest", "It works", "an image from a web address"],
+    ["naive", "Fetch anything", "metadata, localhost, office"],
+    ["blocklist", "A blocklist", "walked around five ways"],
+    ["guarded", "Judge the address", "resolve once, connect to it"],
+    ["limits", "Limits", "and the rebinding trap"],
+]
+
+[docs.problem]
+scenario = """
+An online store imports product images from addresses that staff paste into a form, from a server inside the company network.
+"""
+naive = """
+Fetch the address with RestClient, perhaps after refusing a few host names.
+"""
+deliver = [
+    "A real Spring Boot shop and Spring's RestClient.",
+    "An invented internet of real loopback servers: public, attacker, metadata, localhost and office.",
+    "A blocklist importer that five disguises beat, and a guarded importer that resolves, judges, pins and limits.",
+    "A rebinding name server and a check-then-connect importer that it beats.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain server-side-request-forgery project, for the attack itself",
+]
+not_required = [
+    "A cloud account: the metadata service is an invented local server",
+    "Network access: everything stays on the loopback address",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a server that fetches a customer's address is reachable from outside",
+    "show why a blocklist of names fails against the resolver",
+    "judge every resolved address and connect to the judged address",
+    "name the limits that go with the address check",
+]
+walkthrough = """
+Run act three and ask what the blocklist compares and what the network connects to. In act four ask which address the connection used. In act five ask what happens if the lookup is repeated.
+"""
+exercises = [
+    "Add an allow-list of image hosts and decide which check comes first.",
+    "Make the importer handle HTTPS and keep the host name for the certificate check.",
+    "Add a test that every address in the policy table of private ranges is refused.",
+    "Add a per-user rate limit on imports.",
+]
+
+[docs.explained]
+sentence = """
+A server that fetches an address for a customer lends out its network position, so the address that is really connected to must be judged, after resolution, and the connection must go to that same address.
+"""
+verdict = """
+Resolve once, judge every address, connect to the judged address, revalidate every redirect, allow only the ports and content you need, cap size and time, prefer an allow-list of hosts where you have one, and add network egress rules as a second wall.
+"""
+recognise = [
+    "`RestClient.get().uri(url)` with a user-supplied URL.",
+    "`isSiteLocalAddress()` checks in validation helpers.",
+    "A cloud metadata address in an incident report.",
+    "\"Import from URL\" in an admin form.",
+]
+
+[spec]
+purpose = """
+Teach server-side request forgery on a real Spring Boot application with RestClient: the naive importer, a blocklist, and the address-pinning fix with limits.
+"""
+nongoals = [
+    "A real cloud metadata service.",
+    "HTTPS and certificate handling.",
+    "Network-level egress rules, which are described only.",
+]
+problem = """
+Servers fetch customer-supplied addresses from inside a trusted network, and checks on the text of the address do not match what the network connects to.
+"""
+roles = [["Importers", "`NaiveImporter`, `BlocklistImporter`, `GuardedImporter`, `TwoStepImporter`"], ["Judging and parsing", "`AddressPolicy`, `Target`"], ["Fetching", "`Fetcher`, `Dns`, `Router`"], ["The invented internet", "`Internet`"], ["The web layer and entry point", "`ImportController`, `SsrfSpringDemo`"]]
+requirements = [
+    "The naive importer reaches the metadata address, localhost and the office page.",
+    "A blocklist of names is beaten by a decimal spelling, a short loopback, a mapped IPv6 address, a name that points inside and a redirect.",
+    "The guarded importer refuses all of them, judges each redirect and refuses user info and odd ports.",
+    "The guarded importer connects to the address it judged and so cannot be rebound.",
+    "A check followed by a second lookup is beaten by a rebinding name server.",
+    "Type, size and time are limited.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The shop and the invented internet"
+caption = "The shop's server can reach servers that the attacker cannot."
+nodes = [
+    { id = "staff", label = "Staff form", sub = "an address to import", col = 0, row = 0, colour = "client" },
+    { id = "shop", label = "Shop (Spring Boot)", sub = "RestClient inside the network", col = 1, row = 0, colour = "accent" },
+    { id = "public", label = "Public hosts", sub = "images, attacker", col = 2, row = 0, colour = "green" },
+    { id = "inside", label = "Inside the network", sub = "metadata, localhost, office", col = 2, row = 1, colour = "red", shape = "store" },
+]
+edges = [
+    { from = "staff", to = "shop", label = "address" },
+    { from = "shop", to = "public", label = "intended" },
+    { from = "shop", to = "inside", label = "forged", colour = "red", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Four importers share the parsing, the resolver and the fetcher; only the checks differ."
+nodes = [
+    { id = "naive", label = "NaiveImporter", sub = ["importImage(address)"], col = 0, row = 0, colour = "red" },
+    { id = "block", label = "BlocklistImporter", sub = ["check(target)"], col = 1, row = 0, colour = "amber" },
+    { id = "guarded", label = "GuardedImporter", sub = ["resolveAndJudge()", "limits"], col = 2, row = 0, colour = "green" },
+    { id = "policy", label = "AddressPolicy", sub = ["isPublic(address)"], col = 0, row = 1, colour = "accent" },
+    { id = "fetcher", label = "Fetcher", sub = ["get(where, host, path)"], col = 1, row = 1, colour = "client" },
+    { id = "net", label = "Internet", sub = ["resolve()", "route()"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "guarded", to = "policy", label = "judges with" },
+    { from = "guarded", to = "fetcher", label = "fetches with" },
+    { from = "fetcher", to = "net", label = "connects via" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the guarded importer does, in order"
+caption = "The address is judged after resolution and the connection goes to the judged address."
+nodes = [
+    { id = "parse", label = "Parse", sub = "scheme, user info, port", col = 0, row = 0, colour = "client" },
+    { id = "resolve", label = "Resolve once", sub = "every address", col = 1, row = 0, colour = "accent" },
+    { id = "judge", label = "Judge", sub = "all public", col = 2, row = 0, colour = "amber" },
+    { id = "connect", label = "Connect", sub = "to the judged address", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "parse", to = "resolve" },
+    { from = "resolve", to = "judge" },
+    { from = "judge", to = "connect" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A rebinding name server against check-then-connect"
+participants = ["Attacker's name server", "Importer", "Office server"]
+steps = [
+    ["Importer", "Attacker's name server", "look up the name (to judge it)"],
+    ["Attacker's name server", "Importer", "203.0.113.66, public", "reply"],
+    ["Importer", "Attacker's name server", "look up the name (to connect)"],
+    ["Attacker's name server", "Importer", "10.0.0.5, private", "reply"],
+    ["Importer", "Office server", "GET /"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "The guarded importer against the same name"
+participants = ["Attacker's name server", "Guarded importer", "Attacker's server"]
+steps = [
+    ["Guarded importer", "Attacker's name server", "look up the name once"],
+    ["Attacker's name server", "Guarded importer", "203.0.113.66, public", "reply"],
+    ["note", "Guarded importer", "judged public: connect to this address"],
+    ["Guarded importer", "Attacker's server", "GET /cat.png"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The internet", nodes = ["attacker"], colour = "red" },
+    { label = "The company network", nodes = ["shop", "inside"], colour = "amber" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "types an address, runs a name server", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "shop", label = "Shop server", sub = "fetches for the customer", col = 1, row = 0, colour = "accent", threats = ["T1", "T2", "T3"] },
+    { id = "inside", label = "Internal services", sub = "metadata, config, admin", col = 2, row = 0, colour = "amber", shape = "store", threats = ["T1"] },
+]
+edges = [
+    { from = "attacker", to = "shop", label = "address", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "shop", to = "inside", label = "forged request", threats = ["T1", "T3"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Boot shop feature that fetches an image from an address supplied by staff, running inside a company network. It covers the address, resolution, redirects and the answer. It does not cover the network's own egress rules or the content of an accepted image.
+"""
+assets = [
+    "Cloud credentials from the metadata service.",
+    "Internal services and their data.",
+    "The shop server's availability.",
+]
+actors = [
+    "A staff member, or an attacker who controls what staff paste.",
+    "An attacker who runs a web server and a name server.",
+]
+boundaries = [
+    "The staff form to the importer: the address is untrusted.",
+    "The importer to the network: the server's position is trusted and the address is not.",
+]
+assumptions = [
+    "Internal services answer without authentication to anything on the network.",
+    "The resolver tells the truth about what it returned.",
+]
+out_of_scope = [
+    "HTTPS and certificate handling.",
+    "Malicious image content.",
+]
+tests = [
+    "`PolicyTest` checks which addresses are public however they are spelled, and how an address is taken apart.",
+    "`ImporterTest` runs each importer against the invented internet over real HTTP.",
+    "`DemoRunsTest` compares the whole demo through real Spring Boot servers with the golden output.",
+]
+next = """
+The next project, xml-and-template-injection, moves to documents and templates that a server parses for a customer.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "The server fetches an internal address for the attacker and returns what it holds"
+where = "`NaiveImporter`, `BlocklistImporter`"
+control = "Judge every resolved address with `AddressPolicy`, connect to the judged address"
+residual = "Internal services that are public by mistake"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A redirect or a rebinding name server changes the target after the check"
+where = "`GuardedImporter`, `TwoStepImporter`"
+control = "Resolve once, connect to the judged address, judge every redirect from the start"
+residual = "A name server that returns a public address that is later reassigned"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "A huge or slow answer ties up the server"
+where = "`Fetcher`"
+control = "A maximum size, a timeout, an image-only content type and two ports"
+residual = "Many slow requests together"
+
+[poster]
+headline = [["SSRF WITH", "text"], ["SPRING BOOT", "accent"]]
+taglines = [["A Spring RestClient fetches whatever it is told, so the address must be judged after resol", "gold"]]
+before = { code = "honest address -> imported: PNG-cat", note = "Importing an image from a web address", tag = "BEFORE" }
+after = { code = "judge the address, then connect to it", note = "Limits, and why checking and then connec", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Server-Side Request Forgery with Spring Boot"
+narration = "Hello, and welcome. [[slnc 400]] This video explains S S R F with Spring Boot, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] When a Spring Boot shop fetches an image from a customer's address, the server's network position becomes the attacker's; a name blocklist is read one way by the check and another by the network, so the fix is to resolve the name once, judge every resulting address, connect to the address that was judged, revalidate each redirect, and limit the type, size and time of the answer. [[slnc 600]] Think of it this way. [[slnc 300]] A receptionist who will phone any number a visitor writes on a slip. The visitor cannot enter the back office, but the receptionist's phone can reach every extension. If the receptionist checks the slip for the word \"payroll\" and the visitor writes the extension number instead, the call goes through. [[slnc 700]] In this video, the domain is an online store's product image import. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why a server that fetches a customer's address is reachable from outside. [[slnc 300]] Show why a blocklist of names fails against the resolver. [[slnc 300]] Judge every resolved address and connect to the judged address."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store lets staff import a product", "image from a web address.", "The demo starts the real shop five times,", "with a different importer each time, and", "posts addresses to it.", "The addresses lead into a small invented", "internet of local servers."]
+narration = "Here is the scenario. [[slnc 400]] An online store lets staff import a product image from a web address. [[slnc 400]] The demo starts the real shop five times, with a different importer each time, and posts addresses to it. [[slnc 400]] The addresses lead into a small invented internet of local servers."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Connecting to a chosen address needs the Host header", "Real DNS can change between lookups", "Redirects need judging again", "Allow-lists of hosts are stronger than address checks", "Egress rules in the network are the second wall"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Connecting to a chosen address needs the Host header. [[slnc 500]] Real DNS can change between lookups. [[slnc 500]] Redirects need judging again. [[slnc 500]] Allow-lists of hosts are stronger than address checks. [[slnc 500]] Egress rules in the network are the second wall."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Importers: NaiveImporter, BlocklistImporter,", "GuardedImporter", "Judging and parsing: AddressPolicy, Target", "Fetching: Fetcher, Dns, Router", "The invented internet: Internet", "The web layer and entry point: ImportController,", "SsrfSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Importers is in NaiveImporter and BlocklistImporter and GuardedImporter. [[slnc 500]] Judging and parsing is in AddressPolicy and Target. [[slnc 500]] Fetching is in Fetcher and Dns and Router. [[slnc 500]] The invented internet is in Internet. [[slnc 500]] The web layer and entry point is in ImportController and SsrfSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["isSiteLocalAddress() checks in validation helpers", "A cloud metadata address in an incident report", "\"Import from URL\" in an admin form"]
+narration = "You have probably met this already. [[slnc 400]] isSiteLocalAddress() checks in validation helpers. [[slnc 500]] A cloud metadata address in an incident report. [[slnc 500]] \"Import from U R L\" in an admin form."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why a server that fetches a customer's address", "is reachable from outside", "Show why a blocklist of names fails against the", "resolver", "Judge every resolved address and connect to the judged", "address", "Name the limits that go with the address check"]
+narration = "So, how do you use it? [[slnc 400]] Resolve once, judge every address, connect to the judged address, revalidate every redirect, allow only the ports and content you need, cap size and time, prefer an allow-list of hosts where you have one, and add network egress rules as a second wall."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's S S R F with Spring Boot. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A server that fetches an address for a customer lends out its network position, so the address that is really connected to must be judged, after resolution, and the connection must go to that same address. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add an allow-list of image hosts and decide which check comes first. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

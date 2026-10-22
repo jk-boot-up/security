@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Server-Side Request Forgery with Spring Boot</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Server-Side Request Forgery with Spring Boot</h1>
+<pre><code>src/main/java/com/jk/explore/security/ssrfspring/
+├── AddressPolicy.java      Which addresses a server may fetch from for a customer: public ones only
+├── BlocklistImporter.java  The second version: refuse a short list of names
+├── Dns.java                Name to addresses
+├── Fetcher.java            One request over Spring's {@link RestClient}, to an address that has already been chosen, with the original host in the Host header
+├── GuardedImporter.java    The fixed version
+├── ImportController.java   &quot;Import a product image from a web address&quot;, as a staff member's form posts it
+├── ImportRefused.java      The importer refused an address, with the reason it gives back to the caller
+├── Importer.java           &quot;Import a product image from a web address&quot;: fetch the address and return what it holds
+├── ImporterConfig.java     Which importer the shop runs is chosen by profile, so one controller serves all four versions
+├── Internet.java           A small invented internet on the loopback address: a public image host, an attacker's host, the cloud metadata address, the shop's own configuration service on localhost and an office admin page
+├── NaiveImporter.java      The first version: fetch whatever address the customer gives, and follow whatever redirect comes back
+├── Router.java             Where a connection to an address really goes
+├── ShopApp.java            
+├── SsrfSpringDemo.java     Runs the product image import story in five numbered acts against real Spring Boot servers and a small invented internet on loopback
+├── Target.java             An address taken apart by hand, the same way for every importer
+└── TwoStepImporter.java    The mistake that looks like a fix: resolve the name and judge it, then hand the same name to the client, which resolves it again
+</code></pre>
+<p><strong>When a Spring Boot shop fetches an image from a customer's address, the server's network position becomes the attacker's; a name blocklist is read one way by the check and another by the network, so the fix is to resolve the name once, judge every resulting address, connect to the address that was judged, revalidate each redirect, and limit the type, size and time of the answer.</strong></p>
+<p>The plain <a href="../server-side-request-forgery">server-side-request-forgery</a> project simulates the network. This one uses the real thing: <strong>Spring Boot 4.1</strong> with Spring's <strong><code>RestClient</code></strong> fetching from real HTTP servers on the loopback address. A small <em>invented internet</em> maps public, metadata and intranet addresses onto those servers, so the attacks work for real without leaving the machine.</p>
+<p>What it shows:
+- <strong>A staff form "import an image from a web address"</strong> lets the server fetch the cloud metadata address, localhost and the office admin page, because the server sits inside the network that the attacker cannot reach.
+- <strong>A blocklist of names is read as text,</strong> while the network layer reads an address. A decimal spelling, <code>127.1</code>, a mapped IPv6 address, a name that points inside and a redirect from an outside address all walk round it.
+- <strong>The fix judges the resolved address.</strong> The name is resolved once, every address it resolves to is checked, and the connection goes to the address that was checked, with the original host in the <code>Host</code> header. Each redirect is judged again, user info and odd ports are refused, and the answer must be a small image that arrives in time.
+- <strong>Check-then-connect is not enough.</strong> A name server that answers a public address first and a private one next defeats a client that resolves the name twice.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A01 Broken Access Control, which now includes server-side request forgery · CWE-918 · OWASP ASVS 5.0 V5 (File Handling) · OWASP SSRF Prevention Cheat Sheet.</p>
+<h2>The idea in everyday terms</h2>
+<p>A receptionist who will phone any number a visitor writes on a slip. The visitor cannot enter the back office, but the receptionist's phone can reach every extension. If the receptionist checks the slip for the word "payroll" and the visitor writes the extension number instead, the call goes through.</p>
+<h2>The scenario</h2>
+<p>An online store lets staff import a product image from a web address. The demo starts the real shop five times, with a different importer each time, and posts addresses to it. The addresses lead into a small invented internet of local servers.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Importing an image from a web address</td>
+<td>An honest address fetches the image.</td>
+</tr>
+<tr>
+<td>2. The server fetches whatever it is told</td>
+<td>The metadata address, localhost and the office admin page all answer the importer with their secrets.</td>
+</tr>
+<tr>
+<td>3. A blocklist of names is easy to walk around</td>
+<td>The listed name is refused; a decimal spelling, 127.1, a mapped IPv6 address, a name that points inside and a redirect all get through.</td>
+</tr>
+<tr>
+<td>4. Check the address the connection really uses</td>
+<td>The importer resolves the name once, judges every address, connects to the judged address and judges each redirect again; every disguise is refused and the honest address still works.</td>
+</tr>
+<tr>
+<td>5. Limits, and why checking and then connecting is not enough</td>
+<td>Odd ports, pages that are not images, large answers and slow answers are refused; a client that checks and then connects by name is beaten by a rebinding name server.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>15 tests in <code>DemoRunsTest</code>, <code>ImporterTest</code>, <code>PolicyTest</code>. Each server answers on its own thread, and the timeouts are generous, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The shop is a real Spring Boot application, the client is Spring's <code>RestClient</code> over the JDK HTTP client, and the answers come from real HTTP servers on loopback. Only the addresses are invented: the demo's name server and router send a connection for an invented address to a local server. Ports are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/server-side-request-forgery-with-spring-boot-explained.html">Server-Side Request Forgery with Spring Boot, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The shop's server can reach servers that the attacker cannot.</p>
+<p><img alt="The shop and the invented internet" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Four importers share the parsing, the resolver and the fetcher; only the checks differ.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The address is judged after resolution and the connection goes to the judged address.</p>
+<p><img alt="What the guarded importer does, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A rebinding name server against check-then-connect" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/server-side-request-forgery-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Connecting to a chosen address needs the Host header,</strong> and an HTTPS client must keep the name for the certificate check, which a plain address-literal URL does not.</li>
+<li><strong>Real DNS can change between lookups,</strong> so the lookup and the connection must use the same answer.</li>
+<li><strong>Redirects need judging again</strong> or are not followed at all, and some honest hosts redirect.</li>
+<li><strong>Allow-lists of hosts are stronger than address checks</strong> where the shop knows its image hosts, but staff ask for new ones.</li>
+<li><strong>Egress rules in the network are the second wall,</strong> because code can still be wrong.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>If the shop knows which hosts it imports from, keep an allow-list of hosts and let the network refuse everything else. The address checks in this project are for a feature that must accept any public address.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>RestClient.get().uri(url)</code> with a URL from a request parameter.</li>
+<li>A cloud metadata address in an incident report.</li>
+<li><code>InetAddress.isSiteLocalAddress()</code> in a validation helper.</li>
+<li>A webhook or image import form that takes a URL.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../server-side-request-forgery">server-side-request-forgery</a>, in the <a href="..">web-security</a> module. It follows the same five stories and prints the same lines where the stories match.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
