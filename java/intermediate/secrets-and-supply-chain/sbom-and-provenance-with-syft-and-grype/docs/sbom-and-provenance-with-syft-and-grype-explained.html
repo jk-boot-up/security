@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOMs and Scanning with syft and grype, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SBOMs and Scanning with syft and grype, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>You cannot answer whether you are affected by an advisory without a list of what you ship, and the list is useful only if it is written at every build, scanned again on a schedule and read by a gate that has rules for exceptions.</p>
+<h2>The 5 acts</h2>
+<h3>1. What a bill of materials answers</h3>
+<p>syft catalogues the image shop-sbom:2.14.1 without running it and writes a CycloneDX JSON document. It lists operating system packages and the application's libraries, log4j-core and log4j-api 2.14.1, each by its package URL, which names the ecosystem, the library and the version. Hashes and licences are there. What it does not say is which repository, commit or builder made the image; that is what provenance is for.</p>
+<h3>2. Scanning it against known advisories</h3>
+<p>grype matches the image's packages to its vulnerability database: two critical advisories in log4j, CVE-2021-44228 and CVE-2021-45046, and one high, CVE-2021-45105, with the versions that fix them. Scanning the bill alone, not the image, finds the same advisories. The rest of the findings come from the base image's operating system packages, and their number changes every day, so the demo does not print it.</p>
+<h3>3. Fixing it, and checking that it is fixed</h3>
+<p>The upgrade that clears every critical and high advisory is 2.17.0 or later, and the team builds 2.25.5. The new bill is compared with the old: it removes the 2.14.1 libraries and adds the 2.25.5 ones, and the base image's packages are the same in both. The scan of the new image has no critical or high advisory in log4j, where the old image had three.</p>
+<h3>4. A gate that reads the scan</h3>
+<p>The gate refuses an image with a critical or high advisory in the store's libraries. The old image is refused with two critical and one high. An exception for the high one does not help, because an exception cannot cover a critical advisory. 2.16.0 fixes the critical ones and is still refused because of the high one. With a written exception that names the advisory, the reason and the day it ends, it is deployed on day 100 and refused on day 130, after the exception ran out on day 120. 2.25.5 is deployed.</p>
+<h3>5. The bill</h3>
+<p>The same log4j-core 2.14.1 jar renamed blob.dat in another image is in no bill and in no scan: a scanner finds only what the cataloguer recognises. The bill written for 2.14.1 does not describe 2.25.5, so a bill must be written at every build. The database the scan matches against is data, with an age. An advisory published tomorrow matches a bill written today, so the bills must be kept and scanned again on a schedule. A finding is a question, not a verdict: a vulnerable library the store never calls is still reported, and a statement of exploitability records the answer.</p>
+<h2>The verdict</h2>
+<p>Write a bill of materials for every image at build time, keep it with the image, scan it on a schedule with a fresh database, gate on critical and high advisories with exceptions that name a reason and an end date, and know what your cataloguer cannot see.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>syft ... -o cyclonedx-json</code> or <code>grype sbom:...</code> in a pipeline.</li>
+<li>A <code>bom.json</code> attached to a release.</li>
+<li>A package URL such as <code>pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1</code>.</li>
+<li>A scanner with thousands of findings in the base image.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>syft</code> or <code>grype</code> as a step in a pipeline.</li>
+<li>A <code>bom.json</code> or <code>sbom.cdx.json</code> attached to a release.</li>
+<li>A scanner report with hundreds of findings, most of them in the base image.</li>
+<li>A <code>.grype.yaml</code> file with ignore rules.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

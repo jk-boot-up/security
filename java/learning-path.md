@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 101 projects. Planned: 51 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 102 projects. Planned: 50 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,14 +24,14 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **60** | **16** | **76** |
+| **Intermediate** | | **61** | **15** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
 | | identity-and-access | 12 | 0 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
 | | secure-coding | 4 | 4 | 8 |
-| | secrets-and-supply-chain | 6 | 2 | 8 |
+| | secrets-and-supply-chain | 7 | 1 | 8 |
 | | platform-hardening | 2 | 2 | 4 |
 | | detection-and-response | 3 | 2 | 5 |
 | | secure-design | 3 | 2 | 5 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **101** | **51** | **152** |
+| **All** | | **102** | **50** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 20 | 16 | 36 |
+| Intermediate | With tools | 21 | 15 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **41** | **16** | **57** |
+| **All** | **With tools** | **42** | **15** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -239,7 +239,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 98 | [artifact-signing](intermediate/secrets-and-supply-chain/artifact-signing) | Plain | Run only what the release team signed, and only what the world can see they signed | A08, SLSA |
 | 99 | [artifact-signing-with-cosign](intermediate/secrets-and-supply-chain/artifact-signing-with-cosign) | With tools: cosign | A tag is a name, a digest is a checksum, and a signature on the digest is the only thing a deployment gate can rely on | A08, SLSA |
 | 100 | [sbom-and-provenance](intermediate/secrets-and-supply-chain/sbom-and-provenance) | Plain | Know what is inside a release, and prove where it came from | A03, SLSA, SSDF |
-| 101 | sbom-and-provenance-with-syft-and-grype | With tools: syft and grype | *planned*: generating and scanning the SBOM of a local image | A03, SLSA, SSDF |
+| 101 | [sbom-and-provenance-with-syft-and-grype](intermediate/secrets-and-supply-chain/sbom-and-provenance-with-syft-and-grype) | With tools: syft and grype | A bill of materials says what is inside an image, a scanner says which of it is known to be broken, and a gate decides what to do about it | A03, SLSA, SSDF |
 | 102 | [dependency-confusion](intermediate/secrets-and-supply-chain/dependency-confusion) | Plain | If a build can find your private name in a public place, someone else will put a package there | A03, CWE-427 |
 | 103 | dependency-confusion-with-gradle | With tools: gradle | *planned*: repository content filtering and dependency verification | A03, CWE-427 |
 
