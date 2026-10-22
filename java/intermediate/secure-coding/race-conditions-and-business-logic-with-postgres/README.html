@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Race Conditions with PostgreSQL and Hibernate</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Race Conditions with PostgreSQL and Hibernate</h1>
+<pre><code>src/main/java/com/jk/explore/security/racepg/
+├── Db.java                  A real PostgreSQL 18 in a container on a free loopback port, removed on close, and the small things every act needs from it
+├── Hib.java                 Hibernate ORM 7 against the lab's database, remembering every SQL statement it sends
+├── HibAccount.java          An account as Hibernate sees it: the version column is what makes the update conditional
+└── RaceConditionsDemo.java  Runs on a thread of its own, so that the caller can watch it wait
+</code></pre>
+<p><strong>In a real PostgreSQL 18 two withdrawals that read before either writes pay out 160 from 100; a check constraint and a conditional update, a row lock with wait, NOWAIT, a timeout and SKIP LOCKED, REPEATABLE READ and SERIALIZABLE against write skew, a Hibernate @Version column and a one-time key claimed in the same transaction as the money each close the gap in their own way, but they bring retries, deadlocks that PostgreSQL cancels, and waits behind a person, and a lock in one server's memory protects nothing in another.</strong></p>
+<p>The plain <a href="../race-conditions-and-business-logic">race-conditions-and-business-logic</a> project shows the gap between a check and a write with a scripted interleaving and its own locks. This one runs it against a real <strong>PostgreSQL 18</strong> in Docker, with plain JDBC and <strong>Hibernate ORM 7</strong>. It needs Docker; the tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Check, then act.</strong> Two withdrawals of 80 from a balance of 100 each read 100: the bank pays out 160 and the balance says 20. A check constraint (<code>balance &gt;= 0</code>) with a relative update, or a condition inside the update (<code>where balance &gt;= 80</code>, one row or none), refuses the second. A single-use coupon is claimed in one statement.
+- <strong>Row locks.</strong> <code>SELECT ... FOR UPDATE</code>: the second session waits (<code>pg_stat_activity</code> shows a Lock wait), then reads 20 and is refused. <code>NOWAIT</code> refuses at once, <code>lock_timeout</code> gives up, <code>SKIP LOCKED</code> takes the next row.
+- <strong>Isolation levels.</strong> READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it (<code>40001</code>) and the caller retries; write skew across two rows passes under REPEATABLE READ (total -100) and is refused under SERIALIZABLE.
+- <strong>Hibernate.</strong> <code>@Version</code> makes the update <code>... where id=? and version=?</code>, so the second writer gets an <code>OptimisticLockException</code>; a pessimistic lock is <code>for no key update</code>. A payment key is claimed in the same transaction as the money.
+- <strong>The bill.</strong> Opposite lock order deadlocks and PostgreSQL cancels one (<code>40P01</code>); locks in the memory of two servers protect nothing; a transaction that waits for a person keeps everyone waiting.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A06 Insecure Design · CWE-362 (race condition), CWE-367 (time-of-check time-of-use), CWE-840 (business logic errors).</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank counter with two clerks and one ledger. If both read the balance before either writes, both pay out. Writing the rule on the ledger itself, queueing at the page, or stamping every page with a number so that a stale copy is refused each stop the double payment, and each has a different cost.</p>
+<h2>The scenario</h2>
+<p>A bank lets a customer withdraw from the same account on a phone and a laptop at the same moment. The demo plays the two requests against a real database and tries every way to close the gap.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Check, then act: two requests in the gap</td>
+<td>Two withdrawals that read before either writes pay out 160 from 100; a check constraint, a conditional update and a one-statement claim close the gap.</td>
+</tr>
+<tr>
+<td>2. Row locks: making the check and the write one step</td>
+<td>SELECT FOR UPDATE makes the second request wait and then see the first; NOWAIT, a timeout and SKIP LOCKED are the other ways to meet a lock.</td>
+</tr>
+<tr>
+<td>3. Isolation levels</td>
+<td>READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it; only SERIALIZABLE stops write skew.</td>
+</tr>
+<tr>
+<td>4. Optimistic locking with Hibernate, and one-time keys</td>
+<td>A version column makes the update conditional; a payment key claimed in the same transaction as the money runs once.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Opposite lock order deadlocks, locks in one server's memory protect nothing in another, and a transaction that waits for a person keeps everyone waiting.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>RaceConditionsTest</code>. The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>PostgreSQL 18.6 is the real server in a container on a free loopback port, started with a short deadlock timeout and removed at the end. The sessions are real connections; the interleavings are scripted, so that the output is the same on every run. Ports and container names are never printed; the demo takes about thirty seconds.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.postgresql:postgresql</td>
+<td>42.7.14</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.hibernate.orm:hibernate-core</td>
+<td>7.4.13.Final</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.slf4j:slf4j-nop</td>
+<td>2.0.17</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/race-conditions-and-business-logic-with-postgres-explained.html">Race Conditions with PostgreSQL and Hibernate, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Two sessions meet in one database.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The lab database, the Hibernate side and the demo.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>From the cheapest to the strongest.</p>
+<p><img alt="Ways to close the gap" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A row lock" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/race-conditions-and-business-logic-with-postgres-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Locks make requests wait,</strong> and a long transaction makes everybody wait.</li>
+<li><strong>Stronger isolation means retries,</strong> and the code must be safe to repeat.</li>
+<li><strong>Optimistic locking pushes the conflict to the user</strong> or to a retry loop.</li>
+<li><strong>Deadlocks happen when locks are taken in different orders,</strong> and the database resolves them by cancelling one.</li>
+<li><strong>A rule in the schema holds for every program,</strong> but only the rules that a constraint can express.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A table that one background job updates once a night does not need row locks or serializable transactions. Use them where two requests can reach the same row, or the same rule across rows, at the same moment.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@Version</code> on a JPA entity.</li>
+<li><code>SELECT ... FOR UPDATE</code> in a repository query.</li>
+<li><code>@Transactional(isolation = ...)</code>.</li>
+<li>A 409 Conflict or an "optimistic lock" error page.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../race-conditions-and-business-logic">race-conditions-and-business-logic</a>, in the <a href="..">secure-coding</a> module. The plain project explains the gap with its own locks; this one uses what a database already has.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

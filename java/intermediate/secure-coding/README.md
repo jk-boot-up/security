@@ -11,6 +11,7 @@ Habits in the code itself: validating input at the trust boundary, keeping state
 | 3 | [secrets-in-errors-and-logs](secrets-in-errors-and-logs) | A log is a second database that nobody protects | A09, A02, CWE-209, CWE-532, CWE-117 |
 | 4 | [fuzzing](fuzzing) | Let the machine try the inputs nobody thought of | CWE-20, CWE-248, CWE-190, CWE-835, A06 |
 | 5 | [input-validation-with-hibernate-validator](input-validation-with-hibernate-validator) | Write what is allowed once, as annotations on the type, and let Jakarta Validation run it at the boundary, in an order, with limits first | A05, CWE-20, CWE-1333 |
+| 6 | [race-conditions-and-business-logic-with-postgres](race-conditions-and-business-logic-with-postgres) | Two requests meet in the gap between a read and a write; the database can close it with a check, a lock, an isolation level or a version, and each has a price | A06, CWE-362, CWE-840 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

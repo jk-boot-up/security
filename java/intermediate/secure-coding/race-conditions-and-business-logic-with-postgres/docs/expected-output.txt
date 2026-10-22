@@ -1,0 +1,36 @@
+ONE. Check, then act: two requests in the gap.
+  ana has 100 and sends two withdrawals of 80; A reads 100, B reads 100, both checks pass (true, true), both write the balance they worked out
+  the bank paid out 160 from a balance of 100, and the balance says 20  <- BOTH CHECKS PASSED BEFORE EITHER WROTE
+  the same two with the rule in the table, balance int check (balance >= 0), and the update relative to what is there: A paid 80, B refused by the database (23514, check_violation); paid out 80, balance 20
+  or with the check inside the update, where balance >= 80: A changed 1 row, B changed 0 rows, so B knows it was refused; paid out 80
+  a single-use coupon checked, applied, then marked used, by two requests that both saw used = false and false: discount given 40
+  the coupon claimed in one statement, where used = false, before the discount is given: A claimed 1, B claimed 0
+  the gap between a read and a write is where two requests meet; the database can close it, but only if it is told to
+TWO. Row locks: making the check and the write one step.
+  A selects the account for update and reads 100; B asks for the same row and waits (pg_stat_activity shows a Lock wait): true
+  A pays out 80 and commits; then B: read 20, refused; paid out 80, balance 20
+  with NOWAIT, B does not wait: refused at once (55P03, lock_not_available)
+  with lock_timeout of 300 ms, B waits and then: gave up (55P03), after at least 300 ms: true
+  with SKIP LOCKED, B takes the next row that nobody holds, as workers do on a queue: BEN-2 taken true
+  the lock turns check-then-write into a queue: the second request runs after the first, and sees what it did
+THREE. Isolation levels.
+  READ COMMITTED (the default): A read 100, B took 30 and committed, A's update of balance - 30 was applied to the new value: balance 40
+  REPEATABLE READ: A read 100 and keeps that snapshot; B took 30 and committed; A's update: refused (40001, serialization_failure: could not serialize access due to concurrent update)
+  A starts again from the beginning and succeeds: balance 40  <- THE CALLER MUST BE ABLE TO RETRY
+  REPEATABLE READ, two accounts that must stay at 0 or more in total: A and B both see 200 and 200, each takes 150 from a different account; A commits, B commits too; total -100  <- WRITE SKEW: NEITHER UPDATE TOUCHED THE OTHER'S ROW
+  SERIALIZABLE, two accounts that must stay at 0 or more in total: A and B both see 200 and 200, each takes 150 from a different account; A commits, B is refused (40001, serialization_failure); total 50
+  a stronger level makes the database refuse some interleavings, and the application must retry what it refuses
+FOUR. Optimistic locking with Hibernate, and one-time keys.
+  A and B both load the account: balance 100 and 100, version 0 and 0
+  A pays 80 (true) and commits with: update hib_account set balance=?,version=? where id=? and version=?
+  B pays 80 (true) on what it loaded, and commits: refused (OptimisticLockException: the row is not at the version B loaded)
+  B starts again, loads balance 20 at version 1, and is refused by the rule: paid false
+  asking Hibernate for a pessimistic write lock sends: select ... for no key update of ha1_0
+  the same payment key arriving twice at once: A claims the key and moves 70 in one transaction (rows 1); B, with the same key, waits for A (true) and then finds the key taken (rows 0); ana has 30
+  the unique key and the money move share a transaction, so a key is never claimed without the payment, or the payment made without the key
+FIVE. The bill.
+  two transfers in opposite directions, each locking its own sender first: PostgreSQL finds the cycle and cancels exactly one (40P01): true, the other finished: true  <- A RETRY IS PART OF THE DESIGN
+  the same two with every lock taken in one order, order by id: done and done
+  two servers, each with a lock of its own in its own memory: paid out 160 from 100  <- A LOCK IN ONE PROCESS DOES NOT STOP ANOTHER
+  a request that locks the account and then waits for a person to confirm keeps everyone else waiting: B gave up (55P03)
+  so: keep transactions short, lock in one order, retry on 40001 and 40P01, and let the database enforce the rules that must always hold

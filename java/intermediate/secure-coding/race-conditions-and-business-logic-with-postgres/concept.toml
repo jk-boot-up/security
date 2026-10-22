@@ -1,0 +1,454 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "race-conditions-and-business-logic-with-postgres"
+level = "intermediate"
+module = "secure-coding"
+title = "Race Conditions with PostgreSQL and Hibernate"
+short_title = "Races with PostgreSQL"
+package = "racepg"
+main_class = "RaceConditionsDemo"
+tagline = "Two requests meet in the gap between a read and a write; the database can close it with a check, a lock, an isolation level or a version, and each has a price"
+bold = "In a real PostgreSQL 18 two withdrawals that read before either writes pay out 160 from 100; a check constraint and a conditional update, a row lock with wait, NOWAIT, a timeout and SKIP LOCKED, REPEATABLE READ and SERIALIZABLE against write skew, a Hibernate @Version column and a one-time key claimed in the same transaction as the money each close the gap in their own way, but they bring retries, deadlocks that PostgreSQL cancels, and waits behind a person, and a lock in one server's memory protects nothing in another."
+domain = "a bank"
+domain_note = ""
+youtube_description = "A real PostgreSQL 18 in Docker: two withdrawals that read before either writes and pay out 160 from 100, a check constraint and a conditional update, SELECT FOR UPDATE with another session waiting in pg_stat_activity, NOWAIT, lock_timeout and SKIP LOCKED, READ COMMITTED against REPEATABLE READ and a retry, write skew that only SERIALIZABLE stops, Hibernate 7 optimistic locking with a version column, a pessimistic lock, a one-time payment key, a deadlock that PostgreSQL cancels, and a lock in the memory of one server."
+thumb_lines = ["RACES WITH", "POSTGRESQL"]
+thumb_code = "select ... for update"
+youtube_title = "Race Conditions with PostgreSQL and Hibernate: Row Locks, Isolation Levels and Optimistic Locking (CWE-362)"
+youtube_tags = ["race condition", "postgresql", "row lock", "select for update", "isolation level", "write skew", "optimistic locking", "hibernate", "cwe-362", "java"]
+
+[readme]
+intro = """
+The plain [race-conditions-and-business-logic](../race-conditions-and-business-logic) project shows the gap between a check and a write with a scripted interleaving and its own locks. This one runs it against a real **PostgreSQL 18** in Docker, with plain JDBC and **Hibernate ORM 7**. It needs Docker; the tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Check, then act.** Two withdrawals of 80 from a balance of 100 each read 100: the bank pays out 160 and the balance says 20. A check constraint (`balance >= 0`) with a relative update, or a condition inside the update (`where balance >= 80`, one row or none), refuses the second. A single-use coupon is claimed in one statement.
+- **Row locks.** `SELECT ... FOR UPDATE`: the second session waits (`pg_stat_activity` shows a Lock wait), then reads 20 and is refused. `NOWAIT` refuses at once, `lock_timeout` gives up, `SKIP LOCKED` takes the next row.
+- **Isolation levels.** READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it (`40001`) and the caller retries; write skew across two rows passes under REPEATABLE READ (total -100) and is refused under SERIALIZABLE.
+- **Hibernate.** `@Version` makes the update `... where id=? and version=?`, so the second writer gets an `OptimisticLockException`; a pessimistic lock is `for no key update`. A payment key is claimed in the same transaction as the money.
+- **The bill.** Opposite lock order deadlocks and PostgreSQL cancels one (`40P01`); locks in the memory of two servers protect nothing; a transaction that waits for a person keeps everyone waiting.
+
+**Maps to:** OWASP Top 10 (2025) A06 Insecure Design · CWE-362 (race condition), CWE-367 (time-of-check time-of-use), CWE-840 (business logic errors).
+"""
+analogy = """
+A bank counter with two clerks and one ledger. If both read the balance before either writes, both pay out. Writing the rule on the ledger itself, queueing at the page, or stamping every page with a number so that a stale copy is refused each stop the double payment, and each has a different cost.
+"""
+scenario = """
+A bank lets a customer withdraw from the same account on a phone and a laptop at the same moment. The demo plays the two requests against a real database and tries every way to close the gap.
+"""
+costs = [
+    "**Locks make requests wait,** and a long transaction makes everybody wait.",
+    "**Stronger isolation means retries,** and the code must be safe to repeat.",
+    "**Optimistic locking pushes the conflict to the user** or to a retry loop.",
+    "**Deadlocks happen when locks are taken in different orders,** and the database resolves them by cancelling one.",
+    "**A rule in the schema holds for every program,** but only the rules that a constraint can express.",
+]
+too_much = """
+A table that one background job updates once a night does not need row locks or serializable transactions. Use them where two requests can reach the same row, or the same rule across rows, at the same moment.
+"""
+met_before = [
+    "`@Version` on a JPA entity.",
+    "`SELECT ... FOR UPDATE` in a repository query.",
+    "`@Transactional(isolation = ...)`.",
+    "A 409 Conflict or an \"optimistic lock\" error page.",
+]
+where = """
+This is the tools version of [race-conditions-and-business-logic](../race-conditions-and-business-logic), in the [secure-coding](..) module. The plain project explains the gap with its own locks; this one uses what a database already has.
+"""
+twin = """
+PostgreSQL 18.6 is the real server in a container on a free loopback port, started with a short deadlock timeout and removed at the end. The sessions are real connections; the interleavings are scripted, so that the output is the same on every run. Ports and container names are never printed; the demo takes about thirty seconds.
+"""
+test_note = "The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker."
+
+[[act]]
+title = "Check, then act: two requests in the gap"
+summary = "Two withdrawals that read before either writes pay out 160 from 100; a check constraint, a conditional update and a one-statement claim close the gap."
+detail = """
+ana has 100 and sends two withdrawals of 80. A and B both read 100, both checks pass, both write the balance they worked out: the bank paid out 160 from a balance of 100, and the balance says 20. With the rule in the table, balance int check (balance >= 0), and the update relative to what is there, the second is refused by the database with 23514. With the check inside the update, where balance >= 80, A changes one row and B none. A single-use coupon checked, applied and marked used by two requests that both saw used = false gives a discount of 40; claimed in one statement, where used = false, A claims 1 and B 0.
+"""
+speech = """
+First demo: check, then act. [[slnc 400]] Two withdrawals both read a hundred. [[slnc 600]]
+Both checks pass before either writes, and the bank pays out a hundred and sixty. [[slnc 300]] A constraint in the table, or a condition inside the update, refuses the second.
+"""
+rows = { race = "active wrong" }
+console = [
+    ["A reads 100, B reads 100, both pay 80: 160 paid out of 100", "bad"],
+    ["check (balance >= 0) with a relative update: B refused (23514)", "ok"],
+    ["where balance >= 80: A changed 1 row, B changed 0", "ok"],
+]
+
+[[act]]
+title = "Row locks: making the check and the write one step"
+summary = "SELECT FOR UPDATE makes the second request wait and then see the first; NOWAIT, a timeout and SKIP LOCKED are the other ways to meet a lock."
+detail = """
+A selects the account for update and reads 100. B asks for the same row and waits: pg_stat_activity shows a Lock wait. A pays out 80 and commits; then B reads 20 and is refused. With NOWAIT, B is refused at once with 55P03. With lock_timeout of 300 ms, B waits at least 300 ms and gives up. With SKIP LOCKED, B takes the next row that nobody holds, as workers do on a queue.
+"""
+speech = """
+Second demo: row locks. [[slnc 400]] A selects the account for update. B asks for the same row, and waits. [[slnc 600]]
+When A commits, B reads the new balance, and is refused. [[slnc 300]] No wait, a timeout, or skip locked are the other ways to meet a lock.
+"""
+rows = { lock = "active ok" }
+console = [
+    ["B waits behind A (pg_stat_activity: Lock)", "ok"],
+    ["after A commits, B reads 20: refused", "ok"],
+    ["NOWAIT: 55P03 at once; lock_timeout: 55P03 after 300 ms", "ok"],
+]
+
+[[act]]
+title = "Isolation levels"
+summary = "READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it; only SERIALIZABLE stops write skew."
+detail = """
+Under READ COMMITTED, A read 100, B took 30 and committed, and A's update of balance - 30 is applied to the new value: balance 40. Under REPEATABLE READ A keeps its snapshot and the update is refused with 40001, could not serialize access; A starts again and succeeds. Two accounts that must stay at 0 or more in total: under REPEATABLE READ both see 200, each takes 150 from a different account, both commit and the total is -100: write skew. Under SERIALIZABLE B is refused with 40001 and the total is 50. A stronger level makes the database refuse some interleavings, and the application must retry what it refuses.
+"""
+speech = """
+Third demo: isolation levels. [[slnc 400]] Repeatable read refuses an update of a row that changed under it. [[slnc 600]]
+Two accounts, two requests, two different rows: write skew passes at repeatable read, and only serializable stops it. [[slnc 300]] The caller must be able to retry.
+"""
+rows = { isolation = "active ok" }
+console = [
+    ["REPEATABLE READ: 40001, A starts again and succeeds", "ok"],
+    ["REPEATABLE READ: write skew, total -100", "bad"],
+    ["SERIALIZABLE: B refused (40001), total 50", "ok"],
+]
+
+[[act]]
+title = "Optimistic locking with Hibernate, and one-time keys"
+summary = "A version column makes the update conditional; a payment key claimed in the same transaction as the money runs once."
+detail = """
+A and B both load the account: balance 100 and 100, version 0 and 0. A pays 80 and commits with update hib_account set balance=?,version=? where id=? and version=?. B pays 80 on what it loaded and its commit is refused with an OptimisticLockException. B starts again, loads balance 20 at version 1, and the rule refuses. A pessimistic write lock sends select ... for no key update. The same payment key arriving twice at once: A claims the key and moves 70 in one transaction, B with the same key waits for A and then finds the key taken; ana has 30.
+"""
+speech = """
+Fourth demo: optimistic locking with Hibernate. [[slnc 400]] The update says where id and where version. [[slnc 600]]
+The second writer touches no row and is refused. [[slnc 300]] A one time key, claimed in the same transaction as the money, runs the payment once.
+"""
+rows = { hibernate = "active ok" }
+console = [
+    ["update ... where id=? and version=?", "ok"],
+    ["B: OptimisticLockException; B starts again and is refused by the rule", "ok"],
+    ["the same key twice: A moves 70, B finds the key taken", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "Opposite lock order deadlocks, locks in one server's memory protect nothing in another, and a transaction that waits for a person keeps everyone waiting."
+detail = """
+Two transfers in opposite directions, each locking its own sender first: PostgreSQL finds the cycle and cancels exactly one with 40P01, and the other finishes. With every lock taken in one order, order by id, both finish. Two servers, each with a lock of its own in its own memory, pay out 160 from 100. A request that locks the account and then waits for a person to confirm keeps everyone else waiting: B gives up with 55P03. So: keep transactions short, lock in one order, retry on 40001 and 40P01, and let the database enforce the rules that must always hold.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Two transfers that lock in opposite orders deadlock, and the database cancels one. [[slnc 600]]
+A lock in one server's memory protects nothing in another. [[slnc 300]] And a transaction that waits for a person keeps everyone waiting.
+"""
+rows = { bill = "active wrong" }
+console = [
+    ["opposite lock order: one is cancelled (40P01)", "bad"],
+    ["two servers with their own locks: 160 paid out of 100", "bad"],
+    ["a lock held while a person decides: B gives up (55P03)", "bad"],
+]
+
+[animation]
+subtitle = "A bank, two requests at once, and a database that can close the gap."
+boxes = [
+    ["race", "The gap", "read, check, write"],
+    ["lock", "Row locks", "wait, nowait, skip"],
+    ["isolation", "Isolation", "retry, write skew"],
+    ["hibernate", "Versions", "and one-time keys"],
+    ["bill", "The bill", "deadlocks, waits"],
+]
+
+[docs.problem]
+scenario = """
+A bank lets a customer withdraw from the same account on two devices at the same moment, and the rule is that the balance never goes below zero.
+"""
+naive = """
+Read the balance, check it, write the new one.
+"""
+deliver = [
+    "A real PostgreSQL and real concurrent sessions.",
+    "Constraints, conditional updates, row locks, isolation levels and versions.",
+    "Retries, deadlocks and waits as part of the design.",
+    "A Hibernate version column and a one-time key.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics and JDBC",
+    "The plain race-conditions-and-business-logic project, for the ideas",
+    "Docker, with the postgres:18.6-alpine image (pulled on first use)",
+]
+not_required = [
+    "Previous knowledge of Hibernate",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain the gap between a check and a write",
+    "close it with a constraint, a lock, an isolation level or a version",
+    "say what a caller must do when the database refuses with 40001",
+    "name two ways a lock can hurt",
+]
+walkthrough = """
+Run act one and find the line where both checks pass. In act three find the level at which write skew passes. In act five find the lock that protects nothing.
+"""
+exercises = [
+    "Add a unique constraint and use it to make a coupon single-use.",
+    "Write a retry loop with a limit and a pause for 40001 and 40P01.",
+    "Add FOR NO KEY UPDATE to a query and see which other statements it blocks.",
+    "Find the long transaction in pg_stat_activity and give it a timeout.",
+]
+
+[docs.explained]
+sentence = """
+A rule that must always hold belongs where every writer must pass: in the schema, in one statement, or behind a lock that the database enforces.
+"""
+verdict = """
+Put the invariant in a constraint, make the check and the write one statement, lock in one order when you must lock, choose the isolation level that your rule needs and retry what the database refuses, keep transactions short, and never rely on a lock in the memory of one process.
+"""
+recognise = [
+    "`@Version` on an entity.",
+    "`SELECT ... FOR UPDATE`.",
+    "`could not serialize access` in a log.",
+    "`deadlock detected` in a log.",
+]
+
+[spec]
+purpose = """
+Teach closing the gap between a check and a write with the tools of a real database.
+"""
+nongoals = [
+    "Distributed transactions.",
+    "Sharding or replication.",
+    "Performance tuning of locks.",
+]
+problem = """
+Requests that are correct one at a time are wrong at the same time.
+"""
+roles = [["The database", "`Db`"], ["The Hibernate side", "`Hib`, `HibAccount`"], ["Entry point", "`RaceConditionsDemo`"]]
+requirements = [
+    "A real PostgreSQL runs in Docker and is removed at the end.",
+    "The interleavings are scripted so that the output is the same on every run.",
+    "Each way of closing the gap is shown against the same bug.",
+    "A waiting session is shown waiting.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "Two sessions meet in one database."
+nodes = [
+    { id = "a", label = "Request A", sub = "phone", col = 0, row = 0, colour = "client" },
+    { id = "b", label = "Request B", sub = "laptop", col = 0, row = 1, colour = "client" },
+    { id = "db", label = "PostgreSQL 18", sub = "constraints, locks, versions", col = 1, row = 0, colour = "accent", shape = "store" },
+    { id = "hib", label = "Hibernate 7", sub = "@Version", col = 2, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "a", to = "db", label = "reads, writes" },
+    { from = "b", to = "db", label = "reads, writes" },
+    { from = "hib", to = "db", label = "where version = ?" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The lab database, the Hibernate side and the demo."
+nodes = [
+    { id = "db", label = "Db", sub = ["connect()", "reset()", "waitUntilWaiting()"], col = 0, row = 0, colour = "accent" },
+    { id = "hib", label = "Hib", sub = ["factory", "sql"], col = 1, row = 0, colour = "amber" },
+    { id = "acc", label = "HibAccount", sub = ["id", "balance", "@Version version"], col = 2, row = 0, colour = "green" },
+    { id = "demo", label = "RaceConditionsDemo", sub = ["run()"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "hib", to = "acc", label = "maps" },
+    { from = "demo", to = "db", label = "uses" },
+    { from = "demo", to = "hib", label = "uses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "Ways to close the gap"
+caption = "From the cheapest to the strongest."
+nodes = [
+    { id = "check", label = "Constraint", sub = "check (balance >= 0)", col = 0, row = 0, colour = "client" },
+    { id = "cond", label = "One statement", sub = "where balance >= 80", col = 1, row = 0, colour = "accent" },
+    { id = "lock", label = "Row lock", sub = "for update", col = 2, row = 0, colour = "amber" },
+    { id = "ser", label = "Serializable", sub = "retry on 40001", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "check", to = "cond" },
+    { from = "cond", to = "lock" },
+    { from = "lock", to = "ser" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A row lock"
+participants = ["A", "PostgreSQL", "B"]
+steps = [
+    ["A", "PostgreSQL", "select balance for update"],
+    ["B", "PostgreSQL", "select balance for update"],
+    ["PostgreSQL", "B", "waits (Lock)", "reply"],
+    ["A", "PostgreSQL", "update, commit"],
+    ["PostgreSQL", "B", "reads 20, B is refused", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Optimistic locking"
+participants = ["A", "B", "PostgreSQL"]
+steps = [
+    ["A", "PostgreSQL", "load account, version 0"],
+    ["B", "PostgreSQL", "load account, version 0"],
+    ["A", "PostgreSQL", "update ... where version = 0, version 1"],
+    ["B", "PostgreSQL", "update ... where version = 0"],
+    ["PostgreSQL", "B", "0 rows: OptimisticLockException", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["customer"], colour = "red" },
+    { label = "The bank", nodes = ["app", "db"], colour = "green" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "two devices, one moment", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "app", label = "Application", sub = "check then write", col = 1, row = 0, colour = "accent", threats = ["T1", "T3"] },
+    { id = "db", label = "PostgreSQL", sub = "the last line", col = 2, row = 0, colour = "amber", shape = "store", threats = ["T1", "T2", "T4"] },
+]
+edges = [
+    { from = "customer", to = "app", label = "two requests at once", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "app", to = "db", label = "reads, writes", threats = ["T1", "T4"] },
+]
+
+[threatmodel]
+scope = """
+Concurrent requests that change the same rows of a bank's accounts, coupons and payments in PostgreSQL. It covers the gap between check and write, locks, isolation, versions, deadlocks and waits. It does not cover distributed systems or the network.
+"""
+assets = [
+    "The balances and what the bank has paid out.",
+    "The availability of the accounts.",
+]
+actors = [
+    "A customer who sends the same request twice, or at the same time.",
+    "A script that sends many requests at once.",
+]
+boundaries = [
+    "The database: the one place all requests meet.",
+]
+assumptions = [
+    "All writers go through the same database.",
+    "The application can repeat a transaction that the database refuses.",
+]
+out_of_scope = [
+    "Replication and failover.",
+    "Attacks on the database itself.",
+]
+tests = [
+    "`RaceConditionsTest` runs real sessions against PostgreSQL for the lost update, the constraint and conditional update, the lock and its waits, the isolation levels, write skew, the Hibernate version, the one-time key and the deadlock.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, secrets-in-errors-and-logs-with-logback, moves from what the database refuses to what the logs reveal.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "Two requests overspend a balance or reuse a coupon"
+where = "the gap between check and write"
+control = "A constraint, a conditional update, a row lock or a version"
+residual = "Rules that no constraint can express"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A rule across rows is broken by two writers"
+where = "write skew"
+control = "SERIALIZABLE and a retry, or a lock on a row that stands for the rule"
+residual = "Retries that are not safe to repeat"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "A retried request is applied twice"
+where = "the client and the network"
+control = "A one-time key claimed in the same transaction"
+residual = "Keys that expire too soon"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "Locks and deadlocks make the accounts unavailable"
+where = "long transactions, lock order"
+control = "Short transactions, one lock order, lock timeouts"
+residual = "A flood of requests for one row"
+
+[poster]
+headline = [["RACES WITH", "text"], ["POSTGRESQL", "accent"]]
+taglines = [["Two requests meet in the gap between a read and a write; the database can close it with a ", "gold"]]
+before = { code = "A reads 100, B reads 100, both pay 80: 160 paid out ", note = "Check, then act: two requests in the gap", tag = "BEFORE" }
+after = { code = "select ... for update", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Race Conditions with PostgreSQL and Hibernate"
+narration = "Hello, and welcome. [[slnc 400]] This video explains races with PostgreSQL, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] In a real PostgreSQL 18 two withdrawals that read before either writes pay out 160 from 100; a check constraint and a conditional update, a row lock with wait, NOWAIT, a timeout and S K I P LOCKED, REPEATABLE R E A D and SERIALIZABLE against write skew, a Hibernate @Version column and a one-time key claimed in the same transaction as the money each close the gap in their own way, but they bring retries, deadlocks that PostgreSQL cancels, and waits behind a person, and a lock in one server's memory protects nothing in another. [[slnc 600]] Think of it this way. [[slnc 300]] A bank counter with two clerks and one ledger. If both read the balance before either writes, both pay out. Writing the rule on the ledger itself, queueing at the page, or stamping every page with a number so that a stale copy is refused each stop the double payment, and each has a different cost. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain the gap between a check and a write. [[slnc 300]] Close it with a constraint, a lock, an isolation level or a version. [[slnc 300]] Say what a caller must do when the database refuses with 40001."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank lets a customer withdraw from the", "same account on a phone and a laptop at the", "same moment.", "The demo plays the two requests against a", "real database and tries every way to close", "the gap."]
+narration = "Here is the scenario. [[slnc 400]] A bank lets a customer withdraw from the same account on a phone and a laptop at the same moment. [[slnc 400]] The demo plays the two requests against a real database and tries every way to close the gap."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Locks make requests wait", "Stronger isolation means retries", "Optimistic locking pushes the conflict to the user", "Deadlocks happen when locks are taken in different", "orders", "A rule in the schema holds for every program"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Locks make requests wait. [[slnc 500]] Stronger isolation means retries. [[slnc 500]] Optimistic locking pushes the conflict to the user. [[slnc 500]] Deadlocks happen when locks are taken in different orders. [[slnc 500]] A rule in the schema holds for every program."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The database: Db", "The Hibernate side: Hib, HibAccount", "Entry point: RaceConditionsDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The database is in Db. [[slnc 500]] The Hibernate side is in Hib and HibAccount. [[slnc 500]] Entry point is in RaceConditionsDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["@Version on an entity", "SELECT ... FOR UPDATE", "could not serialize access in a log", "deadlock detected in a log"]
+narration = "You have probably met this already. [[slnc 400]] @Version on an entity. [[slnc 500]] SELECT ... F O R UPDATE. [[slnc 500]] could not serialize access in a log. [[slnc 500]] deadlock detected in a log."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain the gap between a check and a write", "Close it with a constraint, a lock, an isolation level", "or a version", "Say what a caller must do when the database refuses", "with 40001", "Name two ways a lock can hurt"]
+narration = "So, how do you use it? [[slnc 400]] Put the invariant in a constraint, make the check and the write one statement, lock in one order when you must lock, choose the isolation level that your rule needs and retry what the database refuses, keep transactions short, and never rely on a lock in the memory of one process."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's races with PostgreSQL. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rule that must always hold belongs where every writer must pass: in the schema, in one statement, or behind a lock that the database enforces. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a unique constraint and use it to make a coupon single-use. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
