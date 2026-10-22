@@ -1,0 +1,41 @@
+ONE. A secrets server, and who may ask.
+  the store's payment key lives in OpenBao, not in the code, the environment or the image; two applications each have a role, a policy and a secret id that works once
+  shop-api logs in with its role id and its secret id: allowed, a token with the policies [default, shop-api] for 120 seconds
+  the same secret id again, as a thief who saw it would use it: refused (400)
+  a secret id nobody issued: refused (400)
+  shop-api reads its payment key: allowed, the reports key: refused (403)
+  reports reads its own key: allowed, the payment key: refused (403)
+  a request with no token: refused (403)
+  a policy names exactly what each application may read, and everything else is refused
+TWO. Secrets that stay still: versions, rotation and the audit trail.
+  the store reads the payment key: {api-key=key-v1}
+  the provider issues v2 and it is written as version 2; during the changeover both are readable by number: v1 {api-key=key-v1}, v2 {api-key=key-v2}
+  the store, asking for the current version, now gets {api-key=key-v2}
+  the application cannot destroy versions: refused (403)
+  after every server has switched, the operator destroys v1: allowed, and reading v1 now: refused (404), v2: allowed
+  the audit trail recorded the requests: true, the application that asked: true, the key itself: false  (values are written as HMACs: true)
+THREE. Database logins that are leased.
+  shop-api asks and gets a database login of its own, named v-approle-shop-api-<random>: true, for 8 seconds
+  reports gets a different one: true; no two applications share one: true
+  both connect to the real database: true, true
+  shop-api's login reads orders: true, and the card numbers: false
+  shop-api asks for reports' login: refused (403)
+  the shop renews its lease and asks for 600 seconds: allowed, it is capped at the maximum of 20 seconds: true
+  reports never renewed; 9 seconds on its lease has ended and the login is removed: can it connect? false
+  the shop's renewed login still connects: true
+  the operator revokes the shop's lease: allowed, and the login connects: false
+FOUR. Rotation, and the blast radius of a leak.
+  the payments service has a static login that OpenBao manages; a thief copies its password, which connects: true
+  OpenBao rotates it: the new password differs: true, the new one connects: true, the thief's copy: false
+  three logins leased to shop-api's servers all connect: true; a thief copies one
+  the leak is noticed: the operator revokes every lease under database/creds/shop-api at once: allowed
+  logins that still connect: 0  (a leased login ends with its lease; a static password lasts until someone changes it)
+  the other applications are untouched: reports still gets a login: allowed
+FIVE. The bill.
+  the operator seals OpenBao, as in an incident: allowed
+  the application asks for its payment key: refused (503), for a new login: refused (503)  <- THE STORE CANNOT START A SERVER WHILE THE SECRETS SERVICE IS DOWN
+  a login it already holds keeps working until its lease would have ended: true
+  the operator unseals with the key: allowed, and the application reads again: allowed
+  the secrets service holds every secret, so it needs its own access control, audit and backups; this dev server keeps everything in memory and a real one does not
+  the application still needs a first credential, its role id and a secret id, to prove who it is; platform identity, in the advanced track, removes it
+  leases and rotation need applications that can reconnect with a new login without a restart

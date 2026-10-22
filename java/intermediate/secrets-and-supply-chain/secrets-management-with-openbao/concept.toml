@@ -1,0 +1,470 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "secrets-management-with-openbao"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "Secrets Management with OpenBao"
+short_title = "Secrets with OpenBao"
+package = "baosecrets"
+main_class = "BaoSecretsDemo"
+tagline = "A real secrets server hands each application its own short-lived database login, and takes it back when the lease ends or a leak is noticed"
+bold = "With OpenBao an application proves who it is with a role and a secret id that works once, gets a token that carries only its own policy, reads versioned secrets, and is leased a database login of its own that ends with its lease or when the operator revokes it, while the audit trail records every request with the values hashed; the price is a service that holds every secret, that must be sealed, unsealed, backed up and watched, and that the store cannot start without."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Secrets management with OpenBao 2.7 and a real PostgreSQL in Docker: AppRole logins with a secret id that works once, policies that name what each application may read, versioned secrets with a changeover and a destroyed version, an audit trail that hashes values, per-application database logins that really connect and really stop, renewal capped at a maximum, revoking one lease or all of an application's leases, a static password that OpenBao rotates, and a sealed server that the store cannot start without."
+thumb_lines = ["SECRETS WITH", "OPENBAO"]
+thumb_code = "database/creds/shop-api"
+youtube_title = "Secrets Management with OpenBao: AppRole, Leased Database Logins, Rotation and Revocation"
+youtube_tags = ["openbao", "vault", "secrets management", "approle", "dynamic secrets", "database credentials", "postgresql", "owasp top 10", "a02", "java"]
+
+[readme]
+intro = """
+The plain [secrets-management](../secrets-management) project builds a secrets service from scratch and ends with "the -with-openbao version runs the same leases against a real secrets server". This is that version: a real **OpenBao 2.7** and a real **PostgreSQL 18** in Docker, on a private network, each bound to a free loopback port, with a small Java client that speaks OpenBao's HTTP API. It needs Docker; its tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Who may ask.** `shop-api` and `reports` each have an AppRole and a policy. A **secret id works once**: the same one again, or one nobody issued, gets 400. The shop reads its payment key and is refused (403) the reports key, the reports app the other way round, and a request with no token is refused.
+- **Secrets that stay still.** KV version 2 keeps versions: during a changeover version 1 and version 2 are both readable by number, the application cannot destroy versions, the operator destroys version 1, and version 2 goes on working. The **audit trail** records the path and the application, and writes the values as HMACs, never the key.
+- **Database logins that are leased.** Each application is given a login of its own, named `v-approle-shop-api-<random>`, that really connects to PostgreSQL and can read `orders` but not `card_numbers`. A lease is renewed up to its **maximum of 20 seconds**; an unrenewed one ends and the login is removed; **revoking a lease ends the login at once.** (A `VALID UNTIL` in the creation statement is not extended by a renewal unless a renew statement says so.)
+- **Rotation and blast radius.** A static password that OpenBao manages is rotated and the thief's copy stops working; **revoking every lease under one path** ends all of an application's logins and leaves the others alone.
+- **The bill.** A **sealed** OpenBao refuses every read with 503, so the store cannot start a server; logins already held go on working until their lease would have ended; unsealing restores service. This dev server keeps everything in memory.
+
+**Maps to:** OWASP Top 10 (2025) A02 Security Misconfiguration, A04 Cryptographic Failures · CWE-798, CWE-522 · OWASP Secrets Management Cheat Sheet · NIST SP 800-57.
+"""
+analogy = """
+A hotel that stops handing out master keys. Each guest gets a card for their own room that stops working at checkout, the front desk can cancel one card or all of a floor's at once, and a log records every card that was cut. The price is a front desk that must always be open.
+"""
+scenario = """
+An online store has a shop API and a reports job that both need a payment key and a database login. The demo starts a real OpenBao and a real PostgreSQL, gives each application a role and a policy, leases logins, and then renews, expires, rotates, revokes and seals.
+"""
+costs = [
+    "**The secrets service holds every secret,** so it needs its own access control, audit, backups and unseal procedure.",
+    "**The store cannot start while it is sealed or down,** so its availability is now part of the store's.",
+    "**Applications need a first credential,** a role id and a secret id, to prove who they are.",
+    "**Leases and rotation need applications that can reconnect** with a new login without a restart.",
+    "**Policies are one more thing to write and review,** and a policy that is too wide undoes the point.",
+]
+too_much = """
+A single small service on one machine with one secret can read an owner-only file injected at deploy time. Use a secrets server when several applications need secrets of their own, when logins should expire, or when a leak must be containable.
+"""
+met_before = [
+    "`vault read database/creds/...` and `v-approle-...` user names in a database.",
+    "`role_id` and `secret_id` in a deployment pipeline.",
+    "A `403 permission denied` from a secrets server.",
+    "A secrets service sealed after a restart.",
+]
+where = """
+This is the tools version of [secrets-management](../secrets-management), in the [secrets-and-supply-chain](..) module. It runs the same ideas, leases, rotation and revocation, against a real secrets server and a real database.
+"""
+twin = """
+OpenBao and PostgreSQL are real containers on a private Docker network, each bound to a free loopback port and removed at the end. OpenBao's audit device writes to a file inside its container, which the demo reads. Tokens, passwords, lease ids and ports are never printed; the demo waits about ten seconds, once, for a lease to end.
+"""
+test_note = "The tests start one OpenBao and one PostgreSQL for the whole class and remove them (./gradlew integrationTest). Two tests wait for a lease to end."
+
+[[act]]
+title = "A secrets server, and who may ask"
+summary = "An application proves who it is with a role id and a secret id that works once, and gets a token that carries only its own policy."
+detail = """
+The store's payment key lives in OpenBao, not in the code, the environment or the image. shop-api logs in with its role id and its secret id and gets a token with the policies default and shop-api for 120 seconds. The same secret id again is refused, and so is one nobody issued. shop-api reads its payment key but is refused the reports key; reports reads its own key and is refused the payment key. A request with no token is refused. A policy names exactly what each application may read, and everything else is refused.
+"""
+speech = """
+First demo: a secrets server, and who may ask. [[slnc 400]] Each application has a role, and a secret id that works once. [[slnc 600]]
+The same secret id again is refused. [[slnc 600]]
+The shop reads its payment key, and is refused the reports key. [[slnc 300]] The reports job is refused the payment key. [[slnc 600]]
+A policy names exactly what each application may read.
+"""
+rows = { who = "active ok" }
+console = [
+    ["shop-api logs in: a token with policies [default, shop-api]", "ok"],
+    ["the same secret id again -> refused (400)", "ok"],
+    ["shop-api reads the reports key -> refused (403)", "ok"],
+    ["no token -> refused (403)", "ok"],
+]
+
+[[act]]
+title = "Secrets that stay still: versions, rotation and the audit trail"
+summary = "Versions of a secret are readable by number during a changeover, the application cannot destroy them, the operator does, and the audit trail records requests with values hashed."
+detail = """
+The store reads the payment key, version 1. The provider issues version 2 and it is written as version 2; during the changeover both are readable by number, and the current version is now version 2. The application cannot destroy versions: refused. After every server has switched, the operator destroys version 1; reading version 1 is now refused with 404, and version 2 still works. The audit trail recorded the requests, the path and the application that asked, and not the key itself: values are written as HMACs.
+"""
+speech = """
+Second demo: secrets that stay still. [[slnc 400]] The provider issues version two of the payment key. [[slnc 600]]
+During the changeover both versions are readable by number. [[slnc 600]]
+The application cannot destroy versions. [[slnc 300]] The operator destroys version one, and version two goes on working. [[slnc 600]]
+The audit trail records who asked for what, and writes the values as hashes.
+"""
+rows = { versions = "active ok" }
+console = [
+    ["v1 and v2 readable by number during the changeover", "ok"],
+    ["the application cannot destroy a version -> refused (403)", "ok"],
+    ["v1 destroyed -> 404; v2 -> allowed", "ok"],
+    ["the audit trail holds the path, not the key", "ok"],
+]
+
+[[act]]
+title = "Database logins that are leased"
+summary = "Each application gets a real database login of its own, with only its grants, that is renewed up to a maximum, ends when unrenewed, and ends at once when revoked."
+detail = """
+shop-api asks and gets a database login of its own, named v-approle-shop-api-<random>, for 8 seconds. Reports gets a different one; no two applications share one. Both connect to the real database. shop-api's login reads orders and cannot read the card numbers. shop-api asking for reports' login is refused. The shop renews its lease asking for 600 seconds and is capped at the maximum of 20. Reports never renewed: 9 seconds on, its lease has ended and the login is removed. The shop's renewed login still connects. The operator revokes the shop's lease, and the login no longer connects.
+"""
+speech = """
+Third demo: database logins that are leased. [[slnc 400]] The shop is given a login of its own, and so is the reports job. [[slnc 600]]
+They really connect, and the shop's login cannot read the card numbers. [[slnc 600]]
+A renewal is capped at the maximum. [[slnc 300]] A lease that is not renewed ends, and the login is removed. [[slnc 600]]
+When the operator revokes a lease, the login stops at once.
+"""
+rows = { leases = "active ok" }
+console = [
+    ["shop-api: v-approle-shop-api-<random>, 8 seconds; reports: another", "ok"],
+    ["shop-api's login reads orders: true; card numbers: false", "ok"],
+    ["renewal asked for 600 seconds -> capped at 20", "ok"],
+    ["not renewed -> the login is removed; revoked -> stops at once", "ok"],
+]
+
+[[act]]
+title = "Rotation, and the blast radius of a leak"
+summary = "A static password that OpenBao manages is rotated and the thief's copy stops working; revoking every lease under one path ends one application's logins and no others."
+detail = """
+The payments service has a static login that OpenBao manages. A thief copies its password, which connects. OpenBao rotates it: the new password differs, the new one connects, and the thief's copy does not. Three logins leased to shop-api's servers all connect; a thief copies one. The leak is noticed and the operator revokes every lease under database/creds/shop-api at once: 0 logins still connect. The other applications are untouched: reports still gets a login.
+"""
+speech = """
+Fourth demo: rotation, and the blast radius of a leak. [[slnc 400]] A static password that open bao manages is rotated, and the thief's copy stops working. [[slnc 600]]
+Three leased logins are copied by a thief. [[slnc 300]] The operator revokes everything under the shop's path, and none of them connect. [[slnc 600]]
+The other applications are untouched.
+"""
+rows = { rotation = "active ok" }
+console = [
+    ["rotate the static password: the thief's copy -> false", "ok"],
+    ["three leased logins all connect", "amber"],
+    ["revoke everything under database/creds/shop-api -> 0 connect", "ok"],
+    ["reports still gets a login", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A sealed OpenBao refuses every request with 503, so the store cannot start a server; logins already held keep working until their lease ends; unsealing restores service."
+detail = """
+The operator seals OpenBao, as in an incident. The application asks for its payment key and is refused with 503, and for a new login, refused with 503: the store cannot start a server while the secrets service is down. A login it already holds keeps working until its lease would have ended. The operator unseals with the key and the application reads again. The secrets service holds every secret, so it needs its own access control, audit and backups. The application still needs a first credential, its role id and a secret id; platform identity, in the advanced track, removes it. Leases and rotation need applications that can reconnect with a new login without a restart.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The operator seals open bao. [[slnc 600]]
+The application cannot read its payment key, or get a new login. [[slnc 300]] The store cannot start a server. [[slnc 600]]
+A login it already holds keeps working until the lease ends. [[slnc 600]]
+Unseal it, and service returns. [[slnc 300]] The secrets service holds every secret, so it needs the care of one.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["sealed: the payment key -> 503, a new login -> 503", "bad"],
+    ["a login already held still connects", "ok"],
+    ["unsealed: the application reads again", "ok"],
+]
+
+[animation]
+subtitle = "An online store, a secrets server, and logins that do not last."
+boxes = [
+    ["who", "Who may ask", "role, secret id, policy"],
+    ["versions", "Versions", "changeover, audit"],
+    ["leases", "Leases", "renew, expire, revoke"],
+    ["rotation", "Rotation", "blast radius"],
+    ["bill", "The bill", "sealed means down"],
+]
+
+[docs.problem]
+scenario = """
+An online store has several applications that need a payment key and a database login, and every one of them keeps its own copy.
+"""
+naive = """
+Put the secrets in the code, the environment or the image, shared by every application and never changed.
+"""
+deliver = [
+    "A real OpenBao and a real PostgreSQL in Docker.",
+    "AppRole logins, policies and versioned secrets.",
+    "Leased database logins that really stop.",
+    "Rotation, revocation and a sealed server.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain secrets-management project, for the ideas",
+    "Docker, with the openbao/openbao:2.7.0 and postgres:18.6-alpine images (pulled on first use)",
+]
+not_required = [
+    "OpenBao or PostgreSQL installed on the machine",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain how an application proves who it is to a secrets server",
+    "write a policy that names what an application may read",
+    "lease a database login and say when it ends",
+    "describe what the store does when the secrets server is sealed",
+]
+walkthrough = """
+Run act three and read the lease durations. In act four ask what a thief gets from a leased login and from a static password. In act five ask what the store should do while OpenBao is sealed.
+"""
+exercises = [
+    "Let the application renew its own lease in a loop and log every renewal.",
+    "Wrap the secret id in a response-wrapped token so that only the application can unwrap it.",
+    "Give reports a read-only login that expires in five minutes, and a policy to match.",
+    "Run OpenBao with real storage and an auto-unseal, and write down the recovery steps.",
+]
+
+[docs.explained]
+sentence = """
+A secrets server turns a secret that never changes into a login that lasts minutes, belongs to one application and can be taken back.
+"""
+verdict = """
+Keep secrets in a service, give each application its own role and policy, lease database logins and renew them, rotate static passwords, audit every request, revoke on a leak, and plan for the day the service is sealed.
+"""
+recognise = [
+    "A user name that starts with `v-` in a database.",
+    "`role_id` and `secret_id` in a deployment.",
+    "`lease_duration` and `renewable` in an API answer.",
+    "An unseal key held by several people.",
+]
+
+[spec]
+purpose = """
+Teach secrets management with a real secrets server: identity, policy, leases, rotation, revocation and failure.
+"""
+nongoals = [
+    "Running OpenBao in production.",
+    "Encryption as a service and PKI.",
+    "Cloud secret managers.",
+]
+problem = """
+Teams keep long-lived shared secrets in code and configuration, and have no way to contain a leak.
+"""
+roles = [["The lab", "`BaoLab`"], ["The client", "`Bao`"], ["Entry point", "`BaoSecretsDemo`"]]
+requirements = [
+    "A secret id works once, and a token carries only its application's policy.",
+    "Secrets are versioned and the audit trail hashes their values.",
+    "Each application gets a database login of its own, and the login really connects with only its grants.",
+    "A renewal is capped at the maximum, an unrenewed lease ends, and a revoked one ends at once.",
+    "A rotated static password ends the old one.",
+    "A sealed server refuses every request and recovers when unsealed.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "OpenBao creates and removes the database logins; the applications only ask for them."
+nodes = [
+    { id = "shop", label = "shop-api", sub = "role, policy", col = 0, row = 0, colour = "client" },
+    { id = "reports", label = "reports", sub = "role, policy", col = 0, row = 1, colour = "client" },
+    { id = "bao", label = "OpenBao", sub = "AppRole, KV, database engine, audit", col = 1, row = 0, colour = "accent" },
+    { id = "db", label = "PostgreSQL", sub = "v-approle-... logins", col = 2, row = 0, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "shop", to = "bao", label = "login, creds" },
+    { from = "reports", to = "bao" },
+    { from = "bao", to = "db", label = "creates and drops roles" },
+    { from = "shop", to = "db", label = "leased login", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The lab starts the containers; the client speaks the API."
+nodes = [
+    { id = "lab", label = "BaoLab", sub = ["start()", "auditLog()", "unsealKey()"], col = 0, row = 0, colour = "accent" },
+    { id = "bao", label = "Bao", sub = ["get()", "put()", "post()", "withToken()"], col = 1, row = 0, colour = "amber" },
+    { id = "demo", label = "BaoSecretsDemo", sub = ["setUp()", "login()", "run()"], col = 0, row = 1, colour = "green" },
+]
+edges = [
+    { from = "demo", to = "bao", label = "uses" },
+    { from = "demo", to = "lab", label = "starts" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a secret id to a database login"
+caption = "Each step narrows what the application can do."
+nodes = [
+    { id = "secret", label = "Secret id", sub = "works once", col = 0, row = 0, colour = "client" },
+    { id = "token", label = "Token", sub = "one policy", col = 1, row = 0, colour = "accent" },
+    { id = "lease", label = "Lease", sub = "ttl, max ttl", col = 2, row = 0, colour = "amber" },
+    { id = "login", label = "Database login", sub = "its own grants", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "secret", to = "token" },
+    { from = "token", to = "lease" },
+    { from = "lease", to = "login" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A leased login"
+participants = ["shop-api", "OpenBao", "PostgreSQL"]
+steps = [
+    ["shop-api", "OpenBao", "login with role id + secret id"],
+    ["OpenBao", "shop-api", "token with the shop-api policy", "reply"],
+    ["shop-api", "OpenBao", "GET database/creds/shop-api"],
+    ["OpenBao", "PostgreSQL", "CREATE ROLE v-approle-shop-api-..."],
+    ["OpenBao", "shop-api", "username, password, lease", "reply"],
+    ["shop-api", "PostgreSQL", "connect"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A leak is noticed"
+participants = ["Operator", "OpenBao", "PostgreSQL", "Thief"]
+steps = [
+    ["Operator", "OpenBao", "revoke-prefix database/creds/shop-api"],
+    ["OpenBao", "PostgreSQL", "DROP ROLE for each lease"],
+    ["Thief", "PostgreSQL", "connect with the copied login"],
+    ["PostgreSQL", "Thief", "password authentication failed", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Applications", nodes = ["shop", "thief"], colour = "amber" },
+    { label = "The secrets service", nodes = ["bao"], colour = "green" },
+]
+nodes = [
+    { id = "shop", label = "shop-api", sub = "holds a lease", col = 0, row = 0, colour = "client", threats = ["T1", "T2"] },
+    { id = "thief", label = "Thief", sub = "copies a login or a secret id", col = 0, row = 1, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "bao", label = "OpenBao", sub = "policies, leases, audit", col = 1, row = 0, colour = "accent", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "shop", to = "bao", label = "role id + secret id", threats = ["T1"] },
+    { from = "thief", to = "bao", label = "replays", colour = "red", dashed = true, threats = ["T1", "T3"] },
+]
+
+[threatmodel]
+scope = """
+Secrets for an online store's applications held in OpenBao, and the database logins it leases. It covers identity, policy, leases, rotation, revocation and the failure of the service. It does not cover the host that runs OpenBao.
+"""
+assets = [
+    "The payment key and the database logins.",
+    "The unseal key and the root token.",
+]
+actors = [
+    "An application with its own role.",
+    "A thief who copies a secret id or a login.",
+    "An operator with the root token.",
+]
+boundaries = [
+    "The application to OpenBao: a token with one policy.",
+    "OpenBao to PostgreSQL: an administrator login that only OpenBao holds.",
+]
+assumptions = [
+    "The channel to OpenBao is TLS in production.",
+    "The root token and unseal keys are held by several people.",
+]
+out_of_scope = [
+    "Compromise of the OpenBao host.",
+    "Storage and high availability of OpenBao.",
+]
+tests = [
+    "`BaoSecretsTest` starts a real OpenBao and PostgreSQL and checks the single use of a secret id, the policies, versions, the audit trail, per-application logins, revocation, expiry, the renewal cap, revoking a prefix, rotation and sealing.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, artifact-signing-with-cosign, moves from the secrets the store holds to the proof that what it runs is what was built.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A stolen secret id or token lets another party act as the application"
+where = "AppRole login, tokens"
+control = "A secret id that works once and a short token life"
+residual = "A thief who is first to use the secret id"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A leaked database login stays valid"
+where = "database/creds"
+control = "Short leases, a renewal cap and revocation"
+residual = "The seconds until the lease ends or is revoked"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "An application reads another application's secrets"
+where = "policies"
+control = "One policy per application that names its paths only"
+residual = "A policy that is written too wide"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "The secrets service is sealed or down and the store cannot start"
+where = "OpenBao"
+control = "Held logins keep working until their lease ends; unseal procedure and monitoring"
+residual = "An outage longer than the leases"
+
+[poster]
+headline = [["SECRETS WITH", "text"], ["OPENBAO", "accent"]]
+taglines = [["A real secrets server hands each application its own short-lived database login, and takes", "gold"]]
+before = { code = "shop-api logs in: a token with policies [default, sh", note = "A secrets server, and who may ask", tag = "BEFORE" }
+after = { code = "database/creds/shop-api", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Secrets Management with OpenBao"
+narration = "Hello, and welcome. [[slnc 400]] This video explains secrets with OpenBao, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] With OpenBao an application proves who it is with a role and a secret id that works once, gets a token that carries only its own policy, reads versioned secrets, and is leased a database login of its own that ends with its lease or when the operator revokes it, while the audit trail records every request with the values hashed; the price is a service that holds every secret, that must be sealed, unsealed, backed up and watched, and that the store cannot start without. [[slnc 600]] Think of it this way. [[slnc 300]] A hotel that stops handing out master keys. Each guest gets a card for their own room that stops working at checkout, the front desk can cancel one card or all of a floor's at once, and a log records every card that was cut. The price is a front desk that must always be open. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain how an application proves who it is to a secrets server. [[slnc 300]] Write a policy that names what an application may read. [[slnc 300]] Lease a database login and say when it ends."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store has a shop API and a reports", "job that both need a payment key and a", "database login.", "The demo starts a real OpenBao and a real", "PostgreSQL, gives each application a role", "and a policy, leases logins, and then", "renews, expires, rotates, revokes and seals."]
+narration = "Here is the scenario. [[slnc 400]] An online store has a shop A P I and a reports job that both need a payment key and a database login. [[slnc 400]] The demo starts a real OpenBao and a real PostgreSQL, gives each application a role and a policy, leases logins, and then renews, expires, rotates, revokes and seals."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["The secrets service holds every secret", "The store cannot start while it is sealed or down", "Applications need a first credential", "Leases and rotation need applications that can", "reconnect", "Policies are one more thing to write and review"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The secrets service holds every secret. [[slnc 500]] The store cannot start while it is sealed or down. [[slnc 500]] Applications need a first credential. [[slnc 500]] Leases and rotation need applications that can reconnect. [[slnc 500]] Policies are one more thing to write and review."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The lab: BaoLab", "The client: Bao", "Entry point: BaoSecretsDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The lab is in BaoLab. [[slnc 500]] The client is in Bao. [[slnc 500]] Entry point is in BaoSecretsDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A user name that starts with v- in a database", "An unseal key held by several people"]
+narration = "You have probably met this already. [[slnc 400]] A user name that starts with v- in a database. [[slnc 500]] An unseal key held by several people."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain how an application proves who it is to a", "secrets server", "Write a policy that names what an application may read", "Lease a database login and say when it ends", "Describe what the store does when the secrets server", "is sealed"]
+narration = "So, how do you use it? [[slnc 400]] Keep secrets in a service, give each application its own role and policy, lease database logins and renew them, rotate static passwords, audit every request, revoke on a leak, and plan for the day the service is sealed."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's secrets with OpenBao. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A secrets server turns a secret that never changes into a login that lasts minutes, belongs to one application and can be taken back. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Let the application renew its own lease in a loop and log every renewal. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

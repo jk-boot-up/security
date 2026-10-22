@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secrets Management with OpenBao</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secrets Management with OpenBao</h1>
+<pre><code>src/main/java/com/jk/explore/security/baosecrets/
+├── Bao.java             A small client for OpenBao's HTTP API, with a token
+├── BaoLab.java          One OpenBao in dev mode and one PostgreSQL, on a private Docker network, each bound to a free port on the loopback address and removed on close
+└── BaoSecretsDemo.java  Runs the store's secrets story in five numbered acts against a real OpenBao and a real PostgreSQL in Docker, all on the loopback interface
+</code></pre>
+<p><strong>With OpenBao an application proves who it is with a role and a secret id that works once, gets a token that carries only its own policy, reads versioned secrets, and is leased a database login of its own that ends with its lease or when the operator revokes it, while the audit trail records every request with the values hashed; the price is a service that holds every secret, that must be sealed, unsealed, backed up and watched, and that the store cannot start without.</strong></p>
+<p>The plain <a href="../secrets-management">secrets-management</a> project builds a secrets service from scratch and ends with "the -with-openbao version runs the same leases against a real secrets server". This is that version: a real <strong>OpenBao 2.7</strong> and a real <strong>PostgreSQL 18</strong> in Docker, on a private network, each bound to a free loopback port, with a small Java client that speaks OpenBao's HTTP API. It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Who may ask.</strong> <code>shop-api</code> and <code>reports</code> each have an AppRole and a policy. A <strong>secret id works once</strong>: the same one again, or one nobody issued, gets 400. The shop reads its payment key and is refused (403) the reports key, the reports app the other way round, and a request with no token is refused.
+- <strong>Secrets that stay still.</strong> KV version 2 keeps versions: during a changeover version 1 and version 2 are both readable by number, the application cannot destroy versions, the operator destroys version 1, and version 2 goes on working. The <strong>audit trail</strong> records the path and the application, and writes the values as HMACs, never the key.
+- <strong>Database logins that are leased.</strong> Each application is given a login of its own, named <code>v-approle-shop-api-&lt;random&gt;</code>, that really connects to PostgreSQL and can read <code>orders</code> but not <code>card_numbers</code>. A lease is renewed up to its <strong>maximum of 20 seconds</strong>; an unrenewed one ends and the login is removed; <strong>revoking a lease ends the login at once.</strong> (A <code>VALID UNTIL</code> in the creation statement is not extended by a renewal unless a renew statement says so.)
+- <strong>Rotation and blast radius.</strong> A static password that OpenBao manages is rotated and the thief's copy stops working; <strong>revoking every lease under one path</strong> ends all of an application's logins and leaves the others alone.
+- <strong>The bill.</strong> A <strong>sealed</strong> OpenBao refuses every read with 503, so the store cannot start a server; logins already held go on working until their lease would have ended; unsealing restores service. This dev server keeps everything in memory.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration, A04 Cryptographic Failures · CWE-798, CWE-522 · OWASP Secrets Management Cheat Sheet · NIST SP 800-57.</p>
+<h2>The idea in everyday terms</h2>
+<p>A hotel that stops handing out master keys. Each guest gets a card for their own room that stops working at checkout, the front desk can cancel one card or all of a floor's at once, and a log records every card that was cut. The price is a front desk that must always be open.</p>
+<h2>The scenario</h2>
+<p>An online store has a shop API and a reports job that both need a payment key and a database login. The demo starts a real OpenBao and a real PostgreSQL, gives each application a role and a policy, leases logins, and then renews, expires, rotates, revokes and seals.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A secrets server, and who may ask</td>
+<td>An application proves who it is with a role id and a secret id that works once, and gets a token that carries only its own policy.</td>
+</tr>
+<tr>
+<td>2. Secrets that stay still: versions, rotation and the audit trail</td>
+<td>Versions of a secret are readable by number during a changeover, the application cannot destroy them, the operator does, and the audit trail records requests with values hashed.</td>
+</tr>
+<tr>
+<td>3. Database logins that are leased</td>
+<td>Each application gets a real database login of its own, with only its grants, that is renewed up to a maximum, ends when unrenewed, and ends at once when revoked.</td>
+</tr>
+<tr>
+<td>4. Rotation, and the blast radius of a leak</td>
+<td>A static password that OpenBao manages is rotated and the thief's copy stops working; revoking every lease under one path ends one application's logins and no others.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A sealed OpenBao refuses every request with 503, so the store cannot start a server; logins already held keep working until their lease ends; unsealing restores service.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>13 tests in <code>BaoSecretsTest</code>, <code>DemoRunsTest</code>. The tests start one OpenBao and one PostgreSQL for the whole class and remove them (./gradlew integrationTest). Two tests wait for a lease to end.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>OpenBao and PostgreSQL are real containers on a private Docker network, each bound to a free loopback port and removed at the end. OpenBao's audit device writes to a file inside its container, which the demo reads. Tokens, passwords, lease ids and ports are never printed; the demo waits about ten seconds, once, for a lease to end.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.postgresql:postgresql</td>
+<td>42.7.13</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/secrets-management-with-openbao-explained.html">Secrets Management with OpenBao, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>OpenBao creates and removes the database logins; the applications only ask for them.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The lab starts the containers; the client speaks the API.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step narrows what the application can do.</p>
+<p><img alt="From a secret id to a database login" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A leased login" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/secrets-management-with-openbao-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The secrets service holds every secret,</strong> so it needs its own access control, audit, backups and unseal procedure.</li>
+<li><strong>The store cannot start while it is sealed or down,</strong> so its availability is now part of the store's.</li>
+<li><strong>Applications need a first credential,</strong> a role id and a secret id, to prove who they are.</li>
+<li><strong>Leases and rotation need applications that can reconnect</strong> with a new login without a restart.</li>
+<li><strong>Policies are one more thing to write and review,</strong> and a policy that is too wide undoes the point.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A single small service on one machine with one secret can read an owner-only file injected at deploy time. Use a secrets server when several applications need secrets of their own, when logins should expire, or when a leak must be containable.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>vault read database/creds/...</code> and <code>v-approle-...</code> user names in a database.</li>
+<li><code>role_id</code> and <code>secret_id</code> in a deployment pipeline.</li>
+<li>A <code>403 permission denied</code> from a secrets server.</li>
+<li>A secrets service sealed after a restart.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../secrets-management">secrets-management</a>, in the <a href="..">secrets-and-supply-chain</a> module. It runs the same ideas, leases, rotation and revocation, against a real secrets server and a real database.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

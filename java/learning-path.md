@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 99 projects. Planned: 53 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 100 projects. Planned: 52 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,14 +24,14 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **58** | **18** | **76** |
+| **Intermediate** | | **59** | **17** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
 | | identity-and-access | 12 | 0 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
 | | secure-coding | 4 | 4 | 8 |
-| | secrets-and-supply-chain | 4 | 4 | 8 |
+| | secrets-and-supply-chain | 5 | 3 | 8 |
 | | platform-hardening | 2 | 2 | 4 |
 | | detection-and-response | 3 | 2 | 5 |
 | | secure-design | 3 | 2 | 5 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **99** | **53** | **152** |
+| **All** | | **100** | **52** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 18 | 18 | 36 |
+| Intermediate | With tools | 19 | 17 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **39** | **18** | **57** |
+| **All** | **With tools** | **40** | **17** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -235,7 +235,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
 | 96 | [secrets-management](intermediate/secrets-and-supply-chain/secrets-management) | Plain | A secret that never sits still is a secret that leaks less | A02, CWE-798 |
-| 97 | secrets-management-with-openbao | With tools: openbao | *planned*: dynamic database credentials with leases from a local OpenBao | A02, CWE-798 |
+| 97 | [secrets-management-with-openbao](intermediate/secrets-and-supply-chain/secrets-management-with-openbao) | With tools: openbao | A real secrets server hands each application its own short-lived database login, and takes it back when the lease ends or a leak is noticed | A02, CWE-798 |
 | 98 | [artifact-signing](intermediate/secrets-and-supply-chain/artifact-signing) | Plain | Run only what the release team signed, and only what the world can see they signed | A08, SLSA |
 | 99 | artifact-signing-with-cosign | With tools: cosign | *planned*: signing a container image and refusing an unsigned one | A08, SLSA |
 | 100 | [sbom-and-provenance](intermediate/secrets-and-supply-chain/sbom-and-provenance) | Plain | Know what is inside a release, and prove where it came from | A03, SLSA, SSDF |
