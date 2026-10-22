@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SAML Basics with Keycloak</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>SAML Basics with Keycloak</h1>
+<pre><code>src/main/java/com/jk/explore/security/samlkeycloak/
+├── KeycloakLab.java       One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank and wallet realms imported from {@code infra/} and removed on close
+├── Refusals.java          Why the shop refused sign-ins, most recent last
+├── Running.java           The shop, a Spring Boot application on a loopback port chosen before Keycloak started, trusting the identity provider of one Keycloak realm
+├── SamlKeycloakDemo.java  Runs the shop's single sign-on story in five numbered acts against a real Keycloak in Docker and a real Spring Security SAML 2.0 service provider
+├── SamlTools.java         What an attacker does to a signed SAML response, with the JDK's own XML tools: read it, change a name, take signatures off, put a second assertion beside the signed one, and sign with a key of the attacker's own
+├── ShopApp.java           The shop, a SAML 2.0 service provider: it sends shoppers to the bank's identity provider and believes only what the bank signs
+├── ShopController.java    Who is signed in, as the signed statement says
+├── ShopSecurity.java      SAML 2.0 login: {@code /saml2/authenticate/keycloak} sends the shopper to Keycloak with an authentication request, and {@code /login/saml2/sso/keycloak} receives the response
+└── Shopper.java           A customer's browser as far as this lesson needs one
+</code></pre>
+<p><strong>Spring Security's SAML 2.0 service provider, on OpenSAML, trusts only the key in the identity provider's metadata, reads only assertions that key signed, and checks the request it answers, its audience and its dates; edited, self-signed, wrapped, unsigned and foreign-signed responses are all refused, and the cost is that metadata is read once, so a key rotation at the bank must reach the shop before the bank starts signing with it.</strong></p>
+<p>The plain <a href="../saml-basics">saml-basics</a> project builds a service provider with a trusting, a pinned and a strict reader. This one uses what a real Spring Boot shop uses: <strong>Spring Security 7</strong>'s <code>saml2Login()</code> on <strong>OpenSAML 5</strong>, against a real <strong>Keycloak 26.8</strong> SAML identity provider in Docker. It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Signing in.</strong> The shop's authentication request (unsigned, from the shop's entity id, naming its assertion consumer address) goes to the bank; Ana signs in there; the bank's response is signed as a whole and its assertion is signed on its own (2 signatures), answers the shop's request, is addressed to the shop and is for the shop's entity id only.
+- <strong>A valid signature is not the bank's signature.</strong> The name edited to <code>admin</code>, a response <strong>self-signed with a valid key of the attacker's</strong>, and a <strong>genuine response from the wallet realm</strong>, signed by the wallet, are all refused with <code>invalid_signature</code>: the shop trusts the key in the bank's metadata and no other.
+- <strong>Signature wrapping.</strong> An unsigned admin assertion before or after the bank's signed one, no signature at all, and a response with a DOCTYPE that reads a file are refused (<code>invalid_signature</code>, <code>malformed_response_data</code>).
+- <strong>The statement itself.</strong> A response replayed from another browser or the same one (<code>invalid_in_response_to</code>: the shop's request is used once), an assertion four seconds old when it lasts two (<code>invalid_assertion</code>), and a response the bank signed for <strong>another shop</strong> (<code>invalid_assertion</code>, the audience).
+- <strong>The bill.</strong> The shop reads the bank's metadata when it starts. When the bank adds a signing key, <strong>every shopper is refused</strong> (<code>invalid_signature</code>) until the shop restarts and reads the metadata again.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · OASIS SAML 2.0 Core, Bindings and Profiles · CWE-347, CWE-611 (XXE), CWE-290 · XML Signature Wrapping.</p>
+<h2>The idea in everyday terms</h2>
+<p>A passport control that checks the stamp, not the passport's owner's story. The stamp must be from the country the officer was told to trust, on the page the officer is reading, for this border, today. A beautiful stamp from another country, or a real stamp on another page, is still no entry.</p>
+<h2>The scenario</h2>
+<p>A shop signs shoppers in through the bank's SAML identity provider. The demo starts a real Keycloak with the bank and wallet realms and the real shop, signs Ana in, and then posts to the shop every kind of response an attacker or an accident could produce.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Signing in through the bank</td>
+<td>The shop sends an unsigned authentication request; the bank answers with a response signed as a whole and an assertion signed on its own, for this shop and this request only.</td>
+</tr>
+<tr>
+<td>2. A valid signature is not the same as the bank's signature</td>
+<td>An edited name, a response self-signed with a valid key of the attacker's, and a genuine response signed by the wallet are all refused as invalid_signature.</td>
+</tr>
+<tr>
+<td>3. A valid signature on one assertion, and another one read</td>
+<td>An unsigned admin assertion beside the bank's signed one, no signature at all, and a DOCTYPE are all refused.</td>
+</tr>
+<tr>
+<td>4. The statement itself is checked</td>
+<td>A replayed response, an expired assertion and a response signed for another shop are refused even though their signatures are the bank's.</td>
+</tr>
+<tr>
+<td>5. The bill: keys, metadata and XML</td>
+<td>The shop reads the bank's metadata once; when the bank adds a signing key every shopper is refused until the shop reads the metadata again.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>21 tests in <code>DemoRunsTest</code>, <code>RealmFilesTest</code>, <code>SamlFlowTest</code>, <code>SamlToolsTest</code>. The tests that need Keycloak are tagged integration and share one container and one shop per class (./gradlew integrationTest). The attacker's tools and the realm files are tested without Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keycloak is a real container bound to 127.0.0.1 on a free port, with a bank realm and a wallet realm imported from infra/ and the shop's port written into a temporary copy. The shop is a real Spring Boot application. The browser keeps cookies and submits the pages' automatic forms. The attacker's changes use the JDK's own XML and XML signature tools. Ports, ids, keys and signatures are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-saml2</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/saml-basics-with-keycloak-explained.html">SAML Basics with Keycloak, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The shopper's browser carries the request and the response between the two.</p>
+<p><img alt="The shop and the bank" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The shop is small; OpenSAML does the XML.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The document, the signature, the request, then the statement.</p>
+<p><img alt="What the shop checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="SAML web single sign-on" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/saml-basics-with-keycloak-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>XML signatures are subtle,</strong> so the shop depends on a library and on patching it.</li>
+<li><strong>Metadata is read once at startup in this configuration,</strong> so a key rotation at the bank is an outage at the shop unless the shop reloads in time.</li>
+<li><strong>Clock skew and assertion lifetimes need agreeing,</strong> or real shoppers are refused.</li>
+<li><strong>Every shop must be registered</strong> at the bank with its entity id and exact address.</li>
+<li><strong>Single logout is a second protocol</strong> that has to be set up on both sides, and is not covered here.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A new application with a choice should use OpenID Connect, which is simpler. SAML is for the partners and products that only speak it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>An XML blob with <code>&lt;saml2p:Response&gt;</code> in a browser's network tab.</li>
+<li><code>saml2Login()</code> in a Spring Security configuration.</li>
+<li>An identity provider's metadata file with an <code>X509Certificate</code>.</li>
+<li>An error such as "Invalid InResponseTo" or "Invalid signature" after a key change.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../saml-basics">saml-basics</a>, in the <a href="..">identity-and-access</a> module. It follows the same four attacks and adds the key rotation, against a real identity provider.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
