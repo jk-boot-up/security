@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inspecting TLS Traffic with Wireshark</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Inspecting TLS Traffic with Wireshark</h1>
+<pre><code>src/main/java/com/jk/explore/security/tlscapture/
+├── Client.java          The openssl command as a TLS client; with a key log file it writes the secrets of the connection, as a browser does when SSLKEYLOGFILE is set
+├── LegacyServer.java    A server that uses RSA key exchange (TLS 1.2), so no forward secrecy: the client encrypts the session secret with the server's public key
+├── LocalCa.java         A root made with the step command, and the certificates it signs, good and bad
+├── Nginx.java           A real nginx with a login page, on a loopback port
+├── Pcap.java            Writes a capture file (pcap, raw IPv4 packets) of one TCP connection between two loopback ports, from the bytes a tap saw
+├── Procs.java           Small helpers for running programs
+├── Tap.java             A tap between a client and a server on loopback: it forwards every byte and writes a capture file of what went through
+├── TlsCaptureDemo.java  One login through a tap, which writes {@code pcap}; the client writes its secrets to {@code keys} when that is not null
+└── Tshark.java          The tshark command reading a capture file, with or without the secrets of the connection
+</code></pre>
+<p><strong>A capture of a real TLS 1.3 login shows the server name, the cipher the server chose and encrypted records, and nothing of the password; tshark with the key log the client wrote opens that connection (and its encrypted certificate) and no other, a log with only the client's lines opens only requests, and a leaked server key opens a recording made with RSA key exchange but not one made with ephemeral keys.</strong></p>
+<p>The plain <a href="../inspecting-tls-traffic">inspecting-tls-traffic</a> project decrypts a recorded TLS 1.3 session in Java with HKDF. This one uses the real tools: <strong>nginx</strong>, the <strong>openssl</strong> client with <code>-keylogfile</code>, and <strong>tshark</strong> (<code>brew install nginx step wireshark</code>). Nothing is captured from a network card, which needs rights a test should not ask for: a small <strong>tap</strong> in Java sits between the client and the server on loopback, forwards every byte and writes a capture file (pcap) of what went through, which is all that a machine on the path would see. The tests are tagged <code>integration</code> (the capture-file test is not): <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>What the wire shows.</strong> The Client Hello names the shop in the clear, the Server Hello picks <code>TLS_AES_256_GCM_SHA384</code>, the rest is encrypted records: no certificate, no HTTP, no password.
+- <strong>A key log.</strong> <code>openssl s_client -keylogfile</code> writes five lines (the client random and a secret each), the same format a browser writes when <code>SSLKEYLOGFILE</code> is set. It holds no private key.
+- <strong>The same capture with the key log.</strong> tshark shows <code>POST /login</code>, the form fields, the cookie, and the encrypted certificate.
+- <strong>One connection only.</strong> A second login is closed to the first login's key log; one file with both logs opens both; a log with only the client's lines opens the requests and not the responses.
+- <strong>The server's own key.</strong> A TLS 1.2 certificate is visible in the clear. With the server's private key, a recording made with ECDHE stays closed and a recording made with RSA key exchange opens, password and all.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-312 (cleartext storage of sensitive information), CWE-532 · RFC 8446 (TLS 1.3) · the NSS key log format.</p>
+<h2>The idea in everyday terms</h2>
+<p>Sealed envelopes carried past a watcher. The watcher sees the address on the outside, the times and the sizes. A note from the sender with that one envelope's key opens that envelope and no other; the post office's master key opens old envelopes only if they were sealed the old way.</p>
+<h2>The scenario</h2>
+<p>An online store's shopper logs in over TLS 1.3. The demo plays a person with a capture file and the tools to read it, and shows what they can and cannot learn.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What the wire shows</td>
+<td>The capture shows the server name, the chosen cipher and encrypted records; the certificate, the request and the password are not there.</td>
+</tr>
+<tr>
+<td>2. A key log: the secrets of one connection</td>
+<td>The client writes five lines, each tied to one connection by its client random, and no private key.</td>
+</tr>
+<tr>
+<td>3. The same capture, read with the key log</td>
+<td>tshark with the key log shows the request, the form fields, the cookie and the certificate.</td>
+</tr>
+<tr>
+<td>4. A key log opens its own connection and no other</td>
+<td>A second login is closed to the first key log; one file with both opens both; a log with only the client's lines opens only requests.</td>
+</tr>
+<tr>
+<td>5. The server's own key is a different matter</td>
+<td>A TLS 1.2 certificate is in the clear; a leaked server key opens an RSA key exchange recording and not an ECDHE one.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>PcapTest</code>, <code>TlsCaptureTest</code>. The capture-file writer is tested with no program. The other tests need nginx, openssl, step and tshark (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>nginx, openssl and tshark are the real programs; the tap writes a real pcap file. Secrets, ports and packet counts are never printed; the demo takes about half a minute.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/inspecting-tls-traffic-with-wireshark-explained.html">Inspecting TLS Traffic with Wireshark, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A tap between the client and the server writes the capture; tshark reads it.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The tap and the capture writer, the servers, and the reader.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A key log opens a connection; the server key opens an RSA exchange.</p>
+<p><img alt="What opens what" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A captured login" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/inspecting-tls-traffic-with-wireshark-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A key log is as good as the password it protects,</strong> so where it is written and when it is deleted matter.</li>
+<li><strong>Names, times and sizes stay visible</strong> even with TLS 1.3.</li>
+<li><strong>A capture on a real network needs rights</strong> that are rightly hard to get.</li>
+<li><strong>Debugging with decryption tempts a team to leave logging on.</strong></li>
+</ul>
+<h2>When this is too much</h2>
+<p>If you can read the application's own logs, you rarely need to decrypt the wire. Decrypt traffic when the bug is between the machines: a proxy, a handshake, a header added on the way.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>An environment variable <code>SSLKEYLOGFILE</code> in a developer's shell.</li>
+<li>A Wireshark screen full of <code>Application Data</code>.</li>
+<li>A <code>.pcap</code> attached to a bug report.</li>
+<li>Someone saying "just turn off TLS in test".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../inspecting-tls-traffic">inspecting-tls-traffic</a>, in the <a href="..">tls-in-practice</a> module. The certificates come from the kind of authority built in <a href="../local-certificate-authority-with-step-ca">local-certificate-authority-with-step-ca</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

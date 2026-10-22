@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inspecting TLS Traffic with Wireshark, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Inspecting TLS Traffic with Wireshark, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Encryption hides the content and not the conversation, and the secrets that open it are kept per connection by whoever wrote them down.</p>
+<h2>The 5 acts</h2>
+<h3>1. What the wire shows</h3>
+<p>A login to the shop over TLS 1.3 is copied by a tap and read with tshark and no secrets. The Client Hello names www.shop.localhost in the clear and the Server Hello chooses TLS_AES_256_GCM_SHA384. The certificate is not in the capture, no HTTP request can be read, and the encrypted application data records are there. The bytes of the capture do not contain the word password. A watcher still learns the name, the times and the sizes.</p>
+<h3>2. A key log: the secrets of one connection</h3>
+<p>openssl s_client -keylogfile writes five lines, as a browser does when SSLKEYLOGFILE is set: the handshake and traffic secrets of both sides and the exporter secret. Each line is a label, the connection's client random (32 bytes) and a secret (48 bytes), which ties it to one connection and nothing else. The file holds no private key.</p>
+<h3>3. The same capture, read with the key log</h3>
+<p>With the key log, tshark shows POST /login with the form fields user and password, ana and hunter2; the response 200 with the Set-Cookie header and the page; and the encrypted handshake opens too, so the certificate, for www.shop.localhost, is visible. In TLS 1.3 the certificate is encrypted, and the key log opens it.</p>
+<h3>4. A key log opens its own connection and no other</h3>
+<p>A second login read with the first login's key log has 0 HTTP packets; with its own key log it opens. One file with both logs opens both captures. A log with only the client's lines opens the requests and not the responses.</p>
+<h3>5. The server's own key is a different matter</h3>
+<p>Over TLS 1.2 the certificate is visible without any secret; over TLS 1.3 it is not. A recording made with ephemeral key exchange (ECDHE) stays closed when the server's private key leaks: 0 HTTP packets opened. A recording made with RSA key exchange opens, password and all: a leaked key opens everything recorded before. A key log is as good as the password it protects. Nothing here needed a network card.</p>
+<h2>The verdict</h2>
+<p>Keep key logs out of production and delete them, prefer ephemeral key exchange so that a leaked server key opens nothing old, remember that names, times and sizes stay visible, and treat a capture as sensitive even if it is encrypted.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>SSLKEYLOGFILE</code> in an environment.</li>
+<li>A <code>.pcap</code> file in a ticket.</li>
+<li>A Wireshark screen of <code>Application Data</code> records.</li>
+<li><code>tls.keylog_file</code> in a Wireshark preference.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>An environment variable <code>SSLKEYLOGFILE</code> in a developer's shell.</li>
+<li>A Wireshark screen full of <code>Application Data</code>.</li>
+<li>A <code>.pcap</code> attached to a bug report.</li>
+<li>Someone saying "just turn off TLS in test".</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
