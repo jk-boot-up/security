@@ -100,16 +100,16 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 42 | [broken-access-control](intermediate/web-security/broken-access-control) | Plain | Signed in is not the same as allowed | A01, API1, CWE-639, CWE-862 |
 | 43 | [broken-access-control-with-spring-security](intermediate/web-security/broken-access-control-with-spring-security) | With tools: spring security | A framework enforces exactly the rules it is given | A01, API1, CWE-639, CWE-862 |
 | 44 | [sql-injection](intermediate/web-security/sql-injection) | Plain | Text typed by a customer must never become code | A05, CWE-89 |
-| 45 | sql-injection-with-hibernate-and-postgres | With tools: hibernate and postgres | *planned*: JPQL, Criteria and native-query injection in Hibernate 7 against a real PostgreSQL | A05, CWE-89 |
+| 45 | [sql-injection-with-hibernate-and-postgres](intermediate/web-security/sql-injection-with-hibernate-and-postgres) | With tools: hibernate and postgres | Hibernate does not make a query safe: only parameters do, and a database user with few rights limits the damage of a mistake | A05, CWE-89 |
 | 46 | [cross-site-scripting](intermediate/web-security/cross-site-scripting) | Plain | Text from a customer must stay text | A05, CWE-79 |
 | 47 | [cross-site-scripting-with-spring-boot](intermediate/web-security/cross-site-scripting-with-spring-boot) | With tools: spring boot | Let the template escape, and know the one switch that stops it | A05, CWE-79 |
 | 48 | [cross-site-request-forgery](intermediate/web-security/cross-site-request-forgery) | Plain | A cookie proves who is asking, not what they meant | A01, CWE-352 |
-| 49 | cross-site-request-forgery-with-spring-security | With tools: spring security | *on hold* CSRF tokens, the SPA cookie mode, and what disabling CSRF costs | A01, CWE-352 |
+| 49 | [cross-site-request-forgery-with-spring-security](intermediate/web-security/cross-site-request-forgery-with-spring-security) | With tools: spring security | Spring Security's token check is on by default, and the ways to lose it are a switch, an exemption and a GET | A01, CWE-352 |
 | 50 | [server-side-request-forgery](intermediate/web-security/server-side-request-forgery) | Plain | When the server fetches an address for a customer, it fetches it from inside | A01, CWE-918 |
-| 51 | server-side-request-forgery-with-spring-boot | With tools: spring boot | *planned*: `RestClient` with a guarded resolver, no redirects and egress limits | A01, CWE-918 |
+| 51 | [server-side-request-forgery-with-spring-boot](intermediate/web-security/server-side-request-forgery-with-spring-boot) | With tools: spring boot | A Spring RestClient fetches whatever it is told, so the address must be judged after resolution and the connection must go to the address that was judged | A01, CWE-918 |
 | 52 | [xml-and-template-injection](intermediate/web-security/xml-and-template-injection) | Plain | A file or a template is a program for its reader | A05, CWE-611, CWE-1336 |
 | 53 | [insecure-deserialization](intermediate/web-security/insecure-deserialization) | Plain | Rebuilding an object from bytes runs code the sender chose | A08, CWE-502 |
-| 54 | insecure-deserialization-with-jackson | With tools: jackson | *planned*: polymorphic typing traps in Jackson 3 | A08, CWE-502 |
+| 54 | [insecure-deserialization-with-jackson](intermediate/web-security/insecure-deserialization-with-jackson) | With tools: jackson | JSON is data until a type id tells Jackson which class to build, and then the cookie is choosing code | A08, CWE-502 |
 | 55 | [path-traversal-and-file-upload](intermediate/web-security/path-traversal-and-file-upload) | Plain | A file name from a customer is a path until proven otherwise | A01, CWE-22, CWE-434, CWE-601 |
 | 56 | path-traversal-and-file-upload-with-spring-boot | With tools: spring boot | *planned*: multipart limits, content checks and an open-redirect check on the "return to" link | A01, CWE-22, CWE-434, CWE-601 |
 
