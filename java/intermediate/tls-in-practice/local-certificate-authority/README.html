@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Local Certificate Authority</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>A Local Certificate Authority</h1>
+<pre><code>src/main/java/com/jk/explore/security/localca/
+├── CertificateAuthority.java  The store's internal certificate authority
+├── Csr.java                   Certificate signing requests (PKCS#10)
+├── Inventory.java             A list of every certificate the store runs, with the ones that need attention flagged
+├── Issued.java                A certificate together with its subject's key pair
+├── Keys.java                  EC P-256 key pairs
+├── LocalCaDemo.java           Runs the online store's internal certificate authority in five numbered acts and prints exact, repeatable results
+├── Profile.java               What a certificate of one kind may be used for and how long it may live
+├── RefusedException.java      The certificate authority refused a request, with the reason it gives back to the requester
+├── ShortLived.java            A service that keeps a 24-hour certificate and renews it on its own, with a new key each time, once two thirds of its life has passed
+└── Validator.java             What every client of the store's services does: validate the chain with the JDK's PKIX implementation against the one internal root, at a chosen time, optionally requiring a current revocation list from every issuer in the chain
+</code></pre>
+<p><strong>A small certificate authority shows what issuing really involves: the authority applies the policy itself, proves the requester holds the key, limits its own reach with name constraints, and then faces the hard part, taking a certificate back, where short-lived certificates beat revocation lists.</strong></p>
+<p>A <strong>certificate</strong> is a signed statement that a public key belongs to a name. A <strong>certificate authority</strong> (CA) is whoever signs those statements, and every client that trusts the CA believes them. The store's internal services (<code>www</code>, <code>payments</code>, <code>orders</code>, <code>cart</code>) need certificates for
+their own names, so the store runs its own CA. This project builds one with real X.509 certificates and revocation lists, and checks them with the JDK's own validator.</p>
+<p>What the project measures:
+- <strong>The issuer applies the policy, not the requester.</strong> Every request must prove the sender holds the private key, name at least one service inside <code>shop.internal</code>, come from a team allowed that name, and stay inside the lifetime of its profile.
+- <strong>The CA limits itself.</strong> The offline root signs one issuing authority with path length zero and a name constraint, so even a stolen or buggy issuer cannot make a valid certificate for <code>pay.example</code>: clients refuse it.
+- <strong>Revocation is only as good as the list the client has.</strong> A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date.
+- <strong>Short-lived certificates avoid the problem.</strong> A 24-hour certificate renewed at two thirds of its life with a new key needs no list; if the renewal job stops, the certificate just runs out.
+- <strong>The root key is the bill.</strong> It signs rarely and stays offline; the audit log records every decision.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-299 · RFC 5280 (X.509 and CRLs) · RFC 2986 (PKCS #10 requests) · RFC 8555 (ACME) as the automation.</p>
+<h2>The idea in everyday terms</h2>
+<p>A passport office. The office does not take your word for who you are, it checks that you hold the photo, limits itself to its own country's names, and stamps an expiry date. If a passport is lost, the office can publish a list of cancelled numbers, but only border guards who read the
+latest list will notice. A passport that simply expires tomorrow needs no list at all.</p>
+<h2>The scenario</h2>
+<p>An online store's internal services call each other over TLS. The demo runs a root CA, an issuing CA, four teams that request certificates, a validator built on the JDK's PKIX code, revocation lists, a renewing service and an inventory, all on a fixed clock.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Running a certificate authority</td>
+<td>An offline root signs an issuing authority limited to shop.internal; the issuer applies a policy, and a name constraint still holds when the policy is skipped.</td>
+</tr>
+<tr>
+<td>2. Issuing from a signing request</td>
+<td>The request carries only the public key and proves possession; a forged request, a name that belongs to another team and a mixed request are all refused.</td>
+</tr>
+<tr>
+<td>3. Revocation: taking a certificate back</td>
+<td>A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date.</td>
+</tr>
+<tr>
+<td>4. Short-lived certificates instead of revocation</td>
+<td>A 24-hour certificate renews at two thirds of its life with a new key: 4 renewals in 72 hours and no failed check, and a stopped job simply expires; the inventory flags what needs attention.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The root key signed 3 times and stays offline; revoking the issuing authority with the root's list refuses every certificate below it; the audit log holds 18 decisions, 6 of them refusals.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>16 tests in <code>DemoRunsTest</code>, <code>LocalCaTest</code>. Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. Keys are random and never printed, so the demo prints the same text on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.bouncycastle:bcprov-jdk18on</td>
+<td>1.86</td>
+<td>Bouncy Castle: algorithms and providers the JDK lacks</td>
+</tr>
+<tr>
+<td>org.bouncycastle:bcpkix-jdk18on</td>
+<td>1.86</td>
+<td>Bouncy Castle PKIX: PEM, X.509 certificates and CMS</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/local-certificate-authority-explained.html">A Local Certificate Authority, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The root signs once and stays offline; the issuing authority signs for the services.</p>
+<p><img alt="Root, issuing authority and services" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The authority issues through one method and the validator checks what it made.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A request is refused at the first failing check.</p>
+<p><img alt="What the issuer checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Issuing a certificate" src="docs/images/sequence-diagram.png" /></p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The root key must stay offline.</strong> It signs three times in the whole demo; a stolen root key means every client has to be changed.</li>
+<li><strong>Revocation needs publishing and checking.</strong> The authority must publish lists on time and every client must fetch and enforce them, or the list does nothing.</li>
+<li><strong>Short-lived certificates need automation.</strong> Every service needs a request, a renewal job and a deployment step, which is what ACME does.</li>
+<li><strong>Name constraints are only as good as the clients.</strong> A client that ignores them accepts the stray certificate, so test the clients you use.</li>
+<li><strong>An authority is a high-value target.</strong> Keep an audit log of every issue and refusal, and guard the issuing key more than any single service key.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a handful of services, a managed or ACME-based internal CA (such as step-ca, covered by the <code>-with-step-ca</code> version) is better than hand-built code, and public certificates are better still where a public name is available. Build an authority by hand to understand it, not to run it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>openssl ca</code> and <code>openssl req</code> for signing requests.</li>
+<li><code>keytool -genkeypair</code> and <code>-gencert</code>.</li>
+<li>The Subject Alternative Name list in a browser's certificate viewer.</li>
+<li>"CRL" and "OCSP" in a certificate's details, and the 90-day certificates of Let's Encrypt.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This project opens the <a href="..">tls-in-practice</a> module. The <a href="../certificate-pinning">certificate-pinning</a> and <a href="../tls-misconfigurations">tls-misconfigurations</a> projects use certificates like the ones built here, each with a small copy of the code so every project stands alone.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

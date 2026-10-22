@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Local Certificate Authority — Animated Walkthrough</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #94a3b8; margin: 0 0 20px; max-width: 70ch; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } }
+  .boxes { display: flex; flex-direction: column; gap: 10px; }
+  .row { border: 2px solid #334155; border-radius: 10px; padding: 12px 16px;
+         background: #1e293b; transition: all .25s ease; opacity: .55; }
+  .row .name { font-weight: 700; font-size: 1rem; }
+  .row .job { color: #94a3b8; font-size: .82rem; margin-top: 2px; }
+  .row.active { opacity: 1; box-shadow: 0 0 0 2px currentColor inset; }
+  .row.wrong { border-color: #f87171; color: #f87171; }
+  .row.wrong.active { background: #3f1d24; }
+  .row.ok { border-color: #34d399; color: #34d399; }
+  .row.ok.active { background: #10261f; }
+  .row.amber { border-color: #fbbf24; color: #fbbf24; }
+  .row.amber.active { background: #2a2110; }
+  .row.dim { opacity: .22; }
+  .console { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 16px;
+             font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86rem;
+             line-height: 1.55; overflow-y: auto; min-height: 320px; white-space: pre-wrap; }
+  #console-lines span.ok { color: #34d399; }
+  #console-lines span.bad { color: #f87171; }
+  #console-lines span.amber { color: #fbbf24; }
+  #console-lines span.muted { color: #94a3b8; }
+  .narration { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+               padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px;
+           padding: 10px 18px; font-size: .92rem; cursor: pointer; }
+  button:hover { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button#play { background: #7c3aed; border-color: #7c3aed; }
+  button#play:hover { background: #8b5cf6; }
+  #progress { color: #94a3b8; font-size: .85rem; margin-left: auto; }
+  .step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+                color: #a78bfa; font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>A Local Certificate Authority — Step by Step</h1>
+  <p class="sub">An offline root, an issuing authority, four teams and a clock that moves from days to hours.</p>
+
+  <div class="narration">
+    <div class="step-label" id="step-label">Ready</div>
+    <div id="narration">Press Step or Play to begin.</div>
+  </div>
+
+  <div class="stage">
+    <div class="boxes" id="boxes">
+      <div class="row" id="row-issue">
+        <div class="name">Issue</div>
+        <div class="job">policy, names, lifetime</div>
+      </div>
+      <div class="row" id="row-csr">
+        <div class="name">Signing requests</div>
+        <div class="job">proof of possession</div>
+      </div>
+      <div class="row" id="row-revoke">
+        <div class="name">Revoke</div>
+        <div class="job">only as good as the list</div>
+      </div>
+      <div class="row" id="row-short">
+        <div class="name">Short-lived</div>
+        <div class="job">24 hours, renewed</div>
+      </div>
+      <div class="row" id="row-bill">
+        <div class="name">The bill</div>
+        <div class="job">root offline, audit log</div>
+      </div>
+    </div>
+    <div class="console"><div id="console-lines"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="step">Step ▸</button>
+    <button id="play">Play ▶</button>
+    <button id="reset">Reset ↺</button>
+    <span id="progress">0 / 0</span>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+ {
+  "label": "Act 1 — Running a certificate authority",
+  "narration": "First demo: running a certificate authority. An offline root signs an issuing authority, which may only name things under shop dot internal. The issuer applies the policy itself: a request with no name, a four hundred day lifetime, or a name outside the domain is refused. Even when the policy is skipped, as a stolen issuer would, clients still refuse the stray name, because the constraint is inside the issuing certificate.",
+  "rows": {
+   "issue": "active ok"
+  },
+  "console": [
+   [
+    "issued for web-team: www.shop.internal, serial 1000, 90 days",
+    "ok"
+   ],
+   [
+    "a request for 400 days -> refused: the server profile allows at most 90 days",
+    "ok"
+   ],
+   [
+    "a request for pay.example -> refused: pay.example is outside shop.internal",
+    "ok"
+   ],
+   [
+    "policy skipped for pay.example -> clients say refused (INVALID_NAME)  <- THE NAME CONSTRAINT HOLDS",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 2 — Issuing from a signing request",
+  "narration": "Second demo: issuing from a signing request. The request carries only the public key, and its signature proves the sender holds the private key. A request that claims someone else's key is refused. A team may not ask for another team's name, and one forbidden name refuses the whole request.",
+  "rows": {
+   "csr": "active ok"
+  },
+  "console": [
+   [
+    "the signature proves the sender holds the private key: true",
+    "ok"
+   ],
+   [
+    "issued serial 1002; the authority never saw the private key",
+    "ok"
+   ],
+   [
+    "a request signed by another key -> refused: the request is not signed by the key it carries",
+    "ok"
+   ],
+   [
+    "web-team asking for payments.shop.internal -> refused",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 3 — Revocation: taking a certificate back",
+  "narration": "Third demo: revocation. The payments key is reported stolen, and its serial goes into a list. A checking client refuses it. A client that never checks still accepts it. When the list is out of date, a strict client refuses everything until a fresh one arrives. Revocation is only as good as the list the client has.",
+  "rows": {
+   "revoke": "active wrong"
+  },
+  "console": [
+   [
+    "day 11, payments.shop.internal, with revocation checked: refused (REVOKED)",
+    "ok"
+   ],
+   [
+    "day 11, by a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE",
+    "bad"
+   ],
+   [
+    "day 20, only the day-10 list: refused (UNDETERMINED_REVOCATION_STATUS)  <- IT FAILS CLOSED",
+    "amber"
+   ],
+   [
+    "day 20, with a fresh list: accepted",
+    "ok"
+   ]
+  ]
+ },
+ {
+  "label": "Act 4 — Short-lived certificates instead of revocation",
+  "narration": "Fourth demo: short lived certificates. A twenty four hour certificate renews at two thirds of its life, with a new key each time. Over three days, four renewals and no failed check. If the job stops, the certificate simply runs out, with no list needed. The inventory shows which certificates need renewing before they expire unnoticed.",
+  "rows": {
+   "short": "active ok"
+  },
+  "console": [
+   [
+    "over 72 hours, checked every hour: 4 renewals, 0 failed checks",
+    "ok"
+   ],
+   [
+    "the renewal job stops; 25 hours later -> refused (EXPIRED)",
+    "ok"
+   ],
+   [
+    "inventory, day 65: www RENEW_NOW, orders RENEW_NOW, cart EXPIRED",
+    "amber"
+   ]
+  ]
+ },
+ {
+  "label": "Act 5 — The bill",
+  "narration": "Fifth demo: the bill. The root key signed three times in all, and stays offline. If the issuing key is stolen, the root revokes it, and everything below it is refused. Every decision is in the audit log. In practice, ACME automates the requests and the renewals.",
+  "rows": {
+   "bill": "active ok"
+  },
+  "console": [
+   [
+    "the root key signed 3 times in all; keep it offline",
+    "ok"
+   ],
+   [
+    "issuing authority revoked by the root -> www.shop.internal refused (REVOKED)",
+    "ok"
+   ],
+   [
+    "the audit log holds 18 decisions, 6 of them refusals",
+    "muted"
+   ]
+  ]
+ }
+];
+const rowIds = ["issue", "csr", "revoke", "short", "bill"];
+const stepLabel = document.getElementById("step-label");
+const narrationEl = document.getElementById("narration");
+const consoleEl = document.getElementById("console-lines");
+const progressEl = document.getElementById("progress");
+const playBtn = document.getElementById("play");
+let i = -1, timer = null;
+
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function render() {
+  for (const id of rowIds) document.getElementById("row-" + id).className = "row";
+  if (i < 0) {
+    stepLabel.textContent = "Ready";
+    narrationEl.textContent = "Press Step or Play to begin.";
+    consoleEl.innerHTML = "";
+    progressEl.textContent = "0 / " + STEPS.length;
+    return;
+  }
+  const s = STEPS[i];
+  stepLabel.textContent = s.label;
+  narrationEl.textContent = s.narration;
+  for (const id of rowIds) {
+    const cls = s.rows[id];
+    document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
+  }
+  consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
+  progressEl.textContent = (i + 1) + " / " + STEPS.length;
+}
+function step() { if (i >= STEPS.length - 1) { stopPlay(); return; } i += 1; render(); }
+function reset() { stopPlay(); i = -1; render(); }
+// While a step's narration is playing, Play waits for it to finish.
+function speaking() { return typeof window.vkSpeaking === "function" && window.vkSpeaking(); }
+function startPlay() {
+  if (timer) return;
+  playBtn.textContent = "Pause ❚❚";
+  let quiet = 0;
+  timer = setInterval(() => {
+    if (speaking()) { quiet = 0; return; }
+    if (++quiet < 6) return;                     // 6 × 500 ms of reading time
+    quiet = 0;
+    if (i >= STEPS.length - 1) { stopPlay(); return; }
+    step();
+  }, 500);
+  if (i < 0) step();
+}
+function stopPlay() { if (timer) clearInterval(timer); timer = null; playBtn.textContent = "Play ▶"; }
+
+document.getElementById("step").addEventListener("click", () => { stopPlay(); step(); });
+document.getElementById("reset").addEventListener("click", reset);
+playBtn.addEventListener("click", () => { if (timer) stopPlay(); else startPlay(); });
+render();
+</script>
+</body>
+</html>

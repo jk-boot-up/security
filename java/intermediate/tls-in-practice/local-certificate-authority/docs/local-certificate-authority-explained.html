@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Local Certificate Authority, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>A Local Certificate Authority, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A certificate authority is a signing policy plus a key: the policy decides what may be said, the name constraint limits the key's reach, and short lifetimes make taking a certificate back almost unnecessary.</p>
+<h2>The 5 acts</h2>
+<h3>1. Running a certificate authority</h3>
+<p>The root may certify one level below it and is kept offline. The issuing authority has path length zero (it cannot create more authorities) and a name constraint for <code>shop.internal</code>. A server certificate for <code>www.shop.internal</code> is issued for 90 days with the serverAuth purpose,
+digital signature only, and it is not an authority. Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would: the certificate is signed, but clients refuse it because of the name constraint.</p>
+<h3>2. Issuing from a signing request</h3>
+<p>payments-team signs a request with its own key. The request carries the public key only, so the authority never sees the private key, and the signature proves the sender holds it. The issued certificate carries exactly that public key. A request that claims
+payments-team's public key but is signed by another key is refused, web-team may not ask for payments.shop.internal, and one forbidden name in a mixed request refuses the whole request. orders-team gets a client certificate (clientAuth) to call other services.</p>
+<h3>3. Revocation: taking a certificate back</h3>
+<p>payments.shop.internal's key is reported stolen on day 10, and serial 1002 goes into a list valid for a week. On day 11 a checking client refuses it and still accepts www; a client that never checks accepts the revoked certificate. On day 20, the day-10 list is past its next update:
+the strict client refuses even the healthy certificate, failing closed, until a fresh list is fetched. Revocation only works if the authority publishes on time and every client fetches and checks.</p>
+<h3>4. Short-lived certificates instead of revocation</h3>
+<p>cart.shop.internal gets 24-hour certificates and a job that renews at two thirds of the lifetime, with a new key each time. Over 72 hours, checked every hour, there are 4 renewals and 0 failed checks. If the job stops, the certificate is refused as EXPIRED 25 hours after the last renewal,
+with no list at all. A stolen 24-hour key works for at most a day. The inventory on day 65 flags the 90-day certificates as RENEW_NOW and the stopped one as EXPIRED: most certificate outages are expiries nobody saw coming.</p>
+<h3>5. The bill</h3>
+<p>Running an authority has costs. The root key signed three times in all (the issuing authority, itself and its revocation lists) and belongs offline, ideally in hardware. If the issuing authority's key is stolen, the offline root revokes it, and www.shop.internal and every certificate below it
+are refused. The audit log holds every decision, 18 in the demo and 6 of them refusals. Every service also needs a request, a renewal job and a deployment step, which is why this is automated in practice with ACME.</p>
+<h2>The verdict</h2>
+<p>Keep the root offline, issue from a constrained authority, apply the policy in the issuer, and prefer short-lived certificates renewed by automation over revocation lists that clients may not check. Use ACME and a maintained CA such as step-ca rather than your own code in production.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>basicConstraints: CA:TRUE, pathlen:0</code> in an intermediate certificate.</li>
+<li><code>X509v3 Name Constraints: Permitted: DNS:...</code> in <code>openssl x509 -text</code>.</li>
+<li><code>CRL Distribution Points</code> and <code>Authority Information Access</code> in a certificate.</li>
+<li>A certificate-expiry outage in an incident report.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>openssl ca</code> and <code>openssl req</code> for signing requests.</li>
+<li><code>keytool -genkeypair</code> and <code>-gencert</code>.</li>
+<li>The Subject Alternative Name list in a browser's certificate viewer.</li>
+<li>"CRL" and "OCSP" in a certificate's details, and the 90-day certificates of Let's Encrypt.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

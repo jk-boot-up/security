@@ -1,0 +1,39 @@
+ONE. Running a certificate authority for the store's own services.
+  the root: O=Example Shop,CN=Shop Internal Root CA, may certify 1 level of authority below it, kept offline
+  the issuing authority: path length 0 (it may not create authorities), names limited to shop.internal
+  issued for web-team: www.shop.internal, serial 1000, serverAuth, digital signature only: true, not an authority: true, 90 days
+  clients validate it against the root: accepted
+  a request with no subject alternative name: refused: a certificate needs at least one subject alternative name
+  a request for 400 days: refused: asked for 400 days, the server profile allows at most 90 days
+  a request for pay.example: refused: pay.example is outside shop.internal
+  the same name signed with the policy skipped, as a buggy or stolen issuer would: clients say refused (INVALID_NAME)  <- THE NAME CONSTRAINT HOLDS
+TWO. Issuing from a signing request.
+  payments-team signs a request for payments.shop.internal with its own key; the request carries only the public key
+  the signature proves the sender holds the private key: true
+  issued serial 1002; its public key is the one in the request: true; the authority never saw the private key
+  a request carrying payments-team's public key but signed by another key: refused: the request is not signed by the key it carries
+  web-team asking for payments.shop.internal: refused: web-team may not ask for payments.shop.internal
+  web-team asking for www.shop.internal and payments.shop.internal at once: refused: web-team may not ask for payments.shop.internal
+  orders-team gets a client certificate for calling other services: clientAuth, orders.shop.internal, accepted
+THREE. Revocation: taking a certificate back before it expires.
+  payments.shop.internal's key is reported stolen on day 10; the issuing authority lists serial 1002 in a revocation list valid until day 17, and the root's own list covers the issuing authority
+  day 11, payments.shop.internal, with revocation checked: refused (REVOKED)
+  day 11, www.shop.internal, with revocation checked: accepted
+  day 11, payments.shop.internal, by a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE
+  day 20, www.shop.internal, with only the day-10 list, now past its next update: refused (UNDETERMINED_REVOCATION_STATUS)  <- NO CURRENT LIST, SO NO: IT FAILS CLOSED
+  day 20, with a fresh list: accepted
+  revocation only works if the authority publishes on time and every client fetches and checks
+FOUR. Short-lived certificates instead of revocation.
+  cart.shop.internal gets 24-hour certificates and renews at two thirds of the lifetime, with a new key each time
+  over 72 hours, checked every hour: 4 renewals, 0 failed checks
+  the renewal job stops; 25 hours after the last renewal the certificate is refused (EXPIRED)
+  a stolen 24-hour key works for at most 24 hours with no list at all; a stolen 90-day key works for up to 90 days unless every client checks a list
+  the inventory on day 65:
+    www.shop.internal: RENEW_NOW, 25 days left
+    orders.shop.internal: RENEW_NOW, 25 days left
+    cart.shop.internal: EXPIRED, 0 hours left
+FIVE. The bill.
+  the root key signed 3 times in all: the issuing authority, itself and its revocation lists; keep it offline, ideally in hardware
+  if the issuing authority's key is stolen, the offline root revokes it: www.shop.internal is then refused (REVOKED), and so is every certificate below it
+  the audit log holds 18 decisions, 6 of them refusals; an authority is a high-value target, so every decision is recorded
+  every service needs a request, a renewal job and a deployment step: in practice this is automated with ACME, as the -with-step-ca version shows

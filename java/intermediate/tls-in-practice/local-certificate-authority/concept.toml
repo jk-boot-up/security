@@ -1,0 +1,409 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "local-certificate-authority"
+level = "intermediate"
+module = "tls-in-practice"
+title = "A Local Certificate Authority"
+short_title = "Local Certificate Authority"
+package = "localca"
+main_class = "LocalCaDemo"
+tagline = "A certificate is a signed claim about a name, and revocation is only as good as the list the client has"
+bold = "A small certificate authority shows what issuing really involves: the authority applies the policy itself, proves the requester holds the key, limits its own reach with name constraints, and then faces the hard part, taking a certificate back, where short-lived certificates beat revocation lists."
+domain = "an online store's internal services"
+domain_note = ""
+youtube_description = "A local certificate authority in Java: signing requests, name constraints, revocation lists and short-lived certificates."
+thumb_lines = ["LOCAL", "CERT AUTHORITY"]
+thumb_code = "CA + CRL + 24h certs"
+youtube_title = "Build a Certificate Authority in Java: Issue, Revoke and Short-Lived Certificates"
+youtube_tags = ["certificate authority", "x509", "crl", "revocation", "tls", "java", "application security"]
+
+[readme]
+intro = """
+A **certificate** is a signed statement that a public key belongs to a name. A **certificate authority** (CA) is whoever signs those statements, and every client that trusts the CA believes them. The store's internal services (`www`, `payments`, `orders`, `cart`) need certificates for
+their own names, so the store runs its own CA. This project builds one with real X.509 certificates and revocation lists, and checks them with the JDK's own validator.
+
+What the project measures:
+- **The issuer applies the policy, not the requester.** Every request must prove the sender holds the private key, name at least one service inside `shop.internal`, come from a team allowed that name, and stay inside the lifetime of its profile.
+- **The CA limits itself.** The offline root signs one issuing authority with path length zero and a name constraint, so even a stolen or buggy issuer cannot make a valid certificate for `pay.example`: clients refuse it.
+- **Revocation is only as good as the list the client has.** A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date.
+- **Short-lived certificates avoid the problem.** A 24-hour certificate renewed at two thirds of its life with a new key needs no list; if the renewal job stops, the certificate just runs out.
+- **The root key is the bill.** It signs rarely and stays offline; the audit log records every decision.
+
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-299 · RFC 5280 (X.509 and CRLs) · RFC 2986 (PKCS #10 requests) · RFC 8555 (ACME) as the automation.
+"""
+analogy = """
+A passport office. The office does not take your word for who you are, it checks that you hold the photo, limits itself to its own country's names, and stamps an expiry date. If a passport is lost, the office can publish a list of cancelled numbers, but only border guards who read the
+latest list will notice. A passport that simply expires tomorrow needs no list at all.
+"""
+scenario = """
+An online store's internal services call each other over TLS. The demo runs a root CA, an issuing CA, four teams that request certificates, a validator built on the JDK's PKIX code, revocation lists, a renewing service and an inventory, all on a fixed clock.
+"""
+costs = [
+    "**The root key must stay offline.** It signs three times in the whole demo; a stolen root key means every client has to be changed.",
+    "**Revocation needs publishing and checking.** The authority must publish lists on time and every client must fetch and enforce them, or the list does nothing.",
+    "**Short-lived certificates need automation.** Every service needs a request, a renewal job and a deployment step, which is what ACME does.",
+    "**Name constraints are only as good as the clients.** A client that ignores them accepts the stray certificate, so test the clients you use.",
+    "**An authority is a high-value target.** Keep an audit log of every issue and refusal, and guard the issuing key more than any single service key.",
+]
+too_much = """
+For a handful of services, a managed or ACME-based internal CA (such as step-ca, covered by the `-with-step-ca` version) is better than hand-built code, and public certificates are better still where a public name is available. Build an authority by hand to understand it, not to run it.
+"""
+met_before = [
+    "`openssl ca` and `openssl req` for signing requests.",
+    "`keytool -genkeypair` and `-gencert`.",
+    "The Subject Alternative Name list in a browser's certificate viewer.",
+    "\"CRL\" and \"OCSP\" in a certificate's details, and the 90-day certificates of Let's Encrypt.",
+]
+where = """
+This project opens the [tls-in-practice](..) module. The [certificate-pinning](../certificate-pinning) and [tls-misconfigurations](../tls-misconfigurations) projects use certificates like the ones built here, each with a small copy of the code so every project stands alone.
+"""
+twin = """
+The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. Keys are random and never printed, so the demo prints the same text on every run.
+"""
+test_note = "Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run."
+
+[[act]]
+title = "Running a certificate authority"
+summary = "An offline root signs an issuing authority limited to shop.internal; the issuer applies a policy, and a name constraint still holds when the policy is skipped."
+detail = """
+The root may certify one level below it and is kept offline. The issuing authority has path length zero (it cannot create more authorities) and a name constraint for `shop.internal`. A server certificate for `www.shop.internal` is issued for 90 days with the serverAuth purpose,
+digital signature only, and it is not an authority. Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would: the certificate is signed, but clients refuse it because of the name constraint.
+"""
+speech = """
+First demo: running a certificate authority. [[slnc 400]] An offline root signs an issuing authority, which may only name things under shop dot internal. [[slnc 600]]
+The issuer applies the policy itself: a request with no name, a four hundred day lifetime, or a name outside the domain is refused. [[slnc 600]]
+Even when the policy is skipped, as a stolen issuer would, clients still refuse the stray name, because the constraint is inside the issuing certificate.
+"""
+rows = { issue = "active ok" }
+console = [
+    ["issued for web-team: www.shop.internal, serial 1000, 90 days", "ok"],
+    ["a request for 400 days -> refused: the server profile allows at most 90 days", "ok"],
+    ["a request for pay.example -> refused: pay.example is outside shop.internal", "ok"],
+    ["policy skipped for pay.example -> clients say refused (INVALID_NAME)  <- THE NAME CONSTRAINT HOLDS", "ok"],
+]
+
+[[act]]
+title = "Issuing from a signing request"
+summary = "The request carries only the public key and proves possession; a forged request, a name that belongs to another team and a mixed request are all refused."
+detail = """
+payments-team signs a request with its own key. The request carries the public key only, so the authority never sees the private key, and the signature proves the sender holds it. The issued certificate carries exactly that public key. A request that claims
+payments-team's public key but is signed by another key is refused, web-team may not ask for payments.shop.internal, and one forbidden name in a mixed request refuses the whole request. orders-team gets a client certificate (clientAuth) to call other services.
+"""
+speech = """
+Second demo: issuing from a signing request. [[slnc 400]] The request carries only the public key, and its signature proves the sender holds the private key. [[slnc 600]]
+A request that claims someone else's key is refused. [[slnc 300]] A team may not ask for another team's name, and one forbidden name refuses the whole request.
+"""
+rows = { csr = "active ok" }
+console = [
+    ["the signature proves the sender holds the private key: true", "ok"],
+    ["issued serial 1002; the authority never saw the private key", "ok"],
+    ["a request signed by another key -> refused: the request is not signed by the key it carries", "ok"],
+    ["web-team asking for payments.shop.internal -> refused", "ok"],
+]
+
+[[act]]
+title = "Revocation: taking a certificate back"
+summary = "A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date."
+detail = """
+payments.shop.internal's key is reported stolen on day 10, and serial 1002 goes into a list valid for a week. On day 11 a checking client refuses it and still accepts www; a client that never checks accepts the revoked certificate. On day 20, the day-10 list is past its next update:
+the strict client refuses even the healthy certificate, failing closed, until a fresh list is fetched. Revocation only works if the authority publishes on time and every client fetches and checks.
+"""
+speech = """
+Third demo: revocation. [[slnc 400]] The payments key is reported stolen, and its serial goes into a list. [[slnc 600]]
+A checking client refuses it. A client that never checks still accepts it. [[slnc 600]]
+When the list is out of date, a strict client refuses everything until a fresh one arrives. [[slnc 300]] Revocation is only as good as the list the client has.
+"""
+rows = { revoke = "active wrong" }
+console = [
+    ["day 11, payments.shop.internal, with revocation checked: refused (REVOKED)", "ok"],
+    ["day 11, by a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE", "bad"],
+    ["day 20, only the day-10 list: refused (UNDETERMINED_REVOCATION_STATUS)  <- IT FAILS CLOSED", "amber"],
+    ["day 20, with a fresh list: accepted", "ok"],
+]
+
+[[act]]
+title = "Short-lived certificates instead of revocation"
+summary = "A 24-hour certificate renews at two thirds of its life with a new key: 4 renewals in 72 hours and no failed check, and a stopped job simply expires; the inventory flags what needs attention."
+detail = """
+cart.shop.internal gets 24-hour certificates and a job that renews at two thirds of the lifetime, with a new key each time. Over 72 hours, checked every hour, there are 4 renewals and 0 failed checks. If the job stops, the certificate is refused as EXPIRED 25 hours after the last renewal,
+with no list at all. A stolen 24-hour key works for at most a day. The inventory on day 65 flags the 90-day certificates as RENEW_NOW and the stopped one as EXPIRED: most certificate outages are expiries nobody saw coming.
+"""
+speech = """
+Fourth demo: short lived certificates. [[slnc 400]] A twenty four hour certificate renews at two thirds of its life, with a new key each time. [[slnc 600]]
+Over three days, four renewals and no failed check. [[slnc 600]]
+If the job stops, the certificate simply runs out, with no list needed. [[slnc 300]] The inventory shows which certificates need renewing before they expire unnoticed.
+"""
+rows = { short = "active ok" }
+console = [
+    ["over 72 hours, checked every hour: 4 renewals, 0 failed checks", "ok"],
+    ["the renewal job stops; 25 hours later -> refused (EXPIRED)", "ok"],
+    ["inventory, day 65: www RENEW_NOW, orders RENEW_NOW, cart EXPIRED", "amber"],
+]
+
+[[act]]
+title = "The bill"
+summary = "The root key signed 3 times and stays offline; revoking the issuing authority with the root's list refuses every certificate below it; the audit log holds 18 decisions, 6 of them refusals."
+detail = """
+Running an authority has costs. The root key signed three times in all (the issuing authority, itself and its revocation lists) and belongs offline, ideally in hardware. If the issuing authority's key is stolen, the offline root revokes it, and www.shop.internal and every certificate below it
+are refused. The audit log holds every decision, 18 in the demo and 6 of them refusals. Every service also needs a request, a renewal job and a deployment step, which is why this is automated in practice with ACME.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The root key signed three times in all, and stays offline. [[slnc 600]]
+If the issuing key is stolen, the root revokes it, and everything below it is refused. [[slnc 600]]
+Every decision is in the audit log. [[slnc 300]] In practice, ACME automates the requests and the renewals.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["the root key signed 3 times in all; keep it offline", "ok"],
+    ["issuing authority revoked by the root -> www.shop.internal refused (REVOKED)", "ok"],
+    ["the audit log holds 18 decisions, 6 of them refusals", "muted"],
+]
+
+[animation]
+subtitle = "An offline root, an issuing authority, four teams and a clock that moves from days to hours."
+boxes = [
+    ["issue", "Issue", "policy, names, lifetime"],
+    ["csr", "Signing requests", "proof of possession"],
+    ["revoke", "Revoke", "only as good as the list"],
+    ["short", "Short-lived", "24 hours, renewed"],
+    ["bill", "The bill", "root offline, audit log"],
+]
+
+[docs.problem]
+scenario = """
+An online store's internal services need certificates for their own names, and the store wants to issue and take them back itself.
+"""
+naive = """
+Sign whatever is asked for, with one long-lived CA that can name anything, and rely on a revocation list that clients may never fetch.
+"""
+deliver = [
+    "A root and an issuing authority as real X.509 certificates with path length and name constraints.",
+    "An issuer that checks proof of possession, names, allow-lists and lifetimes.",
+    "Revocation lists read by the JDK's PKIX validator, with and without checking.",
+    "A short-lived certificate that renews itself, and an inventory of expiries.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The beginner tls-handshake project, or an idea of certificates and chains",
+]
+not_required = [
+    "OpenSSL: the authority is plain Java with Bouncy Castle",
+    "A network: the clients validate chains in memory",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what a certificate authority signs and what a signing request proves",
+    "describe how path length and name constraints limit a CA",
+    "explain why revocation depends on the client, and what failing closed means for a list",
+    "compare short-lived certificates with revocation lists",
+]
+walkthrough = """
+Run act one and ask what stops a stolen issuer from naming pay.example. In act three, ask which client is protected and which is not. In act four, ask what the store must automate to live with 24-hour certificates.
+"""
+exercises = [
+    "Add an OCSP-style status check and compare its failure modes with the list.",
+    "Add a profile for 7-day certificates and decide which services should use it.",
+    "Make the inventory send a warning 14 days before expiry and test it on the fixed clock.",
+    "Add a second issuing authority limited to a different domain and show that neither can name the other's domain.",
+]
+
+[docs.explained]
+sentence = """
+A certificate authority is a signing policy plus a key: the policy decides what may be said, the name constraint limits the key's reach, and short lifetimes make taking a certificate back almost unnecessary.
+"""
+verdict = """
+Keep the root offline, issue from a constrained authority, apply the policy in the issuer, and prefer short-lived certificates renewed by automation over revocation lists that clients may not check. Use ACME and a maintained CA such as step-ca rather than your own code in production.
+"""
+recognise = [
+    "`basicConstraints: CA:TRUE, pathlen:0` in an intermediate certificate.",
+    "`X509v3 Name Constraints: Permitted: DNS:...` in `openssl x509 -text`.",
+    "`CRL Distribution Points` and `Authority Information Access` in a certificate.",
+    "A certificate-expiry outage in an incident report.",
+]
+
+[spec]
+purpose = """
+Teach how an internal certificate authority issues, constrains and revokes certificates, and why short-lived certificates beat revocation.
+"""
+nongoals = [
+    "A production CA, an HSM or an ACME server (the -with-step-ca version covers the tooling).",
+    "OCSP, certificate transparency and the public web PKI.",
+    "Cross-signing and multiple roots.",
+]
+problem = """
+Teams issue certificates by hand with no policy, long lifetimes and no plan for taking one back.
+"""
+roles = [["The authority and its policy", "`CertificateAuthority`, `Profile`, `RefusedException`"], ["Requests and keys", "`Csr`, `Keys`, `Issued`"], ["Clients", "`Validator`"], ["Lifetime", "`ShortLived`, `Inventory`"], ["Entry point", "`LocalCaDemo`"]]
+requirements = [
+    "A request must prove possession of the key it carries.",
+    "The issuer enforces names, allow-lists and the profile's maximum lifetime.",
+    "The issuing authority cannot create authorities and cannot name anything outside shop.internal.",
+    "A revoked certificate is refused by clients that check a current list, and an out-of-date list fails closed.",
+    "A short-lived certificate renews at two thirds of its life with a new key and expires if the job stops.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Root, issuing authority and services"
+caption = "The root signs once and stays offline; the issuing authority signs for the services."
+nodes = [
+    { id = "root", label = "Root CA", sub = "offline, path length 1", col = 0, row = 0, colour = "amber" },
+    { id = "issuing", label = "Issuing CA", sub = "path length 0, shop.internal only", col = 1, row = 0, colour = "accent" },
+    { id = "teams", label = "Teams", sub = "send signing requests", col = 2, row = 0, colour = "client" },
+    { id = "clients", label = "Clients", sub = "validate with PKIX", col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "root", to = "issuing", label = "signs" },
+    { from = "teams", to = "issuing", label = "request" },
+    { from = "issuing", to = "clients", label = "certificates, lists" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The authority issues through one method and the validator checks what it made."
+nodes = [
+    { id = "ca", label = "CertificateAuthority", sub = ["issue(request, requester, profile)", "revoke()", "issuingCrl()"], col = 0, row = 0, colour = "accent" },
+    { id = "csr", label = "Csr", sub = ["create()", "provesPossession()"], col = 1, row = 0, colour = "client" },
+    { id = "profile", label = "Profile", sub = ["purpose", "maxLifetime"], col = 2, row = 0, colour = "amber" },
+    { id = "validator", label = "Validator", sub = ["check()", "checkWithLists()"], col = 0, row = 1, colour = "green" },
+    { id = "short", label = "ShortLived", sub = ["tick(now)", "stopJob()"], col = 1, row = 1, colour = "client" },
+    { id = "inventory", label = "Inventory", sub = ["report()"], col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "ca", to = "csr", label = "reads" },
+    { from = "ca", to = "profile", label = "applies" },
+    { from = "short", to = "ca", label = "requests from" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the issuer checks, in order"
+caption = "A request is refused at the first failing check."
+nodes = [
+    { id = "pop", label = "Possession", sub = "signed by the key it carries", col = 0, row = 0, colour = "client" },
+    { id = "names", label = "Names", sub = "at least one, inside the domain", col = 1, row = 0, colour = "accent" },
+    { id = "allow", label = "Allow-list", sub = "this team may ask", col = 2, row = 0, colour = "amber" },
+    { id = "life", label = "Lifetime", sub = "within the profile", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "pop", to = "names" },
+    { from = "names", to = "allow" },
+    { from = "allow", to = "life" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Issuing a certificate"
+participants = ["Team", "Issuing CA", "Client"]
+steps = [
+    ["Team", "Issuing CA", "signing request (public key + names)"],
+    ["note", "Issuing CA", "possession, names, allow-list, lifetime"],
+    ["Issuing CA", "Team", "certificate", "reply"],
+    ["Client", "Team", "TLS with the chain"],
+    ["note", "Client", "validates to the root, name constraint, dates"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Revocation and a stale list"
+participants = ["Issuing CA", "Client", "Service"]
+steps = [
+    ["Issuing CA", "Issuing CA", "serial 1002 revoked on day 10"],
+    ["Issuing CA", "Client", "list valid until day 17"],
+    ["Client", "Service", "connect on day 11"],
+    ["note", "Client", "serial on the list: refused"],
+    ["note", "Client", "day 20, list expired: refused (fails closed)"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Offline", nodes = ["root"], colour = "amber" },
+    { label = "The authority", nodes = ["issuing"], colour = "accent" },
+    { label = "The services", nodes = ["team", "client"], colour = "green" },
+]
+nodes = [
+    { id = "root", label = "Root key", sub = "signs rarely", col = 0, row = 0, colour = "amber", shape = "store", threats = ["T3"] },
+    { id = "issuing", label = "Issuing CA", sub = "applies the policy", col = 1, row = 0, colour = "accent", threats = ["T1", "T3"] },
+    { id = "team", label = "Requester", sub = "may be wrong or hostile", col = 2, row = 0, colour = "client", threats = ["T1"] },
+    { id = "client", label = "Client", sub = "may skip revocation", col = 2, row = 1, colour = "green", threats = ["T2"] },
+]
+edges = [
+    { from = "root", to = "issuing", label = "signs once" },
+    { from = "team", to = "issuing", label = "request", threats = ["T1"] },
+    { from = "issuing", to = "client", label = "chain, list", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+The store's internal certificate authority: its keys, the requests it accepts, the certificates and lists it publishes and the clients that rely on them. It does not cover the machines that hold service keys, or the public web PKI.
+"""
+assets = [
+    "The issuing authority's private key.",
+    "The root's private key.",
+    "The trust of every internal client in what the authority signs.",
+]
+actors = [
+    "A team that requests certificates.",
+    "An attacker who steals a service key.",
+    "An attacker who steals or abuses the issuing key.",
+]
+boundaries = [
+    "A signing request to the issuer: untrusted until proof of possession, names and lifetime are checked.",
+    "The issuing authority to the clients: they trust only the root and what it constrains.",
+]
+assumptions = [
+    "The root key is offline and its few signatures are controlled.",
+    "Clients use a standard validator that enforces name constraints.",
+]
+out_of_scope = [
+    "Hardware security modules.",
+    "OCSP, certificate transparency and the public web PKI.",
+]
+tests = [
+    "`LocalCaTest` checks validation, the policy refusals, proof of possession, the name constraint, the client profile, revocation with and without checking, the stale list, root revocation, short-lived renewal and expiry, the inventory and the audit log.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project, tls-misconfigurations, checks the servers that present these certificates, for weak protocols, weak ciphers and broken chains.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A requester obtains a certificate for a name it does not own, or without holding the key"
+where = "`CertificateAuthority.issue`, `Csr`"
+control = "Proof of possession, a per-team allow-list, domain and lifetime checks, and a name constraint in the issuing certificate"
+residual = "A compromised issuer that is also trusted for the whole domain"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A revoked or stolen certificate keeps working"
+where = "`Validator`"
+control = "Current revocation lists that fail closed, and short-lived certificates that expire by themselves"
+residual = "Clients that never check, until the certificate expires"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A stolen issuing or root key lets an attacker sign anything it is trusted for"
+where = "`CertificateAuthority`"
+control = "An offline root with a few signatures, a revoked-issuer list, path length zero and an audit log"
+residual = "Replacing the root in every client after a root compromise"
