@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CORS with Spring Boot</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>CORS with Spring Boot</h1>
+<pre><code>src/main/java/com/jk/explore/security/corsspring/
+├── BankApp.java         
+├── BankController.java  The bank's API
+├── BankSecurity.java    The bank takes the customer's credentials in a header that the browser attaches itself, which is what &quot;credentials&quot; means in CORS (cookies and HTTP authentication both count)
+├── Browser.java         A model of the browser rules that matter, speaking real HTTP to the real bank: a page may &lt;em&gt;send&lt;/em&gt; some cross-origin requests without asking, may &lt;em&gt;read&lt;/em&gt; the answer only when the server names the page's origin (and, with credentials, also says credentials are allowed), and asks first with a preflight for anything that is not simple
+├── CorsSettings.java    The CORS policy for each mode of the lesson, built the way Spring wants it: a {@link CorsConfiguration} per path pattern
+├── CorsSpringDemo.java  Runs the bank API story in five numbered acts against real Spring Boot servers on the loopback interface
+├── FetchResult.java     What a script on a page got: did the request reach the bank's code, and was the page allowed to read the answer?
+├── Processed.java       The requests that reached the bank's own code, so the demo can show what CORS does not stop
+└── Running.java         A bank started on a free loopback port with the given CORS policy
+</code></pre>
+<p><strong>A browser lets any page send many requests to your API but lets it read the answer only if your API names that page's origin; Spring Boot gives a CorsConfiguration for that, and the ways to get it wrong are a reflecting origin pattern, a null origin, a pattern that matches a lookalike, a policy registered after the login check, and treating a browser rule as a defence against callers that are not browsers.</strong></p>
+<p>The plain <a href="../cors">cors</a> project models the browser's rules and the bank's policy from scratch. This one uses what a real Spring Boot bank has: <strong>Spring Boot 4.1</strong>, <strong>Spring Framework 7</strong> <code>CorsConfiguration</code> and <strong>Spring Security 7</strong> <code>http.cors()</code>, in real servers on the loopback address. A browser stand-in speaks real HTTP to them and applies the browser's rules to the real headers.</p>
+<p>What it shows:
+- <strong>No policy.</strong> A page on evil.example can <strong>send</strong> a simple <code>POST /transfer</code> that the bank processes, but cannot read the answer. A <code>PUT</code> with JSON never reaches the bank because the preflight is refused.
+- <strong>Policies that look like fixes.</strong> <code>allowedOrigins("*")</code> with credentials is refused by Spring at the first cross-origin request (a 500). The usual way round it, <code>allowedOriginPatterns("*")</code>, <strong>reflects every origin</strong>, including evil.example, the lookalike evilbank.example and <code>null</code>. An exact list that also lists <code>null</code> lets sandboxed frames read. A pattern <code>https://*bank.example</code> matches the lookalike, because it has no dot.
+- <strong>An exact allow-list.</strong> Only partner.example reads and writes. Spring answers any other origin with <strong>403 <code>Invalid CORS request</code> before the controller runs</strong>, sends <code>Vary: Origin</code>, and leaves the bank's own page alone.
+- <strong>Where the policy is registered.</strong> The same list registered in Spring MVC fails for a JSON <code>PUT</code>, because Spring Security asks for a login before MVC sees the <strong>preflight</strong> (401). Registered with <code>http.cors()</code> it is answered first (200).
+- <strong>The bill.</strong> A wildcard is fine for public data without credentials and is refused with them. A <code>POST</code> with no <code>Origin</code> header, from a server or a script, still moves money: CORS is a browser rule, not a defence.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CWE-942 (overly permissive cross-domain whitelist) · CWE-346 (origin validation error) · OWASP ASVS 5.0 V3 · MDN's CORS guide.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank counter with a guest list at the door. The door staff decide which visitors may carry the answer away, but the clerk behind the counter has already heard every question. The list only helps if its names are exact, and it helps nobody who comes in by the back door.</p>
+<h2>The scenario</h2>
+<p>A bank API on Spring Boot with an account page, a transfer endpoint and public rates. The demo starts the real application several times with different CORS policies, and a browser stand-in calls it as pages on different origins would.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. No policy: a page may send, but not read</td>
+<td>With no CORS policy, the bank's own page reads the account, evil.example cannot read it, its simple POST still moves money, and its JSON PUT never reaches the bank.</td>
+</tr>
+<tr>
+<td>2. Policies that look like fixes</td>
+<td>A wildcard with credentials is refused by Spring, the usual workaround reflects every origin, a list with null lets sandboxed frames read, and a pattern without a dot matches the lookalike.</td>
+</tr>
+<tr>
+<td>3. An exact allow-list</td>
+<td>Only partner.example reads and writes; every other origin gets a 403 from Spring before the controller runs; public rates are readable by all; Vary: Origin is sent.</td>
+</tr>
+<tr>
+<td>4. Where the policy is registered</td>
+<td>The same exact list fails for a JSON PUT when it is registered in Spring MVC, because the preflight meets the login check first (401), and works when it is registered with http.cors() (200).</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A wildcard is fine for public data without credentials and refused with them; a POST with no Origin header still moves money, because CORS is a browser rule and not a defence.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>16 tests in <code>CorsSpringTest</code>, <code>DemoRunsTest</code>. Each test starts a real bank on a free loopback port and stops it. Nothing is printed that changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank is a real Spring Boot application with Spring Security, and the browser stand-in is a few lines of Java that apply the browser's CORS rules to real responses. Only statuses, booleans and short messages are printed, never ports, so the demo prints the same text on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cors-with-spring-boot-explained.html">CORS with Spring Boot, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The browser asks first with a preflight, the policy decides, and the browser decides whether the page may read.</p>
+<p><img alt="A page, a browser and the bank" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The policy is built in one place and registered in one of two.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>In order: the preflight, the login, the policy, and the browser's check of the headers.</p>
+<p><img alt="What decides whether a page can read" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A partner's JSON PUT" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/cors-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>An exact list is maintenance.</strong> Every new partner or environment is a change to the list, and each one needs a test.</li>
+<li><strong>Preflights add a round trip,</strong> which <code>maxAge</code> softens at the price of slower policy changes.</li>
+<li><strong>Credentials force exact origins,</strong> so the convenience of a wildcard is gone for anything with a login.</li>
+<li><strong>Two places to register a policy</strong> (Spring MVC and Spring Security) means two places to get it wrong.</li>
+<li><strong>CORS says nothing about non-browser callers,</strong> so logins and tokens are still needed.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A public, read-only API with no login can use a wildcard without credentials. Anything that takes a cookie, a token the browser attaches or HTTP authentication needs an exact list, registered where the preflight can reach it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@CrossOrigin(origins = "*")</code> on a controller.</li>
+<li><code>allowedOriginPatterns("*")</code> pasted from a Stack Overflow answer after an "allowCredentials" error.</li>
+<li>A preflight that fails with 401 while the same call works in curl.</li>
+<li>A browser console message: "has been blocked by CORS policy".</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../cors">cors</a>, in the <a href="..">api-security</a> module. It follows the same story and the same cast of origins, on a real framework.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

@@ -1,0 +1,53 @@
+== 1. No policy: a page may send, but not read ==
+bank's own page reads /account           -> reached the bank, readable: balance: 125000 cents
+evil.example reads /account              -> reached the bank, answer blocked
+evil.example POSTs /transfer (simple)    -> reached the bank, answer blocked
+evil.example PUTs /transfer              -> never reached the bank, answer blocked
+requests the bank processed              -> [GET /account, POST /transfer]  <- CORS DID NOT STOP THE POST
+
+== 2. Policies that look like fixes ==
+allowedOrigins("*") with credentials     -> Spring answers the first cross-origin request with 500 and sends no Allow-Origin header: true
+allowedOriginPatterns("*") with credentials
+  evil.example reads /account            -> reached the bank, readable: balance: 125000 cents
+  evilbank.example reads /account        -> reached the bank, readable: balance: 125000 cents
+  null origin reads /account             -> reached the bank, readable: balance: 125000 cents
+exact list that also allows null
+  evil.example reads /account            -> never reached the bank, answer blocked
+  evilbank.example reads /account        -> never reached the bank, answer blocked
+  null origin reads /account             -> reached the bank, readable: balance: 125000 cents
+pattern https://*bank.example
+  evil.example reads /account            -> never reached the bank, answer blocked
+  evilbank.example reads /account        -> reached the bank, readable: balance: 125000 cents
+  null origin reads /account             -> never reached the bank, answer blocked
+
+== 3. An exact allow-list ==
+partner.example reads /account           -> reached the bank, readable: balance: 125000 cents
+partner.example PUTs JSON                -> reached the bank, readable: sent 500 to mallory
+evil.example reads /account              -> never reached the bank, answer blocked
+evilbank.example reads /account          -> never reached the bank, answer blocked
+null origin reads /account               -> never reached the bank, answer blocked
+evil.example PUTs JSON                   -> never reached the bank, answer blocked
+evil.example reads public /rates         -> reached the bank, readable: rates: 4.1%
+bank's own page PUTs JSON                -> reached the bank, readable: sent 500 to mallory
+Spring's own answer to evil.example      -> 403 Invalid CORS request, before the controller ran
+Vary header on /account                  -> Origin
+
+== 4. Where the policy is registered ==
+the same exact list, registered in Spring MVC (addCorsMappings)
+  partner.example preflight for PUT      -> 401
+  partner.example reads /account         -> reached the bank, readable: balance: 125000 cents
+  partner.example PUTs JSON              -> never reached the bank, answer blocked
+the same exact list, registered in Spring Security (http.cors)
+  partner.example preflight for PUT      -> 200
+  partner.example reads /account         -> reached the bank, readable: balance: 125000 cents
+  partner.example PUTs JSON              -> reached the bank, readable: sent 500 to mallory
+
+== 5. The bill ==
+public /rates sends                      -> Allow-Origin *
+browser accepts * without credentials    -> true
+browser accepts * with credentials       -> false
+evil.example POSTs /transfer (simple)    -> never reached the bank, answer blocked
+the same POST with no Origin header      -> 200 sent 500 to mallory  <- CORS IS A BROWSER RULE, NOT A DEFENCE
+requests the bank processed              -> [POST /transfer]
+every allowed origin needs a test, and so do the lookalike, the null origin and the preflight
+a policy decides who may read an answer; who may act still needs a login and a token

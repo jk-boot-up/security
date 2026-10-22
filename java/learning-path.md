@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 90 projects. Planned: 62 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 91 projects. Planned: 61 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,10 +24,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **49** | **27** | **76** |
+| **Intermediate** | | **50** | **26** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
-| | api-security | 4 | 3 | 7 |
+| | api-security | 5 | 2 | 7 |
 | | identity-and-access | 6 | 6 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
 | | secure-coding | 4 | 4 | 8 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **90** | **62** | **152** |
+| **All** | | **91** | **61** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 9 | 27 | 36 |
+| Intermediate | With tools | 10 | 26 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **30** | **27** | **57** |
+| **All** | **With tools** | **31** | **26** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -184,7 +184,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 63 | [session-management](intermediate/api-security/session-management) | Plain | A session id is a password that the server hands out | A07, CWE-384 |
 | 64 | session-management-with-spring-session-and-redis | With tools: spring session and redis | *planned*: sessions in Redis and limits on concurrent sessions | A07, CWE-384 |
 | 65 | [cors](intermediate/api-security/cors) | Plain | CORS decides who may read an answer, not who may send a request | A02, CWE-942 |
-| 66 | cors-with-spring-boot | With tools: spring boot | *planned*: Spring's CORS configuration, done right and done wrong | A02, CWE-942 |
+| 66 | [cors-with-spring-boot](intermediate/api-security/cors-with-spring-boot) | With tools: spring boot | Spring's CORS answers 403 before your code runs, refuses a wildcard with credentials, and still reflects every origin if you ask it to | A02, CWE-942 |
 | 67 | [webhook-security](intermediate/api-security/webhook-security) | Plain | A message to a public address proves nothing until it is verified | API8, API10, CWE-345 |
 
 ### 4. identity-and-access: modern authentication and authorization (OWASP A07, RFC 9700)
