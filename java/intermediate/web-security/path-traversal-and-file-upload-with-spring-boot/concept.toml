@@ -1,0 +1,463 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "path-traversal-and-file-upload-with-spring-boot"
+level = "intermediate"
+module = "web-security"
+title = "Path Traversal and File Upload with Spring Boot"
+short_title = "File Handling with Spring Boot"
+package = "uploadspring"
+main_class = "FilesSpringDemo"
+tagline = "Spring hands you the file name exactly as the customer sent it, and its static handler follows a link out of the folder"
+bold = "In a Spring Boot shop the customer's file name arrives untouched in a query parameter or in MultipartFile.getOriginalFilename, so a name with dot-dot leaves the folder, a text prefix check lets a sibling folder through, and an upload keeps the customer's name; Spring's static handler refuses dot-dot but follows a symbolic link, so the fix is a name pattern, a real-path check, server-made names, content checks, multipart limits and a return address that is only ever a path on the site."
+domain = "an online store's invoices and product photos"
+domain_note = ""
+youtube_description = "Path traversal and file upload in Spring Boot 4: query parameters, MultipartFile names, Spring's resource handler, multipart limits, content sniffing and open redirects."
+thumb_lines = ["FILES WITH", "SPRING BOOT"]
+thumb_code = "toRealPath().startsWith(base)"
+youtube_title = "Path Traversal and File Upload in Spring Boot: Multipart, Resource Handler and Open Redirects"
+youtube_tags = ["path traversal", "file upload", "spring boot", "multipart", "open redirect", "java", "application security"]
+
+[readme]
+intro = """
+The plain [path-traversal-and-file-upload](../path-traversal-and-file-upload) project works on files directly. This one puts the same store behind **Spring Boot 4.1** and real HTTP, so the inputs arrive the way they do in production: a **query parameter**, a **multipart upload** and a **redirect parameter**, and the limits are Spring's own.
+
+What it shows:
+- **A file name in a query parameter** reaches the controller decoded once, exactly as typed, so `../secrets/db.txt` walks out of the invoice folder, and a check that compares *text* (`startsWith`) lets `invoices-private` through.
+- **The fix is layered:** a name pattern, the path resolved and compared element by element, and the real path after symbolic links is still inside the folder.
+- **Spring's static resource handler** refuses `..` and an encoded slash (400 or 404), which is good, but it **follows a symbolic link** inside the folder to a file outside it.
+- **A multipart upload** gives the controller `getOriginalFilename()` as the client sent it, `../../config/app.properties` included. The naive shop keeps the name, serves a script inline, and overwrites the configuration. The fixed shop makes its own name, decides the type from the bytes, serves a download with `nosniff`, and Spring's `max-file-size` stops a large upload before the controller runs.
+- **The "return to" address** becomes a redirect: a naive controller sends the customer anywhere; the fix accepts only a path on this site, and compares a host exactly when an absolute address is really needed.
+
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control · CWE-22 · CWE-434 · CWE-601 · OWASP ASVS 5.0 V5 (File Handling) · OWASP File Upload Cheat Sheet.
+"""
+analogy = """
+A filing clerk who fetches "the folder the customer names". If the clerk walks wherever the written path says, "up two floors, then the safe" works. If the clerk only compares the start of the path, the sibling room with a similar name still works. If the clerk checks where they actually end up, a shortcut left in the corridor still needs to be checked too.
+"""
+scenario = """
+An online store lets customers download their invoices and staff upload product photos. The demo starts the real Spring Boot shop in three versions over a temporary folder layout, and sends it files, names and addresses over HTTP.
+"""
+costs = [
+    "**Name patterns break old names,** so know every invoice name the shop has ever made.",
+    "**Real-path checks cost a file system call** on every download.",
+    "**Content sniffing knows a few formats,** and each new format needs code.",
+    "**Server-made names lose the original name,** which the shop must store separately if it matters.",
+    "**Multipart limits protect the server, not the content,** and need the code check as a second layer.",
+]
+too_much = """
+Where the files are few and fixed, serve them from object storage with signed addresses and let the shop never open a path. Where they are many, store them under server-made ids and keep names in the database.
+"""
+met_before = [
+    "`@RequestParam String file` passed to `Path.resolve`.",
+    "`MultipartFile.getOriginalFilename()` used as a file name.",
+    "`spring.servlet.multipart.max-file-size` in `application.properties`.",
+    "`response.sendRedirect(request.getParameter(\"next\"))` after a login.",
+]
+where = """
+This is the tools version of [path-traversal-and-file-upload](../path-traversal-and-file-upload), in the [web-security](..) module. It keeps the same files, names and numbers, and adds what Spring and Tomcat do on the way.
+"""
+twin = """
+The shop is a real Spring Boot application; the file system is real, in a temporary folder that is removed at the end, and the symbolic link is a real link. Only the data is small. Ports and temporary paths are never printed.
+"""
+test_note = "Each test builds its own temporary layout, starts real servers over it and removes it."
+
+[[act]]
+title = "Downloading an invoice"
+summary = "An honest invoice name returns the invoice."
+detail = """
+The first version resolves the name from the query parameter against the invoice folder and returns the file. The honest name, invoice-1001.txt, returns Ana's invoice.
+"""
+speech = """
+First demo: downloading an invoice. [[slnc 400]] The name arrives in a query parameter, and the first version resolves it against the invoice folder. [[slnc 300]] The honest name returns Ana's invoice.
+"""
+rows = { download = "active ok" }
+console = [
+    ["invoice-1001.txt -> read: Invoice 1001: Ana, 42.50", "ok"],
+]
+
+[[act]]
+title = "A name with dot-dot leaves the folder"
+summary = "../secrets/db.txt returns the database password and ../config/app.properties returns the settings."
+detail = """
+Spring hands the controller the name exactly as typed. A name with dot-dot segments walks up out of the invoice folder, and the shop returns the demo database password from the secrets folder and the application's settings.
+"""
+speech = """
+Second demo: a name with dot dot leaves the folder. [[slnc 400]] Spring passes the name exactly as the customer typed it. [[slnc 300]] Dot dot slash secrets returns the database password. [[slnc 300]] Dot dot slash config returns the settings.
+"""
+rows = { traversal = "active wrong" }
+console = [
+    ["../secrets/db.txt -> read: DB_PASSWORD=demo-not-real", "bad"],
+    ["../config/app.properties -> read: admin=ana", "bad"],
+]
+
+[[act]]
+title = "A text check on the path is not a path check"
+summary = "A startsWith on the path text refuses the secrets folder but lets the sibling folder invoices-private through."
+detail = """
+The second version resolves and normalises the path and then checks that its text starts with the invoice folder's text. The secrets folder is refused, but invoices-private starts with the same letters, so the payroll file is read.
+"""
+speech = """
+Third demo: a text check on the path is not a path check. [[slnc 400]] The second version compares the start of the path as text. [[slnc 300]] The secrets folder is refused. [[slnc 300]] But a sibling folder with a similar name passes, and the payroll file is read.
+"""
+rows = { prefix = "active wrong" }
+console = [
+    ["../secrets/db.txt -> refused: outside the invoice folder", "ok"],
+    ["../invoices-private/payroll.txt -> read: payroll: demo salaries", "bad"],
+]
+
+[[act]]
+title = "Names, paths and links, all checked"
+summary = "The fixed download checks the name, the path and the real path after links; Spring's static handler refuses dot-dot but follows a link out of the folder."
+detail = """
+The fixed shop accepts only names shaped like an invoice name, resolves the path and compares it element by element, and then checks that the real path, after symbolic links, is still inside the real folder. Dot-dot, an encoded spelling, the sibling folder and a link all fail, and a missing file says so.
+Spring's own static handler for the folder refuses an encoded slash with 400 and a dot-dot segment with 404, but serves a link inside the folder that points at the secrets file: it does not follow the same rule.
+"""
+speech = """
+Fourth demo: names, paths and links, all checked. [[slnc 400]] The fixed shop accepts only names shaped like an invoice name. [[slnc 300]] It compares the path element by element. [[slnc 300]] And it checks where a link really leads. [[slnc 600]] Spring's own static handler refuses dot dot, but it follows a link out of the folder.
+"""
+rows = { safe = "active ok" }
+console = [
+    ["../secrets/db.txt -> refused: not an invoice name", "ok"],
+    ["invoice-5555.txt (a link) -> refused: link leads outside the invoice folder", "ok"],
+    ["Spring's static handler, ..%2f -> 400; %2e%2e/ -> 404", "ok"],
+    ["Spring's static handler, the link -> 200 DB_PASSWORD=demo-not-real  <- FOLLOWS THE LINK", "bad"],
+]
+
+[[act]]
+title = "Uploads"
+summary = "The naive shop keeps the customer's name, serves a script inline and overwrites the settings; the fixed shop makes its own name, checks the bytes, forces a download and limits the size."
+detail = """
+The naive upload keeps getOriginalFilename as sent: a script called page.html is served as text/html inline, and a name with dot-dot overwrites the configuration with admin=mallory. The fixed shop makes its own name, decides the type from the first bytes, and serves the file as a download of
+the sniffed type with nosniff, so a script, even one renamed cat.png, is refused and a name with dot-dot is ignored. A photo of 1500 bytes is refused by the code, and one of 5000 bytes by Spring's multipart limit before the controller runs.
+"""
+speech = """
+Fifth demo: uploads. [[slnc 400]] The first version keeps the customer's file name. [[slnc 300]] A script is served as a web page. [[slnc 300]] A name with dot dot overwrites the settings. [[slnc 600]] The fixed shop makes its own name, checks the first bytes, forces a download, and limits the size, partly before the controller runs.
+"""
+rows = { upload = "active wrong" }
+console = [
+    ["a script called page.html -> served as text/html, inline", "bad"],
+    ["a name with .. -> config now reads: admin=mallory", "bad"],
+    ["a script renamed cat.png -> refused: not a PNG or JPEG image", "ok"],
+    ["a photo of 5000 bytes -> 413, refused before the controller runs", "ok"],
+]
+
+[[act]]
+title = "Where to send the customer next"
+summary = "A naive return address sends the customer anywhere; the fixed one accepts only a path on this site, and an absolute address only on an exact host match."
+detail = """
+After an upload the shop redirects to the return address in the request. The naive controller sends the customer to an outside address, a protocol-relative address, a backslash trick or a script address. The fixed controller accepts only a path on this site and sends everything else to the account page.
+Where an absolute address must be allowed, the host is compared exactly, so shop.example.evil.example and shop.example@evil.example are both refused.
+"""
+speech = """
+Sixth demo: where to send the customer next. [[slnc 400]] The naive controller redirects anywhere the link says. [[slnc 300]] The fixed one accepts only a path on this site. [[slnc 600]] Where an absolute address must be allowed, the host is compared exactly.
+"""
+rows = { redirect = "active ok" }
+console = [
+    ["\"https://evil.example/login\" -> naive: https://evil.example/login, safe: /account", "bad"],
+    ["\"//evil.example\" -> naive: //evil.example, safe: /account", "bad"],
+    ["shop.example.evil.example -> false", "ok"],
+]
+
+[animation]
+subtitle = "A Spring Boot shop, a folder of invoices and a form that uploads photos."
+boxes = [
+    ["download", "Download", "an honest name"],
+    ["traversal", "Dot-dot", "out of the folder"],
+    ["prefix", "Text check", "a sibling folder passes"],
+    ["safe", "Real path", "and Spring's handler"],
+    ["upload", "Uploads", "names, bytes, limits"],
+    ["redirect", "Return link", "only a path on this site"],
+]
+
+[docs.problem]
+scenario = """
+An online store serves invoices from a folder and accepts product photos from staff, over Spring Boot.
+"""
+naive = """
+Resolve the name from the request against the folder, keep the uploaded file under its own name, and redirect to the address in the request.
+"""
+deliver = [
+    "Three versions of a real Spring Boot shop over a temporary folder layout.",
+    "Downloads, uploads and redirects over real HTTP, with a real symbolic link.",
+    "Spring's static handler and multipart limits, shown for what they do and do not do.",
+    "A fixed shop with layered checks.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain path-traversal-and-file-upload project, for the attacks themselves",
+]
+not_required = [
+    "A database: the store's files are in a temporary folder",
+    "A browser: the demo sends the requests itself",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a file name from a request must be treated as a path attack",
+    "compare text checks, path checks and real-path checks",
+    "say what Spring's static handler and multipart limits protect and what they do not",
+    "write an upload and a redirect that cannot be steered by the customer",
+]
+walkthrough = """
+Run act three and ask what startsWith compares. In act four ask why Spring's handler served the link. In act five ask which of the five uploads checks would still be needed if the limit property were missing.
+"""
+exercises = [
+    "Add a test that fails if `getOriginalFilename()` reaches `Path.resolve`.",
+    "Make the static handler refuse links by plugging in a resolver that checks the real path.",
+    "Store the original file name in a field and show it encoded in a page.",
+    "Add JPEG to the sniffer and a test with a real header.",
+]
+
+[docs.explained]
+sentence = """
+A file name, a path and a return address from a request are the customer's words, so the shop makes its own names, checks where a path really leads, decides content from the bytes and only ever redirects to its own paths.
+"""
+verdict = """
+Use name patterns or server-made ids, compare real paths element by element, refuse links that leave the folder, decide the type from the bytes, serve uploads as downloads with nosniff, set multipart limits and keep a second limit in code, and redirect only to a path on the site.
+"""
+recognise = [
+    "`getOriginalFilename()` passed to a file API.",
+    "`startsWith` on the text of a path.",
+    "`addResourceLocations(\"file:...\")` in a Spring configuration.",
+    "A `returnTo` or `next` parameter after a login.",
+]
+
+[spec]
+purpose = """
+Teach path traversal, unsafe upload and open redirect on a real Spring Boot application, including what Spring's own handler and multipart limits do.
+"""
+nongoals = [
+    "Antivirus scanning of uploads.",
+    "Image processing libraries and their own parsing risks.",
+    "Object storage and signed addresses, which are described only.",
+]
+problem = """
+Servers use names and paths from requests as if they were their own.
+"""
+roles = [["Downloads", "`NaiveDownloads`, `PrefixDownloads`, `SafeDownloads`"], ["Uploads", "`NaiveUploads`, `SafeUploads`, `Sniffer`, `WebRoot`"], ["Redirects", "`ReturnLink`, `Redirects`"], ["The web layer", "`FilesController`, `StoreConfig`, `Wire`"], ["Entry point", "`FilesSpringDemo`"]]
+requirements = [
+    "A name with dot-dot, and a sibling folder, are read by the naive and the prefix versions.",
+    "The fixed download refuses a bad name, a path outside, an encoded spelling and a link that leaves the folder.",
+    "Spring's static handler is shown refusing dot-dot and following a link.",
+    "The fixed upload makes its own name, decides the type from bytes and forces a download.",
+    "Spring's multipart limit refuses a large upload before the controller runs.",
+    "The return address is only ever a path on this site.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The shop's file routes"
+caption = "The customer's words reach the file system and the browser through four routes."
+nodes = [
+    { id = "customer", label = "Customer", sub = "names, files, addresses", col = 0, row = 0, colour = "client" },
+    { id = "shop", label = "Spring Boot shop", sub = "controller and handlers", col = 1, row = 0, colour = "accent" },
+    { id = "files", label = "File system", sub = "invoices, uploads, config", col = 2, row = 0, colour = "amber", shape = "store" },
+    { id = "browser", label = "Browser", sub = "redirects, served uploads", col = 2, row = 1, colour = "green" },
+]
+edges = [
+    { from = "customer", to = "shop", label = "request" },
+    { from = "shop", to = "files", label = "reads, writes" },
+    { from = "shop", to = "browser", label = "serves, redirects" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Three versions of each of downloads and uploads, chosen by profile."
+nodes = [
+    { id = "controller", label = "FilesController", sub = ["invoice(name)", "upload(file)", "next(returnTo)"], col = 0, row = 0, colour = "client" },
+    { id = "downloads", label = "Downloads", sub = ["Naive", "Prefix", "Safe"], col = 1, row = 0, colour = "accent" },
+    { id = "uploads", label = "Uploads", sub = ["Naive", "Safe"], col = 2, row = 0, colour = "amber" },
+    { id = "sniffer", label = "Sniffer", sub = ["of(bytes)"], col = 2, row = 1, colour = "green" },
+    { id = "link", label = "ReturnLink", sub = ["naive()", "safe()", "isOwnHost()"], col = 0, row = 1, colour = "red" },
+]
+edges = [
+    { from = "controller", to = "downloads", label = "reads with" },
+    { from = "controller", to = "uploads", label = "saves with" },
+    { from = "uploads", to = "sniffer", label = "decides type with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the fixed download checks, in order"
+caption = "Each check closes a hole that the one before leaves open."
+nodes = [
+    { id = "name", label = "Name", sub = "invoice-NNNN.txt", col = 0, row = 0, colour = "client" },
+    { id = "path", label = "Path", sub = "element by element", col = 1, row = 0, colour = "accent" },
+    { id = "real", label = "Real path", sub = "after links", col = 2, row = 0, colour = "amber" },
+    { id = "read", label = "Read", sub = "the file", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "name", to = "path" },
+    { from = "path", to = "real" },
+    { from = "real", to = "read" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A name with dot-dot against the first version"
+participants = ["Customer", "Shop", "File system"]
+steps = [
+    ["Customer", "Shop", "GET /invoices?name=../secrets/db.txt"],
+    ["Shop", "File system", "read invoices/../secrets/db.txt"],
+    ["File system", "Shop", "DB_PASSWORD=...", "reply"],
+    ["Shop", "Customer", "200 with the password", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "An upload against the fixed shop"
+participants = ["Customer", "Spring", "Controller", "Safe uploads"]
+steps = [
+    ["Customer", "Spring", "multipart upload, name ../../config/app.properties"],
+    ["note", "Spring", "max-file-size checked first"],
+    ["Spring", "Controller", "file with the original name"],
+    ["Controller", "Safe uploads", "save(name, bytes)"],
+    ["Safe uploads", "Controller", "/uploads/photo-0002.png (name ignored)", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The customer", nodes = ["customer"], colour = "red" },
+    { label = "The shop's server", nodes = ["shop", "files"], colour = "green" },
+]
+nodes = [
+    { id = "customer", label = "Customer", sub = "names, files, addresses", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "shop", label = "Spring Boot shop", sub = "controllers", col = 1, row = 0, colour = "accent", threats = ["T1", "T2", "T3"] },
+    { id = "files", label = "Files", sub = "invoices, secrets, config", col = 2, row = 0, colour = "amber", shape = "store", threats = ["T1", "T2"] },
+]
+edges = [
+    { from = "customer", to = "shop", label = "name, file, address", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "shop", to = "files", label = "path", threats = ["T1", "T2"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Boot shop that reads invoices by name, accepts uploaded photos and redirects to a return address. It covers the name, the path, the uploaded bytes and the redirect target. It does not cover the content of images or the web server's own configuration.
+"""
+assets = [
+    "Secrets and configuration files on the server.",
+    "Other customers' invoices and payroll files.",
+    "The customers' trust in links on the shop's pages.",
+]
+actors = [
+    "A customer who controls a name, a file and an address.",
+    "A staff member whose upload form is used by an attacker.",
+]
+boundaries = [
+    "The request to the controller: every name, byte and address is untrusted.",
+    "The controller to the file system: the shop's rights are wider than the customer's.",
+]
+assumptions = [
+    "The server's account can read files outside the invoice folder.",
+    "Symbolic links can be created in the folder.",
+]
+out_of_scope = [
+    "Malicious content inside a valid image.",
+    "Denial of service from many uploads.",
+]
+tests = [
+    "`FilesSpringTest` starts real servers over a temporary layout and checks the naive, prefix and safe downloads, Spring's static handler, the naive and safe uploads, the size limits, the redirects and the host check.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, secure-configuration, moves from what customers send to what the shop's own settings expose.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A name with dot-dot, a sibling folder or a link reads a file outside the invoice folder"
+where = "`NaiveDownloads`, `PrefixDownloads`"
+control = "A name pattern, an element-by-element path check and a real-path check"
+residual = "A file inside the folder that is not meant for this customer"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "An upload keeps the customer's name or type and overwrites a file or serves a script"
+where = "`NaiveUploads`"
+control = "A server-made name, a type from the bytes, a download with nosniff, and size limits"
+residual = "A harmful file that is a valid image"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A return address sends the customer to an attacker's site"
+where = "`ReturnLink.naive`"
+control = "Only a path on this site, and an exact host match where an absolute address is needed"
+residual = "A path on this site that itself redirects"
+
+[poster]
+headline = [["FILES WITH", "text"], ["SPRING BOOT", "accent"]]
+taglines = [["Spring hands you the file name exactly as the customer sent it, and its static handler fol", "gold"]]
+before = { code = "invoice-1001.txt -> read: Invoice 1001: Ana, 42.50", note = "Downloading an invoice", tag = "BEFORE" }
+after = { code = "toRealPath().startsWith(base)", note = "Where to send the customer next", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Path Traversal and File Upload with Spring Boot"
+narration = "Hello, and welcome. [[slnc 400]] This video explains file Handling with Spring Boot, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] In a Spring Boot shop the customer's file name arrives untouched in a query parameter or in MultipartFile.getOriginalFilename, so a name with dot-dot leaves the folder, a text prefix check lets a sibling folder through, and an upload keeps the customer's name; Spring's static handler refuses dot-dot but follows a symbolic link, so the fix is a name pattern, a real-path check, server-made names, content checks, multipart limits and a return address that is only ever a path on the site. [[slnc 600]] Think of it this way. [[slnc 300]] A filing clerk who fetches \"the folder the customer names\". If the clerk walks wherever the written path says, \"up two floors, then the safe\" works. If the clerk only compares the start of the path, the sibling room with a similar name still works. If the clerk checks where they actually end up, a shortcut left in the corridor still needs to be checked too. [[slnc 700]] In this video, the domain is an online store's invoices and product photos. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why a file name from a request must be treated as a path attack. [[slnc 300]] Compare text checks, path checks and real-path checks. [[slnc 300]] Say what Spring's static handler and multipart limits protect and what they do not."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store lets customers download", "their invoices and staff upload product", "photos.", "The demo starts the real Spring Boot shop in", "three versions over a temporary folder", "layout, and sends it files, names and", "addresses over HTTP."]
+narration = "Here is the scenario. [[slnc 400]] An online store lets customers download their invoices and staff upload product photos. [[slnc 400]] The demo starts the real Spring Boot shop in three versions over a temporary folder layout, and sends it files, names and addresses over H T T P."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Name patterns break old names", "Real-path checks cost a file system call", "Content sniffing knows a few formats", "Server-made names lose the original name", "Multipart limits protect the server, not the content"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Name patterns break old names. [[slnc 500]] Real-path checks cost a file system call. [[slnc 500]] Content sniffing knows a few formats. [[slnc 500]] Server-made names lose the original name. [[slnc 500]] Multipart limits protect the server, not the content."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Downloads: NaiveDownloads, PrefixDownloads,", "SafeDownloads", "Uploads: NaiveUploads, SafeUploads, Sniffer", "Redirects: ReturnLink, Redirects", "The web layer: FilesController, StoreConfig, Wire", "Entry point: FilesSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Downloads is in NaiveDownloads and PrefixDownloads and SafeDownloads. [[slnc 500]] Uploads is in NaiveUploads and SafeUploads and Sniffer. [[slnc 500]] Redirects is in ReturnLink and Redirects. [[slnc 500]] The web layer is in FilesController and StoreConfig and Wire. [[slnc 500]] Entry point is in FilesSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["getOriginalFilename() passed to a file API", "startsWith on the text of a path", "A returnTo or next parameter after a login"]
+narration = "You have probably met this already. [[slnc 400]] getOriginalFilename() passed to a file A P I. [[slnc 500]] startsWith on the text of a path. [[slnc 500]] A returnTo or next parameter after a login."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why a file name from a request must be treated", "as a path attack", "Compare text checks, path checks and real-path checks", "Say what Spring's static handler and multipart limits", "protect and what they do not", "Write an upload and a redirect that cannot be steered", "by the customer"]
+narration = "So, how do you use it? [[slnc 400]] Use name patterns or server-made ids, compare real paths element by element, refuse links that leave the folder, decide the type from the bytes, serve uploads as downloads with nosniff, set multipart limits and keep a second limit in code, and redirect only to a path on the site."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's file Handling with Spring Boot. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A file name, a path and a return address from a request are the customer's words, so the shop makes its own names, checks where a path really leads, decides content from the bytes and only ever redirects to its own paths. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a test that fails if getOriginalFilename() reaches Path.resolve. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

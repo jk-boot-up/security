@@ -21,6 +21,7 @@ Each project attacks an online store or a bank the way real applications are att
 | 12 | [insecure-deserialization-with-jackson](insecure-deserialization-with-jackson) | JSON is data until a type id tells Jackson which class to build, and then the cookie is choosing code | A08, CWE-502 |
 | 13 | [server-side-request-forgery-with-spring-boot](server-side-request-forgery-with-spring-boot) | A Spring RestClient fetches whatever it is told, so the address must be judged after resolution and the connection must go to the address that was judged | A01, CWE-918 |
 | 14 | [sql-injection-with-hibernate-and-postgres](sql-injection-with-hibernate-and-postgres) | Hibernate does not make a query safe: only parameters do, and a database user with few rights limits the damage of a mistake | A05, CWE-89 |
+| 15 | [path-traversal-and-file-upload-with-spring-boot](path-traversal-and-file-upload-with-spring-boot) | Spring hands you the file name exactly as the customer sent it, and its static handler follows a link out of the folder | A01, CWE-22, CWE-434, CWE-601 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 
