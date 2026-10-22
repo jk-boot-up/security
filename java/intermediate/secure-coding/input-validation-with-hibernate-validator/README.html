@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Input Validation with Hibernate Validator</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Input Validation with Hibernate Validator</h1>
+<pre><code>src/main/java/com/jk/explore/security/beanvalidation/
+├── Basic.java                     Validation groups: the cheap checks first, then the ones that cost something, and each stage only if the one before found nothing wrong
+├── BeanValidationDemo.java        
+├── Catalogue.java                 The shop's catalogue: the only place a price comes from
+├── Checkout.java                  What the checkout page posts
+├── Checks.java                    A validator the way a service would build one: English messages, and a factory that gives a constraint validator the services it needs
+├── Country.java                   A two-letter ISO country code in capitals, as the JDK knows them
+├── Coupon.java                    A coupon code: its length is checked first, so the slow pattern never sees a long value
+├── Handle.java                    Only the invisible-character rule, apart from the login's other rules
+├── InStock.java                   The sku is in the catalogue
+├── Line.java                      One line of a cart
+├── NoInvisible.java               No control or invisible characters, and already in normal form C: what is checked is what is stored
+├── Orders.java                    The service that takes an order
+├── PostalCodeMatchesCountry.java  A rule across two fields: the postal code has the shape of the country's
+├── Redos.java                     A pattern with repetitions nested two deep, as a constraint, with its work counted: every character the regular expression engine reads is a step
+├── Review.java                    A product review title whose message repeats the value, and a coupon field written two ways, for what validation does not do
+├── SafeMessage.java               The version of {@link UnsafeMessage} that passes the visitor's text as a message parameter
+└── UnsafeMessage.java             A custom constraint written the way it should not be: it puts what the visitor typed into the message template, which is then interpolated
+</code></pre>
+<p><strong>Hibernate Validator 9 with Jakarta Validation 3.1 turns the rules of the shop into annotations on records: built-in and custom constraints, a rule across two fields, container elements, method validation at the service boundary, and a group sequence that runs the limits first, then the shapes, then the checks that cost a lookup; but a built-in constraint can be wider than the rule, a pattern can still be exponential, a message can repeat the visitor's text, and validation is not encoding.</strong></p>
+<p>The plain <a href="../input-validation">input-validation</a> project writes the rules of a checkout form by hand. This one writes them as <strong>annotations</strong> and lets <strong>Hibernate Validator 9.1</strong> (Jakarta Validation 3.1) run them. It needs no server and no tool beyond Gradle; the demo takes a couple of seconds.</p>
+<p>What it shows:
+- <strong>Where validation belongs.</strong> A shop that trusts the page totals a quantity of -3 as a refund. The same service with constraints on its parameter (<code>@NotNull @Valid Checkout</code>) refuses it, and refuses a missing form. The form has no price, so no hidden field can set one.
+- <strong>Annotations.</strong> <code>@Min</code>, <code>@Max</code>, <code>@Pattern</code>, <code>@Email</code>, <code>@NotBlank</code>, <code>@Size</code>, container constraints on the lines of a cart. A form with several bad fields reports <strong>all of them at once</strong> with their paths. The built-in <code>@Email</code> takes <code>ben@localhost</code>, which the shop's rule refuses: a built-in check can be wider than your rule.
+- <strong>Your own constraints and groups.</strong> A rule for invisible characters in normal form C, a class-level rule across two fields (the postal code fits the country, reported on the postal code), and a <strong>group sequence</strong> (limits, then shapes, then an expensive catalogue lookup) so that a bad value never costs a lookup.
+- <strong>Limits.</strong> A cart of 10000 lines and an address of 10013 characters are refused before anything inside them is looked at. A pattern with repetitions nested two deep is exponential on the JDK; a length limit that runs first keeps it away from long input.
+- <strong>The bill.</strong> A message that repeats the value repeats markup; a template built from the visitor's text is evaluated by a validator that allows method calls, and is not by default; valid text is not safe text.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A05 Injection · CWE-20 (improper input validation), CWE-1333 (inefficient regular expression complexity), CWE-917 (expression language injection) · Jakarta Validation 3.1.</p>
+<h2>The idea in everyday terms</h2>
+<p>A customs desk with a written list. Each item on the list is a rule that a clerk can read, the clerks check the cheap rules first and send only the clean parcels to the slow inspection, and the desk never tells a traveller more than the rule that stopped them.</p>
+<h2>The scenario</h2>
+<p>An online store takes a checkout form: an e-mail address, a country and postal code, a login and the lines of a cart. The demo writes the rules once on the types and sends forms through them.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Where validation belongs</td>
+<td>The same service takes a quantity of -3 as a refund, or refuses it because its parameter has constraints.</td>
+</tr>
+<tr>
+<td>2. Say what is allowed, in annotations</td>
+<td>Built-in constraints on a record, all violations at once, and a built-in check that is wider than the shop's rule.</td>
+</tr>
+<tr>
+<td>3. Your own constraints, across fields, and in an order</td>
+<td>An invisible-character rule, a postal code that must fit the country, and a group sequence that asks the catalogue only when the cheap checks pass.</td>
+</tr>
+<tr>
+<td>4. Limits are validation too</td>
+<td>A cart of 10000 lines and an address of 10013 characters are refused first, and a nested pattern costs sixteen times more for four more characters unless a length limit runs before it.</td>
+</tr>
+<tr>
+<td>5. The bill: what validation does not do</td>
+<td>A message can repeat markup, a template built from the visitor's text is evaluated when method calls are allowed, and valid text is not safe text.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>13 tests in <code>BeanValidationTest</code>, <code>DemoRunsTest</code>. The tests run the real validator and need no other tool.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Hibernate Validator is the real library with its default settings, English messages and the Expressly implementation of Jakarta EL. Nothing is mocked and nothing needs a network; step counts for the pattern are counted by a wrapper around the input.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.hibernate.validator:hibernate-validator</td>
+<td>9.1.5.Final</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.glassfish.expressly:expressly</td>
+<td>6.0.0</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/input-validation-with-hibernate-validator-explained.html">Input Validation with Hibernate Validator, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Annotations on the types; one validator; the service at the boundary.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Records with constraints, custom constraints, and the validator wrapper.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each stage runs only if the one before found nothing wrong.</p>
+<p><img alt="The order of the checks" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Placing an order" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/input-validation-with-hibernate-validator-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The rules live in annotations,</strong> which are easy to read and easy to forget on a new field.</li>
+<li><strong>Built-in constraints are general,</strong> and the shop's rule is usually narrower.</li>
+<li><strong>A custom constraint is code,</strong> with its own tests and its own ways to be slow.</li>
+<li><strong>Messages are output:</strong> they need the same care as any other text sent back.</li>
+<li><strong>A group sequence makes the order explicit,</strong> and someone must keep it right.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A script that reads one trusted file does not need a validation framework. Use one where input from outside crosses into code, and where more than one place needs the same rules.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@Valid</code> on a controller parameter.</li>
+<li><code>@NotNull</code> and <code>@Size</code> on an entity.</li>
+<li>A 400 response with a list of field errors.</li>
+<li><code>javax.validation</code> imports from before the move to <code>jakarta</code>.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../input-validation">input-validation</a>, in the <a href="..">secure-coding</a> module. It follows the same five questions with a real library: where validation belongs, what is allowed, what must be normalised, which limits apply, and what validation does not do.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

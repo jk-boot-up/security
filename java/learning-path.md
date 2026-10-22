@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 107 projects. Planned: 45 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 108 projects. Planned: 44 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,13 +24,13 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **66** | **10** | **76** |
+| **Intermediate** | | **67** | **9** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
 | | identity-and-access | 12 | 0 | 12 |
 | | tls-in-practice | 8 | 0 | 8 |
-| | secure-coding | 4 | 4 | 8 |
+| | secure-coding | 5 | 3 | 8 |
 | | secrets-and-supply-chain | 8 | 0 | 8 |
 | | platform-hardening | 2 | 2 | 4 |
 | | detection-and-response | 3 | 2 | 5 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **107** | **45** | **152** |
+| **All** | | **108** | **44** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 26 | 10 | 36 |
+| Intermediate | With tools | 27 | 9 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **47** | **10** | **57** |
+| **All** | **With tools** | **48** | **9** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -222,7 +222,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
 | 88 | [input-validation](intermediate/secure-coding/input-validation) | Plain | Decide what is allowed, at the boundary, before it costs anything | A05, CWE-20, CWE-1333 |
-| 89 | input-validation-with-hibernate-validator | With tools: hibernate validator | *planned*: Jakarta Validation constraints, groups and custom validators | A05, CWE-20, CWE-1333 |
+| 89 | [input-validation-with-hibernate-validator](intermediate/secure-coding/input-validation-with-hibernate-validator) | With tools: hibernate validator | Write what is allowed once, as annotations on the type, and let Jakarta Validation run it at the boundary, in an order, with limits first | A05, CWE-20, CWE-1333 |
 | 90 | [race-conditions-and-business-logic](intermediate/secure-coding/race-conditions-and-business-logic) | Plain | Correct one at a time is not correct at the same time | A06, CWE-362, CWE-840 |
 | 91 | race-conditions-and-business-logic-with-postgres | With tools: postgres | *planned*: row locks, isolation levels and optimistic locking with Hibernate | A06, CWE-362, CWE-840 |
 | 92 | [secrets-in-errors-and-logs](intermediate/secure-coding/secrets-in-errors-and-logs) | Plain | A log is a second database that nobody protects | A09, CWE-209, CWE-532, CWE-117 |
