@@ -1,0 +1,453 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "cross-site-request-forgery-with-spring-security"
+level = "intermediate"
+module = "web-security"
+title = "Cross-Site Request Forgery with Spring Security"
+short_title = "CSRF with Spring Security"
+package = "csrfspring"
+main_class = "CsrfSpringDemo"
+tagline = "Spring Security's token check is on by default, and the ways to lose it are a switch, an exemption and a GET"
+bold = "Spring Security protects every state-changing request of a session-cookie application with a token, which is why a forged post from another site is refused; the protection is undone by switching it off, by exempting a route, or by moving money on GET, and a single-page app needs the cookie mode, where the token is readable by the page's own script."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "CSRF in Spring Security 7: the default token, the single-page cookie mode, exemptions, GET, SameSite and what disabling CSRF costs."
+thumb_lines = ["CSRF WITH", "SPRING SECURITY"]
+thumb_code = "csrf.ignoringRequestMatchers(...)"
+youtube_title = "CSRF in Spring Security: Tokens, SPA Cookie Mode and What Disabling CSRF Costs"
+youtube_tags = ["csrf", "spring security", "spring boot", "samesite", "java", "application security"]
+
+[readme]
+intro = """
+The plain [cross-site-request-forgery](../cross-site-request-forgery) project builds the attack and the defences from scratch. This one uses what real Spring Boot banks use: **Spring Security 7** on **Spring Boot 4.1**, in real servers on the loopback address, with a browser stand-in that keeps cookies and attaches them to every request, which is the whole weakness.
+
+What it shows:
+- **Switching CSRF off** (a common tutorial step to make a `POST` work) lets a page on evil.example move Ana's money with her own cookie.
+- **The default is a token tied to the session.** A forged post gets 403, so does one with a token from Mallory's session, the sign-in form and logout need tokens too, the token is renewed when Ana signs in, and it is masked with a new random value on each page.
+- **A single-page app uses the cookie mode:** the token is in a cookie that the page's script reads and sends back in a header. It cannot be `HttpOnly`, so cross-site scripting would read it.
+- **What the default does not cover:** a webhook exempted from tokens must check its own signature, `GET` is never checked, and one line that adds `/transfer` to the exemptions undoes the defence.
+- **The bill:** the session cookie has no `SameSite` attribute by default, an API chain with credentials in a header can leave CSRF off, and a test should post to every route without a token.
+
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control · CWE-352 · OWASP ASVS 5.0 V3 (Web Frontend Security) · OWASP CSRF Prevention Cheat Sheet.
+"""
+analogy = """
+A bank that accepts a signed cheque from anyone who walks in carrying your pen. The pen is your cookie, and the cheque is the forged request. A one-time number printed on the cheque book, which only your own cheque book shows, tells the bank the cheque came from the book on your desk.
+"""
+scenario = """
+An online bank on Spring Boot with a session-cookie login. The demo starts the real application five times, in different configurations, and sends forged requests the way a browser would from another site.
+"""
+costs = [
+    "**Every form and every script call needs the token,** or the bank refuses its own customers.",
+    "**Single-page apps need a readable cookie,** so cross-site scripting becomes the next problem to solve.",
+    "**Exemptions are one line each,** and each one needs its own proof of origin, such as a signature.",
+    "**GET is never checked,** so a route that changes state on GET cannot be protected by the filter.",
+    "**Stateless APIs need none of this,** but only if they really have no session and no cookie authentication.",
+]
+too_much = """
+Do not turn the protection off to fix a 403. Find the form or script that lacks the token. For APIs with header credentials and no session, use a separate filter chain without CSRF instead of weakening the web chain.
+"""
+met_before = [
+    "`http.csrf(csrf -> csrf.disable())` in a copied tutorial.",
+    "`CookieCsrfTokenRepository.withHttpOnlyFalse()` in single-page app guides.",
+    "`<input type=\"hidden\" name=\"_csrf\">` in Thymeleaf forms.",
+    "A 403 Forbidden after a POST that worked in curl.",
+]
+where = """
+This is the tools version of [cross-site-request-forgery](../cross-site-request-forgery), in the [web-security](..) module. It follows the same story with the same numbers, on Spring Security.
+"""
+twin = """
+The servers are real Spring Boot applications on Tomcat and the filter chains are Spring Security 7. The browser stand-in is a few lines of Java that keep cookies and add an Origin header. Only statuses, booleans and balances are printed, never tokens, ports or time stamps, so the demo prints the same text on every run.
+"""
+test_note = "Each test starts a real server on a free loopback port and stops it. Nothing is printed that changes between runs."
+
+[[act]]
+title = "CSRF protection switched off"
+summary = "With http.csrf disabled, a forged post with Ana's cookie moves 500 to Mallory."
+detail = """
+A tutorial's advice to make a POST work is to disable CSRF protection. With it off, Ana signs in and her browser keeps the session cookie. A page on evil.example posts a transfer to the bank, and the browser adds the cookie because the request goes to the bank. The bank answers 200 and sends 500 to Mallory.
+"""
+speech = """
+First demo: C S R F protection switched off. [[slnc 400]] Many tutorials disable it to make a post work. [[slnc 600]] Ana signs in, and her browser keeps the cookie. [[slnc 300]] A page on another site posts a transfer, and the browser adds the cookie. [[slnc 600]] The bank sends five hundred to Mallory.
+"""
+rows = { off = "active wrong" }
+console = [
+    ["ana signs in: 302, 200 balance 1000", "ok"],
+    ["forged post from evil.example with ana's cookie -> 200 sent 500 to mallory", "bad"],
+    ["balances now: ana 500, mallory 500", "bad"],
+]
+
+[[act]]
+title = "Spring Security's default token"
+summary = "A forged post and a token from another session both get 403; the sign-in form, logout and every page need tokens, and the token is renewed and masked."
+detail = """
+By default every post needs a token tied to the session. Without one, even the sign-in form is refused with 403, and the token is renewed when Ana signs in, so one taken before that no longer works. A forged post without a token gets 403, and so does one with a token from Mallory's own
+session. Ana's form with her own token works. Each page gets a different masked token, all accepted, which defends against BREACH. Logout is a state change, so it needs a token too.
+"""
+speech = """
+Second demo: Spring Security's default token. [[slnc 400]] Every post needs a token tied to the session. [[slnc 600]] A forged post gets four oh three. [[slnc 300]] So does a post with Mallory's own token. [[slnc 600]] Ana's own form works. [[slnc 300]] The sign in form and logout need tokens too, and each page gets a freshly masked token.
+"""
+rows = { token = "active ok" }
+console = [
+    ["sign-in without a token -> 403, with one -> 302", "ok"],
+    ["forged post without a token -> 403 Forbidden", "ok"],
+    ["with a token from mallory's session -> 403 Forbidden", "ok"],
+    ["ana's own form with her token -> 200 sent 20 to mallory", "ok"],
+]
+
+[[act]]
+title = "A single-page app"
+summary = "The token lives in a cookie the page's script reads and sends in a header; a forged post gets 403, and the price is that the cookie cannot be HttpOnly."
+detail = """
+A single-page app cannot render a hidden field, so the token is in an XSRF-TOKEN cookie that the page's script copies into an X-XSRF-TOKEN header. The forged post has no header and gets 403, and so does one with the value from Mallory's own cookie. The bank's own script works. The cookie cannot be
+HttpOnly because the script must read it, so a script injected by cross-site scripting can read it as well.
+"""
+speech = """
+Third demo: a single page app. [[slnc 400]] The token is in a cookie that the page's own script reads. [[slnc 300]] The script copies it into a header. [[slnc 600]] A forged post has no header, and gets four oh three. [[slnc 600]] The price is that the cookie cannot be http only, so cross site scripting could read it.
+"""
+rows = { spa = "active ok" }
+console = [
+    ["XSRF-TOKEN cookie set; HttpOnly is false", "amber"],
+    ["forged post without the header -> 403 Forbidden", "ok"],
+    ["the bank's own script copies the cookie into the header -> 200", "ok"],
+]
+
+[[act]]
+title = "What the default does not cover"
+summary = "An exempt webhook needs its own signature, GET is never checked, and one extra exemption lets a forged transfer through."
+detail = """
+The payment provider's webhook has no session, so it is exempt from tokens, and a forged post without its signature gets 401: the route checks its own proof. A route that moves money on GET is forged by a link on evil.example, because Spring never checks GET for a token; the same transfer
+on a POST-only route gets 405. And a developer who adds /transfer to the exemptions to make a test pass lets a forged post through: one line of configuration undid the defence.
+"""
+speech = """
+Fourth demo: what the default does not cover. [[slnc 400]] A webhook is exempt, so it must check its own signature. [[slnc 600]] A route that moves money on get is never checked, so a link can forge it. [[slnc 600]] And one line that exempts the transfer route undoes the whole defence.
+"""
+rows = { gaps = "active wrong" }
+console = [
+    ["forged webhook without the signature -> 401 bad signature", "ok"],
+    ["GET /legacy/move from evil.example -> 200 sent 100 to mallory  <- SPRING DOES NOT CHECK GET", "bad"],
+    ["a developer exempts /transfer; forged post -> 200 sent 500 to mallory", "bad"],
+]
+
+[[act]]
+title = "The bill"
+summary = "The session cookie has no SameSite attribute by default, an API chain with header credentials ignores cookies, and all 3 state-changing routes refuse a post with no token."
+detail = """
+The session cookie is HttpOnly by default but has no SameSite attribute; a property adds SameSite=Lax as one more layer. The API chain takes credentials in a header and keeps no session, so Ana's cookie from evil.example gets 401, and the app that holds the credentials gets 200: that chain can leave CSRF
+off, because a browser never adds a header it was not given. A final check posts to every state-changing route of the web chain with no token, and all 3 refuse with 403.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] The session cookie has no same site attribute by default. [[slnc 600]] An A P I that takes credentials in a header, and keeps no session, can leave the check off. [[slnc 600]] And a test should post to every route with no token, and expect four oh three each time.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["session cookie by default: HttpOnly true, SameSite false", "amber"],
+    ["API chain, ana's cookie from evil.example -> 401", "ok"],
+    ["3 of 3 state-changing routes refused with 403", "ok"],
+]
+
+[animation]
+subtitle = "A bank, a session cookie, and a page on another site."
+boxes = [
+    ["off", "Switched off", "a forged post works"],
+    ["token", "Default token", "403 without it"],
+    ["spa", "Single page app", "cookie and header"],
+    ["gaps", "The gaps", "exemption, GET"],
+    ["bill", "The bill", "SameSite, API chain"],
+]
+
+[docs.problem]
+scenario = """
+An online bank on Spring Boot with a session-cookie login, where a developer sees a 403 on a POST and wants it gone.
+"""
+naive = """
+Disable CSRF protection, or exempt the route that fails, and move on.
+"""
+deliver = [
+    "Real Spring Boot servers in four configurations.",
+    "A browser stand-in that sends a forged post the way another site's page would.",
+    "The default token, the single-page cookie mode, exemptions and GET.",
+    "A separate API chain without CSRF, and a check of every state-changing route.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain cross-site-request-forgery project, for the attack itself",
+]
+not_required = [
+    "A real browser: the stand-in sends the same requests",
+    "A database: the bank's accounts are in memory",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what Spring Security's default token protects and how it is checked",
+    "choose the cookie mode for a single-page app and name its price",
+    "name the ways the protection is lost: disabling, exempting and GET",
+    "decide when a chain can safely leave CSRF off",
+]
+walkthrough = """
+Run act one and ask why the browser sent the cookie. In act three ask what an XSS hole would do. In act four ask which of the three losses would show up in a code review.
+"""
+exercises = [
+    "Add a Fetch Metadata filter that refuses a cross-site post, and test it beside the token.",
+    "Write a test that fails if any route in the web chain is on the exemption list without a signature check.",
+    "Add the `__Host-` prefix to the session cookie and see what the server requires.",
+    "Move the token from a header to a form field for a server-rendered page.",
+]
+
+[docs.explained]
+sentence = """
+Spring Security refuses a state-changing request without a token that belongs to the session, and the protection is only as strong as the switches, exemptions and GET routes left in the application.
+"""
+verdict = """
+Leave CSRF on for every chain that uses a session cookie, use the cookie mode with the header for single-page apps, give every exemption its own proof of origin, never change state on GET, add SameSite as a second layer, and test every state-changing route without a token.
+"""
+recognise = [
+    "`csrf.disable()` in a copied tutorial.",
+    "`ignoringRequestMatchers` with a broad pattern.",
+    "An `XSRF-TOKEN` cookie in the browser's storage.",
+    "A 403 Forbidden after a POST that worked in curl.",
+]
+
+[spec]
+purpose = """
+Teach CSRF defences with Spring Security 7: the default token, the single-page cookie mode, and the ways the protection is lost.
+"""
+nongoals = [
+    "A real browser or a front-end framework.",
+    "OAuth and bearer-token flows, which have their own project.",
+    "Cross-site scripting, which is a separate project.",
+]
+problem = """
+Teams disable or exempt Spring Security's CSRF protection to fix a 403, and do not notice what they gave up.
+"""
+roles = [["The bank", "`Bank`, `BankController`"], ["Security configuration", "`WebSecurity`, `SpaCsrfTokenRequestHandler`"], ["The browser stand-in", "`Browser`"], ["Entry point", "`CsrfSpringDemo`"]]
+requirements = [
+    "With CSRF off, a forged post from another site moves money.",
+    "With the default, a forged post and a post with another session's token are refused.",
+    "The sign-in form, logout and every state-changing route need a token.",
+    "Single-page mode accepts the cookie value in a header and refuses a post without it.",
+    "An exempt route checks its own signature, and a GET is never checked for a token.",
+    "The API chain ignores cookies and needs header credentials.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two filter chains"
+caption = "The web chain needs tokens because it trusts a cookie; the API chain trusts only a header."
+nodes = [
+    { id = "browser", label = "Browser", sub = "adds the cookie to every request", col = 0, row = 0, colour = "client" },
+    { id = "web", label = "Web chain", sub = "session cookie, CSRF token", col = 1, row = 0, colour = "accent" },
+    { id = "api", label = "API chain", sub = "Basic header, no session", col = 1, row = 1, colour = "green" },
+    { id = "bank", label = "Bank", sub = "accounts and transfers", col = 2, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "browser", to = "web", label = "form posts, page script" },
+    { from = "browser", to = "api", label = "app with credentials" },
+    { from = "web", to = "bank" },
+    { from = "api", to = "bank" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Security configuration chooses a mode by profile; the controller is the same in every mode."
+nodes = [
+    { id = "sec", label = "WebSecurity", sub = ["api()", "webWithoutCsrf()", "webWithSynchronizerToken()", "webForSinglePageApp()"], col = 0, row = 0, colour = "accent" },
+    { id = "spa", label = "SpaCsrfTokenRequestHandler", sub = ["handle()", "resolveCsrfTokenValue()"], col = 1, row = 0, colour = "amber" },
+    { id = "ctl", label = "BankController", sub = ["transfer()", "legacyMove()", "webhook()"], col = 0, row = 1, colour = "client" },
+    { id = "bank", label = "Bank", sub = ["balance()", "transfer()"], col = 1, row = 1, colour = "green" },
+    { id = "browser", label = "Browser", sub = ["post()", "postFromAnotherSite()"], col = 2, row = 0, colour = "red" },
+]
+edges = [
+    { from = "sec", to = "spa", label = "uses in spa mode" },
+    { from = "ctl", to = "bank", label = "moves money in" },
+    { from = "browser", to = "ctl", label = "requests" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the filter checks, in order"
+caption = "A state-changing request needs a token that matches the session; GET is not checked."
+nodes = [
+    { id = "req", label = "Request", sub = "POST, PUT, DELETE", col = 0, row = 0, colour = "client" },
+    { id = "exempt", label = "Exempt?", sub = "route on the list", col = 1, row = 0, colour = "amber" },
+    { id = "token", label = "Token", sub = "header or form field matches", col = 2, row = 0, colour = "accent" },
+    { id = "auth", label = "Authentication", sub = "session or header", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "req", to = "exempt" },
+    { from = "exempt", to = "token", label = "no" },
+    { from = "token", to = "auth" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A forged post meets the default"
+participants = ["evil.example page", "Browser", "Bank"]
+steps = [
+    ["evil.example page", "Browser", "submit the hidden form"],
+    ["Browser", "Bank", "POST /transfer with ana's cookie, no token"],
+    ["note", "Bank", "no token that matches the session"],
+    ["Bank", "Browser", "403 Forbidden", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Single-page mode"
+participants = ["Page script", "Browser", "Bank"]
+steps = [
+    ["Page script", "Browser", "read the XSRF-TOKEN cookie"],
+    ["Page script", "Bank", "POST /transfer, X-XSRF-TOKEN: value"],
+    ["note", "Bank", "header equals the cookie's token"],
+    ["Bank", "Page script", "200 sent 20", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Another site", nodes = ["evil"], colour = "red" },
+    { label = "The customer's browser", nodes = ["browser"], colour = "amber" },
+    { label = "The bank", nodes = ["web", "hook"], colour = "green" },
+]
+nodes = [
+    { id = "evil", label = "evil.example", sub = "hidden form or link", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "browser", label = "Browser", sub = "adds the cookie", col = 1, row = 0, colour = "client", threats = ["T1"] },
+    { id = "web", label = "Web chain", sub = "tokens", col = 2, row = 0, colour = "accent", threats = ["T1", "T2", "T3"] },
+    { id = "hook", label = "Webhook", sub = "exempt, signed", col = 2, row = 1, colour = "amber", threats = ["T2"] },
+]
+edges = [
+    { from = "evil", to = "browser", label = "causes a request", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "browser", to = "web", label = "request with cookie", threats = ["T1"] },
+    { from = "browser", to = "hook", label = "request with cookie", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+A session-cookie web application on Spring Security 7 and the filter chains that protect it. It covers forged state-changing requests from other sites, exemptions and the API chain. It does not cover cross-site scripting or a compromised browser.
+"""
+assets = [
+    "The customer's money.",
+    "The customer's session.",
+]
+actors = [
+    "A customer logged in at the bank.",
+    "An attacker who controls another site's page.",
+    "A developer who changes the configuration.",
+]
+boundaries = [
+    "The browser to the bank: the cookie is attached to requests whatever site caused them.",
+    "An exempt route: it has no token and needs its own proof of origin.",
+]
+assumptions = [
+    "No cross-site scripting hole exists in the bank's pages.",
+    "The browser does not let one site read another site's cookies or pages.",
+]
+out_of_scope = [
+    "Cross-site scripting and clickjacking.",
+    "Attacks from the customer's own device.",
+]
+tests = [
+    "`CsrfSpringTest` starts a real server per mode and checks the forged post, a token from another session, sign-in and logout, masking and renewal, single-page mode, GET, the webhook, an extra exemption, the API chain and SameSite.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, server-side-request-forgery, moves from the browser to the server: a request the bank makes on an attacker's behalf.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A page on another site makes the customer's browser send a state-changing request with the session cookie"
+where = "`WebSecurity` web chain"
+control = "A token tied to the session, in a form field or a header, checked on every state-changing request"
+residual = "Cross-site scripting that reads the token"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "An exempt route accepts a forged request"
+where = "`BankController.webhook`, the exemption list"
+control = "A signature check on every exempt route and a review of the list"
+residual = "A new exemption added without review"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A route changes state on GET and so is never checked"
+where = "`BankController.legacyMove`"
+control = "State changes only on POST, PUT and DELETE"
+residual = "Old routes that nobody remembers"
+
+[poster]
+headline = [["CSRF WITH", "text"], ["SPRING SECURITY", "accent"]]
+taglines = [["Spring Security's token check is on by default, and the ways to lose it are a switch, an e", "gold"]]
+before = { code = "ana signs in: 302, 200 balance 1000", note = "CSRF protection switched off", tag = "BEFORE" }
+after = { code = "csrf.ignoringRequestMatchers(...)", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Cross-Site Request Forgery with Spring Security"
+narration = "Hello, and welcome. [[slnc 400]] This video explains C S R F with Spring Security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Spring Security protects every state-changing request of a session-cookie application with a token, which is why a forged post from another site is refused; the protection is undone by switching it off, by exempting a route, or by moving money on G E T, and a single-page app needs the cookie mode, where the token is readable by the page's own script. [[slnc 600]] Think of it this way. [[slnc 300]] A bank that accepts a signed cheque from anyone who walks in carrying your pen. The pen is your cookie, and the cheque is the forged request. A one-time number printed on the cheque book, which only your own cheque book shows, tells the bank the cheque came from the book on your desk. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain what Spring Security's default token protects and how it is checked. [[slnc 300]] Choose the cookie mode for a single-page app and name its price. [[slnc 300]] Name the ways the protection is lost: disabling, exempting and G E T."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank on Spring Boot with a", "session-cookie login.", "The demo starts the real application five", "times, in different configurations, and", "sends forged requests the way a browser", "would from another site."]
+narration = "Here is the scenario. [[slnc 400]] An online bank on Spring Boot with a session-cookie login. [[slnc 400]] The demo starts the real application five times, in different configurations, and sends forged requests the way a browser would from another site."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every form and every script call needs the token", "Single-page apps need a readable cookie", "Exemptions are one line each", "GET is never checked", "Stateless APIs need none of this"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every form and every script call needs the token. [[slnc 500]] Single-page apps need a readable cookie. [[slnc 500]] Exemptions are one line each. [[slnc 500]] G E T is never checked. [[slnc 500]] Stateless A P I need none of this."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The bank: Bank, BankController", "Security configuration: WebSecurity,", "SpaCsrfTokenRequestHandler", "The browser stand-in: Browser", "Entry point: CsrfSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The bank is in Bank and BankController. [[slnc 500]] Security configuration is in WebSecurity and SpaCsrfTokenRequestHandler. [[slnc 500]] The browser stand-in is in Browser. [[slnc 500]] Entry point is in CsrfSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["ignoringRequestMatchers with a broad pattern", "An XSRF-TOKEN cookie in the browser's storage", "A 403 Forbidden after a POST that worked in curl"]
+narration = "You have probably met this already. [[slnc 400]] ignoringRequestMatchers with a broad pattern. [[slnc 500]] An X S R F-T O K E N cookie in the browser's storage. [[slnc 500]] A 403 Forbidden after a P O S T that worked in curl."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain what Spring Security's default token protects", "and how it is checked", "Choose the cookie mode for a single-page app and name", "its price", "Name the ways the protection is lost: disabling,", "exempting and GET", "Decide when a chain can safely leave CSRF off"]
+narration = "So, how do you use it? [[slnc 400]] Leave C S R F on for every chain that uses a session cookie, use the cookie mode with the header for single-page apps, give every exemption its own proof of origin, never change state on G E T, add SameSite as a second layer, and test every state-changing route without a token."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's C S R F with Spring Security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Spring Security refuses a state-changing request without a token that belongs to the session, and the protection is only as strong as the switches, exemptions and G E T routes left in the application. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a Fetch Metadata filter that refuses a cross-site post, and test it beside the token. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-Site Request Forgery with Spring Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cross-Site Request Forgery with Spring Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/csrfspring/
+├── Bank.java                        The bank's accounts
+├── BankApp.java                     
+├── BankController.java              The bank's pages and API: the routes that read, the routes that move money, and one that a mistake left on GET
+├── Browser.java                     A customer's browser as far as this lesson needs one: it keeps cookies per site and attaches them to every request to that site, whichever page caused the request
+├── CsrfSpringDemo.java              Runs the bank story in five numbered acts against real Spring Boot servers on the loopback interface
+├── SpaCsrfTokenRequestHandler.java  For a single-page app that reads the token from a cookie and sends it back in a header
+└── WebSecurity.java                 Two filter chains
+</code></pre>
+<p><strong>Spring Security protects every state-changing request of a session-cookie application with a token, which is why a forged post from another site is refused; the protection is undone by switching it off, by exempting a route, or by moving money on GET, and a single-page app needs the cookie mode, where the token is readable by the page's own script.</strong></p>
+<p>The plain <a href="../cross-site-request-forgery">cross-site-request-forgery</a> project builds the attack and the defences from scratch. This one uses what real Spring Boot banks use: <strong>Spring Security 7</strong> on <strong>Spring Boot 4.1</strong>, in real servers on the loopback address, with a browser stand-in that keeps cookies and attaches them to every request, which is the whole weakness.</p>
+<p>What it shows:
+- <strong>Switching CSRF off</strong> (a common tutorial step to make a <code>POST</code> work) lets a page on evil.example move Ana's money with her own cookie.
+- <strong>The default is a token tied to the session.</strong> A forged post gets 403, so does one with a token from Mallory's session, the sign-in form and logout need tokens too, the token is renewed when Ana signs in, and it is masked with a new random value on each page.
+- <strong>A single-page app uses the cookie mode:</strong> the token is in a cookie that the page's script reads and sends back in a header. It cannot be <code>HttpOnly</code>, so cross-site scripting would read it.
+- <strong>What the default does not cover:</strong> a webhook exempted from tokens must check its own signature, <code>GET</code> is never checked, and one line that adds <code>/transfer</code> to the exemptions undoes the defence.
+- <strong>The bill:</strong> the session cookie has no <code>SameSite</code> attribute by default, an API chain with credentials in a header can leave CSRF off, and a test should post to every route without a token.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A01 Broken Access Control · CWE-352 · OWASP ASVS 5.0 V3 (Web Frontend Security) · OWASP CSRF Prevention Cheat Sheet.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank that accepts a signed cheque from anyone who walks in carrying your pen. The pen is your cookie, and the cheque is the forged request. A one-time number printed on the cheque book, which only your own cheque book shows, tells the bank the cheque came from the book on your desk.</p>
+<h2>The scenario</h2>
+<p>An online bank on Spring Boot with a session-cookie login. The demo starts the real application five times, in different configurations, and sends forged requests the way a browser would from another site.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. CSRF protection switched off</td>
+<td>With http.csrf disabled, a forged post with Ana's cookie moves 500 to Mallory.</td>
+</tr>
+<tr>
+<td>2. Spring Security's default token</td>
+<td>A forged post and a token from another session both get 403; the sign-in form, logout and every page need tokens, and the token is renewed and masked.</td>
+</tr>
+<tr>
+<td>3. A single-page app</td>
+<td>The token lives in a cookie the page's script reads and sends in a header; a forged post gets 403, and the price is that the cookie cannot be HttpOnly.</td>
+</tr>
+<tr>
+<td>4. What the default does not cover</td>
+<td>An exempt webhook needs its own signature, GET is never checked, and one extra exemption lets a forged transfer through.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The session cookie has no SameSite attribute by default, an API chain with header credentials ignores cookies, and all 3 state-changing routes refuse a post with no token.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>CsrfSpringTest</code>, <code>DemoRunsTest</code>. Each test starts a real server on a free loopback port and stops it. Nothing is printed that changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The servers are real Spring Boot applications on Tomcat and the filter chains are Spring Security 7. The browser stand-in is a few lines of Java that keep cookies and add an Origin header. Only statuses, booleans and balances are printed, never tokens, ports or time stamps, so the demo prints the same text on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-test</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cross-site-request-forgery-with-spring-security-explained.html">Cross-Site Request Forgery with Spring Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The web chain needs tokens because it trusts a cookie; the API chain trusts only a header.</p>
+<p><img alt="Two filter chains" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Security configuration chooses a mode by profile; the controller is the same in every mode.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A state-changing request needs a token that matches the session; GET is not checked.</p>
+<p><img alt="What the filter checks, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A forged post meets the default" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/cross-site-request-forgery-with-spring-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every form and every script call needs the token,</strong> or the bank refuses its own customers.</li>
+<li><strong>Single-page apps need a readable cookie,</strong> so cross-site scripting becomes the next problem to solve.</li>
+<li><strong>Exemptions are one line each,</strong> and each one needs its own proof of origin, such as a signature.</li>
+<li><strong>GET is never checked,</strong> so a route that changes state on GET cannot be protected by the filter.</li>
+<li><strong>Stateless APIs need none of this,</strong> but only if they really have no session and no cookie authentication.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Do not turn the protection off to fix a 403. Find the form or script that lacks the token. For APIs with header credentials and no session, use a separate filter chain without CSRF instead of weakening the web chain.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>http.csrf(csrf -&gt; csrf.disable())</code> in a copied tutorial.</li>
+<li><code>CookieCsrfTokenRepository.withHttpOnlyFalse()</code> in single-page app guides.</li>
+<li><code>&lt;input type="hidden" name="_csrf"&gt;</code> in Thymeleaf forms.</li>
+<li>A 403 Forbidden after a POST that worked in curl.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../cross-site-request-forgery">cross-site-request-forgery</a>, in the <a href="..">web-security</a> module. It follows the same story with the same numbers, on Spring Security.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

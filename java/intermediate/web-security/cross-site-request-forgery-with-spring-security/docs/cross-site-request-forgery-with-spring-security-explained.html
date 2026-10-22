@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-Site Request Forgery with Spring Security, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cross-Site Request Forgery with Spring Security, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Spring Security refuses a state-changing request without a token that belongs to the session, and the protection is only as strong as the switches, exemptions and GET routes left in the application.</p>
+<h2>The 5 acts</h2>
+<h3>1. CSRF protection switched off</h3>
+<p>A tutorial's advice to make a POST work is to disable CSRF protection. With it off, Ana signs in and her browser keeps the session cookie. A page on evil.example posts a transfer to the bank, and the browser adds the cookie because the request goes to the bank. The bank answers 200 and sends 500 to Mallory.</p>
+<h3>2. Spring Security's default token</h3>
+<p>By default every post needs a token tied to the session. Without one, even the sign-in form is refused with 403, and the token is renewed when Ana signs in, so one taken before that no longer works. A forged post without a token gets 403, and so does one with a token from Mallory's own
+session. Ana's form with her own token works. Each page gets a different masked token, all accepted, which defends against BREACH. Logout is a state change, so it needs a token too.</p>
+<h3>3. A single-page app</h3>
+<p>A single-page app cannot render a hidden field, so the token is in an XSRF-TOKEN cookie that the page's script copies into an X-XSRF-TOKEN header. The forged post has no header and gets 403, and so does one with the value from Mallory's own cookie. The bank's own script works. The cookie cannot be
+HttpOnly because the script must read it, so a script injected by cross-site scripting can read it as well.</p>
+<h3>4. What the default does not cover</h3>
+<p>The payment provider's webhook has no session, so it is exempt from tokens, and a forged post without its signature gets 401: the route checks its own proof. A route that moves money on GET is forged by a link on evil.example, because Spring never checks GET for a token; the same transfer
+on a POST-only route gets 405. And a developer who adds /transfer to the exemptions to make a test pass lets a forged post through: one line of configuration undid the defence.</p>
+<h3>5. The bill</h3>
+<p>The session cookie is HttpOnly by default but has no SameSite attribute; a property adds SameSite=Lax as one more layer. The API chain takes credentials in a header and keeps no session, so Ana's cookie from evil.example gets 401, and the app that holds the credentials gets 200: that chain can leave CSRF
+off, because a browser never adds a header it was not given. A final check posts to every state-changing route of the web chain with no token, and all 3 refuse with 403.</p>
+<h2>The verdict</h2>
+<p>Leave CSRF on for every chain that uses a session cookie, use the cookie mode with the header for single-page apps, give every exemption its own proof of origin, never change state on GET, add SameSite as a second layer, and test every state-changing route without a token.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>csrf.disable()</code> in a copied tutorial.</li>
+<li><code>ignoringRequestMatchers</code> with a broad pattern.</li>
+<li>An <code>XSRF-TOKEN</code> cookie in the browser's storage.</li>
+<li>A 403 Forbidden after a POST that worked in curl.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>http.csrf(csrf -&gt; csrf.disable())</code> in a copied tutorial.</li>
+<li><code>CookieCsrfTokenRepository.withHttpOnlyFalse()</code> in single-page app guides.</li>
+<li><code>&lt;input type="hidden" name="_csrf"&gt;</code> in Thymeleaf forms.</li>
+<li>A 403 Forbidden after a POST that worked in curl.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
