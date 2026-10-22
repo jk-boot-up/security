@@ -47,6 +47,19 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
 | **All** | | **88** | **64** | **152** |
+
+**By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
+
+| Level | Kind | Built | Planned | Total |
+| --- | --- | ---: | ---: | ---: |
+| Beginner | Plain | 20 | 0 | 20 |
+| Beginner | With tools | 21 | 0 | 21 |
+| Intermediate | Plain | 40 | 0 | 40 |
+| Intermediate | With tools | 7 | 29 | 36 |
+| Advanced | Unclassified | 0 | 35 | 35 |
+| **All** | **Plain** | **60** | **0** | **60** |
+| **All** | **With tools** | **28** | **29** | **57** |
+| **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
