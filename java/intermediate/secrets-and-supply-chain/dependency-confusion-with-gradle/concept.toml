@@ -1,0 +1,445 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "dependency-confusion-with-gradle"
+level = "intermediate"
+module = "secrets-and-supply-chain"
+title = "Dependency Confusion with Gradle"
+short_title = "Confusion with Gradle"
+package = "depconfusion"
+main_class = "DependencyConfusionDemo"
+tagline = "Gradle asks every repository for every name unless it is told which repository may answer for which group, and then it checks the bytes against a list"
+bold = "A Gradle build that lists a private and a public repository will take the highest version of an internal name from whichever one has it, and the first copy of an exact version in declaration order; repository content filters tell each repository which groups it may answer for, so an internal name is never even asked for in the public repository, and dependency verification checks the sha256 of every artifact against a file in the repository; but a filter is only as good as its list of groups, and checksums written from a build that was already compromised record the attacker's package."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Dependency confusion with real Gradle 9 builds against a private and a public Maven repository on loopback ports: a version range that takes the attacker's 99.0.0 from the public repository, an exact version taken from the first repository that has it, content filters that keep an internal group out of the public repository and show zero requests for it, dependency verification metadata that refuses an unlisted version and the same version with other bytes, a filter for com.shop that does not cover com.shop.tools, and checksums written from a compromised build."
+thumb_lines = ["CONFUSION WITH", "GRADLE"]
+thumb_code = "content { includeGroupAndSubgroups }"
+youtube_title = "Dependency Confusion with Gradle: Content Filters and Dependency Verification (OWASP A03)"
+youtube_tags = ["dependency confusion", "gradle", "repository content filtering", "dependency verification", "supply chain", "maven", "owasp top 10", "a03", "java"]
+
+[readme]
+intro = """
+The plain [dependency-confusion](../dependency-confusion) project simulates resolvers in Java. This one runs **real Gradle 9 builds** (this project's own wrapper) against two real Maven repositories, a private one and a public one, that the demo serves on loopback ports and that remember every request. No Docker and no network are needed; the tests are tagged `integration` because each build takes a few seconds: `./gradlew integrationTest`.
+
+What it shows:
+- **A build that works.** `com.shop:pricing` and `com.shop:audit` come from the private repository, `org.acme:json-lib` from the public one.
+- **The attacker registers an internal name in the public repository.** A version range `[1.4,)` takes the highest version of any repository: `pricing 99.0.0`, the attacker's. An exact version is safer, but the first repository in declaration order that has it wins, so a public repository declared first serves the attacker's `audit 3.1.0`.
+- **Content filters.** The private repository includes group `com.shop` and its subgroups, the public one excludes them. The build resolves the right packages, and the public repository received **zero requests** for `com.shop`. An internal library that is not published yet fails without leaking its name; without the filter, the name is asked for in the public repository.
+- **Dependency verification.** `--write-verification-metadata sha256` records the checksums in `gradle/verification-metadata.xml`. A version that is not listed and the same version with other bytes are both refused.
+- **The bill.** A filter for the exact group `com.shop` does not cover `com.shop.tools`; checksums written while the attacker's package was already being resolved are the attacker's; plugin repositories are a separate list.
+
+**Maps to:** OWASP Top 10 (2025) A03 Software Supply Chain Failures · CWE-427 (uncontrolled search path element), CWE-494 · the 2021 dependency confusion research.
+"""
+analogy = """
+A shop that phones every supplier in the city for a part number and takes the highest revision number it hears. Telling each supplier which part numbers it may answer for, and checking the part against the drawing, are two different protections.
+"""
+scenario = """
+An online store builds with Gradle. Its pricing and audit libraries live in the company's repository and its JSON library in a public one. The demo plays the store's build and an attacker who can publish in the public repository.
+"""
+costs = [
+    "**Every internal group must be listed,** in every build and every settings file, and a new group that nobody adds is unprotected.",
+    "**Checksums are one more file to review** every time a dependency changes, and people approve changes without looking.",
+    "**Plugins and the build script have their own repositories** and need the same rules.",
+    "**Exact versions and lockfiles help,** but a lockfile written from a compromised build locks the attacker in.",
+]
+too_much = """
+A build that uses a single repository, which you control, with exact versions, has nothing to confuse. Add filters and verification when more than one repository is involved or when versions are ranges.
+"""
+met_before = [
+    "`mavenCentral()` and a company repository in the same `repositories` block.",
+    "`content { includeGroup ... }` or `exclusiveContent` in a build file.",
+    "A `verification-metadata.xml` in the `gradle` folder.",
+    "A version such as `1.+` or `[1.4,)` in a dependency.",
+]
+where = """
+This is the tools version of [dependency-confusion](../dependency-confusion), in the [secrets-and-supply-chain](..) module. What the shipped image contains, and what is known broken in it, is in [sbom-and-provenance-with-syft-and-grype](../sbom-and-provenance-with-syft-and-grype).
+"""
+twin = """
+The repositories are small HTTP servers started by the demo on loopback ports, with jars that carry a file saying who published them. Gradle is the real Gradle; ports and temporary folders are never printed. The demo takes about a minute.
+"""
+test_note = "The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network."
+
+[[act]]
+title = "A build that works"
+summary = "The internal libraries come from the private repository and the public library from the public one."
+detail = """
+The consumer build declares the private repository first and the public one second. pricing (range [1.4,)), audit 3.1.0 and json-lib 2.0.1 are resolved: the two internal libraries from the private repository, json-lib from the public one.
+"""
+speech = """
+First demo: a build that works. [[slnc 400]] Two repositories, private first and public second. [[slnc 600]]
+The internal libraries come from the private one. [[slnc 300]] The json library comes from the public one.
+"""
+rows = { build = "active ok" }
+console = [
+    ["pricing 1.4.2 and audit 3.1.0 from the private repository", "ok"],
+    ["json-lib 2.0.1 from the public repository", "ok"],
+]
+
+[[act]]
+title = "Somebody registers the company's name in the public repository"
+summary = "A version range takes the highest version of any repository, and an exact version comes from the first repository that has it."
+detail = """
+The attacker publishes pricing 99.0.0 in the public repository. The range [1.4,) takes the highest version it can find in any repository: the attacker's. An exact version is safer, but with the public repository declared first, the attacker's copy of audit 3.1.0 is the first one found, and it is used.
+"""
+speech = """
+Second demo: somebody registers the company's name in the public repository. [[slnc 400]] A version range takes the highest version anywhere. [[slnc 600]]
+An exact version comes from the first repository that has it.
+"""
+rows = { range = "active wrong" }
+console = [
+    ["pricing 99.0.0 from the public repository (the attacker's)", "bad"],
+    ["audit 3.1.0 from the public repository, when it is declared first", "bad"],
+]
+
+[[act]]
+title = "The repository says which names it may answer for"
+summary = "Content filters keep the internal group out of the public repository, and the public repository receives no request for it."
+detail = """
+The private repository includes the group com.shop and its subgroups, and the public repository excludes them. The same build resolves pricing 1.4.2 and audit 3.1.0 from the private repository, and the public repository received zero requests for com.shop. A library that is not published yet is refused, and still the public repository was not asked. Without the filter, the build asks the public repository for the internal name: the name leaks, and so does the chance to answer it.
+"""
+speech = """
+Third demo: the repository says which names it may answer for. [[slnc 400]] The private repository includes the company's group. The public one excludes it. [[slnc 600]]
+The public repository receives no request for the company's names at all.
+"""
+rows = { filter = "active ok" }
+console = [
+    ["pricing 1.4.2 from private; requests to the public repository for com.shop: 0", "ok"],
+    ["an unpublished internal library: could not find, and nobody was asked", "ok"],
+    ["without the filter the name is asked for in the public repository", "bad"],
+]
+
+[[act]]
+title = "Checksums that the build checks"
+summary = "Dependency verification records the sha256 of what was resolved and refuses an unlisted version and the same version with other bytes."
+detail = """
+gradle --write-verification-metadata sha256 records the checksums in gradle/verification-metadata.xml. The same build with the metadata passes. When the attacker's 99.0.0 starts to win the range, the build is refused: it is not listed. When the private repository serves the same version number with other bytes, the build is refused: the checksum differs.
+"""
+speech = """
+Fourth demo: checksums that the build checks. [[slnc 400]] Gradle records the checksum of everything it resolved. [[slnc 600]]
+A version that is not listed is refused. [[slnc 300]] The same version with other bytes is refused too.
+"""
+rows = { verify = "active ok" }
+console = [
+    ["gradle/verification-metadata.xml written once", "ok"],
+    ["the attacker's 99.0.0 -> refused: not listed", "ok"],
+    ["same version, other bytes -> refused: checksum differs", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A filter is only as good as its list, checksums can be written from a compromised build, and plugins have their own repositories."
+detail = """
+A filter for the exact group com.shop does not cover com.shop.tools: the attacker's signer 9.0 is taken from the public repository. With the group and its subgroups, the private signer 1.0 is used. Checksums written while the attacker's package was already being resolved are the attacker's checksums, and the build then accepts it. The repositories for plugins and the build script are a separate list. The repositories here are plain http on loopback; a real repository is https.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] A filter for one group does not cover its subgroups. [[slnc 600]]
+Checksums written from a compromised build record the attacker's package. [[slnc 600]]
+Plugins have a repository list of their own.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["a filter for com.shop does not cover com.shop.tools", "bad"],
+    ["checksums written from a compromised build trust the attacker", "bad"],
+    ["plugin repositories are a separate list", "ok"],
+]
+
+[animation]
+subtitle = "An online store, two repositories, and a build that asks both."
+boxes = [
+    ["build", "The build", "two repositories"],
+    ["range", "The range", "highest version wins"],
+    ["filter", "The filter", "who may answer"],
+    ["verify", "The checksums", "sha256 in a file"],
+    ["bill", "The bill", "subgroups, plugins"],
+]
+
+[docs.problem]
+scenario = """
+An online store builds with Gradle from a private repository and a public one, and an attacker can publish anything under any name in the public one.
+"""
+naive = """
+List both repositories and trust that the right one answers.
+"""
+deliver = [
+    "Real Gradle builds against two real repositories.",
+    "The attacker's package winning by range and by order.",
+    "Content filters and the request count that proves them.",
+    "Dependency verification and where it stops.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain dependency-confusion project, for the ideas",
+    "Gradle, through this project's wrapper",
+]
+not_required = [
+    "Docker or a network connection",
+]
+install = ["gradle"]
+
+[docs.session]
+objectives = [
+    "explain why a version range lets a public package win",
+    "write a repository content filter",
+    "write and read verification metadata",
+    "name what a filter and a checksum file do not cover",
+]
+walkthrough = """
+Run act two and find the version that won. In act three look at the count of requests to the public repository. In act five ask which subgroup you forgot in your own build.
+"""
+exercises = [
+    "Use exclusiveContent for one group and compare it with includeGroup.",
+    "Add a dependency lock and see what it changes.",
+    "Add the same filters to pluginManagement.",
+    "Turn a version range into an exact version and rerun act two.",
+]
+
+[docs.explained]
+sentence = """
+A build should ask only the repository that owns a name, and should check the bytes it gets against a list it reviewed.
+"""
+verdict = """
+Declare which repository may answer for each group, use exact versions or locks, keep verification metadata under review, give plugins the same rules, and publish your internal groups in the public registry too, as placeholders, where that is possible.
+"""
+recognise = [
+    "`content { includeGroup ... }` or `exclusiveContent`.",
+    "`gradle/verification-metadata.xml`.",
+    "`repositoriesMode = FAIL_ON_PROJECT_REPOS`.",
+    "A version such as `1.+` or `[1.4,)`.",
+]
+
+[spec]
+purpose = """
+Teach how Gradle resolves a name across repositories and how to restrict it with content filters and dependency verification.
+"""
+nongoals = [
+    "Signing artifacts.",
+    "Running a repository manager.",
+    "Other build tools.",
+]
+problem = """
+Builds that list a public and a private repository can take an internal name from a public one.
+"""
+roles = [["Repository", "`Repo`"], ["The two repositories", "`Lab`"], ["One Gradle build", "`Build`"], ["Entry point", "`DependencyConfusionDemo`"]]
+requirements = [
+    "A Gradle build resolves from two repositories that remember every request.",
+    "A version range and declaration order can pick the attacker's package.",
+    "Content filters keep internal groups out of the public repository, which then receives no request for them.",
+    "Verification metadata refuses an unlisted version and different bytes.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "The build asks both repositories; the filters and the checksum file sit in the build."
+nodes = [
+    { id = "build", label = "Gradle build", sub = "filters, checksums", col = 0, row = 0, colour = "accent" },
+    { id = "priv", label = "Private repository", sub = "com.shop", col = 1, row = 0, colour = "green", shape = "store" },
+    { id = "pub", label = "Public repository", sub = "anyone can publish", col = 1, row = 1, colour = "red", shape = "store" },
+]
+edges = [
+    { from = "build", to = "priv", label = "asks" },
+    { from = "build", to = "pub", label = "asks" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The lab holds two repositories, a build runs Gradle, the demo tells the story."
+nodes = [
+    { id = "repo", label = "Repo", sub = ["publish()", "requests()", "requestsUnder()"], col = 0, row = 0, colour = "amber" },
+    { id = "lab", label = "Lab", sub = ["privateRepo", "publicRepo", "build()"], col = 1, row = 0, colour = "accent" },
+    { id = "build", label = "Build", sub = ["run()", "reason()"], col = 2, row = 0, colour = "client" },
+    { id = "demo", label = "DependencyConfusionDemo", sub = ["run()"], col = 1, row = 1, colour = "green" },
+]
+edges = [
+    { from = "lab", to = "repo", label = "starts" },
+    { from = "lab", to = "build", label = "creates" },
+    { from = "demo", to = "lab", label = "uses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "How a name is resolved"
+caption = "The filter decides who is asked; the checksum decides what is accepted."
+nodes = [
+    { id = "name", label = "Name", sub = "com.shop:pricing", col = 0, row = 0, colour = "client" },
+    { id = "filter", label = "Content filter", sub = "which repository", col = 1, row = 0, colour = "accent" },
+    { id = "repo", label = "Repository", sub = "highest or first", col = 2, row = 0, colour = "amber" },
+    { id = "sum", label = "Checksum", sub = "verification metadata", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "name", to = "filter" },
+    { from = "filter", to = "repo", label = "asks" },
+    { from = "repo", to = "sum", label = "bytes" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A filtered resolution"
+participants = ["Build", "Private", "Public"]
+steps = [
+    ["Build", "Private", "com.shop:pricing [1.4,)"],
+    ["Private", "Build", "1.4.2", "reply"],
+    ["Build", "Public", "org.acme:json-lib 2.0.1"],
+    ["Public", "Build", "the jar", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "An unfiltered range"
+participants = ["Attacker", "Public", "Build", "Private"]
+steps = [
+    ["Attacker", "Public", "publish com.shop:pricing 99.0.0"],
+    ["Build", "Private", "versions of pricing"],
+    ["Build", "Public", "versions of pricing"],
+    ["Build", "Public", "take 99.0.0, the highest"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Anyone can publish", nodes = ["attacker", "pub"], colour = "red" },
+    { label = "The store", nodes = ["build", "priv"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "registers internal names", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "pub", label = "Public repository", sub = "no review", col = 1, row = 0, colour = "amber", threats = ["T1"] },
+    { id = "build", label = "Gradle build", sub = "filters, metadata", col = 2, row = 0, colour = "accent", threats = ["T1", "T3", "T4"] },
+    { id = "priv", label = "Private repository", sub = "the real packages", col = 2, row = 1, colour = "client", threats = ["T2"] },
+]
+edges = [
+    { from = "attacker", to = "pub", label = "publishes 99.0.0", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "build", to = "pub", label = "asks", threats = ["T1", "T3"] },
+    { from = "build", to = "priv", label = "asks", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+A Gradle build that resolves dependencies from a private and a public repository. It covers version ranges, repository order, content filters and dependency verification. It does not cover the contents of the packages or the repositories' own security.
+"""
+assets = [
+    "The build machine and the secrets it can reach.",
+    "The libraries that end up in the store's release.",
+]
+actors = [
+    "The team that maintains the build.",
+    "An attacker who can publish in the public repository.",
+    "Someone who can replace a file in the private repository.",
+]
+boundaries = [
+    "The public repository: anyone can publish under any name that is free.",
+    "The build file: the only place that says which repository may answer for which group.",
+]
+assumptions = [
+    "The build file and the verification metadata are reviewed like code.",
+    "The repositories are served over https.",
+]
+out_of_scope = [
+    "Malicious code in a library that is on the allow list.",
+    "Compromise of the private repository's storage.",
+]
+tests = [
+    "`DependencyConfusionTest` runs real Gradle builds for the range, the order, the filters and the request count, the verification metadata and the subgroup.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, tls, starts with local-certificate-authority-with-step-ca.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "An internal name is resolved from the public repository"
+where = "the build file"
+control = "Content filters per repository, exact versions or locks"
+residual = "Groups that are not listed"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "The same version number is served with other bytes"
+where = "any repository"
+control = "Dependency verification with sha256 checksums"
+residual = "Metadata approved without a review"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "An unpublished internal name is asked for in the public repository"
+where = "the build"
+control = "The filter keeps the name out of every request to the public repository"
+residual = "Plugin and build script repositories"
+
+[[threat]]
+id = "T4"
+stride = "R"
+threat = "Checksums are written from a build that was already compromised"
+where = "gradle/verification-metadata.xml"
+control = "Write them from a build you trust and review every change"
+residual = "Approving changes without looking"
+
+[poster]
+headline = [["CONFUSION WITH", "text"], ["GRADLE", "accent"]]
+taglines = [["Gradle asks every repository for every name unless it is told which repository may answer ", "gold"]]
+before = { code = "pricing 1.4.2 and audit 3.1.0 from the private repos", note = "A build that works", tag = "BEFORE" }
+after = { code = "content { includeGroupAndSubgroups }", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Dependency Confusion with Gradle"
+narration = "Hello, and welcome. [[slnc 400]] This video explains confusion with Gradle, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A Gradle build that lists a private and a public repository will take the highest version of an internal name from whichever one has it, and the first copy of an exact version in declaration order; repository content filters tell each repository which groups it may answer for, so an internal name is never even asked for in the public repository, and dependency verification checks the sha256 of every artifact against a file in the repository; but a filter is only as good as its list of groups, and checksums written from a build that was already compromised record the attacker's package. [[slnc 600]] Think of it this way. [[slnc 300]] A shop that phones every supplier in the city for a part number and takes the highest revision number it hears. Telling each supplier which part numbers it may answer for, and checking the part against the drawing, are two different protections. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why a version range lets a public package win. [[slnc 300]] Write a repository content filter. [[slnc 300]] Write and read verification metadata."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store builds with Gradle.", "Its pricing and audit libraries live in the", "company's repository and its JSON library in", "a public one.", "The demo plays the store's build and an", "attacker who can publish in the public", "repository."]
+narration = "Here is the scenario. [[slnc 400]] An online store builds with Gradle. [[slnc 400]] Its pricing and audit libraries live in the company's repository and its JSON library in a public one. [[slnc 400]] The demo plays the store's build and an attacker who can publish in the public repository."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every internal group must be listed", "Checksums are one more file to review", "Plugins and the build script have their own", "repositories", "Exact versions and lockfiles help"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every internal group must be listed. [[slnc 500]] Checksums are one more file to review. [[slnc 500]] Plugins and the build script have their own repositories. [[slnc 500]] Exact versions and lockfiles help."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Repository: Repo", "The two repositories: Lab", "One Gradle build: Build", "Entry point: DependencyConfusionDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Repository is in Repo. [[slnc 500]] The two repositories is in Lab. [[slnc 500]] One Gradle build is in Build. [[slnc 500]] Entry point is in DependencyConfusionDemo."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why a version range lets a public package win", "Write a repository content filter", "Write and read verification metadata", "Name what a filter and a checksum file do not cover"]
+narration = "So, how do you use it? [[slnc 400]] Declare which repository may answer for each group, use exact versions or locks, keep verification metadata under review, give plugins the same rules, and publish your internal groups in the public registry too, as placeholders, where that is possible."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's confusion with Gradle. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A build should ask only the repository that owns a name, and should check the bytes it gets against a list it reviewed. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Use exclusiveContent for one group and compare it with includeGroup. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dependency Confusion with Gradle</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Dependency Confusion with Gradle</h1>
+<pre><code>src/main/java/com/jk/explore/security/depconfusion/
+├── Build.java                    One real Gradle build of a small consumer project, in a folder of its own, using this project's Gradle wrapper
+├── DependencyConfusionDemo.java  Real Gradle builds against a private and a public repository: who answers for a name, what a filter and a checksum refuse, and what they do not
+├── Lab.java                      The two repositories of the lesson and the folders of the builds that use them
+└── Repo.java                     A Maven repository on a loopback port that remembers every path it was asked for
+</code></pre>
+<p><strong>A Gradle build that lists a private and a public repository will take the highest version of an internal name from whichever one has it, and the first copy of an exact version in declaration order; repository content filters tell each repository which groups it may answer for, so an internal name is never even asked for in the public repository, and dependency verification checks the sha256 of every artifact against a file in the repository; but a filter is only as good as its list of groups, and checksums written from a build that was already compromised record the attacker's package.</strong></p>
+<p>The plain <a href="../dependency-confusion">dependency-confusion</a> project simulates resolvers in Java. This one runs <strong>real Gradle 9 builds</strong> (this project's own wrapper) against two real Maven repositories, a private one and a public one, that the demo serves on loopback ports and that remember every request. No Docker and no network are needed; the tests are tagged <code>integration</code> because each build takes a few seconds: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>A build that works.</strong> <code>com.shop:pricing</code> and <code>com.shop:audit</code> come from the private repository, <code>org.acme:json-lib</code> from the public one.
+- <strong>The attacker registers an internal name in the public repository.</strong> A version range <code>[1.4,)</code> takes the highest version of any repository: <code>pricing 99.0.0</code>, the attacker's. An exact version is safer, but the first repository in declaration order that has it wins, so a public repository declared first serves the attacker's <code>audit 3.1.0</code>.
+- <strong>Content filters.</strong> The private repository includes group <code>com.shop</code> and its subgroups, the public one excludes them. The build resolves the right packages, and the public repository received <strong>zero requests</strong> for <code>com.shop</code>. An internal library that is not published yet fails without leaking its name; without the filter, the name is asked for in the public repository.
+- <strong>Dependency verification.</strong> <code>--write-verification-metadata sha256</code> records the checksums in <code>gradle/verification-metadata.xml</code>. A version that is not listed and the same version with other bytes are both refused.
+- <strong>The bill.</strong> A filter for the exact group <code>com.shop</code> does not cover <code>com.shop.tools</code>; checksums written while the attacker's package was already being resolved are the attacker's; plugin repositories are a separate list.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A03 Software Supply Chain Failures · CWE-427 (uncontrolled search path element), CWE-494 · the 2021 dependency confusion research.</p>
+<h2>The idea in everyday terms</h2>
+<p>A shop that phones every supplier in the city for a part number and takes the highest revision number it hears. Telling each supplier which part numbers it may answer for, and checking the part against the drawing, are two different protections.</p>
+<h2>The scenario</h2>
+<p>An online store builds with Gradle. Its pricing and audit libraries live in the company's repository and its JSON library in a public one. The demo plays the store's build and an attacker who can publish in the public repository.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A build that works</td>
+<td>The internal libraries come from the private repository and the public library from the public one.</td>
+</tr>
+<tr>
+<td>2. Somebody registers the company's name in the public repository</td>
+<td>A version range takes the highest version of any repository, and an exact version comes from the first repository that has it.</td>
+</tr>
+<tr>
+<td>3. The repository says which names it may answer for</td>
+<td>Content filters keep the internal group out of the public repository, and the public repository receives no request for it.</td>
+</tr>
+<tr>
+<td>4. Checksums that the build checks</td>
+<td>Dependency verification records the sha256 of what was resolved and refuses an unlisted version and the same version with other bytes.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A filter is only as good as its list, checksums can be written from a compromised build, and plugins have their own repositories.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>DependencyConfusionTest</code>. The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The repositories are small HTTP servers started by the demo on loopback ports, with jars that carry a file saying who published them. Gradle is the real Gradle; ports and temporary folders are never printed. The demo takes about a minute.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/dependency-confusion-with-gradle-explained.html">Dependency Confusion with Gradle, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The build asks both repositories; the filters and the checksum file sit in the build.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The lab holds two repositories, a build runs Gradle, the demo tells the story.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The filter decides who is asked; the checksum decides what is accepted.</p>
+<p><img alt="How a name is resolved" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A filtered resolution" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/dependency-confusion-with-gradle-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every internal group must be listed,</strong> in every build and every settings file, and a new group that nobody adds is unprotected.</li>
+<li><strong>Checksums are one more file to review</strong> every time a dependency changes, and people approve changes without looking.</li>
+<li><strong>Plugins and the build script have their own repositories</strong> and need the same rules.</li>
+<li><strong>Exact versions and lockfiles help,</strong> but a lockfile written from a compromised build locks the attacker in.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A build that uses a single repository, which you control, with exact versions, has nothing to confuse. Add filters and verification when more than one repository is involved or when versions are ranges.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>mavenCentral()</code> and a company repository in the same <code>repositories</code> block.</li>
+<li><code>content { includeGroup ... }</code> or <code>exclusiveContent</code> in a build file.</li>
+<li>A <code>verification-metadata.xml</code> in the <code>gradle</code> folder.</li>
+<li>A version such as <code>1.+</code> or <code>[1.4,)</code> in a dependency.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../dependency-confusion">dependency-confusion</a>, in the <a href="..">secrets-and-supply-chain</a> module. What the shipped image contains, and what is known broken in it, is in <a href="../sbom-and-provenance-with-syft-and-grype">sbom-and-provenance-with-syft-and-grype</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

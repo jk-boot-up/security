@@ -15,6 +15,7 @@ and NIST SSDF practices.
 | 5 | [secrets-management-with-openbao](secrets-management-with-openbao) | A real secrets server hands each application its own short-lived database login, and takes it back when the lease ends or a leak is noticed | A02, CWE-798 |
 | 6 | [artifact-signing-with-cosign](artifact-signing-with-cosign) | A tag is a name, a digest is a checksum, and a signature on the digest is the only thing a deployment gate can rely on | A08, SLSA |
 | 7 | [sbom-and-provenance-with-syft-and-grype](sbom-and-provenance-with-syft-and-grype) | A bill of materials says what is inside an image, a scanner says which of it is known to be broken, and a gate decides what to do about it | A03, SLSA, SSDF |
+| 8 | [dependency-confusion-with-gradle](dependency-confusion-with-gradle) | Gradle asks every repository for every name unless it is told which repository may answer for which group, and then it checks the bytes against a list | A03, CWE-427 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 
