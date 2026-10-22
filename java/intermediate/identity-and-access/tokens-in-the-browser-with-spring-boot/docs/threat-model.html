@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Model — Tokens in the Browser with Spring Boot: a BFF and DPoP</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Model — Tokens in the Browser with Spring Boot: a BFF and DPoP</h1>
+<p>A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank.</p>
+<h2>Scope</h2>
+<p>How a single-page bank app holds and uses OAuth tokens, with and without a BFF and DPoP. It covers theft by a script, requests that another site starts, replay of stolen tokens and sessions across BFF servers. It does not cover an attacker who controls the page's own code.</p>
+<h2>What we protect (assets)</h2>
+<ul>
+<li>The customer's access token and refresh token.</li>
+<li>The customer's session with the BFF.</li>
+</ul>
+<h2>Who and what acts on the system</h2>
+<ul>
+<li>A customer using the bank's web app.</li>
+<li>A third-party script on the page.</li>
+<li>A site that the customer also visits and an attacker controls.</li>
+</ul>
+<h2>Trust boundaries</h2>
+<p>A trust boundary is a line that data or a request crosses between parts that trust each other differently. Threats cluster where those lines are.</p>
+<ul>
+<li>The page to its scripts: everything on the page can read the page's storage.</li>
+<li>The browser to the BFF: a cookie and a header.</li>
+<li>The page to the API: a bound token and a proof.</li>
+</ul>
+<p><img alt="Threat model diagram" src="images/threat-model-diagram.png" /></p>
+<p>Each dashed box is a trust boundary. A rose tag such as T1 shows where the threat of that number, in the table below, applies.</p>
+<h2>Threats, using STRIDE</h2>
+<p>STRIDE is a checklist of six kinds of threat: <strong>Spoofing</strong> (S), <strong>Tampering</strong> (T), <strong>Repudiation</strong> (R), <strong>Information disclosure</strong> (I), <strong>Denial of service</strong> (D), <strong>Elevation of privilege</strong> (E).</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Kind</th>
+<th>Threat</th>
+<th>Where it shows up</th>
+<th>Control in this project</th>
+<th>What is left</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Information disclosure</td>
+<td>A script reads tokens from the page and uses them elsewhere</td>
+<td>localStorage, the BFF's cookie</td>
+<td>Tokens stay on the server; the cookie is HttpOnly; a strict Content-Security-Policy</td>
+<td>A script on the open page can still use the session</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Spoofing</td>
+<td>Another site makes the customer's browser send a request to the BFF</td>
+<td>the BFF's cookies and CSRF check</td>
+<td>SameSite=Strict, an XSRF header that must match, and no allowed origin</td>
+<td>A browser that ignores SameSite and a missing header check</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Spoofing</td>
+<td>A stolen access or refresh token is used from another machine</td>
+<td>the accounts API, the token endpoint</td>
+<td>DPoP: tokens bound to a key with a proof for each request, and bound refresh tokens</td>
+<td>Use through the key while the page is open</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Denial of service</td>
+<td>The BFF's sessions are not shared and customers are signed out</td>
+<td>the BFF's session store</td>
+<td>A shared session store behind the BFF servers</td>
+<td>The store being down</td>
+</tr>
+</tbody>
+</table>
+<h2>Assumptions</h2>
+<ul>
+<li>The page is served over https and keeps its own code free of injection.</li>
+<li>The BFF's session store is not readable from the browser.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Cross-site scripting in the bank's own pages.</li>
+<li>Malware on the customer's device.</li>
+</ul>
+<h2>How the tests check this</h2>
+<ul>
+<li><code>BffFlowTest</code> starts a real Keycloak, accounts API and BFF and checks the stolen tokens, the cookie, the tokens held on the server, the refresh, the XSRF header, requests that another site starts, the preflight, DPoP with a good proof and with every bad one, a stolen DPoP refresh token and a second BFF.</li>
+<li><code>DpopKeyTest</code>, <code>ShopperTest</code> and <code>RealmFileTest</code> check the proofs, the cookie rules and the realm file without Docker.</li>
+<li><code>DemoRunsTest</code> compares the whole demo with the golden output.</li>
+</ul>
+<h2>Where this model goes next</h2>
+<p>The next project in this module, passkeys-with-spring-security, replaces the password at the start of all of this with a credential that cannot be phished.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

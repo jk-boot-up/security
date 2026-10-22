@@ -1,0 +1,478 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "tokens-in-the-browser-with-spring-boot"
+level = "intermediate"
+module = "identity-and-access"
+title = "Tokens in the Browser with Spring Boot: a BFF and DPoP"
+short_title = "BFF and DPoP with Spring"
+package = "bffspring"
+main_class = "BffSpringDemo"
+tagline = "Keep the tokens on the server with a Spring Boot backend for the frontend, and bind any token the browser must hold to a key"
+bold = "A single-page app that keeps tokens in localStorage hands them to every script on the page, and a stolen refresh token is a long visit; a Spring Boot backend for the frontend keeps the tokens in its own session store and gives the browser a __Host- cookie and an XSRF cookie, refreshes the access token on the server, and refuses requests that another site started; and where a token must reach the browser, DPoP binds it to a key, so Spring Security's resource server refuses it without a fresh proof, though a script on the open page can still ask the key for one."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "Tokens in the browser with Spring Boot 4.1, Spring Security 7.1 and Keycloak 26: a single-page app whose localStorage tokens are stolen by a third-party script, a backend for the frontend that holds the tokens on the server behind a __Host-bff cookie with an XSRF header, SameSite and preflight against requests another site starts, a refresh done on the server, then DPoP-bound tokens checked by Spring Security's resource server with proofs that are refused when copied, reused, old, for another request or from another key, and the bill: shared sessions, an extra hop, a lost key, and a script on the open page."
+thumb_lines = ["BFF AND DPOP", "WITH SPRING BOOT"]
+thumb_code = "oauth2ResourceServer().dPoP()"
+youtube_title = "Tokens in the Browser: Spring Boot BFF and DPoP with Keycloak (RFC 9449)"
+youtube_tags = ["bff", "backend for frontend", "dpop", "rfc 9449", "spring security", "keycloak", "localstorage", "oauth2", "owasp top 10", "a07", "java"]
+
+[readme]
+intro = """
+The plain [tokens-in-the-browser](../tokens-in-the-browser) project builds a BFF and DPoP from scratch. This one runs them with **Spring Boot 4.1**, **Spring Security 7.1** (whose resource server now checks DPoP proofs) and a real **Keycloak 26.8** in Docker, with three real parts on the loopback address: Keycloak, the bank's accounts API and the bank's backend for the frontend. It needs Docker; its tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Tokens kept in the browser.** A single-page app keeps its tokens in `localStorage`. A third-party script takes **2 tokens**, the stolen access token reads the balance from elsewhere, it expires after five minutes, and the stolen **refresh token** gets a new access token from Keycloak.
+- **A backend for the frontend.** Spring Security's `oauth2Login` and `OAuth2AuthorizedClientManager` keep the tokens in the server. The browser gets a `__Host-bff` cookie (`Path=/; Secure; HttpOnly; SameSite=Strict`) and an `XSRF-TOKEN` cookie. A script reading `document.cookie` takes **0 tokens**; while the page is open it can still ask the BFF for the balance. Six minutes later the BFF **refreshes the token on the server**.
+- **Requests started by another site.** `SameSite=Strict` keeps the cookie off a link or hidden form from evil.example. An older browser that ignores it still needs the XSRF header (403), the preflight names no allowed origin, and the bank's own page sends the transfer with the header (201).
+- **DPoP.** Keycloak issues a token bound to the app's key (`cnf.jkt`). The accounts API accepts it with a fresh proof and refuses it as a plain bearer token, with a proof from another key, **a proof used twice**, a proof for another request, an old proof, or a proof that does not hash the token. A stolen refresh token needs the key too.
+- **The bill.** A second BFF server does not know the first one's sessions, every call has one more hop, clearing the browser's storage loses the key, and a script on the open page can still ask the key for a proof.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures · OAuth 2.0 for Browser-Based Applications (BCP) · RFC 9449 (DPoP) · RFC 9700 · RFC 6750 · CWE-922 (insecure storage of sensitive information).
+"""
+analogy = """
+A hotel safe against a note in your pocket. The BFF is the safe at the front desk: the key card in your pocket opens nothing by itself and is useless anywhere else. DPoP is a key card that only works with the ring on your finger.
+"""
+scenario = """
+An online bank has a single-page app that calls its accounts API. The demo starts a real Keycloak, the real API and a real BFF, lets a third-party script on the page do what scripts do, and compares what each design leaves it.
+"""
+costs = [
+    "**The BFF is another server to run,** scale, patch and keep alive, and every API call passes through it.",
+    "**Its sessions need a shared store** as soon as there are two of them.",
+    "**Cookies bring CSRF back:** SameSite, a header and a preflight are needed, and they are three more things to get right.",
+    "**DPoP needs support at the authorization server and at every resource server,** and a key that survives only as long as the browser's storage.",
+    "**Neither stops a script on the open page,** which can use the session or ask the key for a proof; only keeping scripts off the page does.",
+]
+too_much = """
+A site with no third-party scripts, a strict content security policy and short-lived tokens may accept tokens in memory. A bank should use a BFF, and add DPoP where tokens must reach the browser.
+"""
+met_before = [
+    "`localStorage.setItem(\"access_token\", ...)` in a tutorial.",
+    "A cookie named `__Host-` something, `HttpOnly` and `SameSite=Strict`.",
+    "`TokenRelay` or an API gateway that adds the access token to calls.",
+    "`Authorization: DPoP ...` and a `DPoP:` header in a request log.",
+]
+where = """
+This is the tools version of [tokens-in-the-browser](../tokens-in-the-browser), in the [identity-and-access](..) module. It follows the same five acts, on real servers, and ends with what the design still cannot do.
+"""
+twin = """
+Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/ and the BFF's port written into a temporary copy. The accounts API and the BFF are real Spring Boot applications. The browser is a few lines of Java that keep cookies with their HttpOnly and SameSite attributes. The proofs are signed with real keys. Ports, tokens and keys are never printed.
+"""
+test_note = "The tests that need Keycloak are tagged integration and share one container, one API and one BFF per class (./gradlew integrationTest). The realm file, proof and cookie tests need no Docker."
+
+[[act]]
+title = "Tokens kept in the browser"
+summary = "A third-party script takes 2 tokens from localStorage, the stolen access token reads the balance until it expires, and the stolen refresh token gets a new one from Keycloak."
+detail = """
+The banking app signs Ana in and keeps its access token and refresh token in localStorage. The app reads her balance: 200. A third-party script on the page reads what scripts can read: 2 tokens taken. It sends them to its own server and Ana closes the page. From elsewhere, the stolen access token reads the balance: 200. Five minutes later the API refuses it as expired. The stolen refresh token gets a new access token from Keycloak, which reads the balance: one page visit, for as long as the session lives. Anything a script can read, a script can send away.
+"""
+speech = """
+First demo: tokens kept in the browser. [[slnc 400]] The app keeps its access token and refresh token in local storage. [[slnc 600]]
+A third party script on the page reads what scripts can read, and takes both. [[slnc 600]]
+The stolen access token reads the balance from elsewhere, until it expires. [[slnc 600]]
+The stolen refresh token gets a new access token from Keycloak. [[slnc 300]] One page visit, for as long as the session lives.
+"""
+rows = { stored = "active wrong" }
+console = [
+    ["a third-party script reads localStorage: 2 tokens taken", "bad"],
+    ["the stolen access token reads the balance -> 200", "bad"],
+    ["five minutes later -> 401 (expired)", "ok"],
+    ["the stolen refresh token gets a new access token -> true", "bad"],
+]
+
+[[act]]
+title = "A backend for the frontend keeps the tokens on the server"
+summary = "The BFF signs Ana in on the server, the browser gets a __Host-bff cookie, the script takes 0 tokens, a script on the open page can still act as Ana, and the BFF refreshes the token itself."
+detail = """
+The BFF signs Ana in on the server; the browser gets a session cookie __Host-bff with Path=/, Secure, HttpOnly and SameSite=Strict, and an XSRF-TOKEN cookie its script copies into a header. The cookie keeps the __Host- rules, and the BFF holds 2 tokens, an access token and a refresh token, that the browser never sees. The app reads the balance through the BFF: 200. The same third-party script reads document.cookie: only the XSRF cookie, 0 tokens taken. While the page is open, the script can still ask the BFF for the balance: 200, a script on the page can still act as Ana. Once the page is closed, what it took works nowhere else: 401. Six minutes later Ana opens the app again and the BFF refreshes the token on the server: 200, with a new access token.
+"""
+speech = """
+Second demo: a backend for the frontend. [[slnc 400]] The B F F signs Ana in on the server. [[slnc 300]] The browser gets one cookie, http only, same site strict. [[slnc 600]]
+The same script reads the cookies it can read, and takes no tokens. [[slnc 600]]
+While the page is open, it can still ask the B F F for the balance, so it can still act as Ana. [[slnc 600]]
+Six minutes later, the B F F refreshes the token on the server.
+"""
+rows = { bff = "active ok" }
+console = [
+    ["cookie: __Host-bff; Path=/; Secure; HttpOnly; SameSite=Strict", "ok"],
+    ["document.cookie: [XSRF-TOKEN]: 0 tokens taken", "ok"],
+    ["the script on the open page asks the BFF -> 200", "amber"],
+    ["six minutes later: the BFF refreshes the token -> 200", "ok"],
+]
+
+[[act]]
+title = "Requests started by another site"
+summary = "SameSite=Strict keeps the cookie off a link or form from evil.example, an older browser still needs the XSRF header, the preflight names no allowed origin, and the bank's own page transfers with the header."
+detail = """
+A link or a hidden form on evil.example reaches the BFF, and SameSite=Strict keeps the cookie off both: the link gets 401, the form's transfer 403 with no session and no CSRF token. In an older browser that ignores SameSite, the cookie goes but the bank's request header does not: 403. A script on evil.example tries to add the header itself: the browser asks first, and the BFF names no allowed origin, so the request is never sent. The bank's own page sends the transfer with the header: 201. One transfer was made, and only the one the bank's own page asked for.
+"""
+speech = """
+Third demo: requests started by another site. [[slnc 400]] A link or a hidden form on another site reaches the B F F without the cookie. [[slnc 600]]
+An older browser that ignores same site sends the cookie, but not the bank's request header, so the answer is four oh three. [[slnc 600]]
+A script on the other site cannot add the header, because the preflight names no allowed origin. [[slnc 600]]
+The bank's own page sends the transfer with the header, and one transfer is made.
+"""
+rows = { sites = "active ok" }
+console = [
+    ["link -> 401, hidden form -> 403 (the cookie is kept off)", "ok"],
+    ["older browser: cookie sent, no header -> 403", "ok"],
+    ["preflight: no allowed origin, so the request is never sent", "ok"],
+    ["the bank's own page, with the header -> 201", "ok"],
+]
+
+[[act]]
+title = "Tokens bound to a key, with DPoP"
+summary = "Keycloak binds the token to the app's key, and Spring Security's resource server refuses it as a bearer token, with another key's proof, with a reused, old or mismatched proof; a stolen refresh token needs the key too."
+detail = """
+The app holds a key that scripts cannot read, and the token carries the key's thumbprint in cnf.jkt; the token type is DPoP. The app sends the token with a fresh proof signed by its key: 200. A script takes the token and sends it as a plain bearer token: 401 invalid_token. With a proof from a key of its own: 401. The app's own request copied and sent again: 401, the proof was already used. The app's proof for reading the balance, used for a transfer: 401. A proof made two minutes ago, with the token still valid: 401. A proof that does not hash the token: 401. The stolen refresh token with the thief's key is refused: the DPoP confirmation does not match the proof. With no key at all it is refused; presented by the app, with its own key, it gives new tokens.
+"""
+speech = """
+Fourth demo: tokens bound to a key, with D Po P. [[slnc 400]] The token carries the thumbprint of the app's key. [[slnc 600]]
+With a fresh proof signed by that key, the A P I answers two hundred. [[slnc 600]]
+As a plain bearer token, it is refused. [[slnc 300]] With a proof from another key, refused. [[slnc 300]] A proof used twice, refused. [[slnc 600]]
+A stolen refresh token needs the key too.
+"""
+rows = { dpop = "active ok" }
+console = [
+    ["the token carries the key's thumbprint (cnf.jkt), type DPoP", "ok"],
+    ["token + fresh proof from the app's key -> 200", "ok"],
+    ["as a bearer token / another key / copied / old proof -> 401", "ok"],
+    ["the stolen refresh token with the thief's key -> refused", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A second BFF does not know the first one's sessions, every call has one more hop, clearing storage loses the DPoP key, and a script on the open page can still ask the key for a proof."
+detail = """
+Two BFF servers, each with its own session store: the second one answers Ana's cookie with 401, so the sessions need a shared store. Every API call now passes through one more server, which must be run, scaled and kept up to date. Clearing the browser's storage loses the DPoP key; the old token with a new key gets 401, so Ana signs in again. A script on the open page can still ask the key for a proof and read the balance: 200. DPoP stops theft, not use while the page is open. So keep scripts off the page with a strict Content-Security-Policy, and keep tokens out of it with the BFF.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Two B F F servers need a shared session store. [[slnc 600]]
+Every call has one more hop to run and keep up to date. [[slnc 600]]
+Clearing the browser's storage loses the D Po P key, and Ana signs in again. [[slnc 600]]
+And a script on the open page can still ask the key for a proof. [[slnc 300]] So keep scripts off the page, and tokens out of it.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["the second BFF answers Ana's cookie with 401", "amber"],
+    ["the old token with a new key -> 401", "ok"],
+    ["a script on the open page asks the key for a proof -> 200", "bad"],
+    ["keep scripts off the page and tokens out of it", "ok"],
+]
+
+[animation]
+subtitle = "An online bank, a script on the page, and where the tokens live."
+boxes = [
+    ["stored", "In the browser", "scripts can read them"],
+    ["bff", "On the server", "a cookie and a BFF"],
+    ["sites", "Other sites", "SameSite, header, preflight"],
+    ["dpop", "Bound to a key", "a proof for each request"],
+    ["bill", "The bill", "sessions, hop, open page"],
+]
+
+[docs.problem]
+scenario = """
+An online bank has a single-page app that calls its accounts API with OAuth tokens, and a page that also loads third-party scripts.
+"""
+naive = """
+Keep the tokens in localStorage so the app can add them to every call.
+"""
+deliver = [
+    "A real Keycloak, accounts API and Spring Boot BFF.",
+    "A script on the page, and what it can take in each design.",
+    "Cookies with their attributes, an XSRF header and a refused preflight.",
+    "DPoP-bound tokens and proofs checked by Spring Security.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain tokens-in-the-browser project, for the design",
+    "Docker, with the quay.io/keycloak/keycloak:26.8.1 image (pulled on first use)",
+]
+not_required = [
+    "A real browser: the stand-in applies the same cookie rules",
+    "A Keycloak installed on the machine",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain what a script can read in each design",
+    "build the cookie that a BFF gives the browser, and say why each attribute is there",
+    "explain what DPoP stops and what it does not",
+    "decide when the extra server of a BFF is worth it",
+]
+walkthrough = """
+Run act one and list what the script took. In act two ask what the script can still do while the page is open. In act four ask which of the six refused requests a plain bearer token would have allowed.
+"""
+exercises = [
+    "Move the BFF's authorized clients from memory to a shared store, and run two BFF servers behind one address.",
+    "Add a Content-Security-Policy to the BFF's pages and test that an inline script no longer runs.",
+    "Make the accounts API require DPoP for the payments scope only.",
+    "Add a DPoP nonce from the authorization server and handle the retry.",
+]
+
+[docs.explained]
+sentence = """
+A page that holds tokens gives them to every script on it, so keep the tokens on a server, use cookies with the right attributes, and bind any token that must reach the browser to a key.
+"""
+verdict = """
+Use a backend for the frontend for a bank's web app, give the browser a __Host- cookie and an XSRF header, refresh on the server, and where a token must reach the browser, use DPoP and keep scripts off the page with a strict Content-Security-Policy.
+"""
+recognise = [
+    "`localStorage.setItem` with a token in front-end code.",
+    "A `__Host-` cookie, `HttpOnly`, `SameSite=Strict`.",
+    "`Authorization: DPoP` and a `DPoP` header.",
+    "An `XSRF-TOKEN` cookie and an `X-XSRF-TOKEN` header.",
+]
+
+[spec]
+purpose = """
+Teach where a single-page app's tokens should live, with a Spring Boot BFF and DPoP on real servers.
+"""
+nongoals = [
+    "A real front-end framework.",
+    "Content-Security-Policy in depth.",
+    "Device-bound sessions and passkeys.",
+]
+problem = """
+Teams keep tokens in the browser because it is the easy way to call an API, and give them to every script on the page.
+"""
+roles = [["The provider", "`KeycloakLab`, `infra/bank-realm.json`"], ["The accounts API", "`ApiApp`, `ApiSecurity`, `AccountsController`, `Ledger`"], ["The BFF", "`BffApp`, `BffSecurity`, `BffController`, `CsrfCookieFilter`"], ["The page", "`SpaClient`, `DpopKey`, `Shopper`"], ["Entry point", "`BffSpringDemo`"]]
+requirements = [
+    "A script on a page that holds tokens can take them and use them elsewhere.",
+    "A BFF gives the browser a __Host- cookie and holds the tokens on the server.",
+    "The BFF refreshes an access token that has run out.",
+    "A change needs the XSRF header, and the cookie is kept off requests that another site starts.",
+    "A DPoP-bound token is refused as a bearer token and without a valid, fresh, unused proof for the request.",
+    "A refresh token bound to a key needs the key.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Where the tokens live"
+caption = "In the BFF design the browser holds a cookie and the server holds the tokens."
+nodes = [
+    { id = "page", label = "The page", sub = "scripts, a cookie", col = 0, row = 0, colour = "client" },
+    { id = "bff", label = "BFF", sub = "session, tokens", col = 1, row = 0, colour = "accent" },
+    { id = "api", label = "Accounts API", sub = "resource server, DPoP", col = 2, row = 0, colour = "green" },
+    { id = "kc", label = "Keycloak", sub = "authorization server", col = 1, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "page", to = "bff", label = "cookie + XSRF header" },
+    { from = "bff", to = "api", label = "Bearer token" },
+    { from = "bff", to = "kc", label = "code, refresh" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The BFF, the API and the page are three programs that share only a realm."
+nodes = [
+    { id = "bff", label = "BffController", sub = ["accounts()", "transfer()"], col = 0, row = 0, colour = "accent" },
+    { id = "sec", label = "BffSecurity", sub = ["chain()", "clientManager()"], col = 1, row = 0, colour = "amber" },
+    { id = "api", label = "ApiSecurity", sub = ["decoder()", "chain()"], col = 0, row = 1, colour = "green" },
+    { id = "key", label = "DpopKey", sub = ["proof()", "thumbprint()"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "bff", to = "sec", label = "uses" },
+    { from = "key", to = "api", label = "proves possession to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What a script can reach"
+caption = "In each design, the things a script on the page can read."
+nodes = [
+    { id = "storage", label = "localStorage", sub = "tokens", col = 0, row = 0, colour = "red" },
+    { id = "cookie", label = "document.cookie", sub = "XSRF token only", col = 1, row = 0, colour = "amber" },
+    { id = "key", label = "The DPoP key", sub = "can sign, cannot leave", col = 2, row = 0, colour = "accent" },
+    { id = "bff", label = "The BFF's API", sub = "while the page is open", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "storage", to = "cookie" },
+    { from = "cookie", to = "key" },
+    { from = "key", to = "bff" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A transfer through the BFF"
+participants = ["Page", "BFF", "Accounts API"]
+steps = [
+    ["Page", "BFF", "POST /api/transfers, cookie + X-XSRF-TOKEN"],
+    ["note", "BFF", "session found, token refreshed if needed"],
+    ["BFF", "Accounts API", "POST /transfers, Bearer token"],
+    ["Accounts API", "BFF", "201", "reply"],
+    ["BFF", "Page", "201", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A stolen DPoP-bound token"
+participants = ["Thief", "Accounts API"]
+steps = [
+    ["Thief", "Accounts API", "Authorization: DPoP token, a proof from the thief's key"],
+    ["note", "Accounts API", "cnf.jkt does not match the proof's key"],
+    ["Accounts API", "Thief", "401 invalid_dpop_proof", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Other sites and scripts", nodes = ["script", "evil"], colour = "red" },
+    { label = "The customer's browser", nodes = ["page"], colour = "amber" },
+    { label = "The bank", nodes = ["bff", "api"], colour = "green" },
+]
+nodes = [
+    { id = "script", label = "Third-party script", sub = "runs on the page", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "evil", label = "evil.example", sub = "links, forms", col = 0, row = 1, colour = "red", threats = ["T2"] },
+    { id = "page", label = "The page", sub = "tokens or a cookie", col = 1, row = 0, colour = "client", threats = ["T1", "T3"] },
+    { id = "bff", label = "BFF", sub = "cookie, tokens, XSRF", col = 2, row = 0, colour = "accent", threats = ["T1", "T2", "T4"] },
+    { id = "api", label = "Accounts API", sub = "DPoP", col = 2, row = 1, colour = "green", threats = ["T3"] },
+]
+edges = [
+    { from = "script", to = "page", label = "reads", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "evil", to = "bff", label = "cross-site request", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "page", to = "bff", label = "cookie", threats = ["T1", "T4"] },
+    { from = "page", to = "api", label = "DPoP token + proof", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+How a single-page bank app holds and uses OAuth tokens, with and without a BFF and DPoP. It covers theft by a script, requests that another site starts, replay of stolen tokens and sessions across BFF servers. It does not cover an attacker who controls the page's own code.
+"""
+assets = [
+    "The customer's access token and refresh token.",
+    "The customer's session with the BFF.",
+]
+actors = [
+    "A customer using the bank's web app.",
+    "A third-party script on the page.",
+    "A site that the customer also visits and an attacker controls.",
+]
+boundaries = [
+    "The page to its scripts: everything on the page can read the page's storage.",
+    "The browser to the BFF: a cookie and a header.",
+    "The page to the API: a bound token and a proof.",
+]
+assumptions = [
+    "The page is served over https and keeps its own code free of injection.",
+    "The BFF's session store is not readable from the browser.",
+]
+out_of_scope = [
+    "Cross-site scripting in the bank's own pages.",
+    "Malware on the customer's device.",
+]
+tests = [
+    "`BffFlowTest` starts a real Keycloak, accounts API and BFF and checks the stolen tokens, the cookie, the tokens held on the server, the refresh, the XSRF header, requests that another site starts, the preflight, DPoP with a good proof and with every bad one, a stolen DPoP refresh token and a second BFF.",
+    "`DpopKeyTest`, `ShopperTest` and `RealmFileTest` check the proofs, the cookie rules and the realm file without Docker.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, passkeys-with-spring-security, replaces the password at the start of all of this with a credential that cannot be phished.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "A script reads tokens from the page and uses them elsewhere"
+where = "localStorage, the BFF's cookie"
+control = "Tokens stay on the server; the cookie is HttpOnly; a strict Content-Security-Policy"
+residual = "A script on the open page can still use the session"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "Another site makes the customer's browser send a request to the BFF"
+where = "the BFF's cookies and CSRF check"
+control = "SameSite=Strict, an XSRF header that must match, and no allowed origin"
+residual = "A browser that ignores SameSite and a missing header check"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A stolen access or refresh token is used from another machine"
+where = "the accounts API, the token endpoint"
+control = "DPoP: tokens bound to a key with a proof for each request, and bound refresh tokens"
+residual = "Use through the key while the page is open"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "The BFF's sessions are not shared and customers are signed out"
+where = "the BFF's session store"
+control = "A shared session store behind the BFF servers"
+residual = "The store being down"
+
+[poster]
+headline = [["BFF AND DPOP", "text"], ["WITH SPRING BOOT", "accent"]]
+taglines = [["Keep the tokens on the server with a Spring Boot backend for the frontend, and bind any to", "gold"]]
+before = { code = "a third-party script reads localStorage: 2 tokens ta", note = "Tokens kept in the browser", tag = "BEFORE" }
+after = { code = "oauth2ResourceServer().dPoP()", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Tokens in the Browser with Spring Boot: a BFF and DPoP"
+narration = "Hello, and welcome. [[slnc 400]] This video explains B F F and DPoP with Spring, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A single-page app that keeps tokens in localStorage hands them to every script on the page, and a stolen refresh token is a long visit; a Spring Boot backend for the frontend keeps the tokens in its own session store and gives the browser a __Host- cookie and an X S R F cookie, refreshes the access token on the server, and refuses requests that another site started; and where a token must reach the browser, DPoP binds it to a key, so Spring Security's resource server refuses it without a fresh proof, though a script on the open page can still ask the key for one. [[slnc 600]] Think of it this way. [[slnc 300]] A hotel safe against a note in your pocket. The B F F is the safe at the front desk: the key card in your pocket opens nothing by itself and is useless anywhere else. DPoP is a key card that only works with the ring on your finger. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain what a script can read in each design. [[slnc 300]] Build the cookie that a B F F gives the browser, and say why each attribute is there. [[slnc 300]] Explain what DPoP stops and what it does not."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank has a single-page app that", "calls its accounts API.", "The demo starts a real Keycloak, the real", "API and a real BFF, lets a third-party", "script on the page do what scripts do, and", "compares what each design leaves it."]
+narration = "Here is the scenario. [[slnc 400]] An online bank has a single-page app that calls its accounts A P I. [[slnc 400]] The demo starts a real Keycloak, the real A P I and a real B F F, lets a third-party script on the page do what scripts do, and compares what each design leaves it."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["The BFF is another server to run", "Its sessions need a shared store", "Cookies bring CSRF back", "DPoP needs support at the authorization server and at", "every resource server", "Neither stops a script on the open page"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The B F F is another server to run. [[slnc 500]] Its sessions need a shared store. [[slnc 500]] Cookies bring C S R F back. [[slnc 500]] DPoP needs support at the authorization server and at every resource server. [[slnc 500]] Neither stops a script on the open page."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The provider: KeycloakLab, infra/bank-realm.json", "The accounts API: ApiApp, ApiSecurity,", "AccountsController", "The BFF: BffApp, BffSecurity, BffController", "The page: SpaClient, DpopKey, Shopper", "Entry point: BffSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The provider is in KeycloakLab and infra/bank-realm.json. [[slnc 500]] The accounts A P I is in ApiApp and ApiSecurity and AccountsController. [[slnc 500]] The B F F is in BffApp and BffSecurity and BffController. [[slnc 500]] The page is in SpaClient and DpopKey and Shopper. [[slnc 500]] Entry point is in BffSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["Authorization: DPoP and a DPoP header", "An XSRF-TOKEN cookie and an X-XSRF-TOKEN header"]
+narration = "You have probably met this already. [[slnc 400]] Authorization: DPoP and a DPoP header. [[slnc 500]] An X S R F-T O K E N cookie and an X-X S R F-T O K E N header."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain what a script can read in each design", "Build the cookie that a BFF gives the browser, and say", "why each attribute is there", "Explain what DPoP stops and what it does not", "Decide when the extra server of a BFF is worth it"]
+narration = "So, how do you use it? [[slnc 400]] Use a backend for the frontend for a bank's web app, give the browser a __Host- cookie and an X S R F header, refresh on the server, and where a token must reach the browser, use DPoP and keep scripts off the page with a strict Content-Security-Policy."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's B F F and DPoP with Spring. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A page that holds tokens gives them to every script on it, so keep the tokens on a server, use cookies with the right attributes, and bind any token that must reach the browser to a key. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Move the B F F's authorized clients from memory to a shared store, and run two B F F servers behind one address. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

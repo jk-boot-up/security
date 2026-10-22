@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tokens in the Browser with Spring Boot: a BFF and DPoP</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Tokens in the Browser with Spring Boot: a BFF and DPoP</h1>
+<pre><code>src/main/java/com/jk/explore/security/bffspring/
+├── BffSpringDemo.java           Runs the bank's story of tokens and the browser in five numbered acts against a real Keycloak in Docker, a real backend for the frontend and a real accounts API
+├── DpopKey.java                 The key that the single-page app creates in the browser and never lets out (in a real browser, a non-extractable WebCrypto key)
+├── KeycloakLab.java             One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank realm imported from {@code infra/bank-realm.json} and removed on close
+├── OffsetClock.java             The system clock plus an offset the demo can move forward, so minutes and days take no time to wait for
+├── Running.java                 A Spring Boot application on a loopback port: the accounts API or the backend for the frontend
+├── Shopper.java                 A customer's browser as far as this lesson needs one
+├── SpaClient.java               The single-page app: a public client that signs the customer in with the authorization code flow and PKCE, gets tokens in the browser, and calls the accounts API with them
+├── api/AccountsController.java  
+├── api/ApiApp.java              The bank's accounts API: a resource server that accepts bearer tokens and DPoP-bound tokens
+├── api/ApiSecurity.java         The accounts API checks the key, issuer, audience, dates and scope of every token, and, because DPoP is switched on, also accepts a token that is bound to a key when it comes with a proof signed by that key, and refuses such a token without one
+├── api/Ledger.java              The transfers the API has made, so the demo can count them
+├── bff/BffApp.java              The bank's backend for the frontend: it signs the customer in with Keycloak, keeps the tokens on the server, and calls the accounts API for the browser
+├── bff/BffController.java       The calls the page makes
+├── bff/BffSecurity.java         The browser gets one session cookie and, for changes, one more cookie its script copies into a header
+└── bff/CsrfCookieFilter.java    Spring Security creates the token lazily; reading it here makes it write the XSRF-TOKEN cookie that the page's script copies into a header
+</code></pre>
+<p><strong>A single-page app that keeps tokens in localStorage hands them to every script on the page, and a stolen refresh token is a long visit; a Spring Boot backend for the frontend keeps the tokens in its own session store and gives the browser a __Host- cookie and an XSRF cookie, refreshes the access token on the server, and refuses requests that another site started; and where a token must reach the browser, DPoP binds it to a key, so Spring Security's resource server refuses it without a fresh proof, though a script on the open page can still ask the key for one.</strong></p>
+<p>The plain <a href="../tokens-in-the-browser">tokens-in-the-browser</a> project builds a BFF and DPoP from scratch. This one runs them with <strong>Spring Boot 4.1</strong>, <strong>Spring Security 7.1</strong> (whose resource server now checks DPoP proofs) and a real <strong>Keycloak 26.8</strong> in Docker, with three real parts on the loopback address: Keycloak, the bank's accounts API and the bank's backend for the frontend. It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Tokens kept in the browser.</strong> A single-page app keeps its tokens in <code>localStorage</code>. A third-party script takes <strong>2 tokens</strong>, the stolen access token reads the balance from elsewhere, it expires after five minutes, and the stolen <strong>refresh token</strong> gets a new access token from Keycloak.
+- <strong>A backend for the frontend.</strong> Spring Security's <code>oauth2Login</code> and <code>OAuth2AuthorizedClientManager</code> keep the tokens in the server. The browser gets a <code>__Host-bff</code> cookie (<code>Path=/; Secure; HttpOnly; SameSite=Strict</code>) and an <code>XSRF-TOKEN</code> cookie. A script reading <code>document.cookie</code> takes <strong>0 tokens</strong>; while the page is open it can still ask the BFF for the balance. Six minutes later the BFF <strong>refreshes the token on the server</strong>.
+- <strong>Requests started by another site.</strong> <code>SameSite=Strict</code> keeps the cookie off a link or hidden form from evil.example. An older browser that ignores it still needs the XSRF header (403), the preflight names no allowed origin, and the bank's own page sends the transfer with the header (201).
+- <strong>DPoP.</strong> Keycloak issues a token bound to the app's key (<code>cnf.jkt</code>). The accounts API accepts it with a fresh proof and refuses it as a plain bearer token, with a proof from another key, <strong>a proof used twice</strong>, a proof for another request, an old proof, or a proof that does not hash the token. A stolen refresh token needs the key too.
+- <strong>The bill.</strong> A second BFF server does not know the first one's sessions, every call has one more hop, clearing the browser's storage loses the key, and a script on the open page can still ask the key for a proof.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · OAuth 2.0 for Browser-Based Applications (BCP) · RFC 9449 (DPoP) · RFC 9700 · RFC 6750 · CWE-922 (insecure storage of sensitive information).</p>
+<h2>The idea in everyday terms</h2>
+<p>A hotel safe against a note in your pocket. The BFF is the safe at the front desk: the key card in your pocket opens nothing by itself and is useless anywhere else. DPoP is a key card that only works with the ring on your finger.</p>
+<h2>The scenario</h2>
+<p>An online bank has a single-page app that calls its accounts API. The demo starts a real Keycloak, the real API and a real BFF, lets a third-party script on the page do what scripts do, and compares what each design leaves it.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Tokens kept in the browser</td>
+<td>A third-party script takes 2 tokens from localStorage, the stolen access token reads the balance until it expires, and the stolen refresh token gets a new one from Keycloak.</td>
+</tr>
+<tr>
+<td>2. A backend for the frontend keeps the tokens on the server</td>
+<td>The BFF signs Ana in on the server, the browser gets a __Host-bff cookie, the script takes 0 tokens, a script on the open page can still act as Ana, and the BFF refreshes the token itself.</td>
+</tr>
+<tr>
+<td>3. Requests started by another site</td>
+<td>SameSite=Strict keeps the cookie off a link or form from evil.example, an older browser still needs the XSRF header, the preflight names no allowed origin, and the bank's own page transfers with the header.</td>
+</tr>
+<tr>
+<td>4. Tokens bound to a key, with DPoP</td>
+<td>Keycloak binds the token to the app's key, and Spring Security's resource server refuses it as a bearer token, with another key's proof, with a reused, old or mismatched proof; a stolen refresh token needs the key too.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A second BFF does not know the first one's sessions, every call has one more hop, clearing storage loses the DPoP key, and a script on the open page can still ask the key for a proof.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>26 tests in <code>BffFlowTest</code>, <code>DemoRunsTest</code>, <code>DpopKeyTest</code>, <code>RealmFileTest</code>, <code>ShopperTest</code>. The tests that need Keycloak are tagged integration and share one container, one API and one BFF per class (./gradlew integrationTest). The realm file, proof and cookie tests need no Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/ and the BFF's port written into a temporary copy. The accounts API and the BFF are real Spring Boot applications. The browser is a few lines of Java that keep cookies with their HttpOnly and SameSite attributes. The proofs are signed with real keys. Ports, tokens and keys are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-client</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-resource-server</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tokens-in-the-browser-with-spring-boot-explained.html">Tokens in the Browser with Spring Boot: a BFF and DPoP, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>In the BFF design the browser holds a cookie and the server holds the tokens.</p>
+<p><img alt="Where the tokens live" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The BFF, the API and the page are three programs that share only a realm.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>In each design, the things a script on the page can read.</p>
+<p><img alt="What a script can reach" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A transfer through the BFF" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tokens-in-the-browser-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The BFF is another server to run,</strong> scale, patch and keep alive, and every API call passes through it.</li>
+<li><strong>Its sessions need a shared store</strong> as soon as there are two of them.</li>
+<li><strong>Cookies bring CSRF back:</strong> SameSite, a header and a preflight are needed, and they are three more things to get right.</li>
+<li><strong>DPoP needs support at the authorization server and at every resource server,</strong> and a key that survives only as long as the browser's storage.</li>
+<li><strong>Neither stops a script on the open page,</strong> which can use the session or ask the key for a proof; only keeping scripts off the page does.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A site with no third-party scripts, a strict content security policy and short-lived tokens may accept tokens in memory. A bank should use a BFF, and add DPoP where tokens must reach the browser.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>localStorage.setItem("access_token", ...)</code> in a tutorial.</li>
+<li>A cookie named <code>__Host-</code> something, <code>HttpOnly</code> and <code>SameSite=Strict</code>.</li>
+<li><code>TokenRelay</code> or an API gateway that adds the access token to calls.</li>
+<li><code>Authorization: DPoP ...</code> and a <code>DPoP:</code> header in a request log.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../tokens-in-the-browser">tokens-in-the-browser</a>, in the <a href="..">identity-and-access</a> module. It follows the same five acts, on real servers, and ends with what the design still cannot do.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

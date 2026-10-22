@@ -15,6 +15,7 @@ Modern authentication and authorization: tokens, OAuth 2.0 and OpenID Connect as
 | 7 | [jwt-done-right-with-nimbus-jose-jwt](jwt-done-right-with-nimbus-jose-jwt) | A standard library does the parsing, the signature and most claims; the algorithm, the type, the key set URL and the policy are still the API's to set | A07, CWE-347 |
 | 8 | [oauth2-authorization-code-pkce-with-keycloak](oauth2-authorization-code-pkce-with-keycloak) | The same flow against a real authorization server: the checks that make it safe are settings on the client, and Keycloak enforces them | RFC 9700, A07 |
 | 9 | [openid-connect-with-spring-security-and-keycloak](openid-connect-with-spring-security-and-keycloak) | Spring Security checks the ID token and keeps the state and nonce; what it leaves to the store is who the customer is, and how sign-out reaches every session | A07 |
+| 10 | [tokens-in-the-browser-with-spring-boot](tokens-in-the-browser-with-spring-boot) | Keep the tokens on the server with a Spring Boot backend for the frontend, and bind any token the browser must hold to a key | OAuth for browser-based apps, RFC 9449 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 
