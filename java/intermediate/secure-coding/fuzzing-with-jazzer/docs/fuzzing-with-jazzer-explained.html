@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuzzing with Jazzer, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Fuzzing with Jazzer, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A fuzzer turns the examples you already have into thousands of inputs you did not think of, and keeps the ones that reach new code or break something.</p>
+<h2>The 5 acts</h2>
+<h3>1. The example tests pass</h3>
+<p>The order line parser passes six of its six example tests. SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid. But a line with only a product code, SHO-1042, throws an ArrayIndexOutOfBoundsException: an input nobody wrote a test for. A parser may refuse input; anything else it throws is a bug.</p>
+<h3>2. The real Jazzer</h3>
+<p>Jazzer 0.30 is started as a program on a fuzz target of three lines, with the two example inputs as seeds, random seed 7 and 300000 runs. It adds branch counters to the parser's bytecode by itself and reports three distinct findings: ArrayIndexOutOfBoundsException in OrderLine.parseCareless at line 24 (second field missing), at line 25 (third field missing), and IllegalArgumentException in Money.<init> (a total that overflowed an int and went negative). Each input is saved in a file.</p>
+<h3>3. Guided by coverage, and by what you give it</h3>
+<p>With no seed inputs and 300000 runs, Jazzer reaches 7 coverage points and finds nothing: it cannot guess a product code. With the two example lines as seeds it reaches 19 and finds 3. The cart parser, 1000000 runs, with seeds that have no gift note, finds nothing; with one more seed that has a note field it finds the StringIndexOutOfBoundsException in CartParser.giftMessage. The seeds are the examples the team already has; the fuzzer mutates them, keeps what reaches new branches, and spends its runs near the interesting parts.</p>
+<h3>4. From crash to fix</h3>
+<p>Each saved input is made smallest while it still crashes in the same place: AAA-0000 (a line with one field), AAA-0000,0 (two fields) and AAA-0000,4000,4000000 (a total that overflows an int). The fixed parser refuses each with a reason. Each smallest input is now a regression test that runs on every build, in milliseconds, through the Jazzer JUnit integration. The fixed order parser under the same fuzzer: 0 findings in 300000 runs; the fixed cart parser: 0 in 1000000.</p>
+<h3>5. What fuzzing finds besides crashes, and what it does not</h3>
+<p>A search box that hands what the customer typed to the regular expression engine: Jazzer reports Regular Expression Injection in Parsers.searchCareless, a security issue and not a crash; the same box looking for the text as text has 0 findings. A cart with a quantity of -5 is parsed: no crash, so no report; whether -5 is allowed is a business rule. The cart's nesting crash needs more than Jazzer's default input length of 4096 bytes; written by hand, the careless parser overflows the stack and the fixed one refuses nesting deeper than 32. In a build, a fixed budget of runs on every change; longer runs at night.</p>
+<h2>The verdict</h2>
+<p>Fuzz every parser that reads bytes or text from outside, seed it with your examples, run a fixed budget on every change and longer ones at night, make every finding smallest and keep it as a regression test, and remember that a fuzzer finds crashes and known security issues, not wrong decisions.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>@FuzzTest</code> or <code>fuzzerTestOneInput</code>.</li>
+<li>A folder of saved inputs named after a test.</li>
+<li>A <code>crash-</code> file in a build.</li>
+<li>A nightly job with a time limit.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A <code>crash-...</code> file next to a build.</li>
+<li><code>@FuzzTest</code> in a JUnit class.</li>
+<li>A <code>corpus</code> folder in a repository.</li>
+<li>A nightly job named <code>fuzz</code>.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

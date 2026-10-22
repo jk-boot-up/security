@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 110 projects. Planned: 42 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 111 projects. Planned: 41 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,13 +24,13 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **69** | **7** | **76** |
+| **Intermediate** | | **70** | **6** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
 | | identity-and-access | 12 | 0 | 12 |
 | | tls-in-practice | 8 | 0 | 8 |
-| | secure-coding | 7 | 1 | 8 |
+| | secure-coding | 8 | 0 | 8 |
 | | secrets-and-supply-chain | 8 | 0 | 8 |
 | | platform-hardening | 2 | 2 | 4 |
 | | detection-and-response | 3 | 2 | 5 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **110** | **42** | **152** |
+| **All** | | **111** | **41** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 29 | 7 | 36 |
+| Intermediate | With tools | 30 | 6 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **50** | **7** | **57** |
+| **All** | **With tools** | **51** | **6** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -228,7 +228,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 92 | [secrets-in-errors-and-logs](intermediate/secure-coding/secrets-in-errors-and-logs) | Plain | A log is a second database that nobody protects | A09, CWE-209, CWE-532, CWE-117 |
 | 93 | [secrets-in-errors-and-logs-with-logback](intermediate/secure-coding/secrets-in-errors-and-logs-with-logback) | With tools: logback | A log is a second database that nobody protects; make secrets unprintable first, cover the shapes you know second, and write events as data | A09, CWE-209, CWE-532, CWE-117 |
 | 94 | [fuzzing](intermediate/secure-coding/fuzzing) | Plain | Let the machine try the inputs nobody thought of | SSDF PW.8 |
-| 95 | fuzzing-with-jazzer | With tools: jazzer | *planned*: coverage-guided fuzzing of the store's parsers with Jazzer and JUnit | SSDF PW.8 |
+| 95 | [fuzzing-with-jazzer](intermediate/secure-coding/fuzzing-with-jazzer) | With tools: jazzer | Give the machine your example inputs and a fuzz target of three lines; it adds its own coverage counters, mutates the examples and reports the inputs nobody thought of | SSDF PW.8 |
 
 ### 7. secrets-and-supply-chain (OWASP A03, A08; SLSA)
 

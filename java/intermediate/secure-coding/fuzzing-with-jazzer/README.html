@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuzzing with Jazzer</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Fuzzing with Jazzer</h1>
+<pre><code>src/main/java/com/jk/explore/security/jazzerfuzz/
+├── CartParser.java                 The store's cart format, a small subset of JSON: numbers, strings with {@code \&quot;} and {@code \\} escapes, lists and objects
+├── Crashes.java                    Runs a parser on an input and says what, if anything, it did wrong: the exception that is not a refusal, and the first line of the store's code in it
+├── Finding.java                    One distinct problem that Jazzer reported: the kind of exception, where in the store's code it happened, and the file that holds the input
+├── JazzerFuzzDemo.java             
+├── JazzerRun.java                  The real Jazzer, started as a program of its own on one fuzz target, with a corpus of seed inputs and a fixed random seed, and its report read back
+├── Minimizer.java                  Makes a crashing input as small and plain as it can while it still crashes in the same place: it deletes stretches of characters, from half of the input down to one, then replaces each with a plainer one (A for a letter, 0 for a digit), and repeats until nothing changes
+├── Money.java                      An amount of money in cents
+├── OrderLine.java                  One line of the store's order import file: {@code SKU,quantity,unit price in cents}, such as {@code SHO-1042,2,8990}
+├── ParseException.java             The one failure a parser is allowed to have: &quot;this input is not valid&quot;
+├── Parsers.java                    The parsers of the store behind one public door each, so that a fuzz target can reach them
+├── Value.java                      A value in the store's small cart format: a number, a string, a list or an object, as in JSON
+├── targets/CartCareless.java       The fuzz target for the careless cart parser
+├── targets/CartFixed.java          The fuzz target for the fixed cart parser
+├── targets/OrderLineCareless.java  The fuzz target for the careless order line parser: anything but a refusal is a finding
+├── targets/OrderLineFixed.java     The fuzz target for the fixed order line parser: it may refuse, and nothing else may be thrown
+├── targets/SearchBoxCareless.java  The fuzz target for a search box that hands the customer's words to the regular expression engine as they are
+└── targets/SearchBoxFixed.java     The fuzz target for the search box that quotes what the customer typed
+</code></pre>
+<p><strong>Jazzer 0.30 fuzzes the store's parsers from a fuzz target of three lines and a handful of seed inputs: it instruments the bytecode itself, finds three crashes in the order line parser and a gift-message bug in the cart parser, saves each input, and its sanitizers report a regular expression injection that is not a crash; but it cannot guess a product code with no seeds, it stops at a default input length, it does not know a business rule, and every saved input is only worth something once it is made smallest and kept as a regression test.</strong></p>
+<p>The plain <a href="../fuzzing">fuzzing</a> project writes a mutation fuzzer and a coverage counter by hand and ends with "coverage-guided tools such as Jazzer add the branch counters to the bytecode by themselves: the -with-jazzer version". This is that version: the real <strong>Jazzer 0.30</strong>, started as a program by the demo on the same two parsers, with a fixed random seed. It needs no server, no Docker and nothing beyond Gradle (the Jazzer jars include the native part for macOS and Linux); the demo takes about half a minute, and the real-Jazzer tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>The example tests pass.</strong> Six of six, and a line with only a product code still crashes the parser.
+- <strong>The real Jazzer.</strong> A fuzz target of three lines (<code>Parsers.orderLineCareless(data.consumeRemainingAsAsciiString())</code>), the two example lines as seeds, random seed 7 and 300000 runs: <strong>three distinct findings</strong> (two <code>ArrayIndexOutOfBoundsException</code> at different lines, and a <code>Money</code> that went negative through an int overflow), each with its input saved.
+- <strong>Guided by coverage, and by the seeds.</strong> With no seeds it reaches 7 coverage points and finds nothing: it cannot guess a product code. The cart parser's gift-message bug is found only when a seed has a <code>note</code> field.
+- <strong>From crash to fix.</strong> Each saved input is made smallest (<code>AAA-0000</code>, <code>AAA-0000,0</code>, <code>AAA-0000,4000,4000000</code>) and replayed as a regression test through the <strong>Jazzer JUnit</strong> integration, in milliseconds; the fixed parsers run clean under the same fuzzer.
+- <strong>Beyond crashes.</strong> A <strong>sanitizer</strong> reports <code>Regular Expression Injection</code> in a search box that hands the customer's words to the pattern engine. A cart with a quantity of -5 is no crash, so no report; the nesting crash needs more than the default input length.</p>
+<p><strong>Maps to:</strong> NIST SSDF PW.8 (test executable code) · OWASP Top 10 (2025) A05 Injection (for the sanitizer) · CWE-20, CWE-248, CWE-674 (uncontrolled recursion), CWE-190 (integer overflow).</p>
+<h2>The idea in everyday terms</h2>
+<p>A tireless clerk who takes the three forms you already have, changes a letter here and a number there, hands thousands of variants to the counter, and writes down every one that makes the counter jam. The clerk does not know what the forms mean, only that a jam is a jam.</p>
+<h2>The scenario</h2>
+<p>An online store parses order lines and carts that come from outside. The demo gives Jazzer the example inputs of the team and watches what comes back.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The example tests pass</td>
+<td>Six of six example tests pass, and a line with only a product code still crashes the parser.</td>
+</tr>
+<tr>
+<td>2. The real Jazzer</td>
+<td>A three-line fuzz target, two seed lines, a fixed random seed and 300000 runs find three distinct bugs.</td>
+</tr>
+<tr>
+<td>3. Guided by coverage, and by what you give it</td>
+<td>With no seeds it reaches 7 coverage points and finds nothing; with the examples, 19 and three bugs; the gift-message bug needs a seed with a note field.</td>
+</tr>
+<tr>
+<td>4. From crash to fix</td>
+<td>Each saved input is made smallest, kept as a regression test, and the fixed parsers run clean under the same fuzzer.</td>
+</tr>
+<tr>
+<td>5. What fuzzing finds besides crashes, and what it does not</td>
+<td>A sanitizer flags a regular expression injection; a quantity of -5 is no crash; the nesting crash needs a longer input than the default.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>17 tests in <code>DemoRunsTest</code>, <code>FixedParsersFuzzTest</code>, <code>JazzerRealTest</code>, <code>MinimizerTest</code>, <code>ReportTest</code>, <code>SavedInputsTest</code>. Most tests run in milliseconds: the saved inputs as regression tests, the minimizer and the reader of Jazzer's report. The tests that start Jazzer are tagged integration (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Jazzer runs for real, in a program of its own with a fixed random seed, so the same findings come out each time. The two parsers are the same as in the plain project, without the hand-written coverage counters. Nothing here is mocked.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>com.code-intelligence:jazzer-api</td>
+<td>0.30.0</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>com.code-intelligence:jazzer</td>
+<td>0.30.0</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>com.code-intelligence:jazzer-junit</td>
+<td>0.30.0</td>
+<td>library the code uses (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/fuzzing-with-jazzer-explained.html">Fuzzing with Jazzer, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Seeds in, findings out, and the smallest inputs back into the build.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Parsers, their fuzz targets, and the code that runs Jazzer and reads its report.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each stage makes the crash easier to understand.</p>
+<p><img alt="From input to regression test" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A fuzz run" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/fuzzing-with-jazzer-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Each parser needs a fuzz target,</strong> a few lines, and someone to keep them working.</li>
+<li><strong>The seeds decide a lot:</strong> a fuzzer with none cannot guess a product code.</li>
+<li><strong>A run is a budget:</strong> a fixed number in the build, longer ones at night.</li>
+<li><strong>Findings must be made smallest, reproduced and fixed,</strong> or they pile up.</li>
+<li><strong>A fuzzer finds crashes and what its sanitizers know,</strong> not wrong decisions.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>Code that only moves data between two typed fields has nothing to fuzz. Fuzz what reads bytes or text from outside: parsers, decoders, importers, anything with a format.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A <code>crash-...</code> file next to a build.</li>
+<li><code>@FuzzTest</code> in a JUnit class.</li>
+<li>A <code>corpus</code> folder in a repository.</li>
+<li>A nightly job named <code>fuzz</code>.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../fuzzing">fuzzing</a>, in the <a href="..">secure-coding</a> module. The input checks it exercises are the subject of <a href="../input-validation">input-validation</a> and its Hibernate Validator version.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
