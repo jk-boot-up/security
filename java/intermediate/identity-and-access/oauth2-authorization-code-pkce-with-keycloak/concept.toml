@@ -1,0 +1,488 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "oauth2-authorization-code-pkce-with-keycloak"
+level = "intermediate"
+module = "identity-and-access"
+title = "OAuth 2.0 Authorization Code with PKCE and Keycloak"
+short_title = "OAuth 2.0 with Keycloak"
+package = "oauthkeycloak"
+main_class = "OAuthKeycloakDemo"
+tagline = "The same flow against a real authorization server: the checks that make it safe are settings on the client, and Keycloak enforces them"
+bold = "Against a real Keycloak the authorization code flow with PKCE is a handful of client settings, exact redirect addresses, S256 required, no implicit flow, no password grant, rotated refresh tokens and short code and token lives, and the app still has to check the state; a reused code or a reused refresh token ends the session at Keycloak, which a resource server that validates tokens locally cannot see until the token expires."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "OAuth 2.0 authorization code flow with PKCE against a real Keycloak 26 in Docker, with a Spring Security 7 resource server: the flow step by step with a consent screen, PKCE that burns a code at the first wrong try, exact redirect addresses (a path trick, a lookalike host, a query, upper case and a trailing slash are all refused), the state check Mallory's link fails, a code that works once and ends the session when reused, a code that expires, scopes the client was not registered for, refresh token rotation and reuse detection, the implicit flow and the password grant switched off, and a confidential client that still needs PKCE."
+thumb_lines = ["OAUTH 2.0 + PKCE", "WITH KEYCLOAK"]
+thumb_code = "pkce.code.challenge.method = S256"
+youtube_title = "OAuth 2.0 Authorization Code + PKCE with Keycloak: Redirects, State, Code Reuse, Refresh Rotation"
+youtube_tags = ["oauth2", "pkce", "keycloak", "authorization code flow", "spring security", "resource server", "rfc 9700", "owasp top 10", "a07", "java"]
+
+[readme]
+intro = """
+The plain [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce) project builds an authorization server from scratch. This one runs the same five acts against a real **Keycloak 26.8** in Docker, with a **Spring Security 7** resource server checking the tokens. It needs Docker; its tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **The flow, step by step.** The budgeting app's request (response type `code`, `state`, an S256 `code_challenge`), Ana signing in at Keycloak and agreeing on the **consent page** (the app never sees her password), the redirect with `code`, `state` and `iss`, the token exchange made by the app directly, and an access token for 300 seconds with audience `accounts-api`, accepted by the API.
+- **PKCE.** The RFC 7636 example gives the published challenge. A thief with a leaked code and **no verifier is refused, and the failed try burns the code**, so the real app is refused too and Ana signs in again. A wrong verifier is a `PKCE verification failed`. A `plain` challenge or no challenge at all is refused at the authorization endpoint.
+- **Exact redirects, state and one-time codes.** Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and **no redirect**. A callback carrying Mallory's code fails the app's own state check. A **reused code ends the session**: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 5 seconds in this realm.
+- **Scopes and refresh tokens.** `POST /payments` with an `accounts.read` token is `403 insufficient_scope`; asking for `payments.write` is `invalid_scope`. A refresh token is rotated; **using the old one again ends the session**, so the thief and the real app both lose.
+- **Current practice.** The implicit flow and the password grant are switched off on the client, a confidential client needs its secret and **still needs PKCE**.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures · RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 9700 (OAuth 2.0 Security Best Current Practice), RFC 9207 (issuer identification) · OAuth 2.1 draft.
+"""
+analogy = """
+A coat check run by a hotel, not by the shop. You show the hotel your room key, never the shop, and the hotel gives the shop a numbered ticket that works once, and only for the person who holds the matching stub. If someone tries a ticket with the wrong stub, the hotel tears the ticket up.
+"""
+scenario = """
+A budgeting app wants to read Ana's accounts at the bank. The demo starts a real Keycloak and the bank's accounts API in Docker and on a loopback port, drives the authorization code flow as a browser would, and then tries the mistakes: a leaked code, a wrong redirect address, a replayed code, a thief with an old refresh token.
+"""
+costs = [
+    "**Keycloak is a service to run:** its database, its keys, its upgrades and its logins are now part of the bank's security.",
+    "**An exact redirect address is one more thing to register** for every environment and every app version, and a wildcard is the shortcut to avoid.",
+    "**Reuse detection can sign a real user out** when a retry looks like a replay, so the app must handle a refused refresh by asking Ana to sign in again.",
+    "**Short lives mean refreshing,** and a refresh token is worth more than an access token, so it needs the most care.",
+    "**A resource server that checks tokens locally cannot see a revoked session** until the token expires; checking online costs a call for every request.",
+]
+too_much = """
+For one app and one API that you own together, a session cookie is simpler. Use OAuth when a third party app must act for a user, or when many apps and APIs share one place to sign in.
+"""
+met_before = [
+    "A \"Sign in with\" button, and a consent screen asking to read your accounts.",
+    "`code_challenge` and `code_verifier` in a mobile app's network log.",
+    "\"Invalid parameter: redirect_uri\" from Keycloak when a callback address was mistyped.",
+    "`spring.security.oauth2.client` and `oauth2ResourceServer` in a Spring Boot project.",
+]
+where = """
+This is the tools version of [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce), in the [identity-and-access](..) module. It follows the same five acts, against a real authorization server, and ends with the resource server that real banks run.
+"""
+twin = """
+Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, ports and session ids are never printed.
+"""
+test_note = "The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file and PKCE tests need no Docker."
+
+[[act]]
+title = "The flow, step by step"
+summary = "The budgeting app sends Ana to Keycloak with a state and a PKCE challenge, she signs in and agrees there, the app exchanges the code for an access token, and the API accepts it."
+detail = """
+Ana's browser goes to Keycloak's authorization endpoint with response type code, the client id, the exact registered redirect address, the scope, a state and an S256 code challenge. Ana signs in at Keycloak, never at the app, and a consent page asks whether budget-app may read her accounts. Keycloak redirects the browser to the registered address with the state, a session state, the issuer and the code. The app checks the state, then calls the token endpoint directly with the code and the verifier. Keycloak answers with an access token for 300 seconds, a refresh token and an ID token. The accounts API accepts the access token: 200, ana, 2 accounts. The token is for accounts-api, asked for by budget-app, carries Ana's id and no password or e-mail, and without a token the API answers 401.
+"""
+speech = """
+First demo: the authorization code flow, step by step. [[slnc 400]] The budgeting app sends Ana's browser to Keycloak with a state and a challenge. [[slnc 600]]
+Ana signs in at Keycloak, never at the app, and agrees on the consent page. [[slnc 600]]
+Keycloak sends the browser back with a code. [[slnc 300]] The app checks the state, and then calls Keycloak directly with the code and the verifier. [[slnc 600]]
+It gets an access token for three hundred seconds, and the A P I accepts it. [[slnc 300]] The app never saw Ana's password.
+"""
+rows = { flow = "active ok" }
+console = [
+    ["Ana signs in at Keycloak and agrees on the consent page", "ok"],
+    ["302 to the registered address with state, iss and code", "ok"],
+    ["token endpoint: 300 seconds, scope openid accounts.read", "ok"],
+    ["GET /accounts with the access token -> 200, ana: 2 accounts", "ok"],
+]
+
+[[act]]
+title = "PKCE: a code is useless without the verifier"
+summary = "A leaked code with no verifier is refused and burned, a wrong verifier is refused, a plain challenge or none is refused at the authorization endpoint."
+detail = """
+The RFC 7636 example verifier gives the published S256 challenge. Only the challenge travels through the browser. A code leaks, and another app redeems it with no verifier: refused, PKCE code verifier not specified. Then the budgeting app, with the real verifier, is refused too: Code not valid, because a failed try burns the code. The leak is useless, and Ana signs in again. A new code with a verifier the thief made up is refused: PKCE verification failed. A new code with the real verifier gives tokens. A request with the plain method, or with no challenge at all, is refused with invalid_request.
+"""
+speech = """
+Second demo: P K C E. [[slnc 400]] Only the challenge travels through the browser. [[slnc 600]]
+A thief with a leaked code and no verifier is refused. [[slnc 300]] The failed try burns the code, so the real app is refused as well, and Ana signs in again. [[slnc 600]]
+A wrong verifier is refused. [[slnc 300]] A plain challenge, or none at all, is refused at the authorization endpoint.
+"""
+rows = { pkce = "active ok" }
+console = [
+    ["RFC 7636 example: the published challenge", "ok"],
+    ["leaked code, no verifier -> refused (PKCE code verifier not specified)", "ok"],
+    ["then the real verifier -> refused (Code not valid): the code is burned", "amber"],
+    ["plain method, or no challenge -> refused (invalid_request)", "ok"],
+]
+
+[[act]]
+title = "Exact redirects, state, and codes that work once"
+summary = "Only the registered redirect address gets a code, the state check stops Mallory's code, a reused code ends the session at Keycloak but not at a local check, and a code lives 5 seconds."
+detail = """
+The app registered exactly https://budget.example/callback. That address gets a code. The path trick, the lookalike host, the query, the upper-case host and the trailing slash are refused by Keycloak with an error page and no redirect. A prefix or wildcard match would have sent Ana's code to the others. Mallory's link carries her own code; the app checks the state against Ana's browser session and refuses it. A code is redeemed once and the access token works. The same code redeemed again is refused, and Keycloak's own check of the first access token now gives 401, a reused code ends the session. The API, which checks the signature and dates itself, still gives 200: a local check cannot know. A code redeemed after 6 seconds, in a realm that gives codes 5, is refused.
+"""
+speech = """
+Third demo: exact redirects, state, and codes that work once. [[slnc 400]] Only the exact registered address gets a code. [[slnc 300]] A path trick, a lookalike host, a query, and a trailing slash are all refused. [[slnc 600]]
+Mallory's link fails the state check. [[slnc 600]]
+A code works once. [[slnc 300]] Use it twice, and Keycloak ends the session. [[slnc 300]] But an A P I that checks tokens itself cannot know. [[slnc 600]]
+And a code expires after five seconds in this realm.
+"""
+rows = { redirects = "active ok" }
+console = [
+    ["https://budget.example/callback -> a code is sent there", "ok"],
+    ["a path trick, a lookalike host, a query, upper case, a trailing slash -> refused", "ok"],
+    ["the same code redeemed again -> refused; Keycloak's check of the first token -> 401", "ok"],
+    ["the API's local check of that token -> 200", "amber"],
+]
+
+[[act]]
+title = "Scopes and refresh tokens"
+summary = "An accounts.read token cannot pay, an unregistered scope is refused, a refresh token is rotated, and using the old one again ends the session so the thief and the real app both lose."
+detail = """
+The token carries openid accounts.read. GET /accounts is 200, and POST /payments with the same token is 403 insufficient_scope. Asking for payments.write, which the app never registered, is refused with invalid_scope. The app refreshes the token and gets a new access token and a new refresh token. The old refresh token, copied by a thief and used again, is refused: the maximum allowed reuse was exceeded. The newest refresh token, held by the real app, is refused too, the session no longer has the client, and the newest access token fails Keycloak's own check with 401. One reuse ends the session, so the theft is contained. An access token 5 minutes and 31 seconds old is refused by the API.
+"""
+speech = """
+Fourth demo: scopes and refresh tokens. [[slnc 400]] A token for reading accounts cannot make payments. [[slnc 600]]
+Asking for a scope the app never registered is refused. [[slnc 600]]
+A refresh token is rotated. [[slnc 300]] If the old one is used again, the session ends, so the thief and the real app both lose. [[slnc 600]]
+And an access token that is five minutes old is refused.
+"""
+rows = { scopes = "active ok" }
+console = [
+    ["POST /payments with an accounts.read token -> 403 insufficient_scope", "ok"],
+    ["payments.write requested -> refused (invalid_scope)", "ok"],
+    ["the old refresh token used again -> refused; the session ends", "ok"],
+    ["an access token 5 minutes 31 seconds old -> 401", "ok"],
+]
+
+[[act]]
+title = "Current practice, and the bill"
+summary = "The implicit flow and the password grant are off, a confidential client needs its secret and still needs PKCE, and the resource server holds no passwords and no session."
+detail = """
+The implicit flow, which put the access token in the address bar, is refused: the client is not allowed to initiate browser login with that response type. The password grant, which gives the app Ana's password, is refused: the client is not allowed direct access grants. Both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1. The statements service is a confidential client, so it also authenticates; with a wrong secret it is refused. With its secret and a code it does not have, it is refused. With its secret and a real code but no verifier, it is refused too: a secret does not replace PKCE. A public app on a phone cannot keep a secret, which is why PKCE protects its code.
+"""
+speech = """
+Fifth demo: current practice. [[slnc 400]] The implicit flow is switched off. [[slnc 300]] So is the password grant. [[slnc 600]]
+A confidential client needs its secret, and with a wrong secret it is refused. [[slnc 600]]
+With the secret and a real code but no verifier, it is refused as well, a secret does not replace P K C E. [[slnc 600]]
+A public app on a phone cannot keep a secret, which is why P K C E protects its code.
+"""
+rows = { practice = "active ok" }
+console = [
+    ["implicit flow (response_type=token) -> refused (unauthorized_client)", "ok"],
+    ["password grant -> refused (Client not allowed for direct access grants)", "ok"],
+    ["wrong client secret -> refused (unauthorized_client)", "ok"],
+    ["secret and a code but no verifier -> refused (PKCE code verifier not specified)", "ok"],
+]
+
+[animation]
+subtitle = "An online bank, a budgeting app, and an authorization server that enforces the rules."
+boxes = [
+    ["flow", "The flow", "code, state, challenge"],
+    ["pkce", "PKCE", "a failed try burns the code"],
+    ["redirects", "Redirects, state, codes", "exact, once, short"],
+    ["scopes", "Scopes, refresh", "rotation and reuse"],
+    ["practice", "Current practice", "no implicit, no password"],
+]
+
+[docs.problem]
+scenario = """
+A budgeting app must read a bank customer's accounts without ever holding the customer's password, and the bank must be able to stop it at any time.
+"""
+naive = """
+Ask for the password, or use the implicit flow, accept any redirect address that looks like the app's, and trust the code.
+"""
+deliver = [
+    "A real Keycloak in Docker with the bank realm imported from a file.",
+    "A Spring Security resource server that checks signature, issuer, audience, dates and scope.",
+    "A browser and app stand-in that drive the real flow, and the mistakes around it.",
+    "A realm file whose settings are checked by tests.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain oauth2-authorization-code-pkce project, for the flow itself",
+    "Docker, with the quay.io/keycloak/keycloak:26.8.1 image (pulled on first use)",
+]
+not_required = [
+    "A Keycloak installed on the machine: the demo starts and removes its own container",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "name the parts of the authorization code flow and what each one protects",
+    "explain what PKCE stops and why a failed try burns the code",
+    "list the client settings that make the flow safe",
+    "explain what an online check sees that a local check cannot",
+]
+walkthrough = """
+Run act one and follow the code from the redirect to the token. In act two ask what the thief learned from the failed try. In act three ask which token the API will still accept after the session has ended.
+"""
+exercises = [
+    "Register a second redirect address and test the lookalikes of it.",
+    "Make the resource server introspect tokens online and compare the cost and the behaviour.",
+    "Turn off refresh token rotation in the realm and see which line of the demo changes.",
+    "Add a scope that needs a second sign-in step, and test that the app asks again.",
+]
+
+[docs.explained]
+sentence = """
+The authorization code flow lets an app act for a user without their password, and it is safe only because the client's settings, the redirect check, PKCE, the state and one-time codes are all enforced.
+"""
+verdict = """
+Use the authorization code flow with S256 PKCE for every client, register exact redirect addresses, switch off the implicit flow and the password grant, rotate refresh tokens, keep access tokens short, check the state in the app, and have the API check the issuer, audience, dates and scope of every token.
+"""
+recognise = [
+    "`code_challenge` and `code_verifier` in a mobile app.",
+    "\"Invalid parameter: redirect_uri\" from the authorization server.",
+    "`oauth2ResourceServer` in a Spring Security configuration.",
+    "A realm file or a client with `implicitFlowEnabled` or `directAccessGrantsEnabled` set to true.",
+]
+
+[spec]
+purpose = """
+Teach the OAuth 2.0 authorization code flow with PKCE on a real authorization server and its enforcement of the rules.
+"""
+nongoals = [
+    "Operating Keycloak in production.",
+    "OpenID Connect sign-in, which has its own project.",
+    "Device, client-credentials and token exchange grants.",
+]
+problem = """
+Teams copy OAuth settings from examples and leave the implicit flow, wildcard redirects, optional PKCE or reusable refresh tokens switched on.
+"""
+roles = [["Authorization server", "`KeycloakLab`, `infra/bank-realm.json`"], ["The app and the browser", "`OAuthClient`"], ["Resource server", "`ApiSecurity`, `AccountsController`, `Running`"], ["Time", "`OffsetClock`"], ["Entry point", "`OAuthKeycloakDemo`"]]
+requirements = [
+    "The flow gives an access token for the accounts API only through a code redeemed with the right verifier.",
+    "A failed redemption burns the code.",
+    "Only the exact registered redirect address gets a code.",
+    "The app checks the state before it uses a code.",
+    "A reused code and a reused refresh token end the session.",
+    "The implicit flow and the password grant are refused.",
+    "A confidential client needs its secret and PKCE.",
+    "The API checks signature, issuer, audience, dates and scope.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parties"
+caption = "The user signs in at the authorization server; the app only ever sees a code and then a token."
+nodes = [
+    { id = "ana", label = "Ana's browser", sub = "signs in, agrees", col = 0, row = 0, colour = "client" },
+    { id = "app", label = "Budgeting app", sub = "public client, PKCE", col = 1, row = 0, colour = "amber" },
+    { id = "kc", label = "Keycloak", sub = "authorization server", col = 1, row = 1, colour = "accent" },
+    { id = "api", label = "Accounts API", sub = "resource server", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "ana", to = "kc", label = "password, consent" },
+    { from = "app", to = "kc", label = "code + verifier" },
+    { from = "app", to = "api", label = "Bearer token" },
+    { from = "api", to = "kc", label = "public keys", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The app and the browser share one class; the lab and the API are separate."
+nodes = [
+    { id = "client", label = "OAuthClient", sub = ["signIn()", "token()", "userinfo()", "codeIfStateMatches()"], col = 0, row = 0, colour = "amber" },
+    { id = "lab", label = "KeycloakLab", sub = ["start()", "issuer()"], col = 1, row = 0, colour = "accent" },
+    { id = "sec", label = "ApiSecurity", sub = ["decoder()", "chain()"], col = 0, row = 1, colour = "green" },
+    { id = "ctl", label = "AccountsController", sub = ["accounts()", "pay()"], col = 1, row = 1, colour = "client" },
+]
+edges = [
+    { from = "client", to = "lab", label = "drives" },
+    { from = "sec", to = "ctl", label = "guards" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the code and the verifier carry"
+caption = "The challenge goes out through the browser, the code comes back through the browser, and the verifier goes straight to the token endpoint."
+nodes = [
+    { id = "challenge", label = "Challenge", sub = "S256 of the verifier", col = 0, row = 0, colour = "client" },
+    { id = "code", label = "Code", sub = "once, 5 seconds", col = 1, row = 0, colour = "amber" },
+    { id = "verifier", label = "Verifier", sub = "from the app only", col = 2, row = 0, colour = "accent" },
+    { id = "token", label = "Tokens", sub = "access, refresh, ID", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "challenge", to = "code", label = "bound to" },
+    { from = "code", to = "verifier", label = "checked with" },
+    { from = "verifier", to = "token" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "The authorization code flow"
+participants = ["Browser", "Budgeting app", "Keycloak", "Accounts API"]
+steps = [
+    ["Budgeting app", "Browser", "go to Keycloak with state and challenge"],
+    ["Browser", "Keycloak", "sign in and agree"],
+    ["Keycloak", "Browser", "302 to the callback with code and state", "reply"],
+    ["Budgeting app", "Keycloak", "POST /token with code and verifier"],
+    ["Keycloak", "Budgeting app", "access token, refresh token", "reply"],
+    ["Budgeting app", "Accounts API", "GET /accounts, Bearer token"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A leaked code"
+participants = ["Thief", "Keycloak", "Budgeting app"]
+steps = [
+    ["Thief", "Keycloak", "POST /token with the leaked code, no verifier"],
+    ["Keycloak", "Thief", "invalid_grant, and the code is burned", "reply"],
+    ["Budgeting app", "Keycloak", "POST /token with the real verifier"],
+    ["Keycloak", "Budgeting app", "invalid_grant: Code not valid; Ana signs in again", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The attacker", nodes = ["mallory"], colour = "red" },
+    { label = "The customer's device", nodes = ["app"], colour = "amber" },
+    { label = "The bank", nodes = ["kc", "api"], colour = "green" },
+]
+nodes = [
+    { id = "mallory", label = "Mallory", sub = "links, leaked codes, old tokens", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "app", label = "Budgeting app", sub = "state, verifier", col = 1, row = 0, colour = "client", threats = ["T2", "T3"] },
+    { id = "kc", label = "Keycloak", sub = "client settings", col = 2, row = 0, colour = "accent", threats = ["T1", "T2", "T4", "T5"] },
+    { id = "api", label = "Accounts API", sub = "local token checks", col = 2, row = 1, colour = "green", threats = ["T5"] },
+]
+edges = [
+    { from = "mallory", to = "app", label = "forged callback", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "mallory", to = "kc", label = "leaked code, wrong redirect", colour = "red", dashed = true, threats = ["T1", "T2", "T4"] },
+    { from = "app", to = "kc", label = "token request", threats = ["T2"] },
+    { from = "app", to = "api", label = "Bearer token", threats = ["T5"] },
+]
+
+[threatmodel]
+scope = """
+The authorization code flow between a public client, a confidential client, Keycloak and a resource server. It covers redirect handling, code and token theft, state, scopes and refresh tokens. It does not cover Keycloak's own security or the client app's storage of tokens.
+"""
+assets = [
+    "Ana's accounts.",
+    "The authorization code, the refresh token and the access token.",
+]
+actors = [
+    "Ana, who signs in and consents.",
+    "An app the bank has registered.",
+    "Mallory, who can leak or forge a link, a code or an old token.",
+]
+boundaries = [
+    "The browser to the app: the redirect carries the code.",
+    "The app to Keycloak: the token endpoint.",
+    "The app to the API: the bearer token.",
+]
+assumptions = [
+    "The redirect address uses https in production.",
+    "Keycloak and the API are reached over TLS in production.",
+]
+out_of_scope = [
+    "Theft of tokens from the phone's storage.",
+    "Compromise of Keycloak.",
+]
+tests = [
+    "`KeycloakFlowTest` starts a real Keycloak and checks the flow, consent, a wrong password, tampered and ID tokens, scope, expiry, burned and expired codes, PKCE, redirect addresses, the state of the redirect, reuse of a code, refresh rotation, the implicit flow, the password grant and a confidential client.",
+    "`RealmFileTest` checks the settings in the realm file, and `PkceTest` the parts of the app that need no server.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, openid-connect-with-spring-security-and-keycloak, uses the same server to sign users in to an application and to log them out everywhere.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "The authorization code is sent to an address the attacker controls"
+where = "Keycloak's redirect address check"
+control = "Exact registered redirect addresses; no prefix or wildcard match"
+residual = "A registered address that the attacker can use"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A leaked code is redeemed by someone else"
+where = "the token endpoint"
+control = "S256 PKCE on every client, codes that work once and for a few seconds"
+residual = "A leak of the verifier as well"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "Mallory's code signs Ana into Mallory's account"
+where = "the app's callback"
+control = "A state bound to the browser session that started the sign-in"
+residual = "An app that skips the state check"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "A stolen refresh token keeps access alive"
+where = "the refresh grant"
+control = "Rotation with no reuse; one reuse ends the session"
+residual = "A thief who uses the token before the real app does"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "A revoked session still opens the API"
+where = "a resource server with local checks"
+control = "Short access tokens, and an online check for sensitive operations"
+residual = "The minutes between revocation and expiry"
+
+[poster]
+headline = [["OAUTH 2.0 + PKCE", "text"], ["WITH KEYCLOAK", "accent"]]
+taglines = [["The same flow against a real authorization server: the checks that make it safe are settin", "gold"]]
+before = { code = "Ana signs in at Keycloak and agrees on the consent p", note = "The flow, step by step", tag = "BEFORE" }
+after = { code = "pkce.code.challenge.method = S256", note = "Current practice, and the bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "OAuth 2.0 Authorization Code with PKCE and Keycloak"
+narration = "Hello, and welcome. [[slnc 400]] This video explains OAuth 2 point 0 with Keycloak, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Against a real Keycloak the authorization code flow with P K C E is a handful of client settings, exact redirect addresses, S256 required, no implicit flow, no password grant, rotated refresh tokens and short code and token lives, and the app still has to check the state; a reused code or a reused refresh token ends the session at Keycloak, which a resource server that validates tokens locally cannot see until the token expires. [[slnc 600]] Think of it this way. [[slnc 300]] A coat check run by a hotel, not by the shop. You show the hotel your room key, never the shop, and the hotel gives the shop a numbered ticket that works once, and only for the person who holds the matching stub. If someone tries a ticket with the wrong stub, the hotel tears the ticket up. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Name the parts of the authorization code flow and what each one protects. [[slnc 300]] Explain what P K C E stops and why a failed try burns the code. [[slnc 300]] List the client settings that make the flow safe."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A budgeting app wants to read Ana's accounts", "at the bank.", "The demo starts a real Keycloak and the", "bank's accounts API in Docker and on a", "loopback port, drives the authorization code", "flow as a browser would, and then tries the", "mistakes: a leaked code, a wrong redirect"]
+narration = "Here is the scenario. [[slnc 400]] A budgeting app wants to read Ana's accounts at the bank. [[slnc 400]] The demo starts a real Keycloak and the bank's accounts A P I in Docker and on a loopback port, drives the authorization code flow as a browser would, and then tries the mistakes: a leaked code, a wrong redirect address, a replayed code, a thief with an old refresh token."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Keycloak is a service to run", "An exact redirect address is one more thing to", "register", "Reuse detection can sign a real user out", "Short lives mean refreshing", "A resource server that checks tokens locally cannot", "see a revoked session"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Keycloak is a service to run. [[slnc 500]] An exact redirect address is one more thing to register. [[slnc 500]] Reuse detection can sign a real user out. [[slnc 500]] Short lives mean refreshing. [[slnc 500]] A resource server that checks tokens locally cannot see a revoked session."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Authorization server: KeycloakLab, infra/bank-", "realm.json", "The app and the browser: OAuthClient", "Resource server: ApiSecurity, AccountsController,", "Running", "Time: OffsetClock", "Entry point: OAuthKeycloakDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Authorization server is in KeycloakLab and infra/bank-realm.json. [[slnc 500]] The app and the browser is in OAuthClient. [[slnc 500]] Resource server is in ApiSecurity and AccountsController and Running. [[slnc 500]] Time is in OffsetClock. [[slnc 500]] Entry point is in OAuthKeycloakDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["oauth2ResourceServer in a Spring Security", "configuration", "A realm file or a client with implicitFlowEnabled or", "directAccessGrantsEnabled set to true"]
+narration = "You have probably met this already. [[slnc 400]] oauth2ResourceServer in a Spring Security configuration. [[slnc 500]] A realm file or a client with implicitFlowEnabled or directAccessGrantsEnabled set to true."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Name the parts of the authorization code flow and what", "each one protects", "Explain what PKCE stops and why a failed try burns the", "code", "List the client settings that make the flow safe", "Explain what an online check sees that a local check", "cannot"]
+narration = "So, how do you use it? [[slnc 400]] Use the authorization code flow with S256 P K C E for every client, register exact redirect addresses, switch off the implicit flow and the password grant, rotate refresh tokens, keep access tokens short, check the state in the app, and have the A P I check the issuer, audience, dates and scope of every token."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's OAuth 2 point 0 with Keycloak. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The authorization code flow lets an app act for a user without their password, and it is safe only because the client's settings, the redirect check, P K C E, the state and one-time codes are all enforced. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Register a second redirect address and test the lookalikes of it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

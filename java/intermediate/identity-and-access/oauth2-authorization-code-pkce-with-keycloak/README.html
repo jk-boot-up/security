@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OAuth 2.0 Authorization Code with PKCE and Keycloak</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>OAuth 2.0 Authorization Code with PKCE and Keycloak</h1>
+<pre><code>src/main/java/com/jk/explore/security/oauthkeycloak/
+├── AccountsController.java  
+├── ApiApp.java              
+├── ApiSecurity.java         The accounts API is a resource server: it holds no passwords, keeps no session, and believes a bearer token only if Keycloak's published key signed it, it was issued by the bank realm for this API, and it has not expired
+├── KeycloakLab.java         One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank realm imported from {@code infra/bank-realm.json} and removed on close
+├── OAuthClient.java         The budgeting app and the customer's browser, as far as this lesson needs them
+├── OAuthKeycloakDemo.java   Runs the bank's OAuth 2.0 story in five numbered acts against a real Keycloak in Docker and a real resource server, all on the loopback interface
+├── OffsetClock.java         The system clock plus an offset the demo can move forward, so a token's five minutes take no time to wait for
+└── Running.java             The accounts API, a resource server on a free loopback port that trusts the bank realm of the given Keycloak
+</code></pre>
+<p><strong>Against a real Keycloak the authorization code flow with PKCE is a handful of client settings, exact redirect addresses, S256 required, no implicit flow, no password grant, rotated refresh tokens and short code and token lives, and the app still has to check the state; a reused code or a reused refresh token ends the session at Keycloak, which a resource server that validates tokens locally cannot see until the token expires.</strong></p>
+<p>The plain <a href="../oauth2-authorization-code-pkce">oauth2-authorization-code-pkce</a> project builds an authorization server from scratch. This one runs the same five acts against a real <strong>Keycloak 26.8</strong> in Docker, with a <strong>Spring Security 7</strong> resource server checking the tokens. It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>The flow, step by step.</strong> The budgeting app's request (response type <code>code</code>, <code>state</code>, an S256 <code>code_challenge</code>), Ana signing in at Keycloak and agreeing on the <strong>consent page</strong> (the app never sees her password), the redirect with <code>code</code>, <code>state</code> and <code>iss</code>, the token exchange made by the app directly, and an access token for 300 seconds with audience <code>accounts-api</code>, accepted by the API.
+- <strong>PKCE.</strong> The RFC 7636 example gives the published challenge. A thief with a leaked code and <strong>no verifier is refused, and the failed try burns the code</strong>, so the real app is refused too and Ana signs in again. A wrong verifier is a <code>PKCE verification failed</code>. A <code>plain</code> challenge or no challenge at all is refused at the authorization endpoint.
+- <strong>Exact redirects, state and one-time codes.</strong> Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and <strong>no redirect</strong>. A callback carrying Mallory's code fails the app's own state check. A <strong>reused code ends the session</strong>: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 5 seconds in this realm.
+- <strong>Scopes and refresh tokens.</strong> <code>POST /payments</code> with an <code>accounts.read</code> token is <code>403 insufficient_scope</code>; asking for <code>payments.write</code> is <code>invalid_scope</code>. A refresh token is rotated; <strong>using the old one again ends the session</strong>, so the thief and the real app both lose.
+- <strong>Current practice.</strong> The implicit flow and the password grant are switched off on the client, a confidential client needs its secret and <strong>still needs PKCE</strong>.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 9700 (OAuth 2.0 Security Best Current Practice), RFC 9207 (issuer identification) · OAuth 2.1 draft.</p>
+<h2>The idea in everyday terms</h2>
+<p>A coat check run by a hotel, not by the shop. You show the hotel your room key, never the shop, and the hotel gives the shop a numbered ticket that works once, and only for the person who holds the matching stub. If someone tries a ticket with the wrong stub, the hotel tears the ticket up.</p>
+<h2>The scenario</h2>
+<p>A budgeting app wants to read Ana's accounts at the bank. The demo starts a real Keycloak and the bank's accounts API in Docker and on a loopback port, drives the authorization code flow as a browser would, and then tries the mistakes: a leaked code, a wrong redirect address, a replayed code, a thief with an old refresh token.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The flow, step by step</td>
+<td>The budgeting app sends Ana to Keycloak with a state and a PKCE challenge, she signs in and agrees there, the app exchanges the code for an access token, and the API accepts it.</td>
+</tr>
+<tr>
+<td>2. PKCE: a code is useless without the verifier</td>
+<td>A leaked code with no verifier is refused and burned, a wrong verifier is refused, a plain challenge or none is refused at the authorization endpoint.</td>
+</tr>
+<tr>
+<td>3. Exact redirects, state, and codes that work once</td>
+<td>Only the registered redirect address gets a code, the state check stops Mallory's code, a reused code ends the session at Keycloak but not at a local check, and a code lives 5 seconds.</td>
+</tr>
+<tr>
+<td>4. Scopes and refresh tokens</td>
+<td>An accounts.read token cannot pay, an unregistered scope is refused, a refresh token is rotated, and using the old one again ends the session so the thief and the real app both lose.</td>
+</tr>
+<tr>
+<td>5. Current practice, and the bill</td>
+<td>The implicit flow and the password grant are off, a confidential client needs its secret and still needs PKCE, and the resource server holds no passwords and no session.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>33 tests in <code>DemoRunsTest</code>, <code>KeycloakFlowTest</code>, <code>PkceTest</code>, <code>RealmFileTest</code>. The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file and PKCE tests need no Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, ports and session ids are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-resource-server</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/oauth2-authorization-code-pkce-with-keycloak-explained.html">OAuth 2.0 Authorization Code with PKCE and Keycloak, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The user signs in at the authorization server; the app only ever sees a code and then a token.</p>
+<p><img alt="The parties" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The app and the browser share one class; the lab and the API are separate.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The challenge goes out through the browser, the code comes back through the browser, and the verifier goes straight to the token endpoint.</p>
+<p><img alt="What the code and the verifier carry" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The authorization code flow" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/oauth2-authorization-code-pkce-with-keycloak-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Keycloak is a service to run:</strong> its database, its keys, its upgrades and its logins are now part of the bank's security.</li>
+<li><strong>An exact redirect address is one more thing to register</strong> for every environment and every app version, and a wildcard is the shortcut to avoid.</li>
+<li><strong>Reuse detection can sign a real user out</strong> when a retry looks like a replay, so the app must handle a refused refresh by asking Ana to sign in again.</li>
+<li><strong>Short lives mean refreshing,</strong> and a refresh token is worth more than an access token, so it needs the most care.</li>
+<li><strong>A resource server that checks tokens locally cannot see a revoked session</strong> until the token expires; checking online costs a call for every request.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For one app and one API that you own together, a session cookie is simpler. Use OAuth when a third party app must act for a user, or when many apps and APIs share one place to sign in.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A "Sign in with" button, and a consent screen asking to read your accounts.</li>
+<li><code>code_challenge</code> and <code>code_verifier</code> in a mobile app's network log.</li>
+<li>"Invalid parameter: redirect_uri" from Keycloak when a callback address was mistyped.</li>
+<li><code>spring.security.oauth2.client</code> and <code>oauth2ResourceServer</code> in a Spring Boot project.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../oauth2-authorization-code-pkce">oauth2-authorization-code-pkce</a>, in the <a href="..">identity-and-access</a> module. It follows the same five acts, against a real authorization server, and ends with the resource server that real banks run.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
