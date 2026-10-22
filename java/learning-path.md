@@ -288,8 +288,8 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 121 | [iac-scanning](advanced/cloud-security-without-a-cloud/iac-scanning) | Write eight rules for Kubernetes manifests with tests of their own, run Checkov, Trivy and KICS on the same files, and handle exceptions and a baseline in the build | Checkov, Trivy, KICS |
-| 122 | [policy-as-code](advanced/cloud-security-without-a-cloud/policy-as-code) | Write a bank's deny-by-default deployment policy in Rego, test the policy and test its tests, and run it as an admission review and in the build with Conftest | OPA and Rego, Conftest |
+| 121 | [iac-scanning](advanced/infrastructure-as-code-security/iac-scanning) | Write eight rules for Kubernetes manifests with tests of their own, run Checkov, Trivy and KICS on the same files, and handle exceptions and a baseline in the build | Checkov, Trivy, KICS |
+| 122 | [policy-as-code](advanced/infrastructure-as-code-security/policy-as-code) | Write a bank's deny-by-default deployment policy in Rego, test the policy and test its tests, and run it as an admission review and in the build with Conftest | OPA and Rego, Conftest |
 
 ### 3. kubernetes-and-container-security
 

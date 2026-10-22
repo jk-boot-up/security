@@ -10,7 +10,7 @@ IaC Scanning: Writing Rules, Comparing Checkov, Trivy and KICS, Exceptions and B
 
 Infrastructure-as-code scanning for an online store's Kubernetes manifests: eight rules written in Java and tested with their own samples, Checkov, Trivy and KICS compared on the same files, the password all three miss, exceptions with an owner and an end date, and a baseline that fails the build only on new findings.
 
-Source code and notes: github.com/jk-boot-up/security/tree/main/java/advanced/cloud-security-without-a-cloud/iac-scanning
+Source code and notes: github.com/jk-boot-up/security/tree/main/java/advanced/infrastructure-as-code-security/iac-scanning
 
 Chapters:
 

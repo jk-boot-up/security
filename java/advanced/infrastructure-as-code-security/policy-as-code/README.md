@@ -134,4 +134,4 @@ A team with three services and one cluster can use the built-in Pod Security Sta
 
 ## Where this sits
 
-This is the fifth project of the [cloud-security-without-a-cloud](..) module, after [iac-scanning](../iac-scanning). Enforcing the policy inside a cluster is the subject of kubernetes-admission-control.
+This is the second project of the [infrastructure-as-code-security](..) module, after [iac-scanning](../iac-scanning). Enforcing the policy inside a cluster is the subject of kubernetes-admission-control, in the next module.

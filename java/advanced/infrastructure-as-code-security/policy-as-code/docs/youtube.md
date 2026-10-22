@@ -10,7 +10,7 @@ Policy as Code: Deny-by-Default Rego Rules, Testing the Policy and Its Tests (OP
 
 Policy as code for a bank's Kubernetes deployments: a deny-by-default policy in Rego, a table of requests it must decide as a reviewer expects, the holes a missing field leaves, tests for the policy and mutation testing of those tests, an admission review, Conftest in the build and a warning-first rollout.
 
-Source code and notes: github.com/jk-boot-up/security/tree/main/java/advanced/cloud-security-without-a-cloud/policy-as-code
+Source code and notes: github.com/jk-boot-up/security/tree/main/java/advanced/infrastructure-as-code-security/policy-as-code
 
 Chapters:
 

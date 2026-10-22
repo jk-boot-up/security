@@ -55,4 +55,4 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## Where this model goes next
 
-The next project in this module is iac-scanning.
+This is the last project of this module. The next module starts with iac-scanning.

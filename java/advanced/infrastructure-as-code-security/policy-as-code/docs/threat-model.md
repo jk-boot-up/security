@@ -53,4 +53,4 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## Where this model goes next
 
-The next project in this module is kubernetes-admission-control.
+The next project, in the module kubernetes-and-container-security, is kubernetes-admission-control.

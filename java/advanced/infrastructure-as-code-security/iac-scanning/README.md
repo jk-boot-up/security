@@ -141,4 +141,4 @@ A single manifest for a demo on a laptop does not need three scanners and a base
 
 ## Where this sits
 
-This is the fourth project of the [cloud-security-without-a-cloud](..) module, after [cloud-misconfigurations](../cloud-misconfigurations). Rules that stop a deployment are the subject of policy-as-code.
+This is the first project of the [infrastructure-as-code-security](..) module. The module before it ended with [cloud-misconfigurations](../../cloud-security-without-a-cloud/cloud-misconfigurations). Rules that stop a deployment are the subject of policy-as-code.
