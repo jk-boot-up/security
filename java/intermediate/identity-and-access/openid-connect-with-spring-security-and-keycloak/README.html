@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenID Connect with Spring Security and Keycloak</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>OpenID Connect with Spring Security and Keycloak</h1>
+<pre><code>src/main/java/com/jk/explore/security/oidcspring/
+├── AccountsKeys.java     The fixed ids of the people in the realm files
+├── KeycloakLab.java      One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank and wallet realms imported from {@code infra/} and removed on close
+├── LocalProvider.java    A small provider on the loopback interface whose only job is to sign ID tokens with claims Keycloak would never issue, so that Spring Security's checks can be seen refusing them
+├── OidcSpringDemo.java   Runs the store's OpenID Connect story in five numbered acts against a real Keycloak in Docker and a real Spring Security 7 client, all on the loopback interface
+├── Running.java          The store, a Spring Boot application on a loopback port that was chosen before Keycloak started, signing shoppers in with the bank and the wallet
+├── Shopper.java          A shopper's browser as far as this lesson needs one: it keeps cookies for each address separately, follows redirects one hop at a time and remembers where it went, and when Keycloak shows its sign-in page it types the shopper's user name and password there
+├── StoreAccounts.java    The store's customers
+├── StoreApp.java         
+├── StoreController.java  Who is signed in: the issuer and the subject, and the names of the claims in the ID token
+├── StoreSecurity.java    The store signs shoppers in with OpenID Connect: the authorization code flow with PKCE, a state and a nonce that Spring Security keeps in the shopper's session, an ID token that Spring Security checks, and sign-out that reaches the provider (RP-initiated logout) and that the provider can start (back-channel logout)
+└── Tokens.java           Gets the tokens that the store itself keeps out of the browser, so that the demo can look at them: a sign-in as the store would start it, stopped at the callback address, and the code redeemed at the token endpoint the way the store redeems it
+</code></pre>
+<p><strong>OpenID Connect login in Spring Security 7 against Keycloak gives the store a checked ID token, a state, a nonce and PKCE kept in the shopper's session, discovery that insists on the right issuer, and back-channel logout; the store still has to key its customers by issuer and subject and never by e-mail address, to keep the ID token away from APIs, and to tell the library its own logout address.</strong></p>
+<p>The plain <a href="../openid-connect">openid-connect</a> project builds the checks of an ID token from scratch. This one is the login most Spring Boot stores really run: <strong>Spring Security 7</strong> <code>oauth2Login()</code> against a real <strong>Keycloak 26.8</strong> in Docker, with two realms (the bank and a wallet). It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Access is not identity.</strong> The store sends Ana to the bank with scope <code>openid email</code>, a state, a nonce and a PKCE challenge, and Spring Security keeps them for her browser. The reply holds an ID token (typ <code>ID</code>, audience <code>store-web</code>) and an access token (typ <code>Bearer</code>, no audience). The access token offered as a sign-in is refused by Spring's decoder, and a request without the <code>openid</code> scope gets no ID token. A callback from another sign-in carried to Ana's browser is refused.
+- <strong>Checking the ID token.</strong> With <code>OidcIdTokenDecoderFactory</code> and a local provider that signs claims Keycloak would never issue: a key the bank never published, an issuer with an extra slash, another issuer, another audience, two audiences with no <code>azp</code>, expiry (29 seconds past accepted, 31 refused, with a 30 second skew), no subject and <code>alg: none</code>.
+- <strong>Discovery and keys.</strong> <code>ClientRegistrations.fromIssuerLocation</code> refuses a document that names another issuer, but <strong>accepts one whose keys are on another site</strong>; the issuer address must be trusted. When Keycloak adds a second signing key the store reloads the key set by itself.
+- <strong>Who signed in.</strong> The wallet says its user <code>mal</code> has Ana's e-mail address, unverified. A store that keys accounts by e-mail gives <strong>Mallory Ana's account</strong>; keyed by issuer and subject it gives her a new one. Userinfo answers to the access token and not to the ID token.
+- <strong>Signing out.</strong> RP-initiated logout sends the browser to Keycloak with <code>id_token_hint</code>. <strong>Back-channel logout</strong> from Keycloak ends the laptop's session and leaves the phone's. Spring Security posts to its own logout address to do it, and by default builds that from the request, so the store must be told its address. A made-up logout token and an ID token posted as one are both refused.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · OpenID Connect Core 1.0, OpenID Connect Discovery 1.0, RP-Initiated Logout 1.0, Back-Channel Logout 1.0 · RFC 9700 · CWE-287, CWE-639.</p>
+<h2>The idea in everyday terms</h2>
+<p>A shop that lets customers show a library card as proof of who they are. The card says who issued it and carries a number; it does not matter what name is printed on it. A shop that files its customers by name will, one day, file two people under one name.</p>
+<h2>The scenario</h2>
+<p>An online store lets shoppers sign in with their bank login, and with a wallet login. The demo starts a real Keycloak with the two realms and the real store, signs Ana and Mallory in, and tries the tokens and logouts that go wrong.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. OAuth gives access; OpenID Connect adds who signed in</td>
+<td>The store sends Ana to the bank with openid scope, state, nonce and PKCE; the reply holds an ID token for the store and an access token for the API; an access token is refused as a sign-in.</td>
+</tr>
+<tr>
+<td>2. Checking the ID token</td>
+<td>Spring Security's decoder refuses a key never published, an issuer with an extra slash, another issuer or audience, a missing azp, an expired token, no subject and alg none.</td>
+</tr>
+<tr>
+<td>3. Discovery and keys</td>
+<td>The store is configured with one issuer; discovery refuses a document that names another issuer but not one whose keys are elsewhere; a second signing key is picked up by itself.</td>
+</tr>
+<tr>
+<td>4. Who signed in: issuer and subject, never the email</td>
+<td>A wallet user with Ana's unverified e-mail address takes over her account in a store that keys accounts by e-mail; keyed by issuer and subject Mallory gets a new account.</td>
+</tr>
+<tr>
+<td>5. Signing out, and the bill</td>
+<td>Sign-out at the store reaches Keycloak with id_token_hint; Keycloak's back-channel logout ends the laptop's session and leaves the phone's; a made-up logout token and an ID token are refused.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>33 tests in <code>DemoRunsTest</code>, <code>KeycloakLoginTest</code>, <code>ProviderChecksTest</code>, <code>RealmFilesTest</code>. The tests that need Keycloak are tagged integration and share one container per class (./gradlew integrationTest). The realm file tests and the ID token checks against a local provider need no Docker.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Keycloak is a real container bound to 127.0.0.1 on a free port; its realms are imported from infra/, with the store's port written into a temporary copy. The store is a real Spring Boot application on a loopback port. The browser is a few lines of Java that keep cookies per address. Keycloak reaches the store through host.docker.internal for back-channel logout. Ports, codes, tokens and session ids are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security-oauth2-client</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/openid-connect-with-spring-security-and-keycloak-explained.html">OpenID Connect with Spring Security and Keycloak, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The store trusts each provider for its own users only, identified by issuer and subject.</p>
+<p><img alt="The store and two providers" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The store is small; the library carries the protocol.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>State, nonce and verifier stay in the browser's session; the ID token yields an issuer and a subject.</p>
+<p><img alt="What the store keeps and what it learns" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Back-channel logout" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/openid-connect-with-spring-security-and-keycloak-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every provider is a trust decision:</strong> its issuer address, its keys, and what it claims about e-mail addresses.</li>
+<li><strong>A library does the checks only for the flows it knows,</strong> so the store's own account lookup is where the mistakes are made.</li>
+<li><strong>Back-channel logout needs the store to be reachable by Keycloak,</strong> and to know its own address.</li>
+<li><strong>Sessions on the provider and in the store must be kept in step,</strong> or signing out at one leaves the other signed in.</li>
+<li><strong>Key rotation depends on the cache:</strong> a retired key lives on until the store reloads the key set.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A store with one provider that it also runs can use a session cookie of its own. Use OpenID Connect when customers already have a login elsewhere, or when several applications should share one sign-in and one sign-out.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>spring.security.oauth2.client.registration</code> and <code>provider.*.issuer-uri</code> in an application.yml.</li>
+<li>A "Sign in with" button.</li>
+<li><code>http.oauth2Login()</code> and <code>http.oidcLogout()</code> in a security configuration.</li>
+<li>An account table with an <code>email</code> column used as the key.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../openid-connect">openid-connect</a>, in the <a href="..">identity-and-access</a> module. It follows the same five acts, on Spring Security and a real provider.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

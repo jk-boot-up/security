@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 95 projects. Planned: 57 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 96 projects. Planned: 56 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,11 +24,11 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **54** | **22** | **76** |
+| **Intermediate** | | **55** | **21** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
-| | identity-and-access | 8 | 4 | 12 |
+| | identity-and-access | 9 | 3 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
 | | secure-coding | 4 | 4 | 8 |
 | | secrets-and-supply-chain | 4 | 4 | 8 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **95** | **57** | **152** |
+| **All** | | **96** | **56** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 14 | 22 | 36 |
+| Intermediate | With tools | 15 | 21 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **35** | **22** | **57** |
+| **All** | **With tools** | **36** | **21** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -196,7 +196,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 70 | [oauth2-authorization-code-pkce](intermediate/identity-and-access/oauth2-authorization-code-pkce) | Plain | Give an app access without giving it your password | RFC 9700, A07 |
 | 71 | [oauth2-authorization-code-pkce-with-keycloak](intermediate/identity-and-access/oauth2-authorization-code-pkce-with-keycloak) | With tools: keycloak | The same flow against a real authorization server: the checks that make it safe are settings on the client, and Keycloak enforces them | RFC 9700, A07 |
 | 72 | [openid-connect](intermediate/identity-and-access/openid-connect) | Plain | Access is not identity | A07 |
-| 73 | openid-connect-with-spring-security-and-keycloak | With tools: spring security and keycloak | *planned*: OIDC login in Spring Boot, with back-channel logout | A07 |
+| 73 | [openid-connect-with-spring-security-and-keycloak](intermediate/identity-and-access/openid-connect-with-spring-security-and-keycloak) | With tools: spring security and keycloak | Spring Security checks the ID token and keeps the state and nonce; what it leaves to the store is who the customer is, and how sign-out reaches every session | A07 |
 | 74 | [tokens-in-the-browser](intermediate/identity-and-access/tokens-in-the-browser) | Plain | A token a script can read is a token an attacker can take | OAuth for browser-based apps, RFC 9449 |
 | 75 | tokens-in-the-browser-with-spring-boot | With tools: spring boot | *planned*: a small BFF in front of the bank API | OAuth for browser-based apps, RFC 9449 |
 | 76 | [passkeys](intermediate/identity-and-access/passkeys) | Plain | A key that only signs for the real site | A07, NIST SP 800-63B |

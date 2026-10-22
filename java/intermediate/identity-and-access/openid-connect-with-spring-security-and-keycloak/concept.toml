@@ -1,0 +1,478 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "openid-connect-with-spring-security-and-keycloak"
+level = "intermediate"
+module = "identity-and-access"
+title = "OpenID Connect with Spring Security and Keycloak"
+short_title = "OIDC with Spring Security"
+package = "oidcspring"
+main_class = "OidcSpringDemo"
+tagline = "Spring Security checks the ID token and keeps the state and nonce; what it leaves to the store is who the customer is, and how sign-out reaches every session"
+bold = "OpenID Connect login in Spring Security 7 against Keycloak gives the store a checked ID token, a state, a nonce and PKCE kept in the shopper's session, discovery that insists on the right issuer, and back-channel logout; the store still has to key its customers by issuer and subject and never by e-mail address, to keep the ID token away from APIs, and to tell the library its own logout address."
+domain = "an online store"
+domain_note = ""
+youtube_description = "OpenID Connect login with Spring Security 7 and a real Keycloak 26 in Docker: the authorization request with state, nonce and PKCE, the ID token against the access token, what Spring's validator refuses (a key never published, a wrong issuer, a wrong audience, azp, expiry with skew, no subject, alg none), discovery that checks the issuer and not where the keys are, key rotation, an account takeover by e-mail address through a second provider, userinfo, RP-initiated logout, and real back-channel logout from Keycloak that ends one of Ana's two sessions."
+thumb_lines = ["OPENID CONNECT", "WITH SPRING SECURITY"]
+thumb_code = "oauth2Login().oidcLogout()"
+youtube_title = "OpenID Connect with Spring Security and Keycloak: ID Token Checks, Account Takeover, Back-Channel Logout"
+youtube_tags = ["openid connect", "spring security", "keycloak", "id token", "nonce", "back-channel logout", "oauth2login", "owasp top 10", "a07", "java"]
+
+[readme]
+intro = """
+The plain [openid-connect](../openid-connect) project builds the checks of an ID token from scratch. This one is the login most Spring Boot stores really run: **Spring Security 7** `oauth2Login()` against a real **Keycloak 26.8** in Docker, with two realms (the bank and a wallet). It needs Docker; its tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Access is not identity.** The store sends Ana to the bank with scope `openid email`, a state, a nonce and a PKCE challenge, and Spring Security keeps them for her browser. The reply holds an ID token (typ `ID`, audience `store-web`) and an access token (typ `Bearer`, no audience). The access token offered as a sign-in is refused by Spring's decoder, and a request without the `openid` scope gets no ID token. A callback from another sign-in carried to Ana's browser is refused.
+- **Checking the ID token.** With `OidcIdTokenDecoderFactory` and a local provider that signs claims Keycloak would never issue: a key the bank never published, an issuer with an extra slash, another issuer, another audience, two audiences with no `azp`, expiry (29 seconds past accepted, 31 refused, with a 30 second skew), no subject and `alg: none`.
+- **Discovery and keys.** `ClientRegistrations.fromIssuerLocation` refuses a document that names another issuer, but **accepts one whose keys are on another site**; the issuer address must be trusted. When Keycloak adds a second signing key the store reloads the key set by itself.
+- **Who signed in.** The wallet says its user `mal` has Ana's e-mail address, unverified. A store that keys accounts by e-mail gives **Mallory Ana's account**; keyed by issuer and subject it gives her a new one. Userinfo answers to the access token and not to the ID token.
+- **Signing out.** RP-initiated logout sends the browser to Keycloak with `id_token_hint`. **Back-channel logout** from Keycloak ends the laptop's session and leaves the phone's. Spring Security posts to its own logout address to do it, and by default builds that from the request, so the store must be told its address. A made-up logout token and an ID token posted as one are both refused.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures · OpenID Connect Core 1.0, OpenID Connect Discovery 1.0, RP-Initiated Logout 1.0, Back-Channel Logout 1.0 · RFC 9700 · CWE-287, CWE-639.
+"""
+analogy = """
+A shop that lets customers show a library card as proof of who they are. The card says who issued it and carries a number; it does not matter what name is printed on it. A shop that files its customers by name will, one day, file two people under one name.
+"""
+scenario = """
+An online store lets shoppers sign in with their bank login, and with a wallet login. The demo starts a real Keycloak with the two realms and the real store, signs Ana and Mallory in, and tries the tokens and logouts that go wrong.
+"""
+costs = [
+    "**Every provider is a trust decision:** its issuer address, its keys, and what it claims about e-mail addresses.",
+    "**A library does the checks only for the flows it knows,** so the store's own account lookup is where the mistakes are made.",
+    "**Back-channel logout needs the store to be reachable by Keycloak,** and to know its own address.",
+    "**Sessions on the provider and in the store must be kept in step,** or signing out at one leaves the other signed in.",
+    "**Key rotation depends on the cache:** a retired key lives on until the store reloads the key set.",
+]
+too_much = """
+A store with one provider that it also runs can use a session cookie of its own. Use OpenID Connect when customers already have a login elsewhere, or when several applications should share one sign-in and one sign-out.
+"""
+met_before = [
+    "`spring.security.oauth2.client.registration` and `provider.*.issuer-uri` in an application.yml.",
+    "A \"Sign in with\" button.",
+    "`http.oauth2Login()` and `http.oidcLogout()` in a security configuration.",
+    "An account table with an `email` column used as the key.",
+]
+where = """
+This is the tools version of [openid-connect](../openid-connect), in the [identity-and-access](..) module. It follows the same five acts, on Spring Security and a real provider.
+"""
+twin = """
+Keycloak is a real container bound to 127.0.0.1 on a free port; its realms are imported from infra/, with the store's port written into a temporary copy. The store is a real Spring Boot application on a loopback port. The browser is a few lines of Java that keep cookies per address. Keycloak reaches the store through host.docker.internal for back-channel logout. Ports, codes, tokens and session ids are never printed.
+"""
+test_note = "The tests that need Keycloak are tagged integration and share one container per class (./gradlew integrationTest). The realm file tests and the ID token checks against a local provider need no Docker."
+
+[[act]]
+title = "OAuth gives access; OpenID Connect adds who signed in"
+summary = "The store sends Ana to the bank with openid scope, state, nonce and PKCE; the reply holds an ID token for the store and an access token for the API; an access token is refused as a sign-in."
+detail = """
+The store sends Ana to Keycloak with the scope openid email and a state, a nonce and a PKCE challenge kept for her browser. She signs in at Keycloak, never at the store, and the store redeems the code itself. The ID token's claims include acr, at_hash, aud, auth_time, azp, email, email_verified, exp, iat, iss, nonce, sid, sub and typ. Ana is signed in to the store as the bank realm and her subject, with her e-mail address, verified. The nonce in her ID token is the one the store sent. The reply holds two tokens: an ID token for the store, typ ID, audience store-web, and an access token for the bank's API, typ Bearer, with no audience claim. The access token handed to the store as proof of sign-in is refused by Spring's decoder: its audience is missing. A sign-in without the openid scope gets no ID token. A callback from another sign-in, carried to Ana's browser, is refused.
+"""
+speech = """
+First demo: O Auth gives access, Open I D Connect adds who signed in. [[slnc 400]] The store sends Ana to the bank with the openid scope, a state, a nonce, and a P K C E challenge. [[slnc 600]]
+She signs in at Keycloak, never at the store. [[slnc 300]] The store redeems the code itself, and checks the I D token. [[slnc 600]]
+The access token is for the bank's A P I. [[slnc 300]] Offered as a sign in, it is refused. [[slnc 600]]
+And a callback from another sign in is refused too.
+"""
+rows = { signin = "active ok" }
+console = [
+    ["state, nonce and a PKCE challenge kept for her browser", "ok"],
+    ["the ID token: typ ID, audience store-web", "ok"],
+    ["the access token as a sign-in -> refused (aud=null)", "ok"],
+    ["a callback from another sign-in -> refused", "ok"],
+]
+
+[[act]]
+title = "Checking the ID token"
+summary = "Spring Security's decoder refuses a key never published, an issuer with an extra slash, another issuer or audience, a missing azp, an expired token, no subject and alg none."
+detail = """
+Against a local provider that signs claims Keycloak would never issue: the bank's own ID token is accepted. The same claims signed with a key the bank never published, under the bank's key id: refused, invalid signature. Issuer https://bank.example/ with one extra slash, and issuer https://wallet.example signed by the bank: refused. Audience budget-app: refused. Audiences store-web and budget-app with no azp: refused; with azp store-web: accepted. 29 seconds past its expiry, inside the 30 second skew: accepted; 31 seconds past: refused as expired. No subject: refused. A header saying alg none: refused. The nonce is checked by the sign-in itself, against the one kept in the browser's session.
+"""
+speech = """
+Second demo: checking the I D token. [[slnc 400]] A key the bank never published is refused. [[slnc 600]]
+An issuer with one extra slash is refused, and so is another issuer, or another audience. [[slnc 600]]
+Two audiences need an authorized party that names this client. [[slnc 600]]
+Twenty nine seconds past expiry is accepted, thirty one is refused. [[slnc 300]] And a token with alg none is refused.
+"""
+rows = { check = "active ok" }
+console = [
+    ["a key the bank never published -> refused (Invalid signature)", "ok"],
+    ["issuer with an extra slash -> refused (iss)", "ok"],
+    ["two audiences, no azp -> refused; with azp -> accepted", "ok"],
+    ["29 seconds past expiry -> accepted; 31 -> refused", "ok"],
+]
+
+[[act]]
+title = "Discovery and keys"
+summary = "The store is configured with one issuer; discovery refuses a document that names another issuer but not one whose keys are elsewhere; a second signing key is picked up by itself."
+detail = """
+The store is configured with one value, the issuer. It reads the discovery document, which names the issuer it asked for, and the authorization, token and key addresses all start with the issuer's own address. A document at that address naming the issuer https://wallet.example is refused: one provider cannot pose as another. A document whose keys are on https://keys.example is accepted by Spring Security, which checks the issuer and not where the keys are, so the issuer address must be https and trusted. Keycloak publishes 1 signing key. The bank adds a second key and signs new tokens with it; it now publishes 2, and the store, which has not seen the new key id, reloads the key set on its own: tokens signed with the old key and with the new key are both accepted.
+"""
+speech = """
+Third demo: discovery and keys. [[slnc 400]] The store is configured with one value, the issuer. [[slnc 600]]
+A discovery document that names another issuer is refused. [[slnc 600]]
+A document whose keys are on another site is accepted, because Spring Security checks the issuer and not where the keys are. [[slnc 600]]
+When the bank adds a second key, the store reloads the key set by itself.
+"""
+rows = { keys = "active ok" }
+console = [
+    ["a document naming another issuer -> refused", "ok"],
+    ["a document with keys on another site -> accepted", "amber"],
+    ["Keycloak adds a second signing key: 2 published", "ok"],
+    ["old and new tokens are accepted after the reload", "ok"],
+]
+
+[[act]]
+title = "Who signed in: issuer and subject, never the email"
+summary = "A wallet user with Ana's unverified e-mail address takes over her account in a store that keys accounts by e-mail; keyed by issuer and subject Mallory gets a new account."
+detail = """
+The bank says Ana's subject has the e-mail address ana@mail.example, verified. The wallet says its user also has the e-mail address ana@mail.example, not verified. A store that keys accounts by e-mail address gives Mallory, who signed in with the wallet, the account of Ana: account takeover. Keyed by issuer and subject, Ana gets the account of Ana and Mallory gets a new account for wallet and her own subject. Userinfo with Ana's access token answers 200 with the same subject as the ID token. Userinfo with the ID token instead is refused with 401.
+"""
+speech = """
+Fourth demo: who signed in. [[slnc 400]] The wallet says its user has Ana's e-mail address, not verified. [[slnc 600]]
+A store that keys its accounts by e-mail gives Mallory the account of Ana. [[slnc 300]] That is account takeover. [[slnc 600]]
+Keyed by issuer and subject, Mallory gets a new account. [[slnc 600]]
+Userinfo answers to the access token, and not to the I D token.
+"""
+rows = { who = "active wrong" }
+console = [
+    ["the wallet: mal has ana@mail.example, verified: false", "amber"],
+    ["keyed by e-mail: Mallory gets the account of Ana", "bad"],
+    ["keyed by issuer and subject: Mallory gets a new account", "ok"],
+    ["userinfo with the ID token -> refused (401)", "ok"],
+]
+
+[[act]]
+title = "Signing out, and the bill"
+summary = "Sign-out at the store reaches Keycloak with id_token_hint; Keycloak's back-channel logout ends the laptop's session and leaves the phone's; a made-up logout token and an ID token are refused."
+detail = """
+Ana signs out at the store: the store's session ended. Her browser is sent to Keycloak's logout endpoint with id_token_hint and post_logout_redirect_uri, Keycloak ends its session and sends the browser back to the store, and signing in again asks for her password. Ana is signed in on a laptop and a phone, two Keycloak sessions. Keycloak ends the laptop's session through the admin API and sends the store a back-channel logout token: the laptop is signed out and the phone stays signed in. A made-up logout token is refused with 400, and an ID token sent as a logout token is refused too, with a 500 from this version of Spring Security, and the phone stays signed in. Back-channel logout makes the store post to its own logout address, which by default is built from the request and so names host.docker.internal; the store is told its own address.
+"""
+speech = """
+Fifth demo: signing out. [[slnc 400]] Ana signs out at the store, and her browser is sent to Keycloak, which ends its session. [[slnc 600]]
+Ana is signed in on a laptop and a phone. [[slnc 300]] Keycloak ends the laptop's session, and sends the store a back channel logout token. [[slnc 600]]
+The laptop is signed out. [[slnc 300]] The phone stays signed in. [[slnc 600]]
+A made up logout token, or an I D token sent as one, ends nothing.
+"""
+rows = { out = "active ok" }
+console = [
+    ["sign-out at the store: id_token_hint sent to Keycloak", "ok"],
+    ["Keycloak ends the laptop's session -> the laptop signed out", "ok"],
+    ["the phone stays signed in", "ok"],
+    ["a made-up logout token -> refused (400)", "ok"],
+]
+
+[animation]
+subtitle = "An online store, two providers, and the sign-in the library does not finish for you."
+boxes = [
+    ["signin", "Sign in", "state, nonce, ID token"],
+    ["check", "Checks", "what the decoder refuses"],
+    ["keys", "Discovery, keys", "issuer, rotation"],
+    ["who", "Who signed in", "issuer and subject"],
+    ["out", "Signing out", "RP-initiated, back-channel"],
+]
+
+[docs.problem]
+scenario = """
+An online store wants shoppers to sign in with a login they already have, at a bank and at a wallet, and to end every session when they sign out anywhere.
+"""
+naive = """
+Take the e-mail address from the token as the customer's identity, and sign out only at the store.
+"""
+deliver = [
+    "A real Keycloak with two realms and a real Spring Security 7 client.",
+    "Spring Security's own ID token checks, shown refusing crafted tokens.",
+    "An account takeover through an unverified e-mail address, and the fix.",
+    "RP-initiated and back-channel logout, working end to end.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain openid-connect project, for the checks",
+    "Docker, with the quay.io/keycloak/keycloak:26.8.1 image (pulled on first use)",
+]
+not_required = [
+    "A Keycloak installed on the machine: the demo starts and removes its own container",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain the difference between an ID token and an access token",
+    "name what Spring Security checks in an ID token and what the store must still do",
+    "key customers by issuer and subject",
+    "configure back-channel logout and say why the store needs its own address",
+]
+walkthrough = """
+Run act one and find the nonce in both the request and the token. In act four ask which providers could say that an e-mail address is theirs. In act five ask what ends when the provider ends a session, and what does not.
+"""
+exercises = [
+    "Add a third provider and decide what the store does when two providers claim the same verified e-mail address.",
+    "Link accounts on purpose: a signed-in customer adds a second provider to their account.",
+    "Make the store refuse sign-ins whose acr is below a level it needs for payments.",
+    "Make back-channel logout work behind a proxy where the store's public address differs from its own.",
+]
+
+[docs.explained]
+sentence = """
+OpenID Connect tells the store who signed in as an issuer and a subject, in a token the library checks, and everything after that, the account, the session and the logout, is the store's own work.
+"""
+verdict = """
+Use a certified library and the discovery address of a provider you trust over https, key customers by issuer and subject, treat e-mail as an attribute, keep the ID token away from APIs, and make sign-out reach the store, the provider and every other application.
+"""
+recognise = [
+    "`http.oauth2Login()` and `issuer-uri` in a Spring Boot application.",
+    "An `email` column used as a unique key for accounts.",
+    "A `sid` claim in an ID token.",
+    "A logout that only clears the store's own cookie.",
+]
+
+[spec]
+purpose = """
+Teach OpenID Connect login with Spring Security 7 on a real provider: the checks, the account key and the logouts.
+"""
+nongoals = [
+    "Operating Keycloak in production.",
+    "Authorization of the store's own routes.",
+    "Passkeys, SAML and other sign-in methods.",
+]
+problem = """
+Teams add OpenID Connect login with a few properties and then key their customers by e-mail address and sign out only locally.
+"""
+roles = [["The provider", "`KeycloakLab`, `infra/*-realm.json`"], ["The store", "`StoreSecurity`, `StoreController`, `StoreAccounts`"], ["The browser", "`Shopper`"], ["The tokens", "`Tokens`, `LocalProvider`"], ["Entry point", "`OidcSpringDemo`"]]
+requirements = [
+    "The sign-in uses state, nonce and PKCE kept for the browser.",
+    "An access token is not accepted as an ID token.",
+    "A key never published, a wrong issuer or audience, a missing azp, an expired token, no subject and alg none are refused.",
+    "Discovery refuses a document naming another issuer.",
+    "Customers are keyed by issuer and subject.",
+    "Sign-out reaches the provider; the provider's back-channel logout ends one session.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The store and two providers"
+caption = "The store trusts each provider for its own users only, identified by issuer and subject."
+nodes = [
+    { id = "shopper", label = "Shopper's browser", sub = "signs in at the provider", col = 0, row = 0, colour = "client" },
+    { id = "store", label = "The store", sub = "Spring Security oauth2Login", col = 1, row = 0, colour = "accent" },
+    { id = "bank", label = "Keycloak realm: bank", sub = "Ana, verified e-mail", col = 2, row = 0, colour = "green" },
+    { id = "wallet", label = "Keycloak realm: wallet", sub = "Mal, unverified e-mail", col = 2, row = 1, colour = "amber" },
+]
+edges = [
+    { from = "shopper", to = "store" },
+    { from = "store", to = "bank", label = "code, ID token" },
+    { from = "store", to = "wallet", label = "code, ID token" },
+    { from = "bank", to = "store", label = "back-channel logout", dashed = true },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The store is small; the library carries the protocol."
+nodes = [
+    { id = "sec", label = "StoreSecurity", sub = ["chain()", "oidcSessionRegistry()"], col = 0, row = 0, colour = "accent" },
+    { id = "ctl", label = "StoreController", sub = ["me()", "account()", "csrf()"], col = 1, row = 0, colour = "green" },
+    { id = "acc", label = "StoreAccounts", sub = ["byEmail()", "bySubject()"], col = 1, row = 1, colour = "red" },
+    { id = "shopper", label = "Shopper", sub = ["navigate()", "post()"], col = 0, row = 1, colour = "client" },
+]
+edges = [
+    { from = "ctl", to = "acc", label = "looks up" },
+    { from = "shopper", to = "sec", label = "browses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What the store keeps and what it learns"
+caption = "State, nonce and verifier stay in the browser's session; the ID token yields an issuer and a subject."
+nodes = [
+    { id = "req", label = "Authorization request", sub = "state, nonce, challenge", col = 0, row = 0, colour = "client" },
+    { id = "code", label = "Code", sub = "redeemed by the store", col = 1, row = 0, colour = "amber" },
+    { id = "id", label = "ID token", sub = "checked by the library", col = 2, row = 0, colour = "accent" },
+    { id = "who", label = "Customer", sub = "issuer + subject", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "req", to = "code" },
+    { from = "code", to = "id" },
+    { from = "id", to = "who" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Back-channel logout"
+participants = ["Admin or Keycloak", "Keycloak", "The store", "Laptop session"]
+steps = [
+    ["Admin or Keycloak", "Keycloak", "end Ana's laptop session"],
+    ["Keycloak", "The store", "POST /logout/connect/back-channel/bank, logout_token"],
+    ["note", "The store", "typ logout+jwt, events, sid; no nonce"],
+    ["The store", "Laptop session", "end the session with that sid"],
+    ["The store", "Keycloak", "200", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Account takeover by e-mail"
+participants = ["Mallory", "Wallet", "The store"]
+steps = [
+    ["Mallory", "Wallet", "sign in as mal"],
+    ["Wallet", "The store", "ID token: email ana@mail.example, email_verified false"],
+    ["note", "The store", "accounts keyed by e-mail"],
+    ["The store", "Mallory", "the account of Ana", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The attacker", nodes = ["mallory"], colour = "red" },
+    { label = "The store", nodes = ["store"], colour = "green" },
+    { label = "The providers", nodes = ["bank", "wallet"], colour = "amber" },
+]
+nodes = [
+    { id = "mallory", label = "Mallory", sub = "links, tokens, a provider of her own", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "store", label = "The store", sub = "client and account lookup", col = 1, row = 0, colour = "accent", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "bank", label = "Bank realm", sub = "verifies e-mail", col = 2, row = 0, colour = "green", threats = ["T4"] },
+    { id = "wallet", label = "Wallet realm", sub = "does not verify", col = 2, row = 1, colour = "amber", threats = ["T2", "T4"] },
+]
+edges = [
+    { from = "mallory", to = "store", label = "forged callback, wrong token", colour = "red", dashed = true, threats = ["T1", "T3"] },
+    { from = "mallory", to = "wallet", label = "signs in", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "store", to = "bank", label = "discovery, keys", threats = ["T3"] },
+    { from = "bank", to = "store", label = "back-channel logout", dashed = true, threats = ["T4"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Security OpenID Connect client with two providers, the accounts it keeps and its sign-out. It covers the sign-in request and response, the ID token checks, discovery and keys, the account lookup, and logout. It does not cover the providers' own security.
+"""
+assets = [
+    "The customers' store accounts.",
+    "The customers' sessions at the store and at the providers.",
+]
+actors = [
+    "A shopper, who signs in with a bank or a wallet.",
+    "Mallory, who controls the wallet user she signs in with and can send a link.",
+    "An operator of a provider, who can end sessions.",
+]
+boundaries = [
+    "The browser to the store: the callback carries a code and a state.",
+    "The store to the provider: discovery, token and key requests.",
+    "The provider to the store: the back-channel logout token.",
+]
+assumptions = [
+    "The issuer addresses are https and belong to the providers in production.",
+    "A provider is trusted only for its own users' subjects.",
+]
+out_of_scope = [
+    "Compromise of a provider or its keys.",
+    "Theft of the store's session cookie.",
+]
+tests = [
+    "`KeycloakLoginTest` starts a real Keycloak and the store and checks the redirect, the claims, a wrong password, the access token against the ID token, the openid scope, userinfo, the wallet user, the account keys, a callback from another sign-in, sign-out, a logout without a CSRF token, back-channel logout, a stranger's logout token and key rotation.",
+    "`ProviderChecksTest` checks Spring Security's ID token validation and discovery against a local provider, and `RealmFilesTest` the realm files.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, tokens-in-the-browser-with-spring-boot, puts a small backend for the front end in front of the bank API so that the browser never holds a token.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A callback or code from another sign-in signs the shopper into the attacker's account"
+where = "the login callback"
+control = "A state and a nonce kept in the shopper's session, and PKCE"
+residual = "A store that turns the checks off"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A provider that does not verify e-mail addresses lets the attacker claim another customer's address"
+where = "`StoreAccounts.byEmail`"
+control = "Customers are keyed by issuer and subject; e-mail is an attribute"
+residual = "Account linking that trusts an unverified address"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A token or provider document that is not the real provider's is accepted"
+where = "ID token validation, discovery"
+control = "Signature by a published key, exact issuer and audience, azp, expiry, and a trusted https issuer address"
+residual = "A discovery document served by a compromised provider"
+
+[[threat]]
+id = "T4"
+stride = "R"
+threat = "A session stays signed in after the provider ended it"
+where = "back-channel logout"
+control = "An OIDC session registry, back-channel logout and RP-initiated logout"
+residual = "A provider or store that is unreachable when the logout is sent"
+
+[poster]
+headline = [["OPENID CONNECT", "text"], ["WITH SPRING SECURITY", "accent"]]
+taglines = [["Spring Security checks the ID token and keeps the state and nonce; what it leaves to the s", "gold"]]
+before = { code = "state, nonce and a PKCE challenge kept for her brows", note = "OAuth gives access; OpenID Connect adds ", tag = "BEFORE" }
+after = { code = "oauth2Login().oidcLogout()", note = "Signing out, and the bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "OpenID Connect with Spring Security and Keycloak"
+narration = "Hello, and welcome. [[slnc 400]] This video explains O I D C with Spring Security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] OpenID Connect login in Spring Security 7 against Keycloak gives the store a checked I D token, a state, a nonce and P K C E kept in the shopper's session, discovery that insists on the right issuer, and back-channel logout; the store still has to key its customers by issuer and subject and never by e-mail address, to keep the I D token away from A P I, and to tell the library its own logout address. [[slnc 600]] Think of it this way. [[slnc 300]] A shop that lets customers show a library card as proof of who they are. The card says who issued it and carries a number; it does not matter what name is printed on it. A shop that files its customers by name will, one day, file two people under one name. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain the difference between an I D token and an access token. [[slnc 300]] Name what Spring Security checks in an I D token and what the store must still do. [[slnc 300]] Key customers by issuer and subject."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store lets shoppers sign in with", "their bank login, and with a wallet login.", "The demo starts a real Keycloak with the two", "realms and the real store, signs Ana and", "Mallory in, and tries the tokens and logouts", "that go wrong."]
+narration = "Here is the scenario. [[slnc 400]] An online store lets shoppers sign in with their bank login, and with a wallet login. [[slnc 400]] The demo starts a real Keycloak with the two realms and the real store, signs Ana and Mallory in, and tries the tokens and logouts that go wrong."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every provider is a trust decision", "A library does the checks only for the flows it knows", "Back-channel logout needs the store to be reachable by", "Keycloak", "Sessions on the provider and in the store must be kept", "in step", "Key rotation depends on the cache"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every provider is a trust decision. [[slnc 500]] A library does the checks only for the flows it knows. [[slnc 500]] Back-channel logout needs the store to be reachable by Keycloak. [[slnc 500]] Sessions on the provider and in the store must be kept in step. [[slnc 500]] Key rotation depends on the cache."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The provider: KeycloakLab, infra/-realm.json", "The store: StoreSecurity, StoreController,", "StoreAccounts", "The browser: Shopper", "The tokens: Tokens, LocalProvider", "Entry point: OidcSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The provider is in KeycloakLab and infra/-realm.json. [[slnc 500]] The store is in StoreSecurity and StoreController and StoreAccounts. [[slnc 500]] The browser is in Shopper. [[slnc 500]] The tokens is in Tokens and LocalProvider. [[slnc 500]] Entry point is in OidcSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["An email column used as a unique key for accounts", "A sid claim in an ID token", "A logout that only clears the store's own cookie"]
+narration = "You have probably met this already. [[slnc 400]] An email column used as a unique key for accounts. [[slnc 500]] A sid claim in an I D token. [[slnc 500]] A logout that only clears the store's own cookie."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain the difference between an ID token and an", "access token", "Name what Spring Security checks in an ID token and", "what the store must still do", "Key customers by issuer and subject", "Configure back-channel logout and say why the store", "needs its own address"]
+narration = "So, how do you use it? [[slnc 400]] Use a certified library and the discovery address of a provider you trust over https, key customers by issuer and subject, treat e-mail as an attribute, keep the I D token away from A P I, and make sign-out reach the store, the provider and every other application."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's O I D C with Spring Security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] OpenID Connect tells the store who signed in as an issuer and a subject, in a token the library checks, and everything after that, the account, the session and the logout, is the store's own work. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a third provider and decide what the store does when two providers claim the same verified e-mail address. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

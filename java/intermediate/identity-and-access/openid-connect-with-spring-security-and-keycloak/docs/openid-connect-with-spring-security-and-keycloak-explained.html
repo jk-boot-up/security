@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenID Connect with Spring Security and Keycloak, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>OpenID Connect with Spring Security and Keycloak, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>OpenID Connect tells the store who signed in as an issuer and a subject, in a token the library checks, and everything after that, the account, the session and the logout, is the store's own work.</p>
+<h2>The 5 acts</h2>
+<h3>1. OAuth gives access; OpenID Connect adds who signed in</h3>
+<p>The store sends Ana to Keycloak with the scope openid email and a state, a nonce and a PKCE challenge kept for her browser. She signs in at Keycloak, never at the store, and the store redeems the code itself. The ID token's claims include acr, at_hash, aud, auth_time, azp, email, email_verified, exp, iat, iss, nonce, sid, sub and typ. Ana is signed in to the store as the bank realm and her subject, with her e-mail address, verified. The nonce in her ID token is the one the store sent. The reply holds two tokens: an ID token for the store, typ ID, audience store-web, and an access token for the bank's API, typ Bearer, with no audience claim. The access token handed to the store as proof of sign-in is refused by Spring's decoder: its audience is missing. A sign-in without the openid scope gets no ID token. A callback from another sign-in, carried to Ana's browser, is refused.</p>
+<h3>2. Checking the ID token</h3>
+<p>Against a local provider that signs claims Keycloak would never issue: the bank's own ID token is accepted. The same claims signed with a key the bank never published, under the bank's key id: refused, invalid signature. Issuer https://bank.example/ with one extra slash, and issuer https://wallet.example signed by the bank: refused. Audience budget-app: refused. Audiences store-web and budget-app with no azp: refused; with azp store-web: accepted. 29 seconds past its expiry, inside the 30 second skew: accepted; 31 seconds past: refused as expired. No subject: refused. A header saying alg none: refused. The nonce is checked by the sign-in itself, against the one kept in the browser's session.</p>
+<h3>3. Discovery and keys</h3>
+<p>The store is configured with one value, the issuer. It reads the discovery document, which names the issuer it asked for, and the authorization, token and key addresses all start with the issuer's own address. A document at that address naming the issuer https://wallet.example is refused: one provider cannot pose as another. A document whose keys are on https://keys.example is accepted by Spring Security, which checks the issuer and not where the keys are, so the issuer address must be https and trusted. Keycloak publishes 1 signing key. The bank adds a second key and signs new tokens with it; it now publishes 2, and the store, which has not seen the new key id, reloads the key set on its own: tokens signed with the old key and with the new key are both accepted.</p>
+<h3>4. Who signed in: issuer and subject, never the email</h3>
+<p>The bank says Ana's subject has the e-mail address ana@mail.example, verified. The wallet says its user also has the e-mail address ana@mail.example, not verified. A store that keys accounts by e-mail address gives Mallory, who signed in with the wallet, the account of Ana: account takeover. Keyed by issuer and subject, Ana gets the account of Ana and Mallory gets a new account for wallet and her own subject. Userinfo with Ana's access token answers 200 with the same subject as the ID token. Userinfo with the ID token instead is refused with 401.</p>
+<h3>5. Signing out, and the bill</h3>
+<p>Ana signs out at the store: the store's session ended. Her browser is sent to Keycloak's logout endpoint with id_token_hint and post_logout_redirect_uri, Keycloak ends its session and sends the browser back to the store, and signing in again asks for her password. Ana is signed in on a laptop and a phone, two Keycloak sessions. Keycloak ends the laptop's session through the admin API and sends the store a back-channel logout token: the laptop is signed out and the phone stays signed in. A made-up logout token is refused with 400, and an ID token sent as a logout token is refused too, with a 500 from this version of Spring Security, and the phone stays signed in. Back-channel logout makes the store post to its own logout address, which by default is built from the request and so names host.docker.internal; the store is told its own address.</p>
+<h2>The verdict</h2>
+<p>Use a certified library and the discovery address of a provider you trust over https, key customers by issuer and subject, treat e-mail as an attribute, keep the ID token away from APIs, and make sign-out reach the store, the provider and every other application.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>http.oauth2Login()</code> and <code>issuer-uri</code> in a Spring Boot application.</li>
+<li>An <code>email</code> column used as a unique key for accounts.</li>
+<li>A <code>sid</code> claim in an ID token.</li>
+<li>A logout that only clears the store's own cookie.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>spring.security.oauth2.client.registration</code> and <code>provider.*.issuer-uri</code> in an application.yml.</li>
+<li>A "Sign in with" button.</li>
+<li><code>http.oauth2Login()</code> and <code>http.oidcLogout()</code> in a security configuration.</li>
+<li>An account table with an <code>email</code> column used as the key.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
