@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 115 projects. Planned: 37 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 116 projects. Planned: 36 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,7 +24,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **74** | **2** | **76** |
+| **Intermediate** | | **75** | **1** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
@@ -34,7 +34,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | secrets-and-supply-chain | 8 | 0 | 8 |
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
-| | secure-design | 3 | 2 | 5 |
+| | secure-design | 4 | 1 | 5 |
 | **Advanced** | | **0** | **35** | **35** |
 | | cloud-security-without-a-cloud | 0 | 3 | 3 |
 | | infrastructure-as-code-security | 0 | 2 | 2 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **115** | **37** | **152** |
+| **All** | | **116** | **36** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 34 | 2 | 36 |
+| Intermediate | With tools | 35 | 1 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **55** | **2** | **57** |
+| **All** | **With tools** | **56** | **1** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -267,7 +267,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
 | 113 | [threat-modeling](intermediate/secure-design/threat-modeling) | Plain | Find the threats on paper, before an attacker finds them in production | A06, SSDF PW.1 |
-| 114 | threat-modeling-with-pytm | With tools: pytm | *planned*: the same model in pytm, with generated diagrams and reports | A06, SSDF PW.1 |
+| 114 | [threat-modeling-with-pytm](intermediate/secure-design/threat-modeling-with-pytm) | With tools: pytm | Describe the bank once, let pytm check its 113 threats against every element and flow, and watch each honest answer remove findings | A06, SSDF PW.1 |
 | 115 | [attack-trees-and-abuse-cases](intermediate/secure-design/attack-trees-and-abuse-cases) | Plain | Draw how the attacker wins, price each step, then cut the cheapest path and look again | A06 |
 | 116 | attack-trees-and-abuse-cases-with-threat-dragon | With tools: threat dragon | *planned*: the store model in OWASP Threat Dragon | A06 |
 | 117 | [security-requirements-with-asvs](intermediate/secure-design/security-requirements-with-asvs) | Plain | Turn a verification standard into requirements that check themselves | ASVS 5.0 |
