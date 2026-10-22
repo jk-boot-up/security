@@ -1,0 +1,50 @@
+ONE. Identity policies: default deny, allow, explicit deny.
+  ana's policy allows reading bank-reports and denies reading bank-reports/secret/*:
+    ana   s3:GetObject      s3:bank-reports/2026/q3.csv          ALLOW (allowed by an identity policy)
+    ana   S3:GETOBJECT      s3:bank-reports/2026/q3.csv          ALLOW (allowed by an identity policy)  <- ACTION NAMES IGNORE CASE
+    ana   s3:GetObject      s3:bank-reports/secret/keys.txt      DENY  (explicit deny in reports-read)
+    ana   s3:PutObject      s3:bank-reports/2026/q3.csv          DENY  (implicit deny: nothing allows it)
+    ana   s3:GetObject      s3:bank-secrets/keys.txt             DENY  (implicit deny: nothing allows it)
+    ana   s3:GetObject      s3:Bank-Reports/2026/q3.csv          DENY  (implicit deny: nothing allows it)  <- RESOURCE NAMES DO NOT
+  carol's policy is Allow with NotAction iam:*:
+    carol s3:DeleteBucket   s3:bank-reports                      ALLOW (allowed by an identity policy)  <- ALLOW + NOTACTION ALLOWS EVERYTHING ELSE
+    carol iam:CreateUser    arn:aws:iam::111111111111:user/x     DENY  (implicit deny: nothing allows it)
+  nothing is allowed until something allows it, and a deny anywhere beats every allow
+TWO. Accounts: who has to agree.
+  ben in the bank account, the bucket in the same account; identity policy yes bucket policy yes -> ALLOW (allowed by an identity policy)
+  ben in the bank account, the bucket in the same account; identity policy yes bucket policy no  -> ALLOW (allowed by an identity policy)
+  ben in the bank account, the bucket in the same account; identity policy no  bucket policy yes -> ALLOW (allowed by the resource policy)
+  ben in the bank account, the bucket in the other account; identity policy yes bucket policy yes -> ALLOW (allowed by both accounts)
+  ben in the bank account, the bucket in the other account; identity policy yes bucket policy no  -> DENY  (implicit deny: the resource's account does not allow it)
+  ben in the bank account, the bucket in the other account; identity policy no  bucket policy yes -> DENY  (implicit deny: the principal's own account does not allow it)
+  in one account either side is enough; across accounts both must say yes, so one account cannot hand out another's data, or take it
+  a bucket policy with Principal *: someone with no account at all can read: true  <- EVERYONE ON THE INTERNET
+  a stranger from another account whose own policies allow nothing: false, and with a policy of their own that allows it: true
+  an organization policy that does not allow s3:GetObject stops even an administrator: DENY  (implicit deny: no allow in the organization policies)
+THREE. Roles and the layers that narrow them.
+  ben assumes Developer, whose trust policy asks for a second factor: without it DENY  (implicit deny: the trust policy does not allow it); with it ALLOW (the trust policy and the caller's policies allow it)
+  eight actions asked of the session; the role's own policy allows 6: [s3:GetObject, s3:PutObject, s3:DeleteObject, dynamodb:Query, ec2:RunInstances, iam:PassRole]
+  with a permission boundary of s3:* and dynamodb:*, only what both allow is left: 4: [s3:GetObject, s3:PutObject, s3:DeleteObject, dynamodb:Query]
+  and a session policy passed at assumption, narrower again: 2: [s3:GetObject, dynamodb:Query]
+  a session policy can only narrow: asking it for iam:CreateUser as well changes nothing: DENY  (implicit deny: outside the permission boundary)
+  a bucket policy that names the session itself is not narrowed by the boundary or the session policy: s3:DeleteObject ALLOW (the resource policy names the principal)  <- NAMING A PRINCIPAL IS A STRONGER GRANT THAN NAMING AN ACCOUNT
+  conditions: the payments team from the office network true, from elsewhere false, another team from the office false
+FOUR. The confused deputy.
+  ReportCo (account 999999999999) reads its customers' buckets by assuming a role each customer made, whose trust policy names ReportCo's account
+  the bank's own request through ReportCo: ALLOW (allowed by an identity policy)
+  Mallory, another customer of ReportCo, types the bank's role into ReportCo's form: ALLOW (allowed by an identity policy)  <- THE SERVICE IS THE DEPUTY, AND IT HAS BEEN FOOLED
+  the trust policy now also asks for the external id that ReportCo issued to the bank, ext-bank-7f3a
+  the bank's request: ALLOW (allowed by an identity policy)
+  Mallory's request, which carries the id ReportCo issued to Mallory: DENY  (implicit deny: the trust policy does not allow it)
+  an id that Mallory chooses is no use: it must be issued by the service, one for each customer, and not guessable
+  the same idea between services: a topic that trusts the service publishes for any bucket that asks: true
+  with aws:SourceArn in the condition: false for Mallory's bucket, true for the bank's
+FIVE. The bill.
+  who can make themselves an administrator, asking the evaluator at every step:
+    ana: no path found
+    ben -> iam:PassRole(AdminRole) + lambda:CreateFunction + lambda:InvokeFunction => administrator
+    carol -> assume DevRole -> iam:CreatePolicyVersion on DevPolicy => administrator
+  carol was given one harmless-looking permission, to assume a developer role, and the role may rewrite its own policy; ben may pass the admin role to a function he runs
+  statements with a wildcard action or resource in these policies: 3 of 3  <- EVERY WILDCARD IS A DECISION NOBODY MADE
+  this evaluator follows the documented rules for a handful of services; the real service has more (service-linked roles, tag rules, session tags, more condition keys),
+  so a model like this finds the shape of a problem and the real service's policy simulator, or a real test account, confirms it

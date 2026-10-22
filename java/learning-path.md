@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 117 projects. Planned: 35 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 118 projects. Planned: 34 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,8 +35,8 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **0** | **35** | **35** |
-| | cloud-security-without-a-cloud | 0 | 3 | 3 |
+| **Advanced** | | **1** | **34** | **35** |
+| | cloud-security-without-a-cloud | 1 | 2 | 3 |
 | | infrastructure-as-code-security | 0 | 2 | 2 |
 | | kubernetes-and-container-security | 0 | 4 | 4 |
 | | devsecops-pipelines | 0 | 4 | 4 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **117** | **35** | **152** |
+| **All** | | **118** | **34** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 0 | 35 | 35 |
+| Advanced | Unclassified | 1 | 34 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **0** | **35** | **35** |
+| **All** | **Unclassified** | **1** | **34** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -274,13 +274,13 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 
 ## Advanced: specialized topics
 
-All *planned*. Plan: [advanced plan](../docs/advanced-plan.md).
+Rows with a link are built; the others are *planned*. Plan: [advanced plan](../docs/advanced-plan.md).
 
 ### 1. cloud-security-without-a-cloud
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 118 | cloud-iam-models | *planned*: Identity, resource and session policies, role assumption and confused-deputy attacks, evaluated in Java | LocalStack, OpenTofu |
+| 118 | [cloud-iam-models](advanced/cloud-security-without-a-cloud/cloud-iam-models) | Evaluate cloud permission policies the way the provider does: deny wins, accounts must agree, roles narrow, and a deputy can be confused | Java only (an emulator comes with cloud-misconfigurations) |
 | 119 | network-isolation | *planned*: Segmentation, security groups as code, and what a flat network lets an attacker reach | Docker networks, kind with network policies |
 | 120 | cloud-misconfigurations | *planned*: Public buckets, wildcard policies, metadata endpoints and unencrypted storage, found before deploy | LocalStack, Checkov, Trivy |
 

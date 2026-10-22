@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloud IAM Models, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cloud IAM Models, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A permission is the outcome of several documents that must agree, and the one that says no always wins.</p>
+<h2>The 5 acts</h2>
+<h3>1. Identity policies: default deny, allow, explicit deny</h3>
+<p>ana's policy allows reading bank-reports and denies reading bank-reports/secret/<em>. Reading a report is allowed (also with S3:GETOBJECT, because action names ignore case); reading the secret is an explicit deny; writing, reading another bucket, and reading Bank-Reports with a capital are implicit denies (resource names do not ignore case). carol's policy is Allow with NotAction iam:</em>: deleting a bucket is allowed, creating a user is not.</p>
+<h3>2. Accounts: who has to agree</h3>
+<p>Six cases of a caller in the bank account. A bucket in the same account: an identity policy alone, a bucket policy alone, or both, allow. A bucket in another account: both allow; an identity policy alone is denied because the resource's account does not allow it; a bucket policy alone is denied because the principal's own account does not. A bucket policy with Principal * lets someone with no account at all read; a stranger from another account whose own policies allow nothing cannot, and with a policy of their own that allows it, can. An organization policy that does not allow s3:GetObject stops even an administrator.</p>
+<h3>3. Roles and the layers that narrow them</h3>
+<p>ben assumes Developer, whose trust policy asks for a second factor: without it the trust policy does not allow it; with it the trust policy and ben's own policies allow it. Of eight actions the role's own policy allows 6. With a permission boundary of s3:* and dynamodb:* 4 are left; with a session policy passed at assumption, 2; a session policy can only narrow, so asking for everything changes nothing. A bucket policy that names the session itself allows s3:DeleteObject, which neither the boundary nor the session policy would. Conditions on a tag and on the source address allow the payments team from the office network and nobody else.</p>
+<h3>4. The confused deputy</h3>
+<p>ReportCo reads its customers' buckets by assuming a role each customer made, whose trust policy names ReportCo's account. The bank's own request through ReportCo is allowed. Mallory, another customer, types the bank's role into ReportCo's form: allowed, the service is the deputy and it has been fooled. The trust policy now also asks for the external id that ReportCo issued to the bank: the bank's request is allowed, Mallory's, which carries the id issued to Mallory, is denied. An id that Mallory chooses is no use: it must be issued by the service, one for each customer, and not guessable. Between services the same is done with aws:SourceArn in the condition: a topic that trusts a service publishes for any bucket that asks, and only for the bank's buckets with the condition.</p>
+<h3>5. The bill</h3>
+<p>Who can make themselves an administrator, asking the evaluator at every step: ana, no path found. ben passes the admin role to a function he creates and runs (iam:PassRole, lambda:CreateFunction, lambda:InvokeFunction). carol assumes a developer role that may rewrite its own policy (iam:CreatePolicyVersion on DevPolicy). Three of three policies have a wildcard action or resource. This evaluator follows the documented rules for a handful of services; the real service has more, so a model like this finds the shape of a problem and the real service's policy simulator, or a real test account, confirms it.</p>
+<h2>The verdict</h2>
+<p>Start from deny, allow narrowly, use conditions for who and from where, put a boundary on roles that others create, require an external id from every third party that assumes a role, look for escalation paths as you would for bugs, and confirm the model against the real service.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>"Effect": "Allow"</code> with <code>"Action": "*"</code>.</li>
+<li>A trust policy that names an account root.</li>
+<li><code>sts:AssumeRole</code> in a vendor's setup guide.</li>
+<li>An external id field in an integration form.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A JSON policy with <code>"Action": "*"</code> that was "temporary".</li>
+<li>An error that says "is not authorized to perform".</li>
+<li>A role that a vendor asked you to create so that they can "connect".</li>
+<li>A bucket that turned out to be public.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

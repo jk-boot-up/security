@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloud IAM Models</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cloud IAM Models</h1>
+<pre><code>src/main/java/com/jk/explore/security/iammodel/
+├── Conditions.java    The condition operators of policy documents, with the rules for a key that is missing from the request, IfExists, and policy variables such as ${aws:username}
+├── Decision.java      The answer, and the layer or rule that decided it
+├── Escalation.java    A search for the paths by which a principal can make itself an administrator, using only what the policies allow: assume a role, change a policy that it is attached to, attach a policy to itself, or pass an administrator role to a function that it creates and runs
+├── Evaluator.java     The evaluation logic, as the cloud providers document it
+├── IamModelDemo.java  ReportCo, a service that reads its customers' buckets by assuming a role in each customer's account
+├── Policy.java        A policy document in the usual JSON form: statements with an effect, actions, resources, a principal (for resource policies) and conditions
+├── Principal.java     Who is asking: an account, an ARN, the policies attached to them, an optional permission boundary, an optional session policy (for a role session) and tags
+├── Request.java       One question for the evaluator: may this principal do this action on this resource?
+├── Role.java          A role: a name in an account, a trust policy (who may assume it, under which conditions), the policies it grants and an optional permission boundary
+└── Wild.java          The wildcards of policy documents: matches any run of characters (including none) and ?
+</code></pre>
+<p><strong>A policy evaluator written in Java follows the documented rules: nothing is allowed until something allows it, an explicit deny anywhere wins, within one account an identity policy or a resource policy is enough and across accounts both are needed, organization policies, permission boundaries and session policies only narrow, a resource policy that names the principal is not narrowed, and a role's trust policy decides who may assume it; with it a service that assumes roles for many customers is fooled until an external id issued per customer is required, a search over the policies finds the harmless-looking permissions that lead to administrator rights, and the model finds the shape of a problem that a real account must confirm.</strong></p>
+<p>The advanced track moves from one application to systems, and cloud security begins with one question that every provider answers the same way: <strong>may this principal do this to that?</strong> This project writes the answer in Java. A policy evaluator reads documents in the common JSON form (effect, actions, resources, principals, conditions) and follows the rules the providers document. It runs offline: no cloud account, no network, no Docker. (The sibling that runs the same questions against a local cloud emulator and infrastructure as code belongs to the next projects of the module.)</p>
+<p>What it shows:
+- <strong>Identity policies.</strong> Default deny; an allow; an <strong>explicit deny</strong> that beats every allow; wildcards in actions (case-insensitive) and resources (case-sensitive); and <code>Allow</code> with <code>NotAction</code>, which allows <em>everything else</em>.
+- <strong>Accounts.</strong> Within one account an identity policy or a resource policy is enough; across accounts <strong>both</strong> must say yes (a table of six cases). A bucket policy with <code>Principal: *</code> lets someone with no account read; a stranger from another account still needs their own account to allow it. An <strong>organization policy</strong> that does not allow an action stops even an administrator.
+- <strong>Roles and the layers that narrow them.</strong> A trust policy that asks for a second factor; eight actions asked of the session: the role allows 6, a <strong>permission boundary</strong> leaves 4, a <strong>session policy</strong> leaves 2, and a session policy can only narrow. A bucket policy that <strong>names the session</strong> is not narrowed by either. Conditions on tags and source address, with policy variables.
+- <strong>The confused deputy.</strong> A reporting service assumes a role in each customer's account. Mallory types the bank's role into the service's form and reads the bank's data. The trust policy now asks for the <strong>external id</strong> the service issued to the bank: the bank's request works, Mallory's does not. The same idea between services with <code>aws:SourceArn</code>.
+- <strong>The bill.</strong> A search that asks the evaluator at each step finds who can make themselves an administrator: carol (assume a developer role that may rewrite its own policy) and ben (pass the admin role to a function he runs), and not ana. Every wildcard is a decision nobody made, and a model finds the shape of a problem that a real account confirms.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Protect (PR.AA access control) · CIS Benchmarks for cloud providers · CWE-266, CWE-269 (privilege management), CWE-441 (unintended proxy, the confused deputy) · OWASP Cloud-Native Application Security Top 10.</p>
+<h2>The idea in everyday terms</h2>
+<p>A building with guards at several doors. Each guard has a list; one guard's "no" is final, a guest of a neighbouring company needs both companies' guards to agree, a visitor's pass can be narrower than the person's rights but never wider, and a courier who delivers on request must be told whose delivery it is.</p>
+<h2>The scenario</h2>
+<p>An online bank on a cloud: people in one account, an audit account, a reporting service from a third party. The demo asks the evaluator about each of them and turns the answers into a picture of where trust is given.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Identity policies: default deny, allow, explicit deny</td>
+<td>Nothing is allowed until something allows it; a deny beats every allow; action names ignore case and resource names do not; Allow with NotAction allows everything else.</td>
+</tr>
+<tr>
+<td>2. Accounts: who has to agree</td>
+<td>In one account either side is enough; across accounts both; Principal * means anyone; an organization policy stops even an administrator.</td>
+</tr>
+<tr>
+<td>3. Roles and the layers that narrow them</td>
+<td>A trust policy asks for a second factor; a boundary and a session policy narrow 6 actions to 4 to 2; naming the session is stronger than naming the account.</td>
+</tr>
+<tr>
+<td>4. The confused deputy</td>
+<td>A reporting service that assumes roles for many customers reads the bank's data for Mallory until the trust policy asks for the external id issued to the bank.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A search over the policies finds carol and ben on a path to administrator, and not ana; wildcards are decisions nobody made; a model is not the service.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>19 tests in <code>DemoRunsTest</code>, <code>EvaluatorTest</code>, <code>RoleTest</code>. The tests run the evaluator rule by rule: deny, wildcards, NotAction, one account and two, anonymous callers, organization policies, boundaries and session policies, conditions and missing keys, trust policies, the external id, the source ARN and the escalation search.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Everything is plain Java: the policy documents are parsed with Jackson, the wildcards and conditions are written out, and the accounts, roles and the reporting service are small records. The output is the same on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/cloud-iam-models-explained.html">Cloud IAM Models, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Documents go in, one decision comes out.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Documents, requests and the evaluator.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The order of the questions.</p>
+<p><img alt="How a request is decided" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Assuming a role" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/cloud-iam-models-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Policies are code that nobody tests:</strong> a wildcard here and a missing condition there are found by an attacker first.</li>
+<li><strong>Every layer must be understood:</strong> identity, resource, organization, boundary, session.</li>
+<li><strong>Trust between accounts is a decision with a party on the other side</strong> whose own mistakes become yours.</li>
+<li><strong>A model is not the service:</strong> it follows the documented rules for a few services and misses the rest.</li>
+<li><strong>Least privilege is work:</strong> broad policies are quick, narrow ones need the requests to be known.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A personal account with one user and nothing in it does not need an evaluator. Use one when several people, accounts and third parties share an environment, and when the policies change often.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A JSON policy with <code>"Action": "*"</code> that was "temporary".</li>
+<li>An error that says "is not authorized to perform".</li>
+<li>A role that a vendor asked you to create so that they can "connect".</li>
+<li>A bucket that turned out to be public.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the first project of the <a href="..">cloud-security-without-a-cloud</a> module of the advanced track. It builds on <a href="../../../intermediate/web-security">access control</a> and on <a href="../../../intermediate/secrets-and-supply-chain/secrets-management-with-openbao">secrets management</a> from the intermediate track.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
