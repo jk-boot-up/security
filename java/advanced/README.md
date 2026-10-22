@@ -4,7 +4,7 @@ One self-contained Java 25 + Gradle project per concept, as in the [beginner](..
 
 | Module | Covers | Built |
 | --- | --- | ---: |
-| [cloud-security-without-a-cloud](cloud-security-without-a-cloud) | Identity, network and configuration of a cloud, learned without one: policies evaluated in Java, local emulators and scanners | 3 |
+| [cloud-security-without-a-cloud](cloud-security-without-a-cloud) | Identity, network and configuration of a cloud, learned without one: policies evaluated in Java, local emulators and scanners | 4 |
 | [infrastructure-as-code-security](infrastructure-as-code-security) | Scanning and policing the code that builds the infrastructure | 0 |
 | [kubernetes-and-container-security](kubernetes-and-container-security) | Admission, network policy, runtime detection and secrets on a local cluster | 0 |
 | [devsecops-pipelines](devsecops-pipelines) | Static and dynamic analysis, secret scanning and a pipeline that fails closed | 0 |

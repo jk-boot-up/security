@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 120 projects. Planned: 32 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 121 projects. Planned: 31 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,9 +35,9 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **3** | **32** | **35** |
+| **Advanced** | | **4** | **31** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
-| | infrastructure-as-code-security | 0 | 2 | 2 |
+| | infrastructure-as-code-security | 1 | 1 | 2 |
 | | kubernetes-and-container-security | 0 | 4 | 4 |
 | | devsecops-pipelines | 0 | 4 | 4 |
 | | service-identity-and-zero-trust | 0 | 4 | 4 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **120** | **32** | **152** |
+| **All** | | **121** | **31** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 3 | 32 | 35 |
+| Advanced | Unclassified | 4 | 31 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **3** | **32** | **35** |
+| **All** | **Unclassified** | **4** | **31** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -288,7 +288,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 121 | iac-scanning | *planned*: Writing a rule, then running scanners on OpenTofu and Kubernetes manifests, and handling false positives and exceptions | Checkov, Trivy, KICS |
+| 121 | [iac-scanning](advanced/cloud-security-without-a-cloud/iac-scanning) | Write eight rules for Kubernetes manifests with tests of their own, run Checkov, Trivy and KICS on the same files, and handle exceptions and a baseline in the build | Checkov, Trivy, KICS |
 | 122 | policy-as-code | *planned*: Deny-by-default admission and deployment rules written as policy, with tests | OPA and Rego, Conftest |
 
 ### 3. kubernetes-and-container-security
