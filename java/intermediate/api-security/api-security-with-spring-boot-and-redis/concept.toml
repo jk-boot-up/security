@@ -1,0 +1,473 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "api-security-with-spring-boot-and-redis"
+level = "intermediate"
+module = "api-security"
+title = "API Security with Spring Boot and Redis"
+short_title = "API Security with Redis"
+package = "apispring"
+main_class = "ApiSpringDemo"
+tagline = "Bind a body to the stored record and a caller sets their own role; return the record and they read everyone's; count nothing and they never stop"
+bold = "A Spring Boot API owes its callers three limits: Jackson binds whatever the body names unless a request record, FAIL_ON_UNKNOWN_PROPERTIES and Bean Validation say otherwise, a controller returns whatever object it is given unless a response record says what a caller may see and a page has a ceiling, and a rate limiter that lives in one server's memory gives a caller one budget per server, so the count belongs in Redis, kept in one atomic script."
+domain = "a bank API"
+domain_note = ""
+youtube_description = "API security with Spring Boot 4.1 and Redis, from the OWASP API Top 10: a bank API that binds the request body to the stored account so a customer promotes themselves to admin, returns the whole record and every customer on a huge page, and answers a thousand requests in a loop; then request records with Bean Validation and unknown fields refused, response records and a page ceiling, and a token bucket in Redis written as one Lua script that gives one budget to every server, refuses with 429 and a Retry-After, and fails closed when Redis stops answering."
+thumb_lines = ["API SECURITY", "WITH REDIS"]
+thumb_code = "@RequestBody Account patch"
+youtube_title = "API Security with Spring Boot: Mass Assignment, Response Models and a Redis Rate Limiter"
+youtube_tags = ["api security", "mass assignment", "bean validation", "rate limiting", "redis", "lua", "spring boot", "owasp api top 10", "java"]
+
+[readme]
+intro = """
+The plain [api-security](../api-security) project builds the three limits from scratch. This one uses what a real Spring Boot bank has: **Spring Boot 4.1**, **Jackson 3**, **Bean Validation**, **Spring Security 7**, and a real **Redis 8** in Docker for the budget. It needs Docker for the Redis parts; its tests are tagged `integration` for those: `./gradlew integrationTest`.
+
+What it shows:
+- **The first version.** `@RequestBody Account patch` binds every field the caller sends, so `{"role":"admin","creditLimitCents":100000000}` makes Ana an admin with a huge credit limit. The controller returns the stored record with nine fields including the full card number and the PIN hash, a page size of 1,000,000 returns all 300 customers, and 1,000 requests in a loop are all answered.
+- **A request model.** An `UpdateProfileRequest` record names the two fields a customer may change, with limits (`@Size`, `@Email`). `spring.jackson.deserialization.fail-on-unknown-properties=true` turns any other field into a **400 `unknown field`**, and nothing is applied from a refused body.
+- **A response model and a ceiling.** `AccountView` returns five fields with the card as `****0001`; the directory returns id and name only; a page is capped at 50 and `size=0` is refused.
+- **A budget in Redis.** A token bucket per signed-in caller, written as one **Lua script** so taking a token is atomic: 50 answered, then **429 with `Retry-After`**, a refill from the clock, and a separate bucket for each caller.
+- **The bill.** Two servers with in-memory budgets answer **100** of 1,000 requests; with the budget in Redis, **50**. When Redis stops answering the API refuses with 503.
+
+**Maps to:** OWASP API Security Top 10 (2023) API3 Broken Object Property Level Authorization, API4 Unrestricted Resource Consumption, API6 Unrestricted Access to Sensitive Business Flows · CWE-915 (mass assignment) · CWE-213 · CWE-770 · OWASP ASVS 5.0 V4 (API and Web Service).
+"""
+analogy = """
+A bank counter with a form that has every field on it, including the ones marked "staff only", and a clerk who types in whatever the customer wrote, reads out the whole file in reply, and never closes the queue. The fixes are a shorter form, a shorter reply, and a ticket machine that every counter in the bank shares.
+"""
+scenario = """
+A bank API on Spring Boot lets a customer update a profile and read accounts. The demo starts the real application in two versions, calls it as an app would, and then starts two servers against one Redis to share a budget.
+"""
+costs = [
+    "**Every field is a line in a record,** so adding a field to the API is a visible change, which is the point and a little more work.",
+    "**Validation messages need care:** short and fixed, so they say what was wrong and never what the server is.",
+    "**A page ceiling means clients must page,** and some will complain.",
+    "**Redis is in every request,** so its latency is the API's latency, and its failure is the API's failure.",
+    "**A limit that is too tight refuses real customers,** and one that is too loose protects nothing: the numbers need watching.",
+]
+too_much = """
+An internal API with one trusted caller does not need a Redis budget, but it still needs the request and response records. A public API with many servers needs all of it, and a gateway in front of it may already hold the budget.
+"""
+met_before = [
+    "`@RequestBody` on an entity or a JPA class.",
+    "A response that includes `password`, `ssn` or a token field.",
+    "`?size=1000000` in a pen test report.",
+    "`429 Too Many Requests` and a `Retry-After` header.",
+]
+where = """
+This is the tools version of [api-security](../api-security), in the [api-security](..) module. It follows the same story and the same three limits, on a real framework, with the budget moved into Redis.
+"""
+twin = """
+The bank is a real Spring Boot application with Spring Security, and the budget is a real Redis in a container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The limiter takes its time from a clock the demo can move, so a thousand requests happen at one moment and a refill takes no time to wait for. Only statuses, field names and counts are printed.
+"""
+test_note = "Most tests run without Docker with the budget in memory; the tests of the Redis budget and the full demo start a real Redis and are tagged integration (./gradlew integrationTest). Nothing printed changes between runs."
+
+[[act]]
+title = "The first version"
+summary = "Binding the body to the stored record lets a customer become an admin, the response is the whole record, a page size of a million returns every customer, and a thousand requests are all answered."
+detail = """
+The PATCH of displayName works, with role customer and a credit limit of 50000. Whatever the caller sends becomes a field: a body with role admin and a credit limit of 100000000 is applied and the answer has role admin. The record comes back whole, with nine fields including the card number and the PIN hash. A page size of 1000000 returns 300 accounts, every field. A thousand requests in a loop are all answered, none slowed down.
+"""
+speech = """
+First demo: the first version of the A P I. [[slnc 400]] Update my profile works. [[slnc 600]]
+Whatever the caller sends becomes a field. [[slnc 300]] Ana sends role admin and a huge credit limit, and the bank applies both. [[slnc 600]]
+The answer is the whole record, with the card number and the pin hash. [[slnc 600]]
+A page size of a million returns every customer. [[slnc 300]] And a thousand requests in a loop are all answered.
+"""
+rows = { first = "active wrong" }
+console = [
+    ["PATCH role, creditLimit -> 200, role=admin, creditLimitCents=100000000", "bad"],
+    ["GET /accounts/acc-0001 -> nine fields, with cardNumber and pinHash", "bad"],
+    ["GET /accounts?size=1000000 -> 300 accounts, every field", "bad"],
+    ["1000 requests in a loop -> 1000 answered", "bad"],
+]
+
+[[act]]
+title = "A request model"
+summary = "A record names the two fields a customer may change, unknown fields are a 400, values are validated, and nothing is applied from a refused body."
+detail = """
+An UpdateProfileRequest record names displayName and email. The same displayName update returns the five-field view. The body with role and creditLimitCents gets 400 unknown field, and afterwards the role is customer and the credit limit 50000. An email that is not an email, a name of 41 letters and an empty name are each a 400 with the field named, and a body that is not JSON is a 400 unreadable body.
+"""
+speech = """
+Second demo: a request model. [[slnc 400]] A record names the two fields a customer may change. [[slnc 600]]
+A body with any other field is refused with four hundred, unknown field. [[slnc 300]] The role stays customer. [[slnc 600]]
+A bad email, a name that is too long, and an empty name are each refused, with the field named.
+"""
+rows = { request = "active ok" }
+console = [
+    ["PATCH role, creditLimit -> 400 unknown field", "ok"],
+    ["role afterwards -> customer, credit limit 50000", "ok"],
+    ["PATCH email not an email -> 400 invalid email", "ok"],
+    ["PATCH body is not JSON -> 400 unreadable body", "ok"],
+]
+
+[[act]]
+title = "A response model and a page ceiling"
+summary = "A response record has five fields and a masked card, the directory shows id and name only, a page is capped at 50, and size 0 and no login are refused."
+detail = """
+GET /accounts/acc-0001 returns id, displayName, email, balanceCents and cardLast4, with the card as ****0001: no role, no limit, no risk score, no PIN hash. GET /accounts?size=1000000 returns 50 accounts with id and displayName only. A size of 0 is a 400 invalid parameter, and a request with no login is a 401.
+"""
+speech = """
+Third demo: a response model and a page ceiling. [[slnc 400]] The account comes back with five fields, and the card is masked. [[slnc 600]]
+The directory shows an id and a name, nothing else. [[slnc 600]]
+A page size of a million returns fifty. [[slnc 300]] A size of zero is refused. [[slnc 300]] And no login means no answer.
+"""
+rows = { response = "active ok" }
+console = [
+    ["GET /accounts/acc-0001 -> five fields, card ****0001", "ok"],
+    ["GET /accounts?size=1000000 -> 50 accounts, id and name only", "ok"],
+    ["GET /accounts?size=0 -> 400 invalid parameter", "ok"],
+    ["GET /accounts, no login -> 401", "ok"],
+]
+
+[[act]]
+title = "The budget runs out, and refills"
+summary = "A token bucket per caller in Redis, taken by one Lua script: 50 answered, then 429 with Retry-After 1s, a refill from the clock, and a separate bucket for each caller."
+detail = """
+Each signed-in caller has a bucket of 50 tokens that refills at one a second. A thousand requests in a loop get 50 answered, then 429 with Retry-After 1s. After the clock moves on by one second, one more request is answered. Ben, meanwhile, gets his own full bucket and a page of 5 accounts. The buckets are the keys rate:ana and rate:ben in Redis, and the script that takes a token runs in one step so two servers cannot take the same one.
+"""
+speech = """
+Fourth demo: the budget runs out, and refills. [[slnc 400]] Each caller has a bucket of fifty tokens in Redis. [[slnc 600]]
+A thousand requests in a loop get fifty answers, and then four twenty nine, with a retry after of one second. [[slnc 600]]
+When the time passes, a request is answered again. [[slnc 600]]
+And another customer has a bucket of their own.
+"""
+rows = { budget = "active ok" }
+console = [
+    ["1000 requests in a loop -> 50 answered, then 429 Retry-After 1s", "ok"],
+    ["after waiting 1 second -> 200", "ok"],
+    ["another customer meanwhile -> 200", "ok"],
+    ["buckets in Redis: rate:ana, rate:ben", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "Two servers with in-memory budgets answer 100 of 1000 requests, with the budget in Redis 50; when Redis stops answering the API refuses with 503."
+detail = """
+Two servers, each with its own budget in memory: of 1000 requests alternating between them, 100 are answered, a budget per server and not per caller. With the budget in Redis, 50 are answered. When Redis stops answering, the API refuses with 503 rather than run without a budget, and answers again when Redis does. A budget protects the service and the other callers, not the data: it does not replace the request model or the response model.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Two servers with their own budgets in memory answer a hundred of a thousand requests. [[slnc 300]] That is a budget per server, not per caller. [[slnc 600]]
+With the budget in Redis, fifty. [[slnc 600]]
+When Redis stops answering, the A P I refuses. [[slnc 300]] An A P I that cannot count does not guess. [[slnc 600]]
+And a budget never replaces the request and response models.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["two servers, local budget -> 100 of 1000 answered", "bad"],
+    ["two servers, Redis budget -> 50 of 1000 answered", "ok"],
+    ["Redis stops answering -> 503, the API refuses", "ok"],
+    ["Redis answers again -> 200", "ok"],
+]
+
+[animation]
+subtitle = "A bank API, three limits, and a budget that every server shares."
+boxes = [
+    ["first", "First version", "binds, returns, answers all"],
+    ["request", "Request model", "named fields, limits"],
+    ["response", "Response model", "five fields, a ceiling"],
+    ["budget", "The budget", "a Lua script in Redis"],
+    ["bill", "The bill", "one budget, a counter that answers"],
+]
+
+[docs.problem]
+scenario = """
+A bank API on Spring Boot, first written the quick way, with controllers that take and return the stored record and nothing that counts requests.
+"""
+naive = """
+Bind the body to the entity, return the entity, and trust the callers to behave.
+"""
+deliver = [
+    "Real Spring Boot servers in a first version and a second version.",
+    "A request record, a response record, validation and a page ceiling.",
+    "A token bucket per caller in Redis, in one Lua script.",
+    "Two servers sharing one budget, and an API that refuses when the counter is down.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain api-security project, for the three limits",
+    "Docker, with the redis:8.10.2-alpine image (pulled on first use), for the Redis parts",
+]
+not_required = [
+    "A Redis server installed on the machine: the demo starts and removes its own container",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain mass assignment and fix it with a request record that fails on unknown fields",
+    "return only what a caller may see and give every list a ceiling",
+    "write a rate limiter that every server shares",
+    "decide what the API does when the limiter cannot answer",
+]
+walkthrough = """
+Run act one and find the field you would least like a customer to set. In act four ask why the script takes the time as an argument. In act five ask what a refused request costs the customer, and what an unbounded one costs the bank.
+"""
+exercises = [
+    "Add a fourth field, phone, to the request record with a pattern, and test good and bad numbers.",
+    "Give the PATCH route a smaller budget than the GET routes.",
+    "Make the limiter fail open for reads and closed for writes, and test both.",
+    "Add a per-IP bucket for callers who are not signed in.",
+]
+
+[docs.explained]
+sentence = """
+An API names the fields it accepts, names the fields it returns, caps what a caller may ask for, and keeps the count of requests where every server can see it.
+"""
+verdict = """
+Never bind a body to a stored record or return one; use a request record and a response record, set fail-on-unknown-properties, validate values, cap every page, budget every caller in a store shared by every server, and decide in writing what the API does when the counter is down.
+"""
+recognise = [
+    "`@RequestBody` on an entity class.",
+    "A JSON response with a `password` or `token` field.",
+    "A `size` parameter with no maximum.",
+    "A `Retry-After` header in a client's retry code.",
+]
+
+[spec]
+purpose = """
+Teach three API limits in Spring Boot: what a caller may set, what they may see, and how much they may ask for.
+"""
+nongoals = [
+    "A full API gateway.",
+    "Object-level authorization across accounts, which has its own projects.",
+    "Distributed rate limiting across data centres.",
+]
+problem = """
+Teams bind bodies to entities, return entities, and rate-limit in one server's memory, and each of the three gives an attacker something.
+"""
+roles = [["Controllers", "`NaiveAccountsController`, `SafeAccountsController`"], ["Models", "`Account`, `UpdateProfileRequest`, `AccountView`, `DirectoryEntry`"], ["Errors", "`ErrorHandling`"], ["The budget", "`RateLimiter`, `RedisRateLimiter`, `LocalRateLimiter`, `RateLimitFilter`, `ManualClock`"], ["Test support", "`RedisLab`, `Client`, `Running`"], ["Entry point", "`ApiSpringDemo`"]]
+requirements = [
+    "The first version applies any field a body names and returns the whole record.",
+    "The second version refuses unknown fields and invalid values with a short fixed answer.",
+    "The second version returns only the fields of a view and masks the card.",
+    "A page is capped, and a size below one is refused.",
+    "Each signed-in caller has a bucket that refills with the clock.",
+    "Servers sharing a Redis share one budget, and taking a token is atomic.",
+    "The API refuses with 503 when the limiter cannot answer.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two servers and one budget"
+caption = "Every request takes a token from the caller's bucket in Redis before the controller sees it."
+nodes = [
+    { id = "app", label = "Client app", sub = "Basic credentials", col = 0, row = 0, colour = "client" },
+    { id = "a", label = "API server A", sub = "limiter filter", col = 1, row = 0, colour = "accent" },
+    { id = "b", label = "API server B", sub = "limiter filter", col = 1, row = 1, colour = "accent" },
+    { id = "redis", label = "Redis", sub = "rate:<caller>", col = 2, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "app", to = "a" },
+    { from = "app", to = "b" },
+    { from = "a", to = "redis", label = "one Lua script" },
+    { from = "b", to = "redis", label = "one Lua script" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The second version has a model for what comes in, a model for what goes out, and a filter for how often."
+nodes = [
+    { id = "ctl", label = "SafeAccountsController", sub = ["update()", "one()", "list()"], col = 0, row = 0, colour = "green" },
+    { id = "req", label = "UpdateProfileRequest", sub = ["displayName", "email"], col = 1, row = 0, colour = "accent" },
+    { id = "view", label = "AccountView", sub = ["id", "displayName", "email", "balanceCents", "cardLast4"], col = 2, row = 0, colour = "client" },
+    { id = "filter", label = "RateLimitFilter", sub = ["doFilterInternal()"], col = 0, row = 1, colour = "amber" },
+    { id = "limiter", label = "RedisRateLimiter", sub = ["take()"], col = 1, row = 1, colour = "red" },
+]
+edges = [
+    { from = "ctl", to = "req", label = "reads" },
+    { from = "ctl", to = "view", label = "returns" },
+    { from = "filter", to = "limiter", label = "asks" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What a request meets"
+caption = "In order: the login, the budget, the request model, the controller and the response model."
+nodes = [
+    { id = "login", label = "Login", sub = "Basic header", col = 0, row = 0, colour = "client" },
+    { id = "budget", label = "Budget", sub = "429 when empty", col = 1, row = 0, colour = "amber" },
+    { id = "model", label = "Request model", sub = "unknown field, values", col = 2, row = 0, colour = "accent" },
+    { id = "view", label = "Response model", sub = "five fields", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "login", to = "budget" },
+    { from = "budget", to = "model" },
+    { from = "model", to = "view" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A request takes a token"
+participants = ["Client app", "API server", "Redis"]
+steps = [
+    ["Client app", "API server", "GET /accounts/acc-0001, Basic ana"],
+    ["API server", "Redis", "EVAL script: refill, take one, write back"],
+    ["Redis", "API server", "allowed, wait 0", "reply"],
+    ["API server", "Client app", "200 with the five fields", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A body with a field the model does not name"
+participants = ["Client app", "Jackson", "Controller"]
+steps = [
+    ["Client app", "Jackson", "PATCH {\"role\":\"admin\"}"],
+    ["note", "Jackson", "fail-on-unknown-properties is on"],
+    ["Jackson", "Client app", "400 unknown field; the controller never runs", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The caller", nodes = ["caller"], colour = "red" },
+    { label = "The bank", nodes = ["api", "redis"], colour = "green" },
+]
+nodes = [
+    { id = "caller", label = "Caller", sub = "an app, or an attacker with a login", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "api", label = "API servers", sub = "models and budget", col = 1, row = 0, colour = "accent", threats = ["T1", "T2", "T3", "T4"] },
+    { id = "redis", label = "Redis", sub = "the counters", col = 2, row = 0, colour = "amber", threats = ["T4"] },
+]
+edges = [
+    { from = "caller", to = "api", label = "requests", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "api", to = "redis", label = "take a token", threats = ["T4"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Boot bank API called by authenticated customers. It covers what a body may set, what a response may show, how much a caller may ask for and the counter that limits it. It does not cover access to other customers' objects, which belongs to broken-access-control.
+"""
+assets = [
+    "The customers' roles, credit limits and risk scores.",
+    "The card numbers and PIN hashes.",
+    "The availability of the API.",
+]
+actors = [
+    "A customer with a valid login who sends crafted bodies.",
+    "An attacker who scripts requests with a stolen login.",
+    "A developer who adds a field to the record.",
+]
+boundaries = [
+    "The caller to the API: the body, the query and the headers are all untrusted.",
+    "The API to Redis: a password on the loopback address.",
+]
+assumptions = [
+    "Callers have valid logins; the lesson is about what they can do with one.",
+    "Redis is reachable only from the API servers.",
+]
+out_of_scope = [
+    "Reading another customer's account, which has its own project.",
+    "Attacks on Redis itself.",
+]
+tests = [
+    "`ApiSpringTest` starts real servers and checks mass assignment, the whole-record response, the unlimited loop, unknown fields, validation, partial updates, the view and the masked card, the page ceiling, the 429 and Retry-After, the refill, the cap, separate callers and the budget per server.",
+    "`RedisLimiterTest` uses a real Redis for the shared budget, the exact count under concurrency, the bucket's expiry and the refusal when Redis stops answering.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, identity-and-access, moves from limits on what a caller may do to proving who the caller is: tokens, OAuth 2.0 and OpenID Connect.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A caller sets a field that is not theirs to set"
+where = "`NaiveAccountsController.update`"
+control = "A request record, fail-on-unknown-properties, and a controller that copies named fields only"
+residual = "A field added to the request record without review"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A response carries fields or records the caller should not see"
+where = "`NaiveAccountsController.one`, `list`"
+control = "A response record, a masked card, a directory with id and name only"
+residual = "A new field added to a view"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "A caller asks for everything, or for ever"
+where = "`list`, the whole API"
+control = "A page ceiling and a budget per caller"
+residual = "A caller who spreads requests over many logins"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "The budget is per server, or the counter is down and the API runs without one"
+where = "`LocalRateLimiter`, `RedisRateLimiter`, `RateLimitFilter`"
+control = "One atomic script in a store every server shares, and a refusal when it cannot answer"
+residual = "A long Redis outage that stops the API"
+
+[poster]
+headline = [["API SECURITY", "text"], ["WITH REDIS", "accent"]]
+taglines = [["Bind a body to the stored record and a caller sets their own role; return the record and t", "gold"]]
+before = { code = "PATCH role, creditLimit -> 200, role=admin, creditLi", note = "The first version", tag = "BEFORE" }
+after = { code = "@RequestBody Account patch", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "API Security with Spring Boot and Redis"
+narration = "Hello, and welcome. [[slnc 400]] This video explains A P I Security with Redis, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A Spring Boot A P I owes its callers three limits: Jackson binds whatever the body names unless a request record, FAIL_ON_UNKNOWN_PROPERTIES and Bean Validation say otherwise, a controller returns whatever object it is given unless a response record says what a caller may see and a page has a ceiling, and a rate limiter that lives in one server's memory gives a caller one budget per server, so the count belongs in Redis, kept in one atomic script. [[slnc 600]] Think of it this way. [[slnc 300]] A bank counter with a form that has every field on it, including the ones marked \"staff only\", and a clerk who types in whatever the customer wrote, reads out the whole file in reply, and never closes the queue. The fixes are a shorter form, a shorter reply, and a ticket machine that every counter in the bank shares. [[slnc 700]] In this video, the domain is a bank A P I. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain mass assignment and fix it with a request record that fails on unknown fields. [[slnc 300]] Return only what a caller may see and give every list a ceiling. [[slnc 300]] Write a rate limiter that every server shares."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank API on Spring Boot lets a customer", "update a profile and read accounts.", "The demo starts the real application in two", "versions, calls it as an app would, and then", "starts two servers against one Redis to", "share a budget."]
+narration = "Here is the scenario. [[slnc 400]] A bank A P I on Spring Boot lets a customer update a profile and read accounts. [[slnc 400]] The demo starts the real application in two versions, calls it as an app would, and then starts two servers against one Redis to share a budget."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every field is a line in a record", "Validation messages need care", "A page ceiling means clients must page", "Redis is in every request", "A limit that is too tight refuses real customers"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every field is a line in a record. [[slnc 500]] Validation messages need care. [[slnc 500]] A page ceiling means clients must page. [[slnc 500]] Redis is in every request. [[slnc 500]] A limit that is too tight refuses real customers."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Controllers: NaiveAccountsController,", "SafeAccountsController", "Models: Account, UpdateProfileRequest, AccountView", "Errors: ErrorHandling", "The budget: RateLimiter, RedisRateLimiter,", "LocalRateLimiter", "Test support: RedisLab, Client, Running"]
+narration = "Here is who does what in the code. [[slnc 400]] Controllers is in NaiveAccountsController and SafeAccountsController. [[slnc 500]] Models is in Account and UpdateProfileRequest and AccountView. [[slnc 500]] Errors is in ErrorHandling. [[slnc 500]] The budget is in RateLimiter and RedisRateLimiter and LocalRateLimiter. [[slnc 500]] Test support is in RedisLab and Client and Running."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["@RequestBody on an entity class", "A JSON response with a password or token field", "A size parameter with no maximum", "A Retry-After header in a client's retry code"]
+narration = "You have probably met this already. [[slnc 400]] @RequestBody on an entity class. [[slnc 500]] A JSON response with a password or token field. [[slnc 500]] A size parameter with no maximum. [[slnc 500]] A Retry-After header in a client's retry code."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain mass assignment and fix it with a request", "record that fails on unknown fields", "Return only what a caller may see and give every list", "a ceiling", "Write a rate limiter that every server shares", "Decide what the API does when the limiter cannot", "answer"]
+narration = "So, how do you use it? [[slnc 400]] Never bind a body to a stored record or return one; use a request record and a response record, set fail-on-unknown-properties, validate values, cap every page, budget every caller in a store shared by every server, and decide in writing what the A P I does when the counter is down."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's A P I Security with Redis. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] An A P I names the fields it accepts, names the fields it returns, caps what a caller may ask for, and keeps the count of requests where every server can see it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a fourth field, phone, to the request record with a pattern, and test good and bad numbers. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

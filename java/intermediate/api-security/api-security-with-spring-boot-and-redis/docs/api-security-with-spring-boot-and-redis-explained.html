@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API Security with Spring Boot and Redis, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>API Security with Spring Boot and Redis, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>An API names the fields it accepts, names the fields it returns, caps what a caller may ask for, and keeps the count of requests where every server can see it.</p>
+<h2>The 5 acts</h2>
+<h3>1. The first version</h3>
+<p>The PATCH of displayName works, with role customer and a credit limit of 50000. Whatever the caller sends becomes a field: a body with role admin and a credit limit of 100000000 is applied and the answer has role admin. The record comes back whole, with nine fields including the card number and the PIN hash. A page size of 1000000 returns 300 accounts, every field. A thousand requests in a loop are all answered, none slowed down.</p>
+<h3>2. A request model</h3>
+<p>An UpdateProfileRequest record names displayName and email. The same displayName update returns the five-field view. The body with role and creditLimitCents gets 400 unknown field, and afterwards the role is customer and the credit limit 50000. An email that is not an email, a name of 41 letters and an empty name are each a 400 with the field named, and a body that is not JSON is a 400 unreadable body.</p>
+<h3>3. A response model and a page ceiling</h3>
+<p>GET /accounts/acc-0001 returns id, displayName, email, balanceCents and cardLast4, with the card as ****0001: no role, no limit, no risk score, no PIN hash. GET /accounts?size=1000000 returns 50 accounts with id and displayName only. A size of 0 is a 400 invalid parameter, and a request with no login is a 401.</p>
+<h3>4. The budget runs out, and refills</h3>
+<p>Each signed-in caller has a bucket of 50 tokens that refills at one a second. A thousand requests in a loop get 50 answered, then 429 with Retry-After 1s. After the clock moves on by one second, one more request is answered. Ben, meanwhile, gets his own full bucket and a page of 5 accounts. The buckets are the keys rate:ana and rate:ben in Redis, and the script that takes a token runs in one step so two servers cannot take the same one.</p>
+<h3>5. The bill</h3>
+<p>Two servers, each with its own budget in memory: of 1000 requests alternating between them, 100 are answered, a budget per server and not per caller. With the budget in Redis, 50 are answered. When Redis stops answering, the API refuses with 503 rather than run without a budget, and answers again when Redis does. A budget protects the service and the other callers, not the data: it does not replace the request model or the response model.</p>
+<h2>The verdict</h2>
+<p>Never bind a body to a stored record or return one; use a request record and a response record, set fail-on-unknown-properties, validate values, cap every page, budget every caller in a store shared by every server, and decide in writing what the API does when the counter is down.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>@RequestBody</code> on an entity class.</li>
+<li>A JSON response with a <code>password</code> or <code>token</code> field.</li>
+<li>A <code>size</code> parameter with no maximum.</li>
+<li>A <code>Retry-After</code> header in a client's retry code.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@RequestBody</code> on an entity or a JPA class.</li>
+<li>A response that includes <code>password</code>, <code>ssn</code> or a token field.</li>
+<li><code>?size=1000000</code> in a pen test report.</li>
+<li><code>429 Too Many Requests</code> and a <code>Retry-After</code> header.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

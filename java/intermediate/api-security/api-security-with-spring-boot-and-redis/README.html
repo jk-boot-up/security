@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API Security with Spring Boot and Redis</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>API Security with Spring Boot and Redis</h1>
+<pre><code>src/main/java/com/jk/explore/security/apispring/
+├── Account.java                  The bank's record of a customer, as it is stored
+├── AccountView.java              What a customer may see of their own account: no role, no limit, no risk score, no full card number, no PIN hash
+├── ApiApp.java                   
+├── ApiSecurity.java              Callers sign in with a header, so there are no cookies to forge and no session; the budget is counted per signed-in caller
+├── ApiSpringDemo.java            Runs the bank API story in five numbered sections against real Spring Boot servers and a real Redis in Docker, all on the loopback interface
+├── Bank.java                     300 customers in memory
+├── Client.java                   An app that calls the bank's API with a customer's credentials in a header
+├── DirectoryEntry.java           What the customer directory shows of anyone: an id and a name
+├── ErrorHandling.java            Short, fixed answers for a bad request: they say what was wrong, never what the server is
+├── LocalRateLimiter.java         The same bucket kept in this server's memory
+├── ManualClock.java              A clock that stands still until the demo moves it, so a thousand requests all happen &quot;at the same moment&quot; and a refill takes no time to wait for
+├── NaiveAccountsController.java  The first version of the API: bind the body to the stored record, return the stored record, and let the caller choose the page size
+├── RateLimitFilter.java          Takes one token from the signed-in caller's bucket before the request reaches the controller
+├── RateLimiter.java              A budget for each caller: a bucket that holds a few requests and refills steadily
+├── RedisLab.java                 A throwaway Redis in a Docker container, bound to the loopback address on a free port, protected by a password and removed on close
+├── RedisRateLimiter.java         The bucket kept in Redis, so every server draws on the same one
+├── Running.java                  One API server on a free loopback port
+├── SafeAccountsController.java   The second version: a request model with its limits, a response model with only what the caller may see, and a page size that has a ceiling
+└── UpdateProfileRequest.java     The only fields a customer may change about themselves, with their limits
+</code></pre>
+<p><strong>A Spring Boot API owes its callers three limits: Jackson binds whatever the body names unless a request record, FAIL_ON_UNKNOWN_PROPERTIES and Bean Validation say otherwise, a controller returns whatever object it is given unless a response record says what a caller may see and a page has a ceiling, and a rate limiter that lives in one server's memory gives a caller one budget per server, so the count belongs in Redis, kept in one atomic script.</strong></p>
+<p>The plain <a href="../api-security">api-security</a> project builds the three limits from scratch. This one uses what a real Spring Boot bank has: <strong>Spring Boot 4.1</strong>, <strong>Jackson 3</strong>, <strong>Bean Validation</strong>, <strong>Spring Security 7</strong>, and a real <strong>Redis 8</strong> in Docker for the budget. It needs Docker for the Redis parts; its tests are tagged <code>integration</code> for those: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>The first version.</strong> <code>@RequestBody Account patch</code> binds every field the caller sends, so <code>{"role":"admin","creditLimitCents":100000000}</code> makes Ana an admin with a huge credit limit. The controller returns the stored record with nine fields including the full card number and the PIN hash, a page size of 1,000,000 returns all 300 customers, and 1,000 requests in a loop are all answered.
+- <strong>A request model.</strong> An <code>UpdateProfileRequest</code> record names the two fields a customer may change, with limits (<code>@Size</code>, <code>@Email</code>). <code>spring.jackson.deserialization.fail-on-unknown-properties=true</code> turns any other field into a <strong>400 <code>unknown field</code></strong>, and nothing is applied from a refused body.
+- <strong>A response model and a ceiling.</strong> <code>AccountView</code> returns five fields with the card as <code>****0001</code>; the directory returns id and name only; a page is capped at 50 and <code>size=0</code> is refused.
+- <strong>A budget in Redis.</strong> A token bucket per signed-in caller, written as one <strong>Lua script</strong> so taking a token is atomic: 50 answered, then <strong>429 with <code>Retry-After</code></strong>, a refill from the clock, and a separate bucket for each caller.
+- <strong>The bill.</strong> Two servers with in-memory budgets answer <strong>100</strong> of 1,000 requests; with the budget in Redis, <strong>50</strong>. When Redis stops answering the API refuses with 503.</p>
+<p><strong>Maps to:</strong> OWASP API Security Top 10 (2023) API3 Broken Object Property Level Authorization, API4 Unrestricted Resource Consumption, API6 Unrestricted Access to Sensitive Business Flows · CWE-915 (mass assignment) · CWE-213 · CWE-770 · OWASP ASVS 5.0 V4 (API and Web Service).</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank counter with a form that has every field on it, including the ones marked "staff only", and a clerk who types in whatever the customer wrote, reads out the whole file in reply, and never closes the queue. The fixes are a shorter form, a shorter reply, and a ticket machine that every counter in the bank shares.</p>
+<h2>The scenario</h2>
+<p>A bank API on Spring Boot lets a customer update a profile and read accounts. The demo starts the real application in two versions, calls it as an app would, and then starts two servers against one Redis to share a budget.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The first version</td>
+<td>Binding the body to the stored record lets a customer become an admin, the response is the whole record, a page size of a million returns every customer, and a thousand requests are all answered.</td>
+</tr>
+<tr>
+<td>2. A request model</td>
+<td>A record names the two fields a customer may change, unknown fields are a 400, values are validated, and nothing is applied from a refused body.</td>
+</tr>
+<tr>
+<td>3. A response model and a page ceiling</td>
+<td>A response record has five fields and a masked card, the directory shows id and name only, a page is capped at 50, and size 0 and no login are refused.</td>
+</tr>
+<tr>
+<td>4. The budget runs out, and refills</td>
+<td>A token bucket per caller in Redis, taken by one Lua script: 50 answered, then 429 with Retry-After 1s, a refill from the clock, and a separate bucket for each caller.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Two servers with in-memory budgets answer 100 of 1000 requests, with the budget in Redis 50; when Redis stops answering the API refuses with 503.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>19 tests in <code>ApiSpringTest</code>, <code>DemoRunsTest</code>, <code>RedisLimiterTest</code>. Most tests run without Docker with the budget in memory; the tests of the Redis budget and the full demo start a real Redis and are tagged integration (./gradlew integrationTest). Nothing printed changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank is a real Spring Boot application with Spring Security, and the budget is a real Redis in a container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The limiter takes its time from a clock the demo can move, so a thousand requests happen at one moment and a refill takes no time to wait for. Only statuses, field names and counts are printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-validation</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-data-redis</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/api-security-with-spring-boot-and-redis-explained.html">API Security with Spring Boot and Redis, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Every request takes a token from the caller's bucket in Redis before the controller sees it.</p>
+<p><img alt="Two servers and one budget" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The second version has a model for what comes in, a model for what goes out, and a filter for how often.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>In order: the login, the budget, the request model, the controller and the response model.</p>
+<p><img alt="What a request meets" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A request takes a token" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/api-security-with-spring-boot-and-redis-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every field is a line in a record,</strong> so adding a field to the API is a visible change, which is the point and a little more work.</li>
+<li><strong>Validation messages need care:</strong> short and fixed, so they say what was wrong and never what the server is.</li>
+<li><strong>A page ceiling means clients must page,</strong> and some will complain.</li>
+<li><strong>Redis is in every request,</strong> so its latency is the API's latency, and its failure is the API's failure.</li>
+<li><strong>A limit that is too tight refuses real customers,</strong> and one that is too loose protects nothing: the numbers need watching.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>An internal API with one trusted caller does not need a Redis budget, but it still needs the request and response records. A public API with many servers needs all of it, and a gateway in front of it may already hold the budget.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@RequestBody</code> on an entity or a JPA class.</li>
+<li>A response that includes <code>password</code>, <code>ssn</code> or a token field.</li>
+<li><code>?size=1000000</code> in a pen test report.</li>
+<li><code>429 Too Many Requests</code> and a <code>Retry-After</code> header.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../api-security">api-security</a>, in the <a href="..">api-security</a> module. It follows the same story and the same three limits, on a real framework, with the budget moved into Redis.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
