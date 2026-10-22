@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Artifact Signing with cosign</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Artifact Signing with cosign</h1>
+<pre><code>src/main/java/com/jk/explore/security/cosignsigning/
+├── Cosign.java             The cosign command, run as a program, with a key pair per signer kept in the lab's folder
+├── CosignSigningDemo.java  Runs the store's release-signing story in five numbered acts with the real cosign command and a real container registry on the loopback interface
+└── Lab.java                A container registry on a free loopback port, a folder for key pairs, and the real images of the lesson
+</code></pre>
+<p><strong>A container image tag can be moved to a different image, so a gate must resolve the tag to a digest and verify a signature that a pinned key made over exactly that digest, with the signed claims it requires and, where it matters, a signed statement of how the image was built; a signature carries no time and no revocation without a log, the gate protects only the paths that pass through it, and the key is the crown jewel.</strong></p>
+<p>The plain <a href="../artifact-signing">artifact-signing</a> project signs a jar with Ed25519 and builds a transparency log from scratch, and ends with "keyless signing ... the -with-cosign version". This one uses the real tool, <strong>cosign 3</strong>, to sign and verify real container images in a real registry (<strong>registry:3</strong> in Docker, on a free low loopback port). It needs Docker and the <code>cosign</code> command (<code>brew install cosign</code>); its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>A tag is a name, not a checksum.</strong> The release is pushed as <code>shop/app:2.4.0</code> (nginx 1.31.7). A different image (nginx 1.31.6) is pushed under the same tag and the deployment, pulling by tag, gets it.
+- <strong>A signed release, checked before it runs.</strong> The release key signs the <strong>digest</strong>; the signature is stored in the same registry as one more tag. The gate resolves the tag to a digest and verifies with the pinned public key. A moved tag has no signature (refused); an image signed by the attacker's key is refused (the key is not trusted); the tag put back is accepted.
+- <strong>Signed claims and rotating keys.</strong> <code>-a channel=stable</code> is signed with the image and checked by the gate; a beta build signed by the same key is refused by the stable gate. A gate trusts <code>[release, next]</code> while a build moves over. A thief with a retired key signs a new image today and a gate that still trusts it accepts it: <strong>a signature carries no time</strong>, and without a log there is no revocation day.
+- <strong>Attestations.</strong> The CI system signs a SLSA provenance statement; the gate verifies it and applies a rule of its own (the builder must be the CI system). An image built on a laptop and attested by the same key <strong>verifies, and fails the rule</strong>. A statement signed only by the attacker's key, or offered for another digest, is refused.
+- <strong>The bill.</strong> The gate refuses an unsigned image, but a pull straight from the registry never meets the gate. The key is protected by a passphrase. Keyless signing needs the public Fulcio and Rekor services, which a local lab does not have, so the transparency log is left out here.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A08 Software or Data Integrity Failures · SLSA · CWE-494 (download of code without integrity check), CWE-345 · Sigstore.</p>
+<h2>The idea in everyday terms</h2>
+<p>A shipment with a wax seal. The tag on the crate is a label anyone can reprint; the seal is a stamp that only the shipper holds, pressed over the exact contents. The customs gate checks the seal against the shipper's known stamp, and ignores the label.</p>
+<h2>The scenario</h2>
+<p>An online store ships its application as a container image. The demo starts a real registry, pushes real images, signs and attests them with cosign, and tries every move an attacker or an accident could make before a deployment gate.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A deployment that runs whatever a tag points at</td>
+<td>A different image is pushed under the same tag, and a deployment that pulls by tag gets it.</td>
+</tr>
+<tr>
+<td>2. A signed release, checked before it runs</td>
+<td>The release key signs the digest, the gate verifies it with the pinned public key, and a moved tag or an unknown key is refused.</td>
+</tr>
+<tr>
+<td>3. Signed claims, and keys that rotate</td>
+<td>Claims such as channel=stable are signed with the image; a beta build is refused by the stable gate; a retired key still signs for any gate that trusts it.</td>
+</tr>
+<tr>
+<td>4. Signed statements about how the image was built</td>
+<td>A provenance attestation names the builder; the gate verifies it and applies its own rule, so a laptop build signed by the same key verifies and still fails.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>The gate refuses an unsigned image, but a pull straight from the registry never meets it; the key needs a passphrase and a plan, and keyless signing needs public services.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>9 tests in <code>CosignSigningTest</code>, <code>DemoRunsTest</code>. The tests start one registry for the whole class and remove it (./gradlew integrationTest). They need Docker and the cosign command.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The registry is a real container on a free loopback port. The images are real images that are already on this machine. cosign is run as a program, with key pairs generated in a temporary folder that is removed at the end. Digests, keys and ports are never printed; the demo takes about twenty seconds.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/artifact-signing-with-cosign-explained.html">Artifact Signing with cosign, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The signature lives in the registry beside the image; the gate holds the public key.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The lab runs the registry, the wrapper runs cosign, the demo is the gate.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Name, digest, signature, claims, then the gate's own rule.</p>
+<p><img alt="What the gate does" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Releasing and deploying" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/artifact-signing-with-cosign-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The key is the crown jewel:</strong> here a passphrase-protected file; in practice a hardware module, with each use approved and logged.</li>
+<li><strong>A signature carries no time,</strong> so without a transparency log nothing says when a retired key was last honest.</li>
+<li><strong>Every gate must be told the new key before the old one goes,</strong> which is a project in itself.</li>
+<li><strong>The gate protects only paths that pass through it,</strong> and every other way to start an image is a gap.</li>
+<li><strong>Keyless signing needs public services</strong> (Fulcio, Rekor) or your own deployments of them, and cosign 3 is still moving its offline flags.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A team that builds and runs its images in one trusted place and pulls only by digest from its own registry gets much of the benefit from the digest alone. Add signatures when images cross a boundary, to another team, another environment or a customer.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>image: shop/app:latest</code> in a deployment file.</li>
+<li><code>cosign verify</code> in a pipeline or an admission policy.</li>
+<li>A <code>.sig</code> tag next to an image in a registry.</li>
+<li>A provenance file named <code>provenance.intoto.jsonl</code>.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../artifact-signing">artifact-signing</a>, in the <a href="..">secrets-and-supply-chain</a> module. It follows the same questions, which key, which artifact and which claims, with a real tool and a real registry.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

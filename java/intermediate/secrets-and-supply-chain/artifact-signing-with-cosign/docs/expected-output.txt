@@ -1,0 +1,39 @@
+ONE. A deployment that runs whatever a tag points at.
+  the release team pushes the image as shop/app:2.4.0 to the registry: the tag points at one digest, the checksum of that image's manifest
+  the deployment pulls by tag: it gets exactly that image: true
+  someone with push rights, or a registry that is not what it was, pushes a different image under the same tag: the digests differ: true
+  the deployment pulls by tag again: it gets the other image: true  <- A TAG IS A NAME, NOT A CHECKSUM
+  the deployment pulls by the digest it was given: it gets the release: true, but only if the digest itself came from somewhere that cannot be changed
+TWO. A signed release, checked before it runs.
+  the release pipeline signs the image digest with the release key: signed
+  the signature is stored in the same registry, next to the image, as one more tag: true
+  the deployment pins the public key of the release key and checks before it deploys: accepted (signed by the release key)
+  the tag is moved to the attacker's image; the same gate: refused (no signature for this digest)
+  the attacker signs their own image with a key of their own: refused (no signature that this key made)
+  a key the deployment does not know is not trusted, however well the signature was made
+  the tag is put back; the gate: accepted (signed by the release key)
+THREE. Signed claims, and keys that rotate.
+  the release signs the digest again with the claims channel=stable and version=2.4.0
+  a gate that requires channel=stable: accepted (signed by the release key)
+  a gate that requires channel=beta: refused (the signed claims do not say what the gate requires)  (the claims are signed with the image, so they cannot be edited)
+  a beta build, signed by the same key with channel=beta, offered to the stable gate: refused (the signed claims do not say what the gate requires)
+  the 'next' key is added to the gate while the build moves over; the gate trusts [release, next]: a release signed by the old key: accepted (signed by the release key)
+  the same digest signed with the next key: accepted (signed by the next key)
+  the old key is retired: a gate that trusts only [next] and a digest signed only by 'release': refused (no signature that this key made)
+  a thief with the retired 'old' key signs a new image today: a gate that still trusts 'old': accepted (signed by the old key)  <- A SIGNATURE CARRIES NO TIME; WITHOUT A LOG THERE IS NO REVOCATION DAY
+  a gate that dropped 'old': refused (no signature that this key made)
+FOUR. Signed statements about how the image was built.
+  the CI system signs a provenance statement for the digest: the builder is https://ci.shop.example, the source is a commit: attested
+  the gate verifies the attestation with the release key: accepted, and reads the builder: https://ci.shop.example
+  the gate's own rule, builder must be the CI system: accepted
+  an image built on a laptop and attested by the same key: the signature verifies, the builder is https://laptop.local, and the gate's own rule: refused  <- A SIGNATURE SAYS WHO SIGNED, THE RULE SAYS WHAT WAS SIGNED
+  an image whose provenance only the attacker's key signed, with the CI system named as builder: the gate, which trusts the release key: refused (no signature that this key made)
+  the release key's attestation of one image, offered for another digest: refused (no signature for this digest)
+  the public transparency log is left out here, because this lab is local; with it, every signature would also be recorded where a monitor can read it
+FIVE. The bill.
+  the gate refuses an unsigned image: refused (no signature for this digest)
+  but it protects only the paths that pass through it: a pull straight from the registry gets the unsigned image: true
+  the signing key is the crown jewel: with a wrong passphrase it cannot sign: refused
+  rotation is a project: every gate must trust the new key before the old one is dropped, and nothing marks the day an old signature was made
+  keyless signing replaces long-lived keys with short-lived certificates tied to an identity and recorded in a public log; it needs the public Fulcio and Rekor services, which a local lab does not have
+  cosign 3 is moving offline signing behind a signing config, so the flags used here may change

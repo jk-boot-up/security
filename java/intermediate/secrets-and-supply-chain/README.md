@@ -13,6 +13,7 @@ and NIST SSDF practices.
 | 3 | [sbom-and-provenance](sbom-and-provenance) | Know what is inside a release, and prove where it came from | A03, A08 |
 | 4 | [dependency-confusion](dependency-confusion) | If a build can find your private name in a public place, someone else will put a package there | A03, CWE-427, CWE-829 |
 | 5 | [secrets-management-with-openbao](secrets-management-with-openbao) | A real secrets server hands each application its own short-lived database login, and takes it back when the lease ends or a leak is noticed | A02, CWE-798 |
+| 6 | [artifact-signing-with-cosign](artifact-signing-with-cosign) | A tag is a name, a digest is a checksum, and a signature on the digest is the only thing a deployment gate can rely on | A08, SLSA |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Artifact Signing with cosign, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Artifact Signing with cosign, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A deployment should run an image only if a key it trusts signed exactly that digest, with the claims it requires, and everything else is a name that anyone could have moved.</p>
+<h2>The 5 acts</h2>
+<h3>1. A deployment that runs whatever a tag points at</h3>
+<p>The release team pushes the image as shop/app:2.4.0 and the tag points at one digest. The deployment pulls by tag and gets exactly that image. Someone with push rights, or a registry that is not what it was, pushes a different image under the same tag: the digests differ. The deployment pulls by tag again and gets the other image: a tag is a name, not a checksum. Pulling by the digest it was given gets the release, but only if the digest itself came from somewhere that cannot be changed.</p>
+<h3>2. A signed release, checked before it runs</h3>
+<p>The release pipeline signs the image digest with the release key. The signature is stored in the same registry, next to the image, as one more tag. The deployment pins the public key and checks before it deploys: accepted. The tag is moved to the attacker's image and the same gate refuses it: no signature for this digest. The attacker signs their own image with a key of their own and the gate refuses that too: not a key it trusts. The tag is put back and the gate accepts.</p>
+<h3>3. Signed claims, and keys that rotate</h3>
+<p>The release signs the digest again with the claims channel=stable and version=2.4.0. A gate that requires channel=stable accepts; one that requires channel=beta refuses. A beta build signed by the same key with channel=beta, offered to the stable gate, is refused. The next key is added while the build moves over, so the gate trusts the release and next keys, and both signatures are accepted. When the old key is retired, a gate that trusts only the next key refuses a digest signed only by the old one. A thief with the retired old key signs a new image today and a gate that still trusts the old key accepts it: a signature carries no time, and without a log there is no revocation day. A gate that dropped the old key refuses.</p>
+<h3>4. Signed statements about how the image was built</h3>
+<p>The CI system signs a provenance statement for the digest: the builder is the CI system and the source is a commit. The gate verifies the attestation with the release key and reads the builder; its own rule, that the builder must be the CI system, is satisfied. An image built on a laptop and attested by the same key verifies, the builder is the laptop, and the gate's own rule refuses it: a signature says who signed, the rule says what was signed. An image whose provenance only the attacker's key signed, naming the CI system as builder, is refused by a gate that trusts the release key. The release key's attestation offered for another digest is refused. The public transparency log is left out because this lab is local.</p>
+<h3>5. The bill</h3>
+<p>The gate refuses an unsigned image. But it protects only the paths that pass through it: a pull straight from the registry gets the unsigned image. The signing key is the crown jewel: with a wrong passphrase it cannot sign. Rotation is a project: every gate must trust the new key before the old one is dropped, and nothing marks the day an old signature was made. Keyless signing replaces long-lived keys with short-lived certificates tied to an identity and recorded in a public log; it needs the public Fulcio and Rekor services, which a local lab does not have. Cosign 3 is moving offline signing behind a signing config, so the flags used here may change.</p>
+<h2>The verdict</h2>
+<p>Deploy by digest, verify a signature from a pinned key on that digest, require signed claims and provenance and check them with your own rules, plan key rotation, keep keys in hardware, log every signature, and make the gate the only way an image starts.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>cosign verify</code> or <code>cosign sign</code> in a pipeline.</li>
+<li>A <code>sha256-...sig</code> tag in a registry.</li>
+<li><code>image: name@sha256:...</code> in a deployment.</li>
+<li>An in-toto statement with a <code>predicateType</code>.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>image: shop/app:latest</code> in a deployment file.</li>
+<li><code>cosign verify</code> in a pipeline or an admission policy.</li>
+<li>A <code>.sig</code> tag next to an image in a registry.</li>
+<li>A provenance file named <code>provenance.intoto.jsonl</code>.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
