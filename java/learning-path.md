@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 105 projects. Planned: 47 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 106 projects. Planned: 46 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,12 +24,12 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **64** | **12** | **76** |
+| **Intermediate** | | **65** | **11** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
 | | identity-and-access | 12 | 0 | 12 |
-| | tls-in-practice | 6 | 2 | 8 |
+| | tls-in-practice | 7 | 1 | 8 |
 | | secure-coding | 4 | 4 | 8 |
 | | secrets-and-supply-chain | 8 | 0 | 8 |
 | | platform-hardening | 2 | 2 | 4 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **105** | **47** | **152** |
+| **All** | | **106** | **46** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 24 | 12 | 36 |
+| Intermediate | With tools | 25 | 11 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **45** | **12** | **57** |
+| **All** | **With tools** | **46** | **11** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -212,7 +212,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 81 | [local-certificate-authority-with-step-ca](intermediate/tls-in-practice/local-certificate-authority-with-step-ca) | With tools: step ca | Run a real certificate authority for the store's own services: tokens and ACME, a policy for names, day-long certificates that renew, and a revocation list that only helps clients that read it | A04 |
 | 82 | [tls-servers-in-practice-with-nginx-and-caddy](intermediate/tls-in-practice/tls-servers-in-practice-with-nginx-and-caddy) | With tools: nginx and caddy | The same shop behind nginx, where every TLS choice is a line you write, and behind Caddy, which makes its own certificates and renews them | A02, A04 |
 | 83 | [tls-misconfigurations](intermediate/tls-in-practice/tls-misconfigurations) | Plain | A server's TLS is a set of choices, and a checker can read all of them | A02, A04 |
-| 84 | tls-misconfigurations-with-testssl | With tools: testssl | *planned*: testssl.sh against deliberately misconfigured local servers | A02, A04 |
+| 84 | [tls-misconfigurations-with-testssl](intermediate/tls-in-practice/tls-misconfigurations-with-testssl) | With tools: testssl | Point testssl.sh at servers that are right and servers that are wrong, and turn what it reports into a gate that the shop owns | A02, A04 |
 | 85 | [inspecting-tls-traffic](intermediate/tls-in-practice/inspecting-tls-traffic) | Plain | A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral | A04 |
 | 86 | inspecting-tls-traffic-with-wireshark | With tools: wireshark | *planned*: decrypting a local capture with tshark | A04 |
 | 87 | [certificate-pinning](intermediate/tls-in-practice/certificate-pinning) | Plain | A pin trusts one key instead of every authority, and the price is paid on the day the key changes | A04, CWE-295 |
