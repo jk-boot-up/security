@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLS Servers in Practice with nginx and Caddy, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>TLS Servers in Practice with nginx and Caddy, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A TLS server is a handful of choices, and each choice is either a line you wrote or a default someone else made.</p>
+<h2>The 5 acts</h2>
+<h3>1. nginx with a certificate from the local authority</h3>
+<p>nginx serves www.shop.localhost with a certificate signed by the lab's root. A client that trusts the root gets 200 over TLS 1.3. A client that trusts only its default roots refuses. The same client asking for pay.shop.localhost, which the certificate does not name, is refused. Plain http is answered with 301 to the https address. By default the Server header gives nginx's exact version; with server_tokens off it says only nginx.</p>
+<h3>2. Which protocol versions it speaks</h3>
+<p>The default accepts a client that offers only TLS 1.2, and one that offers 1.3. With ssl_protocols TLSv1.3, the client that offers only 1.2 is refused with no protocol version in common, and the one that offers 1.3 is served. The price of the stricter setting is every client that cannot speak 1.3; the setting is one line, and a change needs a reload.</p>
+<h3>3. HSTS, and the add_header trap</h3>
+<p>By default there is no Strict-Transport-Security header. An add_header in the server block sends it over https and not over plain http. A location, /account, with its own add_header (X-Frame-Options) replaces the server's headers: the page has X-Frame-Options and no HSTS. Repeating the line in the location brings it back. A browser that has seen the header refuses plain http to the name for the max-age.</p>
+<h3>4. Caddy makes its own certificates</h3>
+<p>The Caddyfile names only the site. Caddy made a root, an intermediate and a certificate by itself, issued by Caddy Local Authority; the certificate lasts 12 hours and Caddy renews it on its own. A client that trusts nginx's root but not Caddy's is refused. Plain http gets 308 to https. The Server header says only Caddy and there is no HSTS by default. A client that offers only TLS 1.2 is accepted by default. A header line in the Caddyfile adds HSTS.</p>
+<h3>5. The bill</h3>
+<p>With ssl_stapling on, a client that asks for a stapled OCSP answer receives none, and nginx says it found no responder URL in the certificate. Caddy's local certificates carry no responder either. A new certificate written over the old file is not served by nginx until nginx -s reload. nginx needs a renewal job that ends with a reload; Caddy swaps by itself and needs its data folder kept. Every client needs the root of whichever authority signed.</p>
+<h2>The verdict</h2>
+<p>Serve only TLS 1.2 and 1.3 (1.3 where you can), send HSTS on every page, hide the version, renew automatically and reload, test the result as a client sees it, and know which of these your server decides for you.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>ssl_certificate</code>, <code>ssl_protocols</code> and <code>add_header</code> in nginx.</li>
+<li>A Caddyfile with only a site name.</li>
+<li><code>nginx -s reload</code> after a renewal.</li>
+<li><code>Strict-Transport-Security</code> in a response.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>ssl_certificate</code> and <code>ssl_protocols</code> in an nginx configuration.</li>
+<li>A Caddyfile that is only a domain name and a <code>reverse_proxy</code> line.</li>
+<li><code>add_header Strict-Transport-Security</code> copied from a blog post.</li>
+<li>A cron job that runs <code>nginx -s reload</code> after a renewal.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

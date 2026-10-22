@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLS Servers in Practice with nginx and Caddy</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>TLS Servers in Practice with nginx and Caddy</h1>
+<pre><code>src/main/java/com/jk/explore/security/tlsservers/
+├── Caddy.java           A real Caddy on loopback ports, with its own local certificate authority, run in a folder of its own
+├── Https.java           A small HTTPS client over a socket: the address is 127.0.0.1, the name is whatever the test says, so names under .localhost need no resolver
+├── LocalCa.java         A root made with the step command, and certificates it signs directly; nginx has no CA of its own
+├── Nginx.java           A real nginx on loopback ports, with a configuration written for each case, run in a folder of its own
+├── Procs.java           Small helpers for running programs
+└── TlsServersDemo.java  
+</code></pre>
+<p><strong>A real nginx serves the shop with a certificate from a local root and needs a line for each choice (protocol versions, hiding the version, HSTS, a reload after each new certificate), where a location's own add_header silently replaces the server's HSTS; a real Caddy makes its own local authority and 12-hour certificates, redirects and renews by itself; and neither staples an OCSP answer when the certificate names no responder.</strong></p>
+<p>This project puts the same small shop behind two real servers, <strong>nginx</strong> and <strong>Caddy</strong> (<code>brew install nginx caddy</code>), both started by the demo on loopback ports, and reads the result with a small HTTPS client written with the JDK. For nginx, the certificate comes from a local root made with the <code>step</code> command. Caddy makes its own. Nothing is installed globally and no Docker is needed; the tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>nginx with a certificate from a local authority.</strong> A client that trusts the lab's root gets <code>200</code> over TLS 1.3; a client with only its default roots refuses; a name the certificate does not carry is refused; http is sent on with a <code>301</code>; the <code>Server</code> header gives the exact version until <code>server_tokens off</code>.
+- <strong>Protocol versions.</strong> The default accepts a client that offers only TLS 1.2; <code>ssl_protocols TLSv1.3</code> refuses it.
+- <strong>HSTS, and a trap.</strong> The header is absent by default and sent over https only; a <code>location</code> with its own <code>add_header</code> <strong>replaces</strong> the server's, and the page loses HSTS until the line is repeated.
+- <strong>Caddy.</strong> The Caddyfile names only the site; Caddy made a root, an intermediate and <strong>12-hour</strong> certificates and renews them; it redirects with <code>308</code>, says only <code>Caddy</code>, accepts TLS 1.2 by default and sends HSTS only when told.
+- <strong>The bill.</strong> OCSP stapling needs a responder named in the certificate; a new certificate is served by nginx only after a reload.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration and A04 Cryptographic Failures · CWE-319 (cleartext transmission), CWE-326 · RFC 6797 (HSTS), RFC 6066 (OCSP stapling).</p>
+<h2>The idea in everyday terms</h2>
+<p>Two shops with locks on their doors. One lock is fitted by hand, bolt by bolt, and each bolt is yours to remember; the other comes with a locksmith who changes the key every morning but chooses the lock for you.</p>
+<h2>The scenario</h2>
+<p>An online store wants its pages served only over https, with certificates from its own authority. The demo starts both servers, asks them what a client sees, and changes one line at a time.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. nginx with a certificate from the local authority</td>
+<td>A client with the lab's root gets the page over TLS 1.3; the default roots, a wrong name and plain http each get their own answer.</td>
+</tr>
+<tr>
+<td>2. Which protocol versions it speaks</td>
+<td>The default accepts a client that offers only TLS 1.2; one line makes the server refuse it.</td>
+</tr>
+<tr>
+<td>3. HSTS, and the add_header trap</td>
+<td>The header is absent by default and sent over https only; a location's own add_header replaces the server's, and the page loses HSTS.</td>
+</tr>
+<tr>
+<td>4. Caddy makes its own certificates</td>
+<td>A Caddyfile that names only the site gives a local authority, 12-hour certificates, a redirect and automatic renewal.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Stapling needs a responder; nginx serves the old certificate until it is reloaded; every client needs the right root.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>TlsServersTest</code>. The tests start one nginx and one Caddy for the whole class (./gradlew integrationTest). They need nginx, caddy and the step command.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>nginx and Caddy are the real programs, in temporary folders, on free loopback ports. Names under .localhost need no resolver because the client connects to 127.0.0.1 and sends the name as the server name. Ports, serial numbers and dates are never printed; the demo takes about half a minute.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tls-servers-in-practice-with-nginx-and-caddy-explained.html">TLS Servers in Practice with nginx and Caddy, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>One client, two servers, two authorities.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Two server wrappers, a root, and a client.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Version, root, name, then the headers.</p>
+<p><img alt="What a client checks" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A request to the shop" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tls-servers-in-practice-with-nginx-and-caddy-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>nginx has no defaults you can forget:</strong> every protocol, header and certificate is a line, and a line in the wrong block does nothing or undoes another.</li>
+<li><strong>A new certificate needs a reload,</strong> so a renewal job must end with one.</li>
+<li><strong>Caddy decides for you,</strong> which is safe until you need something it does not do.</li>
+<li><strong>HSTS is a promise to browsers</strong> that is hard to take back.</li>
+<li><strong>Stapling and revocation need a responder</strong> that local authorities often do not run.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A site that only serves static pages from a managed host gets https from the host. Do this when you run the server yourself, or when the certificate comes from your own authority.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>ssl_certificate</code> and <code>ssl_protocols</code> in an nginx configuration.</li>
+<li>A Caddyfile that is only a domain name and a <code>reverse_proxy</code> line.</li>
+<li><code>add_header Strict-Transport-Security</code> copied from a blog post.</li>
+<li>A cron job that runs <code>nginx -s reload</code> after a renewal.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a tools project of the <a href="..">tls-in-practice</a> module without a plain twin. The authority behind it is the subject of <a href="../local-certificate-authority-with-step-ca">local-certificate-authority-with-step-ca</a>; the checks of the result are in <a href="../tls-misconfigurations">tls-misconfigurations</a> and its testssl version.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

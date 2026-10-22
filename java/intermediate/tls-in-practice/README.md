@@ -12,6 +12,7 @@ real X.509 certificates, the misconfigurations that a checker should find, what 
 | 3 | [inspecting-tls-traffic](inspecting-tls-traffic) | A key log opens exactly the connections it lists, and a leaked server key opens nothing that was ephemeral | A04, CWE-312, CWE-532 |
 | 4 | [certificate-pinning](certificate-pinning) | A pin trusts one key instead of every authority, and the price is paid on the day the key changes | A04, CWE-295, CWE-296 |
 | 5 | [local-certificate-authority-with-step-ca](local-certificate-authority-with-step-ca) | Run a real certificate authority for the store's own services: tokens and ACME, a policy for names, day-long certificates that renew, and a revocation list that only helps clients that read it | A04 |
+| 6 | [tls-servers-in-practice-with-nginx-and-caddy](tls-servers-in-practice-with-nginx-and-caddy) | The same shop behind nginx, where every TLS choice is a line you write, and behind Caddy, which makes its own certificates and renews them | A02, A04 |
 
 ## How the module is judged
 
