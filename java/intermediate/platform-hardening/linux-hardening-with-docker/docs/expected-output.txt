@@ -1,0 +1,57 @@
+ONE. What the scan finds in a typical image.
+  shop-host:typical is a real container from a real image, scanned by one script run as root inside it: files and modes, accounts, sshd_config, listeners from /proc/net/tcp, kernel settings
+  CRITICAL empty-password         test: can log in with no password
+  CRITICAL extra-root-account     toor: UID 0 gives root rights to a second name
+  CRITICAL open-port              port 23: listens on every interface (telnet: passwords in the clear)
+  CRITICAL open-port              port 2375: listens on every interface (Docker API without TLS: root on the host for anyone who connects)
+  CRITICAL open-port              port 6379: listens on every interface (Redis, usually without a password)
+  CRITICAL ssh-empty-passwords    /etc/ssh/sshd_config: PermitEmptyPasswords yes
+  CRITICAL unexpected-setuid      /tmp/.hidden-shell: mode 4755 runs with its owner's rights and is not on the allow-list [auto-fixable]
+  HIGH     cron-group-writable    /etc/cron.daily/backup.sh: mode 0775: members of its group can add commands that run as root [auto-fixable]
+  HIGH     default-account        test: a well-known account name with a login shell
+  HIGH     loose-permissions      /etc/shadow: mode 0644 is looser than 0640 [auto-fixable]
+  HIGH     loose-permissions      /etc/ssh/ssh_host_ed25519_key: mode 0644 is looser than 0600 [auto-fixable]
+  HIGH     loose-permissions      /opt/app/config.properties: mode 0644 is looser than 0600 [auto-fixable]
+  HIGH     ssh-root-login         /etc/ssh/sshd_config: PermitRootLogin yes
+  HIGH     world-writable-dir     /var/www/uploads: mode 0777 lets any user change it and add or remove entries without the sticky bit [auto-fixable]
+  HIGH     world-writable-file    /var/www/uploads/readme.txt: mode 0666 lets any user change it [auto-fixable]
+  MEDIUM   accepts-redirects      net.ipv4.conf.all.accept_redirects: is 1: a neighbour can change this host's routes
+  MEDIUM   ssh-passwords          /etc/ssh/sshd_config: PasswordAuthentication is on: passwords can be guessed, keys cannot
+  LOW      no-syncookies          net.ipv4.tcp_syncookies: is not 1: a flood of half-open connections can fill the queue
+  LOW      ssh-x11                /etc/ssh/sshd_config: X11Forwarding yes on a server that needs no graphical sessions
+  19 findings: 7 critical, 8 high, 2 medium, 2 low; 7 can be fixed mechanically
+TWO. The fixes a machine can make, and where they live.
+  permission changes applied in the running container: 7
+  findings left: 12 (none of them a permission)
+    empty-password - test
+    extra-root-account - toor
+    open-port - port 23
+    open-port - port 2375
+    open-port - port 6379
+    ssh-empty-passwords - /etc/ssh/sshd_config
+    default-account - test
+    ssh-root-login - /etc/ssh/sshd_config
+    accepts-redirects - net.ipv4.conf.all.accept_redirects
+    ssh-passwords - /etc/ssh/sshd_config
+    no-syncookies - net.ipv4.tcp_syncookies
+    ssh-x11 - /etc/ssh/sshd_config
+  docker diff lists what changed in the container's own writable layer: [/etc/cron.daily, /etc/cron.daily/backup.sh, /etc/shadow, /etc/ssh, /etc/ssh/ssh_host_ed25519_key, /opt/app/config.properties, /tmp/.hidden-shell, /var/www/uploads, /var/www/uploads/readme.txt]
+  a new container from the same image: 19 findings: 7 critical, 8 high, 2 medium, 2 low  <- A FIX IN A RUNNING CONTAINER IS NOT A FIX
+  the image is what runs next time, so a change belongs in the image's recipe
+THREE. The decisions a person makes, in the recipe.
+  no second root account and no test account; a locked service account with no login shell; sshd_config with root login, passwords, empty passwords and X11 off;
+  private modes for the key, the config and cron; no copied shell with the set-user-id bit; one listener, port 8080; the process runs as app, not root;
+  and the namespaced kernel settings the container is started with: accept_redirects 0 and syncookies 1
+  shop-host:hardened, scanned the same way: 0 findings
+  the user the image's process runs as: root in the typical image, app in the hardened one
+  the process of the hardened container runs as: app
+FOUR. Running it again.
+  someone loosens the config file inside a running container: [loose-permissions - /opt/app/config.properties, world-writable-file - /opt/app/config.properties]
+  a new container from the image: 0 findings
+  the scan is part of the build, on the image after it is built, and a regression fails it; on running containers it finds drift, and the answer to drift is a new container
+FIVE. The bill.
+  kernel.randomize_va_space inside the container is the host kernel's: 2; writing 0 to it from inside: refused (read-only file system)  <- A CONTAINER SHARES THE HOST'S KERNEL, SO THESE CHECKS ARE THE HOST'S TO FIX
+  the scan runs as root inside the container, so it reads what a root process would; a process that runs as app sees less, and an attacker starts as that process
+  the allow-lists, port 8080 and no set-user-id file, are the shop's own decisions; a scan with the wrong lists is either silent or noisy
+  an image scan sees one moment of one container; what is added at start-up, or by a volume or an environment variable, is another scan
+  how a container is started, with which user, capabilities, mounts and filesystem mode, is the subject of container-hardening
