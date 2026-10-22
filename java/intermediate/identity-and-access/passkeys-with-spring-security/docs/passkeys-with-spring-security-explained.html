@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Passkeys with Spring Security, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Passkeys with Spring Security, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A passkey proves that a customer holds a private key made for the bank's name, so it cannot be phished, and a bank that uses it still decides about user verification, copies, recovery and the password.</p>
+<h2>The 5 acts</h2>
+<h3>1. Registering a passkey: the bank keeps only a public key</h3>
+<p>Ana signs in with her password and adds a passkey: Spring Security's WebAuthn support sends a challenge of 32 random bytes, the relying party id bank.example and her user handle of 32 random bytes. Ana's phone makes a new P-256 key pair for bank.example, keeps the private key, and returns a credential id of 16 bytes and an attestation object that says fmt none. The bank checks the challenge, the type, the origin and the relying party id hash, and accepts. It stores a credential id of 16 bytes, a COSE public key of 77 bytes, a counter of 0 and the label, and nothing that can sign. An answer made with another key under ana's credential id is refused.</p>
+<h3>2. Signing in: a fresh challenge, signed once</h3>
+<p>Every sign-in gets a new challenge of 32 random bytes. Ana touches her phone and uses her fingerprint; it signs 37 bytes of authenticator data and the SHA-256 of the client data. The bank checks the challenge, type, origin, relying party id hash, flags and signature: accepted, signed in as ana with a passkey. The same answer sent again from another browser is refused, and sent again to the browser that asked for the challenge it is refused because the challenge was used. An answer for a challenge that was given to another browser is refused. The same kind of answer with the user-verified flag switched on after signing is refused: the signature does not match.</p>
+<h3>3. A look-alike site gets nothing it can use</h3>
+<p>Ana opens https://bank-example.test, a copy of the bank's page. It asks for a passkey for its own name, bank-example.test: nothing, the authenticator has no passkey for that name. It passes on the bank's real challenge and asks for bank.example: nothing, the browser will not use bank.example for a page at that address. Even a browser that skipped that rule writes the page's real origin into the client data, and the bank checks it: refused. The same page asking for ana's password, which she types in, gets a password that works at the bank: accepted. A password can be phished, a passkey cannot.</p>
+<h3>4. User verification, and counters against copies</h3>
+<p>With Spring Security's defaults, a sign-in with only a touch is accepted: user verification is asked for, not required. The phone has signed in 3 times and is restored from a backup, so its counter goes back to 1: accepted. An attacker's copy of the key signing with the same counter as the real phone is accepted: a clone is not noticed. With the hardened bank, user verification required and the counter compared: a sign-in with only a touch is refused, with her fingerprint as well it is accepted. The bank has now seen counter 6. An attacker copies the phone's key; the real phone signs in first and is accepted; then the copy signs in: refused, counter 7 is not above 7, possible cloned authenticator. The passkey is now suspended until ana confirms it, even for the real phone. A synced passkey reports counter 0 and is accepted twice, so a copy cannot be spotted by its counter.</p>
+<h3>5. The bill: recovery, lost devices and the move away from passwords</h3>
+<p>Ben registers 2 passkeys, his phone and a security key. His phone is lost, and his new laptop has no passkey yet: nothing. The security key from his drawer is accepted. Signed in with the key, ben removes the lost phone's passkey, 204, and a thief who holds the phone and its fingerprint is refused. Recovery is now the weakest way in, so it needs the same care as the passkeys themselves. Ana's password still works alongside her passkeys: the weakest way in sets the level. Once ana has two passkeys and the bank switches her password off, the password is refused, while a customer with no passkey keeps it.</p>
+<h2>The verdict</h2>
+<p>Use a maintained WebAuthn library, require user verification, compare the counter and suspend a passkey that goes backwards, treat synced passkeys as the account they sync through, offer two passkeys before switching passwords off, and design recovery as carefully as sign-in.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>navigator.credentials.create</code> and <code>get</code> in front-end code.</li>
+<li><code>http.webAuthn()</code> in a Spring Security configuration.</li>
+<li>A <code>PublicKeyCredentialRequestOptions</code> with <code>userVerification: preferred</code>.</li>
+<li>An <code>rpId</code> that is a registrable domain.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Sign in with a passkey" and a fingerprint prompt.</li>
+<li><code>navigator.credentials.create</code> and <code>navigator.credentials.get</code> in front-end code.</li>
+<li><code>http.webAuthn()</code> in a Spring Security configuration.</li>
+<li>A security key (YubiKey) on a keyring.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

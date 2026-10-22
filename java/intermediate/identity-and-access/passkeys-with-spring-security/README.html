@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Passkeys with Spring Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Passkeys with Spring Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/passkeysspring/
+├── B64.java                      base64url without padding, the encoding WebAuthn uses for every binary value in its JSON
+├── Cbor.java                     The few CBOR items that an attestation object and a COSE public key need: integers, byte strings, text strings and maps
+├── HardenedRelyingParty.java     What Spring Security leaves to the bank
+├── PasskeyBrowser.java           A customer's browser and the bank's page script as far as this lesson needs them: it keeps the session cookie, sends the CSRF token in a header, and does what {@code navigator.credentials.create} and {@code navigator.credentials.get} would do, by handing the bank's options to an authenticator and posting what comes back
+├── PasskeyController.java        The CSRF token for the page's script, which sends it back in a header on every post
+├── PasskeySecurity.java          The bank signs customers in with a password or a passkey
+├── PasskeysApp.java              
+├── PasskeysSpringDemo.java       Runs the bank's passkey story in five numbered acts against the real Spring Security WebAuthn endpoints, with an authenticator in software
+├── PasswordSwitchOffFilter.java  A customer with two passkeys has a way back in if one is lost, so the password, which can be phished, is switched off for them
+├── Running.java                  The bank on a free loopback port
+└── SoftwareAuthenticator.java    A phone's authenticator in software
+</code></pre>
+<p><strong>Spring Security's WebAuthn support, built on WebAuthn4J, creates and checks the challenges, keeps the public keys and refuses a look-alike origin, a replayed or foreign answer and a wrong key; but by default it only asks for user verification, never compares the signature counter, and leaves the password you keep beside the passkeys, so a bank has to wrap it to require a fingerprint and suspend a cloned passkey, and to switch passwords off once a customer has two passkeys.</strong></p>
+<p>The plain <a href="../passkeys">passkeys</a> project builds a WebAuthn relying party from scratch. This one uses <strong>Spring Security 7.1</strong>'s WebAuthn support (<code>http.webAuthn(...)</code>, built on <strong>WebAuthn4J</strong>): the real registration and sign-in endpoints of a Spring Boot bank on a loopback port, with a phone's authenticator written in software that builds the same bytes a real one does, including the CBOR attestation object and the COSE key. It needs no Docker.</p>
+<p>What it shows:
+- <strong>Registering.</strong> A signed-in customer asks for options: a challenge of 32 random bytes, the relying party id <code>bank.example</code>, a user handle of 32 random bytes. The phone makes a P-256 key pair and returns a credential id and an attestation object with <code>fmt: none</code>. The bank stores a <strong>77-byte COSE public key</strong>, a counter of 0 and a label, and nothing that can sign. An answer made with another key under ana's credential id is refused.
+- <strong>Signing in.</strong> A fresh challenge each time, signed once; the same answer sent again, an answer for another browser's challenge, and an answer whose user-verified flag was switched on after signing are all refused.
+- <strong>A look-alike site.</strong> <code>bank-example.test</code> gets nothing: the authenticator has no passkey for that name, the browser will not let it ask for <code>bank.example</code>, and a browser that skipped the rule still writes the page's real origin, which the bank refuses. The password typed into the same page works at the bank: <strong>a password can be phished, a passkey cannot.</strong>
+- <strong>What the defaults leave open.</strong> Spring Security <em>asks</em> for user verification but accepts a touch, never compares the signature counter, so a phone restored from a backup and a <strong>clone</strong> both sign in. A <code>HardenedRelyingParty</code> wrapper requires the fingerprint and, after the signature proves the signer holds the key, <strong>suspends a passkey whose counter does not go up</strong>, even for the real phone. A synced passkey reports 0 and is let through.
+- <strong>The bill.</strong> Ben's lost phone: the new laptop has no passkey, the security key works, and removing the phone's passkey (<code>DELETE /webauthn/register/{id}</code>) ends its use. The password still works beside the passkeys, so it is switched off for a customer with two.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · NIST SP 800-63B-4 (phishing-resistant authenticators) · W3C Web Authentication Level 2 · FIDO2 · CWE-308, CWE-1390.</p>
+<h2>The idea in everyday terms</h2>
+<p>A hotel key card that is cut for one hotel only. A copy of the hotel's records does not open a door, a card cut for another hotel opens nothing here, and a fake lobby can collect a guest's name and room number but not the card's secret.</p>
+<h2>The scenario</h2>
+<p>An online bank lets customers sign in with a password or a passkey. The demo registers Ana's phone, signs her in, shows a look-alike site failing, then compares Spring Security's defaults with a hardened bank, and ends with Ben's lost phone.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Registering a passkey: the bank keeps only a public key</td>
+<td>The bank sends a challenge, its relying party id and a user handle; the phone returns a credential id and an attestation object; the bank stores a COSE public key and a counter of 0, nothing that can sign.</td>
+</tr>
+<tr>
+<td>2. Signing in: a fresh challenge, signed once</td>
+<td>Every sign-in gets a new challenge; the phone signs the authenticator data and the hash of the client data; a replayed answer, an answer for another browser's challenge and a flipped flag are refused.</td>
+</tr>
+<tr>
+<td>3. A look-alike site gets nothing it can use</td>
+<td>A copy of the bank's page cannot get a passkey for the bank's name, the browser refuses the bank's relying party id for it, and the bank refuses the page's real origin; a typed password is not so lucky.</td>
+</tr>
+<tr>
+<td>4. User verification, and counters against copies</td>
+<td>Spring Security's defaults accept a touch without a fingerprint, a counter going backwards and a clone; a wrapper requires user verification and suspends a passkey whose counter does not go up.</td>
+</tr>
+<tr>
+<td>5. The bill: recovery, lost devices and the move away from passwords</td>
+<td>Ben has a phone and a security key; the laptop has nothing, the key works, removing the lost phone's passkey ends its use; the password stays beside the passkeys until the bank switches it off for customers with two.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>31 tests in <code>CborTest</code>, <code>DemoRunsTest</code>, <code>PasskeysSpringTest</code>, <code>SoftwareAuthenticatorTest</code>. No Docker is needed: each test starts a real bank on a free loopback port. Keys and challenges are random on every run; only statuses, lengths and reasons are checked.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank is a real Spring Boot application with Spring Security's WebAuthn endpoints, on a loopback port. The authenticator and the browser rules are written in Java and build the same CBOR, COSE keys, authenticator data and signatures that a phone does. The relying party id and origin are bank.example, whatever address the server listens on. Keys, challenges and credential ids are fresh on every run and are never printed.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.security:spring-security-webauthn</td>
+<td>set by the build</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/passkeys-with-spring-security-explained.html">Passkeys with Spring Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The private key never leaves the authenticator; the bank holds the public key.</p>
+<p><img alt="The parts of a passkey sign-in" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The hardened relying party wraps Spring Security's and adds two checks.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>In order: the challenge, the origin, the relying party id hash, the flags, the signature and the counter.</p>
+<p><img alt="What a sign-in is checked against" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A passkey sign-in" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/passkeys-with-spring-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Recovery is the new weak point:</strong> a lost device needs a second passkey or a recovery path, and that path decides the strength of everything.</li>
+<li><strong>Synced passkeys depend on the cloud account they sync through,</strong> and have a counter of zero, so a copy cannot be spotted by its counter.</li>
+<li><strong>Requiring user verification excludes authenticators that cannot verify,</strong> such as some old security keys.</li>
+<li><strong>Customers need two passkeys before the password can go,</strong> which is a change to explain and support.</li>
+<li><strong>Spring Security's WebAuthn support is young,</strong> so the checks it does not make are the bank's to add and test.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A site with no accounts worth phishing can stay on passwords with a strong hash. Anything that moves money or holds personal data should offer passkeys, and should plan the loss of a device before the first customer registers.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>"Sign in with a passkey" and a fingerprint prompt.</li>
+<li><code>navigator.credentials.create</code> and <code>navigator.credentials.get</code> in front-end code.</li>
+<li><code>http.webAuthn()</code> in a Spring Security configuration.</li>
+<li>A security key (YubiKey) on a keyring.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../passkeys">passkeys</a>, in the <a href="..">identity-and-access</a> module. It follows the same five acts, on a real library, and finds out what the library leaves to you.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

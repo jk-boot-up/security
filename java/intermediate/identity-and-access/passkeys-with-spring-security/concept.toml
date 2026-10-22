@@ -1,0 +1,476 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "passkeys-with-spring-security"
+level = "intermediate"
+module = "identity-and-access"
+title = "Passkeys with Spring Security"
+short_title = "Passkeys with Spring Security"
+package = "passkeysspring"
+main_class = "PasskeysSpringDemo"
+tagline = "Spring Security 7 gives a bank passkey registration and sign-in in a few lines; user verification, clone detection and the password you keep are still the bank's to decide"
+bold = "Spring Security's WebAuthn support, built on WebAuthn4J, creates and checks the challenges, keeps the public keys and refuses a look-alike origin, a replayed or foreign answer and a wrong key; but by default it only asks for user verification, never compares the signature counter, and leaves the password you keep beside the passkeys, so a bank has to wrap it to require a fingerprint and suspend a cloned passkey, and to switch passwords off once a customer has two passkeys."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "Passkeys with Spring Security 7.1 and WebAuthn4J in a bank: registration with a challenge, a relying party id and a COSE public key the bank keeps, sign-in with a fresh challenge that is signed once, a look-alike site whose origin and relying party id the browser and the bank refuse, the defaults that accept a touch without a fingerprint and a cloned key, a wrapper that requires user verification and suspends a passkey whose counter goes backwards, synced passkeys with a counter of zero, a lost phone, removing its passkey, and switching passwords off for customers with two passkeys."
+thumb_lines = ["PASSKEYS WITH", "SPRING SECURITY"]
+thumb_code = "http.webAuthn(w -> w.rpId(...))"
+youtube_title = "Passkeys with Spring Security 7: WebAuthn Registration, Sign-In, User Verification and Clone Detection"
+youtube_tags = ["passkeys", "webauthn", "spring security", "webauthn4j", "fido2", "phishing resistant", "owasp top 10", "a07", "java", "identity"]
+
+[readme]
+intro = """
+The plain [passkeys](../passkeys) project builds a WebAuthn relying party from scratch. This one uses **Spring Security 7.1**'s WebAuthn support (`http.webAuthn(...)`, built on **WebAuthn4J**): the real registration and sign-in endpoints of a Spring Boot bank on a loopback port, with a phone's authenticator written in software that builds the same bytes a real one does, including the CBOR attestation object and the COSE key. It needs no Docker.
+
+What it shows:
+- **Registering.** A signed-in customer asks for options: a challenge of 32 random bytes, the relying party id `bank.example`, a user handle of 32 random bytes. The phone makes a P-256 key pair and returns a credential id and an attestation object with `fmt: none`. The bank stores a **77-byte COSE public key**, a counter of 0 and a label, and nothing that can sign. An answer made with another key under ana's credential id is refused.
+- **Signing in.** A fresh challenge each time, signed once; the same answer sent again, an answer for another browser's challenge, and an answer whose user-verified flag was switched on after signing are all refused.
+- **A look-alike site.** `bank-example.test` gets nothing: the authenticator has no passkey for that name, the browser will not let it ask for `bank.example`, and a browser that skipped the rule still writes the page's real origin, which the bank refuses. The password typed into the same page works at the bank: **a password can be phished, a passkey cannot.**
+- **What the defaults leave open.** Spring Security *asks* for user verification but accepts a touch, never compares the signature counter, so a phone restored from a backup and a **clone** both sign in. A `HardenedRelyingParty` wrapper requires the fingerprint and, after the signature proves the signer holds the key, **suspends a passkey whose counter does not go up**, even for the real phone. A synced passkey reports 0 and is let through.
+- **The bill.** Ben's lost phone: the new laptop has no passkey, the security key works, and removing the phone's passkey (`DELETE /webauthn/register/{id}`) ends its use. The password still works beside the passkeys, so it is switched off for a customer with two.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures · NIST SP 800-63B-4 (phishing-resistant authenticators) · W3C Web Authentication Level 2 · FIDO2 · CWE-308, CWE-1390.
+"""
+analogy = """
+A hotel key card that is cut for one hotel only. A copy of the hotel's records does not open a door, a card cut for another hotel opens nothing here, and a fake lobby can collect a guest's name and room number but not the card's secret.
+"""
+scenario = """
+An online bank lets customers sign in with a password or a passkey. The demo registers Ana's phone, signs her in, shows a look-alike site failing, then compares Spring Security's defaults with a hardened bank, and ends with Ben's lost phone.
+"""
+costs = [
+    "**Recovery is the new weak point:** a lost device needs a second passkey or a recovery path, and that path decides the strength of everything.",
+    "**Synced passkeys depend on the cloud account they sync through,** and have a counter of zero, so a copy cannot be spotted by its counter.",
+    "**Requiring user verification excludes authenticators that cannot verify,** such as some old security keys.",
+    "**Customers need two passkeys before the password can go,** which is a change to explain and support.",
+    "**Spring Security's WebAuthn support is young,** so the checks it does not make are the bank's to add and test.",
+]
+too_much = """
+A site with no accounts worth phishing can stay on passwords with a strong hash. Anything that moves money or holds personal data should offer passkeys, and should plan the loss of a device before the first customer registers.
+"""
+met_before = [
+    "\"Sign in with a passkey\" and a fingerprint prompt.",
+    "`navigator.credentials.create` and `navigator.credentials.get` in front-end code.",
+    "`http.webAuthn()` in a Spring Security configuration.",
+    "A security key (YubiKey) on a keyring.",
+]
+where = """
+This is the tools version of [passkeys](../passkeys), in the [identity-and-access](..) module. It follows the same five acts, on a real library, and finds out what the library leaves to you.
+"""
+twin = """
+The bank is a real Spring Boot application with Spring Security's WebAuthn endpoints, on a loopback port. The authenticator and the browser rules are written in Java and build the same CBOR, COSE keys, authenticator data and signatures that a phone does. The relying party id and origin are bank.example, whatever address the server listens on. Keys, challenges and credential ids are fresh on every run and are never printed.
+"""
+test_note = "No Docker is needed: each test starts a real bank on a free loopback port. Keys and challenges are random on every run; only statuses, lengths and reasons are checked."
+
+[[act]]
+title = "Registering a passkey: the bank keeps only a public key"
+summary = "The bank sends a challenge, its relying party id and a user handle; the phone returns a credential id and an attestation object; the bank stores a COSE public key and a counter of 0, nothing that can sign."
+detail = """
+Ana signs in with her password and adds a passkey: Spring Security's WebAuthn support sends a challenge of 32 random bytes, the relying party id bank.example and her user handle of 32 random bytes. Ana's phone makes a new P-256 key pair for bank.example, keeps the private key, and returns a credential id of 16 bytes and an attestation object that says fmt none. The bank checks the challenge, the type, the origin and the relying party id hash, and accepts. It stores a credential id of 16 bytes, a COSE public key of 77 bytes, a counter of 0 and the label, and nothing that can sign. An answer made with another key under ana's credential id is refused.
+"""
+speech = """
+First demo: registering a passkey. [[slnc 400]] The bank sends a challenge of thirty two random bytes, and its relying party id. [[slnc 600]]
+Ana's phone makes a new key pair, keeps the private key, and returns a credential id and the public key. [[slnc 600]]
+The bank stores a public key and a counter of zero, and nothing that can sign. [[slnc 600]]
+A copy of the bank's records cannot sign.
+"""
+rows = { register = "active ok" }
+console = [
+    ["challenge: 32 random bytes; relying party id bank.example", "ok"],
+    ["the bank stores a 77-byte COSE public key and a counter of 0", "ok"],
+    ["nothing the bank stores can sign", "ok"],
+    ["another key under ana's credential id -> refused (401)", "ok"],
+]
+
+[[act]]
+title = "Signing in: a fresh challenge, signed once"
+summary = "Every sign-in gets a new challenge; the phone signs the authenticator data and the hash of the client data; a replayed answer, an answer for another browser's challenge and a flipped flag are refused."
+detail = """
+Every sign-in gets a new challenge of 32 random bytes. Ana touches her phone and uses her fingerprint; it signs 37 bytes of authenticator data and the SHA-256 of the client data. The bank checks the challenge, type, origin, relying party id hash, flags and signature: accepted, signed in as ana with a passkey. The same answer sent again from another browser is refused, and sent again to the browser that asked for the challenge it is refused because the challenge was used. An answer for a challenge that was given to another browser is refused. The same kind of answer with the user-verified flag switched on after signing is refused: the signature does not match.
+"""
+speech = """
+Second demo: signing in. [[slnc 400]] Every sign in gets a new challenge. [[slnc 600]]
+The phone signs the authenticator data and a hash of the client data. [[slnc 300]] The bank accepts it. [[slnc 600]]
+The same answer again is refused. [[slnc 300]] An answer for another browser's challenge is refused. [[slnc 300]] And a flag changed after signing breaks the signature.
+"""
+rows = { signin = "active ok" }
+console = [
+    ["a new challenge every time", "ok"],
+    ["the phone signs 37 bytes + the hash of the client data -> accepted", "ok"],
+    ["the same answer again -> refused (401)", "ok"],
+    ["the user-verified flag switched on after signing -> refused", "ok"],
+]
+
+[[act]]
+title = "A look-alike site gets nothing it can use"
+summary = "A copy of the bank's page cannot get a passkey for the bank's name, the browser refuses the bank's relying party id for it, and the bank refuses the page's real origin; a typed password is not so lucky."
+detail = """
+Ana opens https://bank-example.test, a copy of the bank's page. It asks for a passkey for its own name, bank-example.test: nothing, the authenticator has no passkey for that name. It passes on the bank's real challenge and asks for bank.example: nothing, the browser will not use bank.example for a page at that address. Even a browser that skipped that rule writes the page's real origin into the client data, and the bank checks it: refused. The same page asking for ana's password, which she types in, gets a password that works at the bank: accepted. A password can be phished, a passkey cannot.
+"""
+speech = """
+Third demo: a look alike site. [[slnc 400]] The copy asks for a passkey for its own name, and the authenticator has none. [[slnc 600]]
+It asks for the bank's name, and the browser refuses. [[slnc 600]]
+A browser that skipped that rule would still write the real origin, and the bank refuses it. [[slnc 600]]
+But a password typed into the same page works at the bank. [[slnc 300]] A password can be phished. A passkey cannot.
+"""
+rows = { lookalike = "active ok" }
+console = [
+    ["bank-example.test asks for bank-example.test -> nothing", "ok"],
+    ["bank-example.test asks for bank.example -> nothing (the browser refuses)", "ok"],
+    ["a browser that skipped the rule -> refused (the origin)", "ok"],
+    ["the password typed into the same page -> accepted", "bad"],
+]
+
+[[act]]
+title = "User verification, and counters against copies"
+summary = "Spring Security's defaults accept a touch without a fingerprint, a counter going backwards and a clone; a wrapper requires user verification and suspends a passkey whose counter does not go up."
+detail = """
+With Spring Security's defaults, a sign-in with only a touch is accepted: user verification is asked for, not required. The phone has signed in 3 times and is restored from a backup, so its counter goes back to 1: accepted. An attacker's copy of the key signing with the same counter as the real phone is accepted: a clone is not noticed. With the hardened bank, user verification required and the counter compared: a sign-in with only a touch is refused, with her fingerprint as well it is accepted. The bank has now seen counter 6. An attacker copies the phone's key; the real phone signs in first and is accepted; then the copy signs in: refused, counter 7 is not above 7, possible cloned authenticator. The passkey is now suspended until ana confirms it, even for the real phone. A synced passkey reports counter 0 and is accepted twice, so a copy cannot be spotted by its counter.
+"""
+speech = """
+Fourth demo: user verification and counters. [[slnc 400]] Spring Security's defaults accept a touch with no fingerprint. [[slnc 600]]
+A counter that goes backwards, and a clone of the key, are accepted too. [[slnc 600]]
+The hardened bank requires the fingerprint, and compares the counter. [[slnc 600]]
+When the real phone and its copy both sign, the copy is refused, and the passkey is suspended, even for the real phone. [[slnc 300]] A synced passkey always reports zero.
+"""
+rows = { counters = "active ok" }
+console = [
+    ["defaults: a touch only -> accepted", "bad"],
+    ["defaults: a clone -> accepted", "bad"],
+    ["hardened: a touch only -> refused (user verification required)", "ok"],
+    ["hardened: the copy -> refused (counter 7 is not above 7); the passkey is suspended", "ok"],
+]
+
+[[act]]
+title = "The bill: recovery, lost devices and the move away from passwords"
+summary = "Ben has a phone and a security key; the laptop has nothing, the key works, removing the lost phone's passkey ends its use; the password stays beside the passkeys until the bank switches it off for customers with two."
+detail = """
+Ben registers 2 passkeys, his phone and a security key. His phone is lost, and his new laptop has no passkey yet: nothing. The security key from his drawer is accepted. Signed in with the key, ben removes the lost phone's passkey, 204, and a thief who holds the phone and its fingerprint is refused. Recovery is now the weakest way in, so it needs the same care as the passkeys themselves. Ana's password still works alongside her passkeys: the weakest way in sets the level. Once ana has two passkeys and the bank switches her password off, the password is refused, while a customer with no passkey keeps it.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Ben has a phone and a security key. [[slnc 600]]
+His phone is lost, and his new laptop has no passkey yet. [[slnc 300]] The security key from his drawer works. [[slnc 600]]
+He removes the lost phone's passkey, and a thief with the phone is refused. [[slnc 600]]
+The password still works beside the passkeys, so once a customer has two passkeys, the bank switches it off.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["the new laptop has no passkey -> nothing", "amber"],
+    ["the security key -> accepted", "ok"],
+    ["the lost phone's passkey removed -> a thief is refused", "ok"],
+    ["two passkeys: the password is switched off -> refused", "ok"],
+]
+
+[animation]
+subtitle = "An online bank, a phone, and a key that never leaves it."
+boxes = [
+    ["register", "Registering", "a public key and a counter"],
+    ["signin", "Signing in", "a challenge, signed once"],
+    ["lookalike", "A look-alike", "origin and relying party id"],
+    ["counters", "Counters", "verification and clones"],
+    ["bill", "The bill", "lost devices, passwords"],
+]
+
+[docs.problem]
+scenario = """
+An online bank wants customers to sign in with something that cannot be phished, and has to decide what the library leaves to the bank.
+"""
+naive = """
+Add the passkey dependency and the configuration line, and assume that every check a bank would want is on.
+"""
+deliver = [
+    "Spring Security's WebAuthn endpoints in a real bank.",
+    "An authenticator in software that builds real CBOR, COSE keys and signatures.",
+    "The defaults, and a wrapper that requires user verification and detects clones.",
+    "Lost devices and the end of the password.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain passkeys project, for the protocol",
+]
+not_required = [
+    "A phone, a security key or a browser: the authenticator is in software",
+    "Docker or any server",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain what the bank stores for a passkey and why it cannot sign",
+    "explain why a look-alike site cannot use a passkey",
+    "name what Spring Security's WebAuthn support does not check by default",
+    "plan the loss of a device and the end of the password",
+]
+walkthrough = """
+Run act three and list the three places a look-alike is stopped. In act four ask which of your own sign-ins would accept a clone. In act five ask what a customer does when the only passkey is on a lost phone.
+"""
+exercises = [
+    "Store the credentials in a database with the JDBC repositories that Spring Security provides.",
+    "Require user verification only for sign-ins that start a payment.",
+    "Add attestation verification and allow only security keys of one vendor.",
+    "Write the recovery path: a second passkey, a code, and a waiting period.",
+]
+
+[docs.explained]
+sentence = """
+A passkey proves that a customer holds a private key made for the bank's name, so it cannot be phished, and a bank that uses it still decides about user verification, copies, recovery and the password.
+"""
+verdict = """
+Use a maintained WebAuthn library, require user verification, compare the counter and suspend a passkey that goes backwards, treat synced passkeys as the account they sync through, offer two passkeys before switching passwords off, and design recovery as carefully as sign-in.
+"""
+recognise = [
+    "`navigator.credentials.create` and `get` in front-end code.",
+    "`http.webAuthn()` in a Spring Security configuration.",
+    "A `PublicKeyCredentialRequestOptions` with `userVerification: preferred`.",
+    "An `rpId` that is a registrable domain.",
+]
+
+[spec]
+purpose = """
+Teach passkey sign-in with Spring Security's WebAuthn support, and the decisions it leaves to the bank.
+"""
+nongoals = [
+    "A browser extension or real authenticator hardware.",
+    "Attestation verification of device makers.",
+    "Federated sign-in.",
+]
+problem = """
+Teams add passkeys with a few lines of configuration and keep the defaults, a password and no clone detection.
+"""
+roles = [["Security", "`PasskeySecurity`, `HardenedRelyingParty`, `PasswordSwitchOffFilter`"], ["Controller", "`PasskeyController`"], ["The browser and page", "`PasskeyBrowser`"], ["The phone", "`SoftwareAuthenticator`, `Cbor`, `B64`"], ["Entry point", "`PasskeysSpringDemo`"]]
+requirements = [
+    "Registration stores a public key and a counter, and nothing that can sign.",
+    "A challenge is used once, and only by the browser it was given to.",
+    "A look-alike origin, a foreign relying party id and another key are refused.",
+    "The hardened bank requires user verification.",
+    "The hardened bank suspends a passkey whose counter does not go up, after the signature is proved.",
+    "A passkey can be removed.",
+    "The password is switched off for a customer with two passkeys.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts of a passkey sign-in"
+caption = "The private key never leaves the authenticator; the bank holds the public key."
+nodes = [
+    { id = "phone", label = "Phone", sub = "private key, fingerprint", col = 0, row = 0, colour = "client" },
+    { id = "page", label = "Browser page", sub = "origin, relying party id", col = 1, row = 0, colour = "amber" },
+    { id = "bank", label = "Bank", sub = "Spring Security WebAuthn", col = 2, row = 0, colour = "accent" },
+    { id = "store", label = "Credential store", sub = "public keys, counters", col = 2, row = 1, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "phone", to = "page", label = "signed answer" },
+    { from = "page", to = "bank", label = "origin in client data" },
+    { from = "bank", to = "store" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The hardened relying party wraps Spring Security's and adds two checks."
+nodes = [
+    { id = "sec", label = "PasskeySecurity", sub = ["relyingParty()", "chain()"], col = 0, row = 0, colour = "accent" },
+    { id = "hard", label = "HardenedRelyingParty", sub = ["authenticate()", "refusals()"], col = 1, row = 0, colour = "amber" },
+    { id = "phone", label = "SoftwareAuthenticator", sub = ["create()", "sign()", "cloneIt()"], col = 0, row = 1, colour = "client" },
+    { id = "filter", label = "PasswordSwitchOffFilter", sub = ["doFilterInternal()"], col = 1, row = 1, colour = "green" },
+]
+edges = [
+    { from = "sec", to = "hard", label = "wraps in hardened mode" },
+    { from = "sec", to = "filter", label = "adds" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What a sign-in is checked against"
+caption = "In order: the challenge, the origin, the relying party id hash, the flags, the signature and the counter."
+nodes = [
+    { id = "challenge", label = "Challenge", sub = "fresh, once", col = 0, row = 0, colour = "client" },
+    { id = "origin", label = "Origin and rp id", sub = "bank.example", col = 1, row = 0, colour = "amber" },
+    { id = "flags", label = "Flags", sub = "presence, verification", col = 2, row = 0, colour = "accent" },
+    { id = "sig", label = "Signature and counter", sub = "the public key", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "challenge", to = "origin" },
+    { from = "origin", to = "flags" },
+    { from = "flags", to = "sig" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A passkey sign-in"
+participants = ["Phone", "Page", "Bank"]
+steps = [
+    ["Page", "Bank", "POST /webauthn/authenticate/options"],
+    ["Bank", "Page", "challenge, rpId, userVerification", "reply"],
+    ["Page", "Phone", "sign (rpId, challenge, origin)"],
+    ["Phone", "Page", "authenticator data, signature", "reply"],
+    ["Page", "Bank", "POST /login/webauthn"],
+    ["Bank", "Page", "authenticated", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A cloned passkey"
+participants = ["Real phone", "Copy", "Bank"]
+steps = [
+    ["Real phone", "Bank", "sign in, counter 7"],
+    ["Bank", "Real phone", "accepted", "reply"],
+    ["Copy", "Bank", "sign in, counter 7"],
+    ["note", "Bank", "valid signature, counter not above 7"],
+    ["Bank", "Copy", "refused; the passkey is suspended", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The attacker", nodes = ["fake", "thief"], colour = "red" },
+    { label = "The customer", nodes = ["phone"], colour = "amber" },
+    { label = "The bank", nodes = ["bank"], colour = "green" },
+]
+nodes = [
+    { id = "fake", label = "Look-alike site", sub = "phishing", col = 0, row = 0, colour = "red", threats = ["T1"] },
+    { id = "thief", label = "Thief with a key copy", sub = "clone", col = 0, row = 1, colour = "red", threats = ["T2"] },
+    { id = "phone", label = "Phone", sub = "private key", col = 1, row = 0, colour = "client", threats = ["T1", "T3"] },
+    { id = "bank", label = "Bank", sub = "relying party", col = 2, row = 0, colour = "accent", threats = ["T1", "T2", "T3", "T4"] },
+]
+edges = [
+    { from = "fake", to = "phone", label = "asks for a signature", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "thief", to = "bank", label = "signs with a copy", colour = "red", dashed = true, threats = ["T2"] },
+    { from = "phone", to = "bank", label = "signed answer", threats = ["T3", "T4"] },
+]
+
+[threatmodel]
+scope = """
+Passkey registration and sign-in at an online bank using Spring Security's WebAuthn support, and the account recovery and password decisions around it. It does not cover the security of the customer's device.
+"""
+assets = [
+    "The customer's account.",
+    "The customer's private key, in the authenticator.",
+]
+actors = [
+    "A customer with one or more authenticators.",
+    "A phisher with a look-alike site.",
+    "A thief who has copied a key or stolen a phone.",
+]
+boundaries = [
+    "The customer's device: the private key never crosses it.",
+    "The browser to the bank: the origin and the signed answer.",
+]
+assumptions = [
+    "The browser enforces the relying party id rules and writes the real origin into the client data.",
+    "The customer has a second way to sign in if a device is lost.",
+]
+out_of_scope = [
+    "Malware on the customer's device.",
+    "Theft of the cloud account that a synced passkey syncs through.",
+]
+tests = [
+    "`PasskeysSpringTest` starts a real bank for each case and checks registration, the CSRF token, sign-in, the single use of a challenge, another key, the origin and the relying party id hash, the browser's and authenticator's rules, a flipped flag, the defaults, user verification, a clone and its suspension, a forged signature, a synced passkey, removing a passkey and the end of the password.",
+    "`CborTest` and `SoftwareAuthenticatorTest` check the bytes the authenticator builds, and `DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, saml-basics-with-keycloak, looks at the older single sign-on standard that many companies still run.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A look-alike site collects a credential that works at the bank"
+where = "the relying party id, the origin check"
+control = "A passkey is made for one relying party id; the browser and the bank check the origin"
+residual = "A password kept beside the passkeys"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A copy of the private key signs in"
+where = "`HardenedRelyingParty`"
+control = "The signature counter is compared and a passkey that goes backwards is suspended"
+residual = "Synced passkeys, which always report 0"
+
+[[threat]]
+id = "T3"
+stride = "S"
+threat = "A stolen phone signs in without the customer"
+where = "the user verification flag"
+control = "User verification is required, so a fingerprint or PIN is needed"
+residual = "A thief who also has the PIN"
+
+[[threat]]
+id = "T4"
+stride = "E"
+threat = "Recovery or the password gives a way around the passkeys"
+where = "`PasswordSwitchOffFilter`, the recovery path"
+control = "Two passkeys before the password is switched off, and a recovery path as strong as the passkeys"
+residual = "A recovery path that the bank forgets to design"
+
+[poster]
+headline = [["PASSKEYS WITH", "text"], ["SPRING SECURITY", "accent"]]
+taglines = [["Spring Security 7 gives a bank passkey registration and sign-in in a few lines; user verif", "gold"]]
+before = { code = "challenge: 32 random bytes; relying party id bank.ex", note = "Registering a passkey: the bank keeps on", tag = "BEFORE" }
+after = { code = "http.webAuthn(w -> w.rpId(...))", note = "The bill: recovery, lost devices and the", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Passkeys with Spring Security"
+narration = "Hello, and welcome. [[slnc 400]] This video explains passkeys with Spring Security, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Spring Security's WebAuthn support, built on WebAuthn4J, creates and checks the challenges, keeps the public keys and refuses a look-alike origin, a replayed or foreign answer and a wrong key; but by default it only asks for user verification, never compares the signature counter, and leaves the password you keep beside the passkeys, so a bank has to wrap it to require a fingerprint and suspend a cloned passkey, and to switch passwords off once a customer has two passkeys. [[slnc 600]] Think of it this way. [[slnc 300]] A hotel key card that is cut for one hotel only. A copy of the hotel's records does not open a door, a card cut for another hotel opens nothing here, and a fake lobby can collect a guest's name and room number but not the card's secret. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain what the bank stores for a passkey and why it cannot sign. [[slnc 300]] Explain why a look-alike site cannot use a passkey. [[slnc 300]] Name what Spring Security's WebAuthn support does not check by default."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank lets customers sign in with a", "password or a passkey.", "The demo registers Ana's phone, signs her", "in, shows a look-alike site failing, then", "compares Spring Security's defaults with a", "hardened bank, and ends with Ben's lost", "phone."]
+narration = "Here is the scenario. [[slnc 400]] An online bank lets customers sign in with a password or a passkey. [[slnc 400]] The demo registers Ana's phone, signs her in, shows a look-alike site failing, then compares Spring Security's defaults with a hardened bank, and ends with Ben's lost phone."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Recovery is the new weak point", "Synced passkeys depend on the cloud account they sync", "through", "Requiring user verification excludes authenticators", "that cannot verify", "Customers need two passkeys before the password can go", "Spring Security's WebAuthn support is young"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Recovery is the new weak point. [[slnc 500]] Synced passkeys depend on the cloud account they sync through. [[slnc 500]] Requiring user verification excludes authenticators that cannot verify. [[slnc 500]] Customers need two passkeys before the password can go. [[slnc 500]] Spring Security's WebAuthn support is young."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Security: PasskeySecurity, HardenedRelyingParty,", "PasswordSwitchOffFilter", "Controller: PasskeyController", "The browser and page: PasskeyBrowser", "The phone: SoftwareAuthenticator, Cbor, B64", "Entry point: PasskeysSpringDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] Security is in PasskeySecurity and HardenedRelyingParty and PasswordSwitchOffFilter. [[slnc 500]] Controller is in PasskeyController. [[slnc 500]] The browser and page is in PasskeyBrowser. [[slnc 500]] The phone is in SoftwareAuthenticator and Cbor and B64. [[slnc 500]] Entry point is in PasskeysSpringDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A PublicKeyCredentialRequestOptions with", "userVerification: preferred", "An rpId that is a registrable domain"]
+narration = "You have probably met this already. [[slnc 400]] A PublicKeyCredentialRequestOptions with userVerification: preferred. [[slnc 500]] An rpId that is a registrable domain."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain what the bank stores for a passkey and why it", "cannot sign", "Explain why a look-alike site cannot use a passkey", "Name what Spring Security's WebAuthn support does not", "check by default", "Plan the loss of a device and the end of the password"]
+narration = "So, how do you use it? [[slnc 400]] Use a maintained WebAuthn library, require user verification, compare the counter and suspend a passkey that goes backwards, treat synced passkeys as the account they sync through, offer two passkeys before switching passwords off, and design recovery as carefully as sign-in."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's passkeys with Spring Security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A passkey proves that a customer holds a private key made for the bank's name, so it cannot be phished, and a bank that uses it still decides about user verification, copies, recovery and the password. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Store the credentials in a database with the J D B C repositories that Spring Security provides. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
