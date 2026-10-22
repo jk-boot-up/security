@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Session Management with Spring Session and Redis</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Session Management with Spring Session and Redis</h1>
+<pre><code>src/main/java/com/jk/explore/security/sessionredis/
+├── AbsoluteTimeoutFilter.java  Spring Session ends a session that has been idle too long, but it has no limit on how old a busy session may get
+├── BankApp.java                
+├── BankController.java         A page for visitors who have not signed in
+├── BankSecurity.java           Form login with the session in Redis, answers a program can read (200 or 401, never a redirect), and the session rules of the lesson: a new id at sign-in, a limit on concurrent sessions, an absolute timeout, and a cookie with every protection
+├── Browser.java                A customer's device as far as this lesson needs one: it keeps the session cookie the bank sets and sends it back to every page
+├── OffsetClock.java            The system clock plus an offset the demo can move forward, so eight hours take no time to wait for
+├── RedisLab.java               A throwaway Redis in a Docker container, bound to the loopback address on a free port, protected by a password and removed on close
+├── Running.java                One bank server on a free loopback port, with its sessions in the given Redis
+└── SessionRedisDemo.java       Runs the bank story in five numbered acts against real Spring Boot servers and a real Redis in Docker, all on the loopback interface
+</code></pre>
+<p><strong>Spring Session keeps the session in Redis so any server can serve any request, and Spring Security still gives a new id at sign-in; but the id is stored as itself so Redis needs a password, an idle limit is enforced by Spring while the absolute limit is yours to add, ended sessions linger in Redis for five minutes, an unauthenticated request can create a record unless the request cache is off, and a bank that cannot reach Redis must refuse.</strong></p>
+<p>The plain <a href="../session-management">session-management</a> project builds ids, rotation, timeouts and sign-out from scratch, and ends with the bill: two servers need a shared store. This one pays that bill with <strong>Spring Session 4</strong> and a real <strong>Redis 8</strong> in Docker, on <strong>Spring Boot 4.1</strong> and <strong>Spring Security 7</strong>, all on the loopback address. It needs Docker, and its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>The session lives in Redis.</strong> Redis refuses a client with no password. The cookie is the Redis key's id, encoded, so a stolen copy of the keys, turned into cookies, <strong>opens live sessions</strong>: unlike the plain store, which kept only a hash of each id.
+- <strong>A new id at every sign-in.</strong> With the id kept, a planted id becomes ana's and the stranger reads her account. With Spring Security's default <code>changeSessionId</code> it does not, and the old record is no longer live.
+- <strong>How long a session lives.</strong> Spring Session ends an idle session, and Redis keeps the dead record five more minutes. It has <strong>no absolute timeout</strong>, so a 20-line filter of our own ends a busy session at 8 hours.
+- <strong>Signing out, everywhere, and the limit.</strong> Sign-out ends the session on the server. <code>FindByIndexNameSessionRepository</code> finds every session of a customer to end them all, and a password change ends the others and renews this one. A limit of 3 sessions ends the oldest.
+- <strong>The bill.</strong> Two servers with separate stores refuse a request that lands on the other; with one Redis they allow it. <strong>A Redis that stops answering makes the bank refuse</strong>, never allow. And with Spring Security's default request cache, 20 requests from strangers create 20 session records in Redis.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · CWE-384 (session fixation) · CWE-613 (insufficient session expiration) · CWE-614 (cookie without Secure) · OWASP ASVS 5.0 V7 (Session Management).</p>
+<h2>The idea in everyday terms</h2>
+<p>A coat check that used to keep tickets in one cloakroom and now keeps them in a safe shared by every branch. Any branch can return your coat, which is the point, and anyone who copies the safe's list holds every ticket, which is the price.</p>
+<h2>The scenario</h2>
+<p>An online bank on Spring Boot signs customers in with a form and keeps each session in Redis. The demo starts the real application, sometimes twice, against a real Redis, and a device stand-in that keeps the session cookie signs in, waits, signs out and tries copies of cookies.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The session lives in Redis</td>
+<td>Redis needs a password, the cookie carries the Redis key's id, and a stolen copy of the keys turned into cookies opens live sessions.</td>
+</tr>
+<tr>
+<td>2. A new id at every sign-in</td>
+<td>With the id kept, a planted id becomes ana's and the stranger reads her account; with Spring Security's default the ids differ and the stranger's copy is refused.</td>
+</tr>
+<tr>
+<td>3. How long a session lives</td>
+<td>Spring Session enforces the idle timeout and Redis keeps the dead record five more minutes; there is no absolute timeout, so a small filter of our own ends a busy session at 8 hours.</td>
+</tr>
+<tr>
+<td>4. Signing out, everywhere, and the limit</td>
+<td>Sign-out ends the session on the server, sign-out everywhere ends 3 sessions, a password change ends the others and renews this one, and a limit of 3 ends the oldest.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>Two servers need one shared store, a Redis that stops answering makes the bank refuse, and with the request cache on, 20 strangers create 20 session records.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>15 tests in <code>DemoRunsTest</code>, <code>SessionRedisTest</code>. The tests start a real Redis in Docker and real bank servers and remove the container afterwards. Run them with ./gradlew integrationTest; nothing printed changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank servers are real Spring Boot applications, and Redis is a real container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The device stand-in reads the Set-Cookie header and sends the cookie back, which is what a browser does over https. Only statuses, booleans and counts are printed, never ids or ports.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-security</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-session-data-redis</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/session-management-with-spring-session-and-redis-explained.html">Session Management with Spring Session and Redis, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Any server can serve any request because the session is in Redis, behind a password.</p>
+<p><img alt="Two servers and one session store" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Spring Session supplies the repository and the cookie; the bank adds the filter and the rules.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The session is loaded from Redis before the security rules run; any failure ends in a refusal.</p>
+<p><img alt="What a request meets" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Sign-in with a new id" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/session-management-with-spring-session-and-redis-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Redis is now in every request.</strong> If it is slow the bank is slow, and if it is down the bank refuses.</li>
+<li><strong>Redis holds every live id as itself.</strong> Its password, its address and its backups are as sensitive as the cookie jar.</li>
+<li><strong>Spring Session keeps ended sessions five more minutes,</strong> and has no absolute timeout, so the second rule is yours to write and to test.</li>
+<li><strong>A short idle timeout annoys customers</strong> who stop to read a statement.</li>
+<li><strong>Operations work moves to Redis:</strong> persistence, memory limits and failover are now the bank's sessions.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A single server that restarts rarely can keep sessions in memory. Move them to Redis when a second server arrives or when a deployment must not sign everyone out, and protect Redis as you would the cookie jar.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>@EnableRedisIndexedHttpSession</code> or <code>spring-session-data-redis</code> in a pom.</li>
+<li>Keys such as <code>spring:session:sessions:&lt;uuid&gt;</code> in a Redis browser.</li>
+<li>A customer signed out on every device after a password change.</li>
+<li>Load balancers with sticky sessions that Redis makes unnecessary.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../session-management">session-management</a>, in the <a href="..">api-security</a> module. It follows the same story and picks up where the plain project's bill left off.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

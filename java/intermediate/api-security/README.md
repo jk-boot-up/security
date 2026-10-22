@@ -11,6 +11,7 @@ APIs are where most data now leaves a system. This module follows the OWASP API 
 | 3 | [api-security](api-security) | An API owes its callers three limits: what they may set, what they may see, and how much they may ask for | API3, API4, API6, CWE-915, CWE-213, CWE-770 |
 | 4 | [cors](cors) | CORS decides who may read an answer, not who may send a request | A02, CWE-942 |
 | 5 | [cors-with-spring-boot](cors-with-spring-boot) | Spring's CORS answers 403 before your code runs, refuses a wildcard with credentials, and still reflects every origin if you ask it to | A02, CWE-942 |
+| 6 | [session-management-with-spring-session-and-redis](session-management-with-spring-session-and-redis) | Moving sessions into Redis makes them survive a restart and a second server, and makes Redis the place where a stolen key is a live session | A07, CWE-384 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

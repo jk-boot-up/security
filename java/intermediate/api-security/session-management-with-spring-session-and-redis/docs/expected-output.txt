@@ -1,0 +1,38 @@
+ONE. The session lives in Redis, and Redis is now the thing to protect.
+  a client with no password is refused by Redis: true
+  ana signs in: 200, cookie __Host-session with Path=/, Secure, HttpOnly, SameSite=Strict: problems 0
+  the account page with that cookie: 200
+  session records in Redis: 1, an index entry for ana: true
+  the cookie is the Redis key's id, encoded: true
+  a stolen copy of Redis's 1 session keys, turned into cookies, opens 1 sessions  <- THE ID IS STORED AS ITSELF
+  the plain project kept only a hash of each id; here the protection is Redis's password, its loopback address, and short timeouts
+TWO. A new id at every sign-in.
+  a stranger gets an id from the bank's welcome page and puts it into ana's browser; a bank that keeps the id at sign-in: ana's id after signing in is the planted one: true
+  the stranger's copy now reads ana's account: allowed  <- SESSION FIXATION
+  the same plan against Spring Security's default (changeSessionId): the ids differ: true
+  the stranger's copy: refused (401), ana's new id: allowed
+  the planted id is no longer a live record in Redis: true
+THREE. How long a session lives.
+  idle timeout 2 seconds for the demo, absolute timeout 8 hours
+  Redis keeps the record for the idle timeout plus five minutes: true
+  ana is idle for 1 second: allowed
+  then idle for 2.5 seconds: refused (401)
+  Spring Session leaves the dead record in Redis for five more minutes, and the bank still refuses its id: true (live records 0)
+  ana stays busy, and 7 hours 59 minutes after sign-in: allowed
+  two minutes later, at 8 hours 1 minute: refused (401)  (Spring Session has no absolute timeout; this is a 20-line filter of our own)
+FOUR. Signing out, everywhere, and the limit.
+  sign-out: 200, the browser is told to forget the cookie: true, the record is no longer live in Redis: true
+  a copy of the cookie made before sign-out, sent again: refused (401)  <- THE SERVER ENDED THE SESSION, NOT ONLY THE BROWSER
+  ana is signed in on her phone, laptop and tablet: 3 live records, 3 in her index
+  sign out everywhere: 200 ended 3 sessions, then the phone: refused (401), the tablet: refused (401)
+  ana changes her password on the laptop: 200 ended 2 other sessions, the laptop goes on with a new id: allowed, the old laptop id: refused (401), the phone: refused (401)
+  a limit of 3 sessions: a fourth sign-in 200 ends the oldest, the phone's: refused (401), the laptop: allowed, the watch: allowed
+FIVE. The bill.
+  two servers with separate session stores: ana signs in on A, her next request lands on B: refused (401)  <- NEEDS A SHARED STORE
+  both servers using the same Redis: her next request lands on B: allowed, and back on A: allowed
+  Redis stops answering: a request with a valid cookie refused (500), a sign-in refused (500)  <- FAILS CLOSED
+  Redis answers again: the same cookie allowed
+  20 requests from strangers with no cookie, with Spring Security's request cache on (the default): 20 session records in Redis  <- A STRANGER CAN FILL REDIS
+  20 requests from strangers with no cookie, with Spring Security's request cache off: 0 session records in Redis
+  a short idle timeout asks a customer who stops to read a statement to sign in again, and Redis is part of every request
+  the rules: a new id at sign-in, an idle and an absolute limit, the server ends the session, a password for Redis, and a bank that refuses when Redis is down

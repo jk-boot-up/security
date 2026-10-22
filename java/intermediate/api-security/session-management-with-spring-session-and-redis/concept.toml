@@ -1,0 +1,478 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "session-management-with-spring-session-and-redis"
+level = "intermediate"
+module = "api-security"
+title = "Session Management with Spring Session and Redis"
+short_title = "Sessions in Redis"
+package = "sessionredis"
+main_class = "SessionRedisDemo"
+tagline = "Moving sessions into Redis makes them survive a restart and a second server, and makes Redis the place where a stolen key is a live session"
+bold = "Spring Session keeps the session in Redis so any server can serve any request, and Spring Security still gives a new id at sign-in; but the id is stored as itself so Redis needs a password, an idle limit is enforced by Spring while the absolute limit is yours to add, ended sessions linger in Redis for five minutes, an unauthenticated request can create a record unless the request cache is off, and a bank that cannot reach Redis must refuse."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "Session management with Spring Session and Redis in Spring Boot 4.1: a bank whose sessions live in a password-protected Redis, why a stolen copy of the keys is a set of live sessions, session fixation and Spring Security's new id at sign-in, the idle timeout and the absolute timeout that Spring Session does not have, signing out, signing out everywhere, a password change and a limit on sessions, two servers sharing one store, a bank that fails closed when Redis stops answering, and a stranger filling Redis through the request cache."
+thumb_lines = ["SESSIONS IN", "REDIS"]
+thumb_code = "spring:session:sessions:<id>"
+youtube_title = "Sessions in Redis with Spring Session: Fixation, Timeouts, Sign-Out Everywhere (OWASP A07)"
+youtube_tags = ["spring session", "redis", "session management", "session fixation", "spring security", "owasp top 10", "a07", "java", "api security"]
+
+[readme]
+intro = """
+The plain [session-management](../session-management) project builds ids, rotation, timeouts and sign-out from scratch, and ends with the bill: two servers need a shared store. This one pays that bill with **Spring Session 4** and a real **Redis 8** in Docker, on **Spring Boot 4.1** and **Spring Security 7**, all on the loopback address. It needs Docker, and its tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **The session lives in Redis.** Redis refuses a client with no password. The cookie is the Redis key's id, encoded, so a stolen copy of the keys, turned into cookies, **opens live sessions**: unlike the plain store, which kept only a hash of each id.
+- **A new id at every sign-in.** With the id kept, a planted id becomes ana's and the stranger reads her account. With Spring Security's default `changeSessionId` it does not, and the old record is no longer live.
+- **How long a session lives.** Spring Session ends an idle session, and Redis keeps the dead record five more minutes. It has **no absolute timeout**, so a 20-line filter of our own ends a busy session at 8 hours.
+- **Signing out, everywhere, and the limit.** Sign-out ends the session on the server. `FindByIndexNameSessionRepository` finds every session of a customer to end them all, and a password change ends the others and renews this one. A limit of 3 sessions ends the oldest.
+- **The bill.** Two servers with separate stores refuse a request that lands on the other; with one Redis they allow it. **A Redis that stops answering makes the bank refuse**, never allow. And with Spring Security's default request cache, 20 requests from strangers create 20 session records in Redis.
+
+**Maps to:** OWASP Top 10 (2025) A07 Authentication Failures · CWE-384 (session fixation) · CWE-613 (insufficient session expiration) · CWE-614 (cookie without Secure) · OWASP ASVS 5.0 V7 (Session Management).
+"""
+analogy = """
+A coat check that used to keep tickets in one cloakroom and now keeps them in a safe shared by every branch. Any branch can return your coat, which is the point, and anyone who copies the safe's list holds every ticket, which is the price.
+"""
+scenario = """
+An online bank on Spring Boot signs customers in with a form and keeps each session in Redis. The demo starts the real application, sometimes twice, against a real Redis, and a device stand-in that keeps the session cookie signs in, waits, signs out and tries copies of cookies.
+"""
+costs = [
+    "**Redis is now in every request.** If it is slow the bank is slow, and if it is down the bank refuses.",
+    "**Redis holds every live id as itself.** Its password, its address and its backups are as sensitive as the cookie jar.",
+    "**Spring Session keeps ended sessions five more minutes,** and has no absolute timeout, so the second rule is yours to write and to test.",
+    "**A short idle timeout annoys customers** who stop to read a statement.",
+    "**Operations work moves to Redis:** persistence, memory limits and failover are now the bank's sessions.",
+]
+too_much = """
+A single server that restarts rarely can keep sessions in memory. Move them to Redis when a second server arrives or when a deployment must not sign everyone out, and protect Redis as you would the cookie jar.
+"""
+met_before = [
+    "`@EnableRedisIndexedHttpSession` or `spring-session-data-redis` in a pom.",
+    "Keys such as `spring:session:sessions:<uuid>` in a Redis browser.",
+    "A customer signed out on every device after a password change.",
+    "Load balancers with sticky sessions that Redis makes unnecessary.",
+]
+where = """
+This is the tools version of [session-management](../session-management), in the [api-security](..) module. It follows the same story and picks up where the plain project's bill left off.
+"""
+twin = """
+The bank servers are real Spring Boot applications, and Redis is a real container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The device stand-in reads the Set-Cookie header and sends the cookie back, which is what a browser does over https. Only statuses, booleans and counts are printed, never ids or ports.
+"""
+test_note = "The tests start a real Redis in Docker and real bank servers and remove the container afterwards. Run them with ./gradlew integrationTest; nothing printed changes between runs."
+
+[[act]]
+title = "The session lives in Redis"
+summary = "Redis needs a password, the cookie carries the Redis key's id, and a stolen copy of the keys turned into cookies opens live sessions."
+detail = """
+A client with no password is refused by Redis. Ana signs in and the cookie `__Host-session` has Path=/, Secure, HttpOnly and SameSite=Strict, with 0 problems. Redis holds 1 session record and an index entry for ana. The cookie is the id in the Redis key, encoded. A stolen copy of Redis's 1 session key, turned into a cookie, opens 1 session: the id is stored as itself. The plain project kept only a hash of each id; here the protection is Redis's password, its loopback address and short timeouts.
+"""
+speech = """
+First demo: the session lives in Redis. [[slnc 400]] Redis refuses a client with no password. [[slnc 600]]
+Ana signs in, and the cookie has every protection. [[slnc 600]]
+The cookie is the id in the Redis key, encoded. [[slnc 300]] A stolen copy of the keys, turned into cookies, opens live sessions. [[slnc 600]]
+So Redis needs the same care as the cookie jar.
+"""
+rows = { stored = "active wrong" }
+console = [
+    ["a client with no password is refused by Redis", "ok"],
+    ["ana signs in: 200, cookie problems 0", "ok"],
+    ["the cookie is the Redis key's id, encoded", "amber"],
+    ["a stolen copy of the keys opens 1 session", "bad"],
+]
+
+[[act]]
+title = "A new id at every sign-in"
+summary = "With the id kept, a planted id becomes ana's and the stranger reads her account; with Spring Security's default the ids differ and the stranger's copy is refused."
+detail = """
+A stranger gets an id from the bank's welcome page and puts it into ana's browser. With a bank that keeps the id at sign-in, ana's id after signing in is the planted one, and the stranger's copy reads her account: session fixation. With Spring Security's default, changeSessionId, the ids differ, the stranger's copy is refused with 401, ana's new id is allowed, and the planted id is no longer a live record in Redis.
+"""
+speech = """
+Second demo: a new id at every sign in. [[slnc 400]] A stranger gets an id from the welcome page and puts it into ana's browser. [[slnc 600]]
+If the bank keeps the id at sign in, the stranger reads her account. [[slnc 300]] That is session fixation. [[slnc 600]]
+With Spring Security's default, the id changes at sign in, and the stranger's copy is refused.
+"""
+rows = { fixation = "active ok" }
+console = [
+    ["the id is kept at sign-in: the stranger's copy reads ana's account", "bad"],
+    ["changeSessionId: the ids differ", "ok"],
+    ["the stranger's copy -> refused (401)", "ok"],
+    ["the planted id is no longer live in Redis", "ok"],
+]
+
+[[act]]
+title = "How long a session lives"
+summary = "Spring Session enforces the idle timeout and Redis keeps the dead record five more minutes; there is no absolute timeout, so a small filter of our own ends a busy session at 8 hours."
+detail = """
+With an idle timeout of 2 seconds for the demo, Redis keeps the record for the idle timeout plus five minutes. Ana idle for 1 second is allowed. Idle for 2.5 seconds she is refused, and the dead record stays in Redis for five more minutes while the bank still refuses its id. An absolute timeout of 8 hours: 7 hours 59 minutes after sign-in she is allowed; two minutes later she is refused, though she was busy. Spring Session has no absolute timeout, so this is a 20-line filter of our own.
+"""
+speech = """
+Third demo: how long a session lives. [[slnc 400]] Spring Session enforces the idle timeout. [[slnc 600]]
+After an idle pause, ana is refused, but Redis keeps the dead record for five more minutes. [[slnc 600]]
+Spring Session has no absolute timeout. [[slnc 300]] A busy session would live for ever, so a small filter of our own ends it at eight hours.
+"""
+rows = { timeouts = "active ok" }
+console = [
+    ["idle for 1 second -> allowed", "ok"],
+    ["idle for 2.5 seconds -> refused (401)", "ok"],
+    ["the dead record stays in Redis for five more minutes", "amber"],
+    ["busy for 8 hours 1 minute -> refused (401)", "ok"],
+]
+
+[[act]]
+title = "Signing out, everywhere, and the limit"
+summary = "Sign-out ends the session on the server, sign-out everywhere ends 3 sessions, a password change ends the others and renews this one, and a limit of 3 ends the oldest."
+detail = """
+Sign-out returns 200, tells the browser to forget the cookie, and the record is no longer live in Redis. A copy of the cookie made before sign-out is refused with 401: the server ended the session, not only the browser. Ana is signed in on her phone, laptop and tablet: 3 live records and 3 in her index. Sign out everywhere ends 3 sessions. After a password change on the laptop, 2 other sessions are ended, the laptop goes on with a new id, and the old laptop id and the phone are refused. With a limit of 3 sessions, a fourth sign-in ends the oldest, the phone's.
+"""
+speech = """
+Fourth demo: signing out, everywhere, and the limit. [[slnc 400]] Sign out ends the session on the server, so a copy of the cookie is refused. [[slnc 600]]
+Ana is signed in on three devices. [[slnc 300]] Sign out everywhere ends all three. [[slnc 600]]
+A password change ends the other sessions, and gives this one a new id. [[slnc 600]]
+And a limit of three sessions ends the oldest when a fourth sign in arrives.
+"""
+rows = { ending = "active ok" }
+console = [
+    ["sign-out: the copy of the cookie -> refused (401)", "ok"],
+    ["sign out everywhere ended 3 sessions", "ok"],
+    ["password change: 2 other sessions ended, the laptop gets a new id", "ok"],
+    ["a fourth sign-in ends the phone's session", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "Two servers need one shared store, a Redis that stops answering makes the bank refuse, and with the request cache on, 20 strangers create 20 session records."
+detail = """
+Two servers with separate session stores: ana signs in on A and her next request lands on B and is refused. Both servers using the same Redis allow it, and back on A too. When Redis stops answering, a request with a valid cookie is refused with 500 and so is a sign-in: the bank fails closed. When Redis answers again the same cookie is allowed. With Spring Security's default request cache, 20 requests from strangers with no cookie leave 20 session records in Redis; with it off, 0.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Two servers need one shared store, or a request that lands on the other is refused. [[slnc 600]]
+With one Redis, either server serves her. [[slnc 600]]
+When Redis stops answering, the bank refuses. [[slnc 300]] It fails closed. [[slnc 600]]
+And with the default request cache, twenty strangers leave twenty session records in Redis.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["separate stores: the request on B -> refused (401)", "bad"],
+    ["one shared Redis: the request on B -> allowed", "ok"],
+    ["Redis stops answering -> refused (500), never allowed", "ok"],
+    ["request cache on: 20 strangers leave 20 records in Redis", "bad"],
+]
+
+[animation]
+subtitle = "An online bank, a session store shared by every server, and a Redis to protect."
+boxes = [
+    ["stored", "In Redis", "the key is the cookie"],
+    ["fixation", "A new id", "changeSessionId"],
+    ["timeouts", "Timeouts", "idle, absolute, lingering"],
+    ["ending", "Ending", "sign-out, everywhere, limit"],
+    ["bill", "The bill", "shared store, fail closed"],
+]
+
+[docs.problem]
+scenario = """
+An online bank that outgrows one server and moves its sessions into Redis, where every server can reach them.
+"""
+naive = """
+Add the dependency, point it at a Redis, and assume that the session rules came with it.
+"""
+deliver = [
+    "Real Spring Boot servers and a real, password-protected Redis in Docker.",
+    "A new id at sign-in, an idle limit, an absolute limit, and server-side sign-out.",
+    "Sign-out everywhere, a password change that ends other sessions, and a session limit.",
+    "A bank that refuses when Redis does not answer.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain session-management project, for the rules",
+    "Docker, with the redis:8.10.2-alpine image (pulled on first use)",
+]
+not_required = [
+    "A Redis server installed on the machine: the demo starts and removes its own container",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain what changes when sessions move from the server's memory to Redis",
+    "show why Redis's keys are as sensitive as the cookie jar",
+    "name the session rules Spring Session gives and the one it does not",
+    "make the bank refuse when the store is down",
+]
+walkthrough = """
+Run act one and ask who can read the keys. In act three ask where the absolute limit would live in your own bank. In act five ask what the bank should do while Redis is down for an hour.
+"""
+exercises = [
+    "Store a hash of the id as the Redis key, and see what Spring Session needs to change.",
+    "Add a step-up: ask for the password again before a payment, and rotate the id.",
+    "Make the idle timeout 15 minutes and the absolute timeout 8 hours, and test both.",
+    "Run a second Redis as a replica and decide what the bank does when the first one fails.",
+]
+
+[docs.explained]
+sentence = """
+Spring Session puts the session where every server can reach it, and the rules about its id, its age and its end are still the bank's to set, test and protect.
+"""
+verdict = """
+Protect Redis like the cookie jar, keep Spring Security's new id at sign-in, add an absolute timeout, end sessions on the server, turn the request cache off for an API, and make the bank refuse when Redis does not answer.
+"""
+recognise = [
+    "`spring:session:sessions:` keys in a Redis browser.",
+    "A customer signed out on every device after a password change.",
+    "A Redis with no password on a shared network.",
+    "A record for every request from a stranger.",
+]
+
+[spec]
+purpose = """
+Teach session management with Spring Session and Redis: what the store changes and what the rules still need.
+"""
+nongoals = [
+    "Redis clustering, persistence and failover.",
+    "Token-based login, which has its own projects.",
+    "Single sign-on across applications.",
+]
+problem = """
+Teams move sessions into Redis for scale and leave the session rules, and Redis itself, at their defaults.
+"""
+roles = [["The bank", "`BankController`, `BankSecurity`"], ["The absolute limit", "`AbsoluteTimeoutFilter`, `OffsetClock`"], ["The store", "`RedisLab`"], ["The device stand-in", "`Browser`, `Running`"], ["Entry point", "`SessionRedisDemo`"]]
+requirements = [
+    "Sessions are stored in a Redis that needs a password.",
+    "The session cookie has every protection.",
+    "A new id is issued at sign-in.",
+    "An idle limit and an absolute limit end a session.",
+    "Sign-out, sign-out everywhere and a password change end sessions on the server.",
+    "A limit on concurrent sessions ends the oldest.",
+    "The bank refuses when Redis does not answer.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "Two servers and one session store"
+caption = "Any server can serve any request because the session is in Redis, behind a password."
+nodes = [
+    { id = "device", label = "Customer's device", sub = "keeps the cookie", col = 0, row = 0, colour = "client" },
+    { id = "a", label = "Bank server A", sub = "Spring Boot", col = 1, row = 0, colour = "accent" },
+    { id = "b", label = "Bank server B", sub = "Spring Boot", col = 1, row = 1, colour = "accent" },
+    { id = "redis", label = "Redis", sub = "spring:session:sessions:<id>", col = 2, row = 0, colour = "amber", shape = "store" },
+]
+edges = [
+    { from = "device", to = "a" },
+    { from = "device", to = "b" },
+    { from = "a", to = "redis", label = "password" },
+    { from = "b", to = "redis", label = "password" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Spring Session supplies the repository and the cookie; the bank adds the filter and the rules."
+nodes = [
+    { id = "sec", label = "BankSecurity", sub = ["chain()", "cookieSerializer()", "sessionRegistry()"], col = 0, row = 0, colour = "accent" },
+    { id = "abs", label = "AbsoluteTimeoutFilter", sub = ["doFilterInternal()"], col = 1, row = 0, colour = "amber" },
+    { id = "ctl", label = "BankController", sub = ["account()", "signOutEverywhere()", "changePassword()"], col = 0, row = 1, colour = "green" },
+    { id = "lab", label = "RedisLab", sub = ["start()", "cli()", "pause()"], col = 1, row = 1, colour = "red" },
+]
+edges = [
+    { from = "sec", to = "abs", label = "adds" },
+    { from = "ctl", to = "lab", label = "reads the same store" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "What a request meets"
+caption = "The session is loaded from Redis before the security rules run; any failure ends in a refusal."
+nodes = [
+    { id = "cookie", label = "Cookie", sub = "__Host-session", col = 0, row = 0, colour = "client" },
+    { id = "load", label = "Load from Redis", sub = "idle limit", col = 1, row = 0, colour = "amber" },
+    { id = "abs", label = "Absolute limit", sub = "8 hours", col = 2, row = 0, colour = "accent" },
+    { id = "auth", label = "Security rules", sub = "authenticated?", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "cookie", to = "load" },
+    { from = "load", to = "abs" },
+    { from = "abs", to = "auth" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Sign-in with a new id"
+participants = ["Customer", "Bank", "Redis"]
+steps = [
+    ["Customer", "Bank", "POST /login with the old cookie, if any"],
+    ["Bank", "Redis", "save the session under a new id"],
+    ["Bank", "Redis", "delete the old record"],
+    ["Bank", "Customer", "200, Set-Cookie: __Host-session=<new id>", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Redis stops answering"
+participants = ["Customer", "Bank", "Redis"]
+steps = [
+    ["Customer", "Bank", "GET /account with a valid cookie"],
+    ["Bank", "Redis", "load the session"],
+    ["note", "Redis", "no answer within 1 second"],
+    ["Bank", "Customer", "500, never the account", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The network", nodes = ["stranger"], colour = "red" },
+    { label = "The bank", nodes = ["bank", "redis"], colour = "green" },
+]
+nodes = [
+    { id = "stranger", label = "Stranger", sub = "plants or steals an id", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T4"] },
+    { id = "bank", label = "Bank servers", sub = "sign-in, rules", col = 1, row = 0, colour = "accent", threats = ["T1", "T3", "T4"] },
+    { id = "redis", label = "Redis", sub = "every live id", col = 2, row = 0, colour = "amber", threats = ["T2", "T5"] },
+]
+edges = [
+    { from = "stranger", to = "bank", label = "requests", colour = "red", dashed = true, threats = ["T1", "T4"] },
+    { from = "bank", to = "redis", label = "sessions", threats = ["T2", "T5"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Boot bank that keeps sessions in Redis. It covers session fixation, the life of a session, the store itself and the bank's behaviour when the store is unavailable. It does not cover Redis clustering or the sign-in method.
+"""
+assets = [
+    "The customers' sessions and the accounts they open.",
+    "Redis, which holds every live session id.",
+]
+actors = [
+    "A customer on several devices.",
+    "A stranger who can plant or steal a session id.",
+    "Someone who can read Redis's keys or its backups.",
+]
+boundaries = [
+    "The device to the bank: the cookie.",
+    "The bank to Redis: a password on the loopback address.",
+]
+assumptions = [
+    "The connection to the bank is https in production, so the Secure cookie travels.",
+    "Redis is reachable only from the bank servers.",
+]
+out_of_scope = [
+    "Attacks on the host that runs Redis.",
+    "Single sign-on and tokens.",
+]
+tests = [
+    "`SessionRedisTest` starts a real Redis and real bank servers and checks the password, the cookie, the stolen key, fixation in both modes, the idle and absolute limits, sign-out, sign-out everywhere, the password change, the session limit, two servers, a Redis that stops answering, and the request cache.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, api-security-with-spring-boot-and-redis, adds validation, response shaping and a Redis-backed rate limiter, which also answers the flood of sign-in attempts left open here.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A planted id becomes the customer's session at sign-in"
+where = "`BankSecurity.chain`, session fixation"
+control = "A new id at every sign-in (changeSessionId)"
+residual = "A site that sets cookies for the bank's domain"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "Someone reads Redis's keys and uses them as cookies"
+where = "`spring:session:sessions:<id>`"
+control = "A Redis password, a loopback address, no persistence of sessions to shared backups, short timeouts"
+residual = "An attacker with access to the bank servers' memory"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A busy session lives for ever"
+where = "`AbsoluteTimeoutFilter`"
+control = "An absolute limit on top of the idle limit"
+residual = "A stolen session that is still inside both limits"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "Strangers create session records until Redis is full"
+where = "Spring Security's request cache"
+control = "Request cache off for an API, so only sign-in creates a record"
+residual = "A flood of sign-in attempts, which the rate limiter in the next project addresses"
+
+[[threat]]
+id = "T5"
+stride = "D"
+threat = "Redis stops answering and the bank allows requests without a session check"
+where = "`SessionRepositoryFilter`"
+control = "A timeout on Redis and a refusal when it fails"
+residual = "A long outage that signs everyone out"
+
+[poster]
+headline = [["SESSIONS IN", "text"], ["REDIS", "accent"]]
+taglines = [["Moving sessions into Redis makes them survive a restart and a second server, and makes Red", "gold"]]
+before = { code = "a client with no password is refused by Redis", note = "The session lives in Redis", tag = "BEFORE" }
+after = { code = "spring:session:sessions:<id>", note = "The bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Session Management with Spring Session and Redis"
+narration = "Hello, and welcome. [[slnc 400]] This video explains sessions in Redis, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Spring Session keeps the session in Redis so any server can serve any request, and Spring Security still gives a new id at sign-in; but the id is stored as itself so Redis needs a password, an idle limit is enforced by Spring while the absolute limit is yours to add, ended sessions linger in Redis for five minutes, an unauthenticated request can create a record unless the request cache is off, and a bank that cannot reach Redis must refuse. [[slnc 600]] Think of it this way. [[slnc 300]] A coat check that used to keep tickets in one cloakroom and now keeps them in a safe shared by every branch. Any branch can return your coat, which is the point, and anyone who copies the safe's list holds every ticket, which is the price. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain what changes when sessions move from the server's memory to Redis. [[slnc 300]] Show why Redis's keys are as sensitive as the cookie jar. [[slnc 300]] Name the session rules Spring Session gives and the one it does not."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank on Spring Boot signs", "customers in with a form and keeps each", "session in Redis.", "The demo starts the real application,", "sometimes twice, against a real Redis, and a", "device stand-in that keeps the session", "cookie signs in, waits, signs out and tries"]
+narration = "Here is the scenario. [[slnc 400]] An online bank on Spring Boot signs customers in with a form and keeps each session in Redis. [[slnc 400]] The demo starts the real application, sometimes twice, against a real Redis, and a device stand-in that keeps the session cookie signs in, waits, signs out and tries copies of cookies."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Redis is now in every request", "Redis holds every live id as itself", "Spring Session keeps ended sessions five more minutes", "A short idle timeout annoys customers", "Operations work moves to Redis"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Redis is now in every request. [[slnc 500]] Redis holds every live id as itself. [[slnc 500]] Spring Session keeps ended sessions five more minutes. [[slnc 500]] A short idle timeout annoys customers. [[slnc 500]] Operations work moves to Redis."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The bank: BankController, BankSecurity", "The absolute limit: AbsoluteTimeoutFilter, OffsetClock", "The store: RedisLab", "The device stand-in: Browser, Running", "Entry point: SessionRedisDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The bank is in BankController and BankSecurity. [[slnc 500]] The absolute limit is in AbsoluteTimeoutFilter and OffsetClock. [[slnc 500]] The store is in RedisLab. [[slnc 500]] The device stand-in is in Browser and Running. [[slnc 500]] Entry point is in SessionRedisDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A customer signed out on every device after a password", "change", "A Redis with no password on a shared network", "A record for every request from a stranger"]
+narration = "You have probably met this already. [[slnc 400]] A customer signed out on every device after a password change. [[slnc 500]] A Redis with no password on a shared network. [[slnc 500]] A record for every request from a stranger."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain what changes when sessions move from the", "server's memory to Redis", "Show why Redis's keys are as sensitive as the cookie", "jar", "Name the session rules Spring Session gives and the", "one it does not", "Make the bank refuse when the store is down"]
+narration = "So, how do you use it? [[slnc 400]] Protect Redis like the cookie jar, keep Spring Security's new id at sign-in, add an absolute timeout, end sessions on the server, turn the request cache off for an A P I, and make the bank refuse when Redis does not answer."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's sessions in Redis. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Spring Session puts the session where every server can reach it, and the rules about its id, its age and its end are still the bank's to set, test and protect. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Store a hash of the id as the Redis key, and see what Spring Session needs to change. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
