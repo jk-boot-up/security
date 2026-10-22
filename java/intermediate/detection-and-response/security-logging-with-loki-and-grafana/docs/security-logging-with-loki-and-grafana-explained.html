@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Logging with Loki and Grafana, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Security Logging with Loki and Grafana, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A log store is useful when it can answer a question about the whole system in one line, and a rule is useful when someone has proved that it fires.</p>
+<h2>The 5 acts</h2>
+<h3>1. Shipping the events</h3>
+<p>The morning's 8 events are pushed as JSON lines to a real Loki, each answered with 204, with two labels: app=bank and event_type. The label names Loki now knows are app, event_type and service_name (which it adds itself); there are 4 streams, one for each of the 4 event types. A push with no tenant header gets 401 no org id: every request names whose logs it is about.</p>
+<h3>2. Asking questions in LogQL</h3>
+<p>A text filter for ANA-1 finds 3 events. Who moved 500 or more: ana from 198.51.100.66, ANA-1-&gt;MAL-9, success, request req-0006. Everything from that address, in time order: login failure, login failure, login success, money-movement success: someone with ana's password, not ana. Failures by address, counted by Loki: 198.51.100.66 has 2.</p>
+<h3>3. Labels and content</h3>
+<p>150 more logins, once with the user as a label and once as part of the line: 150 streams against 1. Asking for one user gives 1 line either way. Every label value makes a stream of its own and an entry in the index, so labels are for the few things you always select by, the application and the kind of event, and the rest stays in the line.</p>
+<h3>4. Alerting</h3>
+<p>Two rules are loaded for the tenant, evaluated every 2 seconds: PasswordGuessing and PasswordGuessingTypo, both inactive and ok. With ana's two failed logins in the logs, nothing is firing. Four failed logins from 203.0.113.9 are shipped; a moment later PasswordGuessing 203.0.113.9 is firing, with the text 203.0.113.9 failed to log in 3 times or more in 5 minutes. The rule with the typo in the field name, outcom, is still inactive and ok: it runs without a complaint and never fires. A rule is code: test it with a known bad event.</p>
+<h3>5. The bill</h3>
+<p>Another tenant, shop, asking for the bank's lines gets 0 of 12 and sees no labels. An event stamped ten days ago is refused with 400: the timestamp is too old. Asking Loki to delete the bank's lines through its API gets 404: the route is not there until retention and deletion are configured. Grafana, with a data source that sends the tenant bank, has a healthy connection and gives the same count as Loki; through the shop's data source it gives 0. Whoever can use a data source sees that tenant's logs. Loki does not prove that a line was not changed before it was sent.</p>
+<h2>The verdict</h2>
+<p>Ship structured events with few labels, keep the rest in the line, separate tenants, test every rule with a known bad event, control who can use a data source, refuse or bound old events, and let the sender prove the lines were not changed.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>{app="..."} | json | field="value"</code> in a query.</li>
+<li><code>X-Scope-OrgID</code> in a request.</li>
+<li>A rule file with <code>alert:</code> and <code>expr:</code>.</li>
+<li>A Grafana data source with a custom header.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A Grafana dashboard with an "Explore" button.</li>
+<li>A <code>{app="..."}</code> selector in a query.</li>
+<li>A log agent such as Promtail or Alloy configured with labels.</li>
+<li>A page at night because of an alert rule.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

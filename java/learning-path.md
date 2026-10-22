@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 113 projects. Planned: 39 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 114 projects. Planned: 38 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,7 +24,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **72** | **4** | **76** |
+| **Intermediate** | | **73** | **3** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
@@ -33,7 +33,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | secure-coding | 8 | 0 | 8 |
 | | secrets-and-supply-chain | 8 | 0 | 8 |
 | | platform-hardening | 4 | 0 | 4 |
-| | detection-and-response | 3 | 2 | 5 |
+| | detection-and-response | 4 | 1 | 5 |
 | | secure-design | 3 | 2 | 5 |
 | **Advanced** | | **0** | **35** | **35** |
 | | cloud-security-without-a-cloud | 0 | 3 | 3 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **113** | **39** | **152** |
+| **All** | | **114** | **38** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 32 | 4 | 36 |
+| Intermediate | With tools | 33 | 3 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **53** | **4** | **57** |
+| **All** | **With tools** | **54** | **3** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -257,7 +257,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
 | 108 | [security-logging](intermediate/detection-and-response/security-logging) | Plain | A log is only useful if it can answer who did it, and only safe if it holds no secrets | A09, ASVS V16 |
-| 109 | security-logging-with-loki-and-grafana | With tools: loki and grafana | *planned*: shipping, querying and alerting locally | A09, ASVS V16 |
+| 109 | [security-logging-with-loki-and-grafana](intermediate/detection-and-response/security-logging-with-loki-and-grafana) | With tools: loki and grafana | Ship the bank's security events to a real Loki, ask who moved the money in one line of LogQL, and let a rule watch for password guessing | A09, ASVS V16 |
 | 110 | [detecting-attacks](intermediate/detection-and-response/detecting-attacks) | Plain | A detection rule is a hypothesis about an attacker, and it must be measured against a normal day | A09, CSF Detect |
 | 111 | detecting-attacks-with-opensearch | With tools: opensearch | *planned*: the same detections as saved queries and alerts | A09, CSF Detect |
 | 112 | [incident-response](intermediate/detection-and-response/incident-response) | Plain | The outcome of an incident is mostly decided before it starts, and by the order of the first hour | CSF Respond, NIST SP 800-61 |
