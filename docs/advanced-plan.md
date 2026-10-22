@@ -28,7 +28,7 @@ The conventions are the same as in the other tracks:
 | ---: | --- | --- | --- |
 | 1 | `cloud-iam-models` | Identity, resource and session policies, role assumption and confused-deputy attacks, evaluated in Java | Java only; an emulator comes with `cloud-misconfigurations` |
 | 2 | `network-isolation` | Segmentation, security groups as code, and what a flat network lets an attacker reach | Docker networks, kind with network policies |
-| 3 | `cloud-misconfigurations` | Public buckets, wildcard policies, metadata endpoints and unencrypted storage, found before deploy | LocalStack, Checkov, Trivy |
+| 3 | `cloud-misconfigurations` | Public buckets, wildcard policies, metadata endpoints and unencrypted storage, found before deploy | Moto (LocalStack now needs an account token), Checkov, Trivy |
 
 ### 2. infrastructure-as-code-security
 | # | Project | What it teaches | Tools |

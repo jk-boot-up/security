@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloud Misconfigurations, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Cloud Misconfigurations, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>Most cloud breaches are settings, so look for the settings in the code before deploy and in the account afterwards.</p>
+<h2>The 5 acts</h2>
+<h3>1. The first version</h3>
+<p>Three buckets: bank-statements with a public-read ACL, bank-exports with a policy for everyone, and bank-audit, which is fine. A policy that allows every action on every resource, a web group with 22 and 443 open to the world, a database group with 5432 open, a server with the metadata service answering without a token and an unencrypted disk. The scanner reports 13 findings: 3 critical, 5 high, 3 medium... of nine kinds of rule.</p>
+<h3>2. The fixes</h3>
+<p>The buckets get a public access block, encryption and versioning; the policies are replaced; the ingress rules are revoked; the server and the disks are deleted and created again, because the metadata options and the encryption of a disk cannot be changed in place. The scanner reports nothing.</p>
+<h3>3. Before deploy: Checkov and Trivy</h3>
+<p>The setup written as main.tf in two versions. Both scanners fail the first. Of our nine rules, 7 are found by both; Checkov alone finds the wildcard policy and the public bucket policy, and Trivy has no check for either. On the fixed files none of the nine problems is left except encryption: both tools ask for a customer-managed key where the rule accepts AES256.</p>
+<h3>4. The metadata endpoint</h3>
+<p>A server on a loopback port answers like the metadata service in both versions. A web feature that fetches a link on the visitor's behalf gets the credentials from version 1 and a 401 from version 2. A feature that lets the visitor choose the method and a header does the PUT for a token, then the GET: version 2 hands over the credentials too. A request that came through a proxy is refused with 403 in both.</p>
+<h3>5. The bill</h3>
+<p>Two of the nine fixes replace a resource. A scanner sees the setting, not the intent: a public bucket for a website needs a written exception with an owner and a date. Moto stores configuration but does not enforce it the way AWS does, so the emulator tests the code, not the cloud. Scan the files before deploy and the account on a schedule, because code and the cloud drift apart.</p>
+<h2>The verdict</h2>
+<p>Block public access by default, give every identity only what it needs, close administrative ports, require IMDSv2 and encrypt disks, scan the files in the build and the account on a schedule, and write down every exception with an owner and a date.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>Principal: *</code> in a bucket policy.</li>
+<li><code>Action: *</code> with <code>Resource: *</code>.</li>
+<li><code>cidr_blocks = ["0.0.0.0/0"]</code> on port 22.</li>
+<li><code>http_tokens = "optional"</code>.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A bucket opened for a quick demo and never closed.</li>
+<li>A policy with Action star.</li>
+<li>A security group with 0.0.0.0/0 on SSH.</li>
+<li>A scanner report of hundreds of findings that nobody reads.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
