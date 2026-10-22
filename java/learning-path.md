@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 93 projects. Planned: 59 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 94 projects. Planned: 58 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,11 +24,11 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **52** | **24** | **76** |
+| **Intermediate** | | **53** | **23** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
-| | identity-and-access | 6 | 6 | 12 |
+| | identity-and-access | 7 | 5 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
 | | secure-coding | 4 | 4 | 8 |
 | | secrets-and-supply-chain | 4 | 4 | 8 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **93** | **59** | **152** |
+| **All** | | **94** | **58** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 12 | 24 | 36 |
+| Intermediate | With tools | 13 | 23 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **33** | **24** | **57** |
+| **All** | **With tools** | **34** | **23** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -192,7 +192,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | # | Project | Kind | You learn | Maps to |
 | ---: | --- | --- | --- | --- |
 | 68 | [jwt-done-right](intermediate/identity-and-access/jwt-done-right) | Plain | Decoding a token is not verifying it | A07, CWE-347 |
-| 69 | jwt-done-right-with-nimbus-jose-jwt | With tools: nimbus jose jwt | *planned*: the same checks with a standard library and a JWKS endpoint | A07, CWE-347 |
+| 69 | [jwt-done-right-with-nimbus-jose-jwt](intermediate/identity-and-access/jwt-done-right-with-nimbus-jose-jwt) | With tools: nimbus jose jwt | A standard library does the parsing, the signature and most claims; the algorithm, the type, the key set URL and the policy are still the API's to set | A07, CWE-347 |
 | 70 | [oauth2-authorization-code-pkce](intermediate/identity-and-access/oauth2-authorization-code-pkce) | Plain | Give an app access without giving it your password | RFC 9700, A07 |
 | 71 | oauth2-authorization-code-pkce-with-keycloak | With tools: keycloak | *planned*: the same flow against a real authorization server | RFC 9700, A07 |
 | 72 | [openid-connect](intermediate/identity-and-access/openid-connect) | Plain | Access is not identity | A07 |

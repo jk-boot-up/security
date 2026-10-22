@@ -12,6 +12,7 @@ Modern authentication and authorization: tokens, OAuth 2.0 and OpenID Connect as
 | 4 | [tokens-in-the-browser](tokens-in-the-browser) | A token a script can read is a token an attacker can take | A07 |
 | 5 | [openid-connect](openid-connect) | Access is not identity | A07, RFC 9700 |
 | 6 | [saml-basics](saml-basics) | A valid signature is not the same as the statement you believed | A07, A08, CWE-347, CWE-345 |
+| 7 | [jwt-done-right-with-nimbus-jose-jwt](jwt-done-right-with-nimbus-jose-jwt) | A standard library does the parsing, the signature and most claims; the algorithm, the type, the key set URL and the policy are still the API's to set | A07, CWE-347 |
 
 A project with `-with-` in its name is the same lesson with a framework or a local tool, and is its own self-contained project.
 

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JWT Done Right with Nimbus JOSE + JWT, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>JWT Done Right with Nimbus JOSE + JWT, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A standard library verifies the signature and most claims, and the API still decides the algorithm, the type, where keys come from, the scope and the lifetime.</p>
+<h2>The 5 acts</h2>
+<h3>1. Decoding is not verifying</h3>
+<p>The bank issues ana an access token of 347 characters in 3 parts. The header says ES256, type at+jwt and key id bank-2026-01. The claims name the issuer, the subject ana, the audience accounts-api, the scope, and the times. The third part is a 64-byte ES256 signature. The claims are readable by anyone: base64url is an encoding, not encryption. With the claims edited to sub mallory and ana's signature kept, a reader that only parses says mallory, and the validator refuses it: Invalid signature.</p>
+<h3>2. The server chooses the algorithm</h3>
+<p>Ana's token with the bank's key is accepted. The same claims with a header that says none and no signature are refused: Unsecured JWTs are rejected, even though the header names the right type. A token whose header says HS256, signed with the bank's public key as the shared secret, is refused: another algorithm was expected. A correctly signed token of type id+jwt, offered as an access token, is refused: type not allowed. The algorithm and the type are settings of the API.</p>
+<h3>3. Every claim that matters</h3>
+<p>At the moment of issue the token is accepted. 20 seconds after exp, inside the 30 seconds of clock skew, it is accepted. 31 seconds after exp it is refused: Expired JWT. A token that starts in 2 minutes is refused: before use time. A token from another authorization server is refused for its issuer, and one meant for the loyalty API is refused for its audience. A token with only the scope cards:read is refused for a missing scope accounts:read. A valid signature proves who wrote the token; only the claims say whether it is for this API, now.</p>
+<h3>4. Keys by id, from one URL</h3>
+<p>The bank publishes 1 key. The first token fetches the key set and 100 more tokens come from the cache: the endpoint was asked 1 time. A token naming a key id the API has never seen makes the library ask once more and is refused, and 100 more of them cause 0 more fetches, because of the minimum time between refetches. A token signed with another key under the bank's key id is refused for its signature. A token whose header points at the attacker's own key set is refused and the attacker's server is asked 0 times, and a token that carries its own public key is refused too. The bank publishes a new key before using it; after the cache time the API trusts 2 keys. When the old key is retired, the old token is still accepted inside the cache time, and refused after it.</p>
+<h3>5. The bill: a token cannot be taken back</h3>
+<p>Ana's access is removed 2 minutes after her token was issued. Her access token is still accepted: it works until it expires. Her refresh token, which the server looks up, is refused as revoked. At 5 minutes and 31 seconds the access token is refused: Expired JWT. A token that asks to live for 24 hours is refused by the lifetime policy of 15 minutes, which is one of our own checks. The library does the parsing, the signature and the claims, and the policy stays ours.</p>
+<h2>The verdict</h2>
+<p>Fix the algorithm and the type, give the library one key set URL and never anything from the token, verify before you believe, check issuer and audience exactly, keep access tokens short, check your own policy, publish a new key before using it, and know how long a retired key lives in your cache.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>JWSVerificationKeySelector</code> and <code>DefaultJWTProcessor</code> in the code.</li>
+<li><code>/.well-known/jwks.json</code> in a configuration file.</li>
+<li>A <code>kid</code> header in a decoded token.</li>
+<li>A token that still works after the user was disabled.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>NimbusJwtDecoder.withJwkSetUri(...)</code> in Spring Security's resource server.</li>
+<li><code>/.well-known/jwks.json</code> on an identity provider.</li>
+<li>A token with <code>"alg":"none"</code> in a pen test report.</li>
+<li><code>kid</code> in a JWT header.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

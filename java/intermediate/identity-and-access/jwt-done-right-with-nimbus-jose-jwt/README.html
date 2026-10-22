@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JWT Done Right with Nimbus JOSE + JWT</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>JWT Done Right with Nimbus JOSE + JWT</h1>
+<pre><code>src/main/java/com/jk/explore/security/jwtnimbus/
+├── AccessTokenValidator.java  What the accounts API does with a bearer token
+├── BankIssuer.java            The bank's authorization server: it holds the signing keys, signs access tokens with the current one, and says what it publishes
+├── JwksServer.java            The bank's published key set at /jwks.json: a real HTTP server on the loopback interface that counts how often it is asked
+├── NimbusJwtDemo.java         Runs the bank's token story in five numbered acts with Nimbus JOSE + JWT and a real key-set server on the loopback interface
+├── RefreshTokens.java         Refresh tokens are not JWTs: they are random strings that the server looks up, so it can take one back at any moment
+├── Refused.java               A token the API will not accept, with the reason the library gave
+└── SimClock.java              A clock that stands still until the demo moves it, so a token's life of five minutes takes no time to wait for
+</code></pre>
+<p><strong>With Nimbus JOSE + JWT an API verifies a bearer token by fixing the algorithm and the type, taking keys only from the one key set URL in its settings, and letting the library check the signature, expiry, issuer, audience and required claims; but the scope, the lifetime policy, the cache time of the key set and the fact that a token cannot be taken back remain the API's own decisions.</strong></p>
+<p>The plain <a href="../jwt-done-right">jwt-done-right</a> project builds a token validator from scratch. This one uses the library most Java stacks already contain, <strong>Nimbus JOSE + JWT 10.10</strong> (the one behind Spring Security's resource server), against a <strong>real key set endpoint</strong> on the loopback address, with <strong>ES256</strong> tokens. It needs no Docker.</p>
+<p>What it shows:
+- <strong>Parsing is not verifying.</strong> <code>SignedJWT.parse</code> reads the claims of a token whose claims were edited to <code>sub=mallory</code>; the processor refuses it with <code>Invalid signature</code>.
+- <strong>The server chooses the algorithm and the type.</strong> A token with <code>alg: none</code> and the right type (<code>Unsecured (plain) JWTs are rejected</code>), an HS256 token signed with the bank's public key as the secret (<code>Another algorithm expected</code>), and a correctly signed token of type <code>id+jwt</code> are all refused, because <code>JWSVerificationKeySelector</code> is built for ES256 and the type verifier for <code>at+jwt</code>.
+- <strong>Every claim.</strong> Expiry with 30 seconds of clock skew, not-before, exact issuer, audience and required claims are checked by <code>DefaultJWTClaimsVerifier</code> (with a clock the demo can move); the scope and the 15-minute lifetime policy are two checks of our own.
+- <strong>Keys by id, from one URL.</strong> 100 tokens cost <strong>one</strong> fetch of the key set. An unknown key id makes the library ask once more and then it is rate limited. A <strong><code>jku</code> header</strong> pointing at the attacker's own key set is never followed (the attacker's server is asked 0 times), and a <code>jwk</code> header is ignored. A new key is <strong>published before it is used</strong>, and a <strong>retired key lives on in the cache</strong> until it expires.
+- <strong>The bill.</strong> Ana's access token still works two minutes after her access was removed, her refresh token (a random string looked up on the server) does not, and a token that asks for 24 hours is refused.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A07 Authentication Failures · CWE-347 (improper verification of cryptographic signature) · CWE-345 · RFC 7519 (JWT), RFC 7515 (JWS), RFC 7517 (JWK), RFC 8725 (JWT best current practice), RFC 9068 (JWT access tokens).</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank teller who has to check a cheque. The printing, the signature and the date can be checked by anyone with the right stamp and a reference book, and a library is that stamp and that book. Whether this cheque is for this bank, today, for this much, is still the teller's decision.</p>
+<h2>The scenario</h2>
+<p>An online bank's authorization server signs access tokens and publishes its keys at a URL. The accounts API verifies each bearer token with Nimbus. The demo runs a real key set server on a loopback port and sends the API good tokens and every kind of bad one.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Decoding is not verifying</td>
+<td>A token is three base64url parts; anyone can read the claims, and a reader that only parses says mallory for a token whose claims were edited, while the processor refuses it.</td>
+</tr>
+<tr>
+<td>2. The server chooses the algorithm</td>
+<td>A token with alg none, an HS256 token signed with the public key as the secret, and a correctly signed token of the wrong type are all refused, because the algorithm and the type are settings of the API.</td>
+</tr>
+<tr>
+<td>3. Every claim that matters</td>
+<td>Expiry with 30 seconds of skew, not-before, issuer and audience are checked by the library; the scope is one check of our own.</td>
+</tr>
+<tr>
+<td>4. Keys by id, from one URL</td>
+<td>100 tokens cost one fetch of the key set; unknown key ids, jku and jwk headers never make the API trust an attacker's key; a new key is published before it is used, and a retired key lives on in the cache.</td>
+</tr>
+<tr>
+<td>5. The bill: a token cannot be taken back</td>
+<td>Ana's access token works two minutes after her access was removed, her refresh token is revoked at once, the token expires after 5 minutes 31 seconds, and a lifetime of 24 hours is refused.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>25 tests in <code>DemoRunsTest</code>, <code>NimbusJwtTest</code>. Every test generates new keys and starts its own key set server on a free loopback port. The key set cache tests wait a fraction of a second on purpose.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The key set server is a real HTTP server on the loopback interface, and the keys are generated fresh on every run and never printed. The demo takes its time from a clock it can move, so a token's life of five minutes takes no time to wait for; only the cache of the key set uses real time, in a second or two, and it is shown on purpose.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>com.nimbusds:nimbus-jose-jwt</td>
+<td>10.10</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/jwt-done-right-with-nimbus-jose-jwt-explained.html">JWT Done Right with Nimbus JOSE + JWT, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The bank holds the private keys and publishes the public ones; the API holds a URL, a cache and a policy.</p>
+<p><img alt="Who holds what" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The validator wraps the library's processor and adds the two checks the library does not do.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The type and algorithm first, then the signature, then the claims, then the policy.</p>
+<p><img alt="What a token meets, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The first token and the hundredth" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/jwt-done-right-with-nimbus-jose-jwt-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A cache means a retired key lives on.</strong> Until the cache expires, a token signed with a key the bank has stopped publishing is still accepted, so the cache time is part of a key compromise plan.</li>
+<li><strong>A rate limit on refetches protects the key set endpoint</strong> and also delays the first use of a key that was published late; publish a new key before you sign with it.</li>
+<li><strong>Clock skew is a tolerance an attacker also enjoys.</strong> The 30 seconds should be as small as the clocks allow.</li>
+<li><strong>The library does not know your policy.</strong> Scope, maximum lifetime and which type of token this API takes are your code.</li>
+<li><strong>An access token cannot be taken back,</strong> so short lives and a revocable refresh token are the answer.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For one service that is the only issuer and the only verifier, a shared secret and a few lines may do, but the day a second service verifies tokens it should have the public half only, and a key set endpoint is how it gets it.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>NimbusJwtDecoder.withJwkSetUri(...)</code> in Spring Security's resource server.</li>
+<li><code>/.well-known/jwks.json</code> on an identity provider.</li>
+<li>A token with <code>"alg":"none"</code> in a pen test report.</li>
+<li><code>kid</code> in a JWT header.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../jwt-done-right">jwt-done-right</a>, in the <a href="..">identity-and-access</a> module. It follows the same five acts with the same checks, on a standard library and a real key set endpoint.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
