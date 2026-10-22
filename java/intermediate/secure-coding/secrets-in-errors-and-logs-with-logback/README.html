@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secrets in Logs with Logback</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secrets in Logs with Logback</h1>
+<pre><code>src/main/java/com/jk/explore/security/logging/
+├── Card.java                      A card number that prints as its last four digits, in a string and in JSON
+├── CheckoutRequest.java           What the checkout page posts, with the sensitive parts in types that cannot be printed by accident
+├── LogSetup.java                  One Logback logger writing into memory, configured in code: a layout, or JSON
+├── LoggingDemo.java               The events of the lesson, written the careless way: whatever is at hand goes into the message
+├── MaskConverter.java             %mask: the formatted message on one line, with the shapes of secrets covered
+├── MaskedThrowableConverter.java  %maskedEx: &quot; | &quot; and the exception and its causes, class and message only, with the shapes of secrets covered; no frames, so no code layout either
+├── Masker.java                    Finds the shapes of secrets in text that was already written, and covers them
+├── PlainCard.java                 The same card without the care: a record, whose JSON form is its components
+└── Secret.java                    A value that is never printed: logging it, or putting it in a message or a string, shows a marker
+</code></pre>
+<p>**With Logback 1.6 and logstash-logback-encoder 9 a careless message puts the card, the cvv, the token and the database password in the file and lets a line break forge a second event; a masking layout and a masking JSON decorator cover the shapes they know (a card only if it passes Luhn), types that print as [REDACTED] or **<strong>1111 need no masking at all, JSON keeps one event on one line, but a record is written as its fields, a mask never covers a shape it has not seen, and the log file stays data that needs an owner.</strong></p>
+<p>The plain <a href="../secrets-in-errors-and-logs">secrets-in-errors-and-logs</a> project writes its own redactor and its own logger. This one uses <strong>Logback 1.6</strong> and <strong>logstash-logback-encoder 9</strong> (JSON events, masking), configured in code, writing into memory so that the output can be compared. It needs no server and no tool beyond Gradle; the demo takes a couple of seconds.</p>
+<p>What it shows:
+- <strong>What the log keeps.</strong> A careless message: the card, the cvv and the token in a map, the database password in an exception message, and a customer name with a line break that <strong>forges a second event</strong> (4 lines from 3 events).
+- <strong>Covering shapes in the layout.</strong> A <code>%mask</code> conversion word and a <code>%maskedEx</code> word (class and message of the exception and its causes, no frames). A card is covered only if it passes the <strong>Luhn</strong> check, so a 16-digit order number is left alone; the line break becomes <code>\n</code>.
+- <strong>Make the secret unprintable.</strong> <code>Secret</code> prints <code>[REDACTED]</code>, <code>Card</code> prints <code>****1111</code>, a <code>CheckoutRequest</code> record made of them prints safely under a plain layout. An exception from a library is logged by class, with a reference.
+- <strong>Structured logs.</strong> JSON events keep a line break inside one line; a record is written as its <strong>fields</strong>, not its <code>toString</code> (<code>PlainCard</code> leaks <code>number</code>, <code>Card</code> with <code>@JsonValue</code> does not); path masks and a value masker cover the rest.
+- <strong>The bill.</strong> A pin, a code word and an SSN in free text are in shapes nobody listed; a log file needs an owner, a retention and a level.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · CWE-532 (sensitive information in a log file), CWE-209, CWE-117 (improper output neutralization for logs).</p>
+<h2>The idea in everyday terms</h2>
+<p>A shop's till roll. If it prints the whole card number, anyone who finds the roll in the bin has it. A till that cannot print the number, because the number never reaches the printer, is safer than a till with a person who blacks out what they recognise.</p>
+<h2>The scenario</h2>
+<p>An online store logs its checkout. The demo writes the same three events four ways and reads what each way leaves in the file.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What the log keeps</td>
+<td>A careless message puts the card, the cvv, the token and the database password in the file, and a line break forges a second event.</td>
+</tr>
+<tr>
+<td>2. Covering the shapes of secrets in the layout</td>
+<td>A %mask conversion word and a %maskedEx word cover what they recognise; a card only if it passes Luhn; a line break becomes \n.</td>
+</tr>
+<tr>
+<td>3. Make the secret unprintable</td>
+<td>Types that print as [REDACTED] and ****1111 need no mask at all, and a library's exception is logged by class with a reference.</td>
+</tr>
+<tr>
+<td>4. Structured logs</td>
+<td>JSON events keep a line break inside one line; a record is written as its fields; path masks and a value masker cover the rest.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A pin, a code word and an SSN in free text are in shapes nobody listed; the file needs an owner, a retention and a level.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>LoggingTest</code>. The tests run the real Logback and need no other tool.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Logback and the Logstash encoder are the real libraries; each case has a logger context of its own that writes into memory. Times and thread names are left out of the lines so that the output is the same on every run.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>ch.qos.logback:logback-classic</td>
+<td>1.6.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>net.logstash.logback:logstash-logback-encoder</td>
+<td>9.0</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/secrets-in-errors-and-logs-with-logback-explained.html">Secrets in Logs with Logback, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Events pass types, a layout or an encoder, and a mask, on the way to the file.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Types that print safely, a masker, and two converters.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>From never logging it, to covering what is left.</p>
+<p><img alt="Layers of defence" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A masked event" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/secrets-in-errors-and-logs-with-logback-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A mask is a guess about shapes,</strong> and secrets arrive in shapes nobody listed.</li>
+<li><strong>Types that cannot print need discipline,</strong> and a library's own exception message is outside them.</li>
+<li><strong>JSON logs need a pipeline that reads JSON.</strong></li>
+<li><strong>Records and beans are written as fields,</strong> which is not what their toString says.</li>
+<li><strong>Every log line is retained data:</strong> it needs an owner and an end date.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A throwaway script that nobody else reads does not need structured logging or masking. Add them when logs leave the machine: to a file others can read, to a central service, to a vendor.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>logback.xml</code> with a pattern and a rolling file.</li>
+<li>A <code>toString()</code> generated by an IDE that prints every field.</li>
+<li>A log line that says "user=... password=..." from a debugging session.</li>
+<li>A log search that shows a stranger's name.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../secrets-in-errors-and-logs">secrets-in-errors-and-logs</a>, in the <a href="..">secure-coding</a> module. Where such logs are shipped and searched is the subject of <a href="../../detection-and-response/security-logging-with-loki-and-grafana">security-logging-with-loki-and-grafana</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

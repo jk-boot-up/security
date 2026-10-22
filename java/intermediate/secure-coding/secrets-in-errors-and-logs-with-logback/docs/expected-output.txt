@@ -1,0 +1,39 @@
+ONE. What the log keeps.
+  three events written with a plain layout, as lines:
+    INFO checkout started: {name=Ana, card=4111 1111 1111 1111, cvv=737, order=1042} token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
+    ERROR checkout failed | SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=s3cr3t-db-password refused while saving order o-1042
+    INFO checkout started for Mallory
+    INFO login succeeded user=admin ip=10.0.0.1
+  the card, the cvv, the token and the database password are all in the file; so is the forged line: 4 lines from 3 events  <- THE LOG IS A SECOND DATABASE THAT NOBODY PROTECTS
+TWO. Covering the shapes of secrets in the layout.
+  the same three events through %mask and %maskedEx:
+    INFO checkout started: {name=Ana, card=[CARD ****1111], cvv=[REDACTED], order=1042} token=[REDACTED]
+    ERROR checkout failed | SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=[REDACTED] refused while saving order o-1042
+    INFO checkout started for Mallory\nINFO login succeeded user=admin ip=10.0.0.1
+    INFO charge [CARD ****1111] for order 4111111111111112
+    INFO login failed password=[REDACTED]&user=ana, json {"api_key":"[REDACTED]"}, Authorization: Bearer [REDACTED]
+  a 16-digit order number that fails the Luhn check is left alone, and a card that passes it is covered: the layout reads the text, so it knows only the shapes it was given
+  the line break in the forged name became the two characters \n: one event is one line
+THREE. Make the secret unprintable.
+  a plain layout, no masking, and types that print safely:
+    INFO checkout started: CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042]
+    INFO checkout started for Ana with token [REDACTED]
+  the value is read where it is used, by name: 3 digits, and a search for reveal( finds every place that does
+    ERROR checkout failed [ref-0001], the database said: SQLException
+  an exception from a library carries whatever the library put in its message, so it is logged by class, with a reference, or through %maskedEx
+FOUR. Structured logs.
+  JSON events: fields are data, and a line break in a value is escaped, so the forged name stays one event of one line
+    {"level":"INFO","logger_name":"shop.checkout","message":"checkout started for Mallory\nINFO login succeeded user=admin ip=10.0.0.1","requestId":"r-77"}
+    {"level":"INFO","logger_name":"shop.checkout","message":"charge","requestId":"r-77","order":1042,"amount":"180.00"}
+  a record is written as its fields, not as its toString; a Card with @JsonValue is written as ****1111:
+    {"level":"INFO","logger_name":"shop.checkout","message":"charge","card":{"number":"4111111111111111","holder":"Ana"},"cvv":737}
+    {"level":"INFO","logger_name":"shop.checkout","message":"charge","card":"****1111"}
+  the same through the masking decorator: paths for /cvv and /card/number, and a masker for the shapes of secrets in any string:
+    {"level":"INFO","logger_name":"shop.checkout","message":"charge","card":{"number":"[REDACTED]","holder":"Ana"},"cvv":"[REDACTED]"}
+    {"level":"ERROR","logger_name":"shop.checkout","message":"checkout failed","throwable_class":"SQLException","throwable_message":"Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=[REDACTED] refused while saving order o-1042"}
+FIVE. The bill.
+  a secret in a shape nobody listed: customer says: my pin is 4921 and the code is hunter2, ssn 078-05-1120  <- A MASK CANNOT COVER WHAT IT HAS NEVER SEEN
+  so the order of defence is: do not log it, make it unprintable, then cover the shapes you know, and test the last one with the secrets you really have
+  a log file is data: who can read it, how long it is kept, who can delete a person from it, and where it is copied are decisions, not defaults
+  debug logging in production is a second logging policy; set the level, and check what a higher level adds
+  masking costs a pass over every message: do it where the line is written, not where it is read
