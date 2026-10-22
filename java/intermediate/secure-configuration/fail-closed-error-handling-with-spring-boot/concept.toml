@@ -1,0 +1,487 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "fail-closed-error-handling-with-spring-boot"
+level = "intermediate"
+module = "secure-configuration"
+title = "Failing Closed with Spring Boot"
+short_title = "Failing Closed with Spring"
+package = "failclosedspring"
+main_class = "FailClosedSpringDemo"
+tagline = "A catch-all that returns yes, a transaction that does not roll back and an error page that names the server are all one Spring Boot default away"
+bold = "In a Spring Boot bank the decision must start as no, every call to another service needs a time budget, a limited retry and a breaker, a transfer is a unit of work only if the proxy and the rollback rules say so, and one error handler must give the customer a reference while the log keeps the reason; the safety costs availability, which is paid for with breakers and alerts."
+domain = "an online bank"
+domain_note = ""
+youtube_description = "Failing closed in Spring Boot 4.1, OWASP Top 10 A10: a payment check that approves when the fraud service is broken, the same check rebuilt with a time budget, Spring Framework 7 retry and a breaker, four transfers of which three leave the money half moved because of a checked exception or a call inside the same class, Boot's error response that names the server and the card, one error handler with a reference, and the cost in availability."
+thumb_lines = ["FAILING CLOSED", "WITH SPRING BOOT"]
+thumb_code = "catch (Exception e) { }"
+youtube_title = "Failing Closed in Spring Boot: Fraud Checks, @Transactional Traps, Error Responses (OWASP A10)"
+youtube_tags = ["fail closed", "spring boot", "transactional", "error handling", "owasp top 10", "a10", "retry", "circuit breaker", "java", "application security"]
+
+[readme]
+intro = """
+The plain [fail-closed-error-handling](../fail-closed-error-handling) project builds the ideas from scratch. This one uses what a real Spring Boot bank has: **Spring Boot 4.1** with **Spring Framework 7**, a real fraud-check server on the loopback address that can be told to fail in four ways, an in-memory **H2** ledger, and **Micrometer** counters.
+
+What it shows:
+- **Failing open.** A `catch (Exception e) { }` around the fraud check approves a risky 1500.00 payment when the fraud service drops the connection, answers 500, answers with a maintenance page or takes too long.
+- **Failing closed.** The decision starts as no. The fraud call has a **time budget**, **one retry** with Spring Framework 7's own `RetryTemplate`, and a **breaker**. Every failure becomes a **503** with a reference, and a slow check is cut off at its budget.
+- **Failing halfway.** The same transfer to a frozen account written four ways. Without a transaction the debit stays. With `@Transactional` and a **checked exception** it stays too, because Spring rolls back unchecked exceptions only. Called from **inside the same class** the proxy is skipped and it stays again. Only `@Transactional(rollbackFor = Exception.class)` called from outside undoes it.
+- **What the customer is told.** With Boot's debugging settings (`spring.web.error.include-*`) the error response names the internal server, the full card number and code lines. One `@RestControllerAdvice` gives a generic answer with a reference, and the log keeps the reason and the last four digits only.
+- **The bill.** Ten coffees while the fraud check is slow: 20 calls reach it without a breaker and 6 with one. Refusals are counted by reason, an alert fires, and after the cool-down the breaker closes.
+
+**Maps to:** OWASP Top 10 (2025) A10 Mishandling of Exceptional Conditions · CWE-636 · CWE-755 · CWE-209 · OWASP ASVS 5.0 (error handling and logging).
+"""
+analogy = """
+A bank vault with an electronic lock. When the power fails, the door can lock itself or open itself. A vault that opens in a power cut is opened by cutting the power. Failing closed is the vault that locks, and the price is that nobody gets in until the power is back, which is why the bank also has a generator and an alarm.
+"""
+scenario = """
+An online bank on Spring Boot approves card payments by asking a fraud-check service, moves money between accounts, and shows error responses. The demo starts the real application several times, breaks the fraud service in turn, and watches what the code does.
+"""
+costs = [
+    "**Failing closed costs availability.** When the fraud check is down, no payment goes through, and ten coffees during a slow outage are all refused.",
+    "**Budgets and retries need tuning.** A budget that is too short refuses healthy calls, and a retry doubles the load on a struggling service: 20 calls instead of 10.",
+    "**A breaker can hide an outage.** Refusing fast is better than waiting, but only if the refusal counters raise an alert.",
+    "**Transactions have rules.** Rollback on unchecked exceptions only, and only through the proxy; each rule is a way to lose money quietly.",
+    "**Generic messages slow support down.** The reference only helps if support can search the log for it.",
+]
+too_much = """
+For a check that protects nothing important, failing open can be an acceptable business choice, as long as it is a written decision and not an accident. For payments, access control and anything that moves money or data, fail closed, and pay for it with budgets, breakers and alerts.
+"""
+met_before = [
+    "`catch (Exception e) { }` and logs full of swallowed exceptions.",
+    "`@Transactional` on a method that is called from the same class.",
+    "A JSON error response with a `trace` field in production.",
+    "`RestClient` or `RestTemplate` with no timeout at all.",
+]
+where = """
+This is the tools version of [fail-closed-error-handling](../fail-closed-error-handling), in the [secure-configuration](..) module. It follows the same story, a bank that must say no when it cannot say yes, on a real framework.
+"""
+twin = """
+The bank is a real Spring Boot application, the fraud service is a real HTTP server on the loopback interface, and the ledger is an in-memory H2 database. The breaker reads a clock the demo can move forward, so a 30-second cool-down takes no time to wait for. Only statuses, booleans, balances and counts are printed, never ports or time stamps.
+"""
+test_note = "Each test starts a real bank and a real fraud-check server on free loopback ports and stops them. Nothing is printed that changes between runs."
+
+[[act]]
+title = "Failing open"
+summary = "A catch-all around the fraud check approves a risky 1500.00 payment when the service drops the connection, answers 500, answers with a maintenance page or takes too long."
+detail = """
+The risky payment is refused while the fraud check works. Then the fraud service is told to drop the connection, answer 500, answer with a maintenance page, and take 2 seconds against a budget of 500 ms. Each time the catch-all swallows the exception and the payment is approved. The decision started as yes, and a check that never ran took nothing away.
+"""
+speech = """
+First demo: failing open. [[slnc 400]] The bank asks the fraud service about a risky payment, and the service says no. [[slnc 600]]
+Now the fraud service drops the connection. [[slnc 300]] The payment is approved. [[slnc 600]]
+It answers with an error, a maintenance page, or takes too long. [[slnc 300]] Approved every time. [[slnc 600]]
+An error became a yes.
+"""
+rows = { open = "active wrong" }
+console = [
+    ["risky payment, fraud check working -> refused", "ok"],
+    ["fraud check drops the connection -> APPROVED", "bad"],
+    ["fraud check answers 500, or a maintenance page, or is slow -> APPROVED", "bad"],
+]
+
+[[act]]
+title = "Failing closed"
+summary = "The decision starts as no; a time budget, one retry and a breaker turn every kind of broken check into a 503 with a reference, and a slow check is cut off at its budget."
+detail = """
+A coffee is approved when the check ran and said low risk. The risky payment is refused with 403 when the check works. When the fraud check answers 500, answers with a maintenance page or drops the connection, the payment is refused with 503 and a reference such as REF-0002. A coffee while the fraud check takes 2 seconds against a budget of 500 ms is refused too, and the answer comes before the fraud check finishes. Every refusal is in the log with its reference: 5 lines.
+"""
+speech = """
+Second demo: failing closed. [[slnc 400]] The decision starts as no. [[slnc 600]]
+Only a fraud check that ran, in time, and said low risk, turns it into yes. [[slnc 600]]
+When the check fails in any way, the payment is refused with a reference the customer can quote. [[slnc 600]]
+A slow check is cut off at its budget, so the customer is not left waiting. [[slnc 300]] Every refusal is in the log.
+"""
+rows = { closed = "active ok" }
+console = [
+    ["coffee, fraud check working -> 200 APPROVED", "ok"],
+    ["fraud check answers 500 -> 503, reference REF-0002", "ok"],
+    ["fraud check takes 2 seconds, budget 500 ms -> 503 in time", "ok"],
+    ["every refusal is in the log with its reference: 5 lines", "ok"],
+]
+
+[[act]]
+title = "Failing halfway"
+summary = "The same transfer to a frozen account written four ways: without a transaction, with a checked exception, called from the same class, and as a real unit of work. Only the last undoes the debit."
+detail = """
+Ana sends 250.00 to Ben, whose account is frozen. Without a transaction the debit stays: Ana has 750.00 and the bank is 250.00 short. With `@Transactional` and a checked exception the debit stays as well, because Spring rolls back on unchecked exceptions only. Called from inside the same class, the proxy is skipped and the debit stays again. With `@Transactional(rollbackFor = Exception.class)` called from outside, Ana keeps 1000.00.
+"""
+speech = """
+Third demo: failing halfway. [[slnc 400]] Ana sends two hundred and fifty to Ben, whose account is frozen. [[slnc 600]]
+Without a transaction, the debit stays, and the bank is short. [[slnc 600]]
+With a transaction annotation and a checked exception, the debit stays too, because Spring rolls back unchecked exceptions only. [[slnc 600]]
+Called from inside the same class, the proxy is skipped, and the debit stays again. [[slnc 600]]
+Only a real unit of work puts the money back.
+"""
+rows = { half = "active wrong" }
+console = [
+    ["no transaction: ana 750.00, money in the bank 750.00", "bad"],
+    ["@Transactional, checked exception: ana 750.00", "bad"],
+    ["called from the same class: ana 750.00", "bad"],
+    ["rollbackFor = Exception.class: ana 1000.00", "ok"],
+]
+
+[[act]]
+title = "What the customer is told"
+summary = "Boot's error response with the debugging settings names the server, the card and code lines; one error handler gives a reference and the log keeps the reason and the last four digits."
+detail = """
+With the debugging profile the 500 response names the internal server, shows the full card number and shows code lines. With one `@RestControllerAdvice` the same failure gives 503 and a short message with a reference, and none of those three. The log line has the reference, the reason and the last four digits, and not the full card number, so support can find the detail from the reference.
+"""
+speech = """
+Fourth demo: what the customer is told. [[slnc 400]] With the debugging settings on, the error response names the internal server, shows the full card number, and shows lines of code. [[slnc 600]]
+With one error handler, the customer sees a short message and a reference. [[slnc 600]]
+The log keeps the reason and the last four digits, never the whole number. [[slnc 300]] Support finds the detail from the reference.
+"""
+rows = { told = "active ok" }
+console = [
+    ["debugging settings: the response names the server, the card and code lines", "bad"],
+    ["one error handler: 503, quoting reference REF-0001", "ok"],
+    ["log: reference, reason, last four digits, no full number", "ok"],
+]
+
+[[act]]
+title = "The bill, and how to pay it"
+summary = "Ten coffees while the fraud check is slow: 20 calls reach it without a breaker and 6 with one; refusals are counted by reason, an alert fires, and the breaker closes after the cool-down."
+detail = """
+Failing closed costs availability: ten coffees while the fraud check is slow are all refused, and with a retry each, 20 calls reach the fraud check. With a breaker that opens after 3 failed payments, 6 calls reach it and the other 7 payments are refused at once. The refusal counters give {fraud check too slow=3, fraud check unavailable, breaker open=7} and an alert is raised. After the cool-down, with the fraud check back, a coffee is approved and the breaker is closed again.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Failing closed costs availability. [[slnc 600]]
+Ten coffees while the fraud check is slow are all refused, and twenty calls reach the struggling service. [[slnc 600]]
+With a breaker, only six calls get through, and the rest are refused at once. [[slnc 600]]
+The refusals are counted by reason, and an alert fires. [[slnc 300]] After the cool down, the breaker closes.
+"""
+rows = { bill = "active ok" }
+console = [
+    ["no breaker: approved 0, 20 calls reached the fraud check", "bad"],
+    ["breaker after 3 failed payments: approved 0, 6 calls", "amber"],
+    ["alert raised: true", "ok"],
+    ["cool-down passed, fraud check back: APPROVED, breaker CLOSED", "ok"],
+]
+
+[animation]
+subtitle = "A bank, a fraud check that breaks, and a decision that starts as no."
+boxes = [
+    ["open", "Failing open", "an error becomes a yes"],
+    ["closed", "Failing closed", "budget, retry, breaker"],
+    ["half", "Failing halfway", "the transaction traps"],
+    ["told", "What is told", "one handler, a reference"],
+    ["bill", "The bill", "availability and alerts"],
+]
+
+[docs.problem]
+scenario = """
+An online bank on Spring Boot that approves payments by asking a fraud-check service and moves money between accounts, where a developer wants the payment to keep flowing when something breaks.
+"""
+naive = """
+Catch the exception and carry on, trust the transaction annotation, and turn on every detail in the error response.
+"""
+deliver = [
+    "A real Spring Boot bank and a real fraud-check server that fails in four ways.",
+    "A decision that starts as no, with a time budget, one retry and a breaker.",
+    "Four versions of one transfer, and the two transaction traps.",
+    "One error handler, and a log that never holds a full card number.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain fail-closed-error-handling project, for the idea",
+]
+not_required = [
+    "A real payment provider: the fraud service is a few lines of Java",
+    "A database server: the ledger is in memory",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "explain why a decision must start as no",
+    "give every call to another service a budget, a limited retry and a breaker",
+    "name the two rules that make @Transactional leave a transfer half done",
+    "give the customer a reference and keep the reason in the log",
+]
+walkthrough = """
+Run act one and ask where in your own code a catch-all sits. In act three ask which of the four transfers would pass a code review. In act five ask who would hear the alert at night.
+"""
+exercises = [
+    "Add a daily-limit check that fails closed when its value cannot be read, and test it.",
+    "Replace the hand-written breaker with a library breaker and compare the counts.",
+    "Make the transfer idempotent with a request id, and retry it safely.",
+    "Add a health indicator that goes DOWN when the breaker is open.",
+]
+
+[docs.explained]
+sentence = """
+A Spring Boot bank must start every decision as no, bound every outside call, undo half-done work, and tell the customer as little as the log tells support.
+"""
+verdict = """
+Start from no, put a time budget on every outside call, limit retries, open a breaker on repeated failure, annotate transfers with rollbackFor and call them from outside the class, use one error handler, switch the error details off, and alert on rising refusals.
+"""
+recognise = [
+    "`catch (Exception e)` with an empty body.",
+    "`@Transactional` on a private method or a method called from `this`.",
+    "`spring.web.error.include-stacktrace=always` in a shared properties file.",
+    "A client with no timeout.",
+]
+
+[spec]
+purpose = """
+Teach failing closed in Spring Boot: decisions that start as no, bounded calls, transaction rules and error responses.
+"""
+nongoals = [
+    "A full resilience library.",
+    "Distributed transactions across systems.",
+    "Real payment processing.",
+]
+problem = """
+Teams catch exceptions to keep requests flowing, trust a transaction annotation without its rules, and leave debugging details in error responses.
+"""
+roles = [["Payments", "`OpenPaymentService`, `ClosedPaymentService`, `PaymentController`"], ["Fraud call", "`FraudClient`, `Breaker`, `BankConfig`"], ["Transfers", "`Ledger`, `Transfers`"], ["Errors", "`ErrorHandling`, `SecurityLog`, `References`"], ["Test double", "`FraudServer`"], ["Entry point", "`FailClosedSpringDemo`"]]
+requirements = [
+    "The open version approves a risky payment when the check is broken.",
+    "The closed version refuses on every kind of broken check, with a reference.",
+    "A slow check is cut off at its time budget.",
+    "A breaker stops calls to a failing service and closes after the cool-down.",
+    "Only a unit of work with rollbackFor, called from outside, undoes a failed transfer.",
+    "The error response gives no server, card or code details, and the log has the last four digits only.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "A payment and its fraud check"
+caption = "The decision starts as no; the breaker and the budget sit between the bank and the fraud service."
+nodes = [
+    { id = "app", label = "Customer app", sub = "POST /payments", col = 0, row = 0, colour = "client" },
+    { id = "bank", label = "Bank", sub = "starts as no", col = 1, row = 0, colour = "accent" },
+    { id = "breaker", label = "Breaker, retry, budget", sub = "bounded calls", col = 2, row = 0, colour = "amber" },
+    { id = "fraud", label = "Fraud service", sub = "real server, breaks on purpose", col = 3, row = 0, colour = "red" },
+    { id = "ledger", label = "Ledger", sub = "H2, unit of work", col = 1, row = 1, colour = "green", shape = "store" },
+]
+edges = [
+    { from = "app", to = "bank" },
+    { from = "bank", to = "breaker" },
+    { from = "breaker", to = "fraud" },
+    { from = "bank", to = "ledger" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "Two payment services behind one interface; the error handler and the log are shared."
+nodes = [
+    { id = "ctl", label = "PaymentController", sub = ["pay()"], col = 0, row = 0, colour = "client" },
+    { id = "closed", label = "ClosedPaymentService", sub = ["decide()"], col = 1, row = 0, colour = "green" },
+    { id = "open", label = "OpenPaymentService", sub = ["decide()"], col = 1, row = 1, colour = "red" },
+    { id = "breaker", label = "Breaker", sub = ["call()", "state()"], col = 2, row = 0, colour = "amber" },
+    { id = "err", label = "ErrorHandling", sub = ["checkFailed()", "anythingElse()"], col = 0, row = 1, colour = "accent" },
+]
+edges = [
+    { from = "ctl", to = "closed", label = "bank.mode=closed" },
+    { from = "ctl", to = "open", label = "bank.mode=open" },
+    { from = "closed", to = "breaker", label = "calls through" },
+    { from = "ctl", to = "err", label = "failures go to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "A fraud call, in order"
+caption = "Each step can only turn the answer into a refusal."
+nodes = [
+    { id = "breaker", label = "Breaker open?", sub = "refuse at once", col = 0, row = 0, colour = "amber" },
+    { id = "budget", label = "Time budget", sub = "500 ms", col = 1, row = 0, colour = "accent" },
+    { id = "retry", label = "One retry", sub = "RetryTemplate", col = 2, row = 0, colour = "client" },
+    { id = "verdict", label = "Verdict", sub = "low risk only", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "breaker", to = "budget", label = "no" },
+    { from = "budget", to = "retry" },
+    { from = "retry", to = "verdict" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A payment while the fraud service is down"
+participants = ["Customer", "Bank", "Fraud service"]
+steps = [
+    ["Customer", "Bank", "POST /payments"],
+    ["Bank", "Fraud service", "check (budget 500 ms)"],
+    ["note", "Fraud service", "drops the connection"],
+    ["Bank", "Fraud service", "one retry"],
+    ["Bank", "Customer", "503, quoting reference REF-0001", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A transfer as a unit of work"
+participants = ["Transfers", "Ledger"]
+steps = [
+    ["Transfers", "Ledger", "debit ana 250.00"],
+    ["Transfers", "Ledger", "credit ben 250.00"],
+    ["note", "Ledger", "ben is frozen: exception"],
+    ["Transfers", "Ledger", "rollbackFor = Exception.class: the debit is undone", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "The customer's side", nodes = ["customer"], colour = "red" },
+    { label = "The bank", nodes = ["bank", "ledger"], colour = "green" },
+    { label = "Another service", nodes = ["fraud"], colour = "amber" },
+]
+nodes = [
+    { id = "customer", label = "Customer or attacker", sub = "sees the responses", col = 0, row = 0, colour = "red", threats = ["T3"] },
+    { id = "bank", label = "Bank", sub = "decides, answers, logs", col = 1, row = 0, colour = "accent", threats = ["T1", "T3", "T4"] },
+    { id = "fraud", label = "Fraud service", sub = "can fail or stall", col = 2, row = 0, colour = "amber", threats = ["T1", "T5"] },
+    { id = "ledger", label = "Ledger", sub = "money moves here", col = 1, row = 1, colour = "green", threats = ["T2"] },
+]
+edges = [
+    { from = "customer", to = "bank", label = "payments", colour = "red", dashed = true, threats = ["T3"] },
+    { from = "bank", to = "fraud", label = "check", threats = ["T1", "T5"] },
+    { from = "bank", to = "ledger", label = "transfers", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+A Spring Boot bank that approves card payments through an outside fraud service, moves money in a ledger and answers customers. It covers failures of the outside service, half-done transfers and what error responses and logs reveal. It does not cover the fraud service's own logic.
+"""
+assets = [
+    "The money in the ledger.",
+    "The card numbers.",
+    "The availability of payments.",
+]
+actors = [
+    "A customer, or an attacker who can make the fraud service slow or broken.",
+    "Support staff who read the log.",
+    "A developer who changes the error and transaction settings.",
+]
+boundaries = [
+    "The bank to the fraud service: anything can come back, or nothing.",
+    "The bank to the customer: the response is public.",
+    "The bank to the log: support may read it.",
+]
+assumptions = [
+    "The log is readable only by support staff.",
+    "The ledger database is trusted and reachable.",
+]
+out_of_scope = [
+    "Attacks on the fraud service itself.",
+    "Transactions across several databases.",
+]
+tests = [
+    "`FailClosedSpringTest` starts a real bank and fraud server for each case: every kind of broken check, the time budget, the breaker and its states, the doubling of calls by a retry, the alert, the four transfers, the error responses and the log.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+This is the last project in the secure-configuration module. The next module, api-security, moves from how the store fails to who may call it and how often.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A broken or stalled fraud check turns into an approval"
+where = "`OpenPaymentService`, `ClosedPaymentService`"
+control = "The decision starts as no; only a check that ran and passed approves"
+residual = "A fraud service that answers low risk wrongly"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "A failed transfer leaves the money half moved"
+where = "`Transfers`"
+control = "A unit of work with rollbackFor, called through the proxy"
+residual = "Transfers across systems, which need reconciliation"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "The error response reveals servers, card numbers or code"
+where = "Boot's error response, `ErrorHandling`"
+control = "One error handler, error details off, a reference for support"
+residual = "A new exception path that nobody mapped"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "The log holds a full card number"
+where = "`SecurityLog`"
+control = "Log the reference, the reason and the last four digits only"
+residual = "A developer who logs the request body"
+
+[[threat]]
+id = "T5"
+stride = "D"
+threat = "A slow or failing service holds every payment up"
+where = "`FraudClient`, `Breaker`"
+control = "A time budget, a limited retry, a breaker and an alert on refusals"
+residual = "A long outage that is refused correctly and still hurts"
+
+[poster]
+headline = [["FAILING CLOSED", "text"], ["WITH SPRING BOOT", "accent"]]
+taglines = [["A catch-all that returns yes, a transaction that does not roll back and an error page that", "gold"]]
+before = { code = "risky payment, fraud check working -> refused", note = "Failing open", tag = "BEFORE" }
+after = { code = "catch (Exception e) { }", note = "The bill, and how to pay it", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Failing Closed with Spring Boot"
+narration = "Hello, and welcome. [[slnc 400]] This video explains failing Closed with Spring, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] In a Spring Boot bank the decision must start as no, every call to another service needs a time budget, a limited retry and a breaker, a transfer is a unit of work only if the proxy and the rollback rules say so, and one error handler must give the customer a reference while the log keeps the reason; the safety costs availability, which is paid for with breakers and alerts. [[slnc 600]] Think of it this way. [[slnc 300]] A bank vault with an electronic lock. When the power fails, the door can lock itself or open itself. A vault that opens in a power cut is opened by cutting the power. Failing closed is the vault that locks, and the price is that nobody gets in until the power is back, which is why the bank also has a generator and an alarm. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why a decision must start as no. [[slnc 300]] Give every call to another service a budget, a limited retry and a breaker. [[slnc 300]] Name the two rules that make @Transactional leave a transfer half done."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online bank on Spring Boot approves card", "payments by asking a fraud-check service,", "moves money between accounts, and shows", "error responses.", "The demo starts the real application several", "times, breaks the fraud service in turn, and", "watches what the code does."]
+narration = "Here is the scenario. [[slnc 400]] An online bank on Spring Boot approves card payments by asking a fraud-check service, moves money between accounts, and shows error responses. [[slnc 400]] The demo starts the real application several times, breaks the fraud service in turn, and watches what the code does."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Failing closed costs availability", "Budgets and retries need tuning", "A breaker can hide an outage", "Transactions have rules", "Generic messages slow support down"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Failing closed costs availability. [[slnc 500]] Budgets and retries need tuning. [[slnc 500]] A breaker can hide an outage. [[slnc 500]] Transactions have rules. [[slnc 500]] Generic messages slow support down."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Payments: OpenPaymentService, ClosedPaymentService,", "PaymentController", "Fraud call: FraudClient, Breaker, BankConfig", "Transfers: Ledger, Transfers", "Errors: ErrorHandling, SecurityLog, References", "Test double: FraudServer"]
+narration = "Here is who does what in the code. [[slnc 400]] Payments is in OpenPaymentService and ClosedPaymentService and PaymentController. [[slnc 500]] Fraud call is in FraudClient and Breaker and BankConfig. [[slnc 500]] Transfers is in Ledger and Transfers. [[slnc 500]] Errors is in ErrorHandling and SecurityLog and References. [[slnc 500]] Test double is in FraudServer."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["catch (Exception e) with an empty body", "@Transactional on a private method or a method called", "from this", "A client with no timeout"]
+narration = "You have probably met this already. [[slnc 400]] catch (Exception e) with an empty body. [[slnc 500]] @Transactional on a private method or a method called from this. [[slnc 500]] A client with no timeout."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why a decision must start as no", "Give every call to another service a budget, a limited", "retry and a breaker", "Name the two rules that make @Transactional leave a", "transfer half done", "Give the customer a reference and keep the reason in", "the log"]
+narration = "So, how do you use it? [[slnc 400]] Start from no, put a time budget on every outside call, limit retries, open a breaker on repeated failure, annotate transfers with rollbackFor and call them from outside the class, use one error handler, switch the error details off, and alert on rising refusals."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's failing Closed with Spring. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A Spring Boot bank must start every decision as no, bound every outside call, undo half-done work, and tell the customer as little as the log tells support. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a daily-limit check that fails closed when its value cannot be read, and test it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

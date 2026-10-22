@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Failing Closed with Spring Boot</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Failing Closed with Spring Boot</h1>
+<pre><code>src/main/java/com/jk/explore/security/failclosedspring/
+├── BankApp.java                 
+├── BankConfig.java              One retry after a failed fraud call, with no pause: a limited retry is part of the budget, an unlimited one is an attack on a struggling service
+├── Breaker.java                 Stops asking a service that keeps failing
+├── CheckFailedException.java    A check could not be made
+├── ClosedPaymentService.java    The decision starts as no
+├── Decision.java                What the bank answers
+├── ErrorHandling.java           One place that turns every failure into the same short answer
+├── FailClosedSpringDemo.java    Runs the bank story in five numbered acts against real Spring Boot servers and a real fraud-check server on the loopback interface
+├── FraudClient.java             Asks the fraud service about a payment, with a time budget for the whole call
+├── FraudServer.java             The fraud-check service: a real HTTP server on the loopback interface that can be made to misbehave
+├── FrozenAccountException.java  A checked exception, which is exactly why a plain {@code @Transactional} does not undo the work before it
+├── Ledger.java                  The accounts table in an in-memory H2 database
+├── MutableClock.java            A clock the demo can move forward, so a cool-down of thirty seconds takes no time to wait for
+├── OpenPaymentService.java      The version from a hurry: the decision starts as yes, and a catch-all keeps the payment flowing when the check breaks
+├── Payment.java                 A card payment as the customer's app sends it
+├── PaymentController.java       
+├── PaymentService.java          Decides a payment
+├── References.java              Numbers a refusal so the customer can quote it and support can find the log line
+├── RefusalWatcher.java          Reads the refusal counters, which is what an alerting rule would do: a closed door is only safe if someone hears it being knocked on
+├── Running.java                 A bank and its fraud service, both on free loopback ports
+├── SecurityLog.java             The bank's own log of refusals, kept in memory so the demo can read it
+├── Transfers.java               Four ways to write the same transfer, and only one of them is a unit of work
+└── Wire.java                    A plain HTTP client for the loopback bank
+</code></pre>
+<p><strong>In a Spring Boot bank the decision must start as no, every call to another service needs a time budget, a limited retry and a breaker, a transfer is a unit of work only if the proxy and the rollback rules say so, and one error handler must give the customer a reference while the log keeps the reason; the safety costs availability, which is paid for with breakers and alerts.</strong></p>
+<p>The plain <a href="../fail-closed-error-handling">fail-closed-error-handling</a> project builds the ideas from scratch. This one uses what a real Spring Boot bank has: <strong>Spring Boot 4.1</strong> with <strong>Spring Framework 7</strong>, a real fraud-check server on the loopback address that can be told to fail in four ways, an in-memory <strong>H2</strong> ledger, and <strong>Micrometer</strong> counters.</p>
+<p>What it shows:
+- <strong>Failing open.</strong> A <code>catch (Exception e) { }</code> around the fraud check approves a risky 1500.00 payment when the fraud service drops the connection, answers 500, answers with a maintenance page or takes too long.
+- <strong>Failing closed.</strong> The decision starts as no. The fraud call has a <strong>time budget</strong>, <strong>one retry</strong> with Spring Framework 7's own <code>RetryTemplate</code>, and a <strong>breaker</strong>. Every failure becomes a <strong>503</strong> with a reference, and a slow check is cut off at its budget.
+- <strong>Failing halfway.</strong> The same transfer to a frozen account written four ways. Without a transaction the debit stays. With <code>@Transactional</code> and a <strong>checked exception</strong> it stays too, because Spring rolls back unchecked exceptions only. Called from <strong>inside the same class</strong> the proxy is skipped and it stays again. Only <code>@Transactional(rollbackFor = Exception.class)</code> called from outside undoes it.
+- <strong>What the customer is told.</strong> With Boot's debugging settings (<code>spring.web.error.include-*</code>) the error response names the internal server, the full card number and code lines. One <code>@RestControllerAdvice</code> gives a generic answer with a reference, and the log keeps the reason and the last four digits only.
+- <strong>The bill.</strong> Ten coffees while the fraud check is slow: 20 calls reach it without a breaker and 6 with one. Refusals are counted by reason, an alert fires, and after the cool-down the breaker closes.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A10 Mishandling of Exceptional Conditions · CWE-636 · CWE-755 · CWE-209 · OWASP ASVS 5.0 (error handling and logging).</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank vault with an electronic lock. When the power fails, the door can lock itself or open itself. A vault that opens in a power cut is opened by cutting the power. Failing closed is the vault that locks, and the price is that nobody gets in until the power is back, which is why the bank also has a generator and an alarm.</p>
+<h2>The scenario</h2>
+<p>An online bank on Spring Boot approves card payments by asking a fraud-check service, moves money between accounts, and shows error responses. The demo starts the real application several times, breaks the fraud service in turn, and watches what the code does.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Failing open</td>
+<td>A catch-all around the fraud check approves a risky 1500.00 payment when the service drops the connection, answers 500, answers with a maintenance page or takes too long.</td>
+</tr>
+<tr>
+<td>2. Failing closed</td>
+<td>The decision starts as no; a time budget, one retry and a breaker turn every kind of broken check into a 503 with a reference, and a slow check is cut off at its budget.</td>
+</tr>
+<tr>
+<td>3. Failing halfway</td>
+<td>The same transfer to a frozen account written four ways: without a transaction, with a checked exception, called from the same class, and as a real unit of work. Only the last undoes the debit.</td>
+</tr>
+<tr>
+<td>4. What the customer is told</td>
+<td>Boot's error response with the debugging settings names the server, the card and code lines; one error handler gives a reference and the log keeps the reason and the last four digits.</td>
+</tr>
+<tr>
+<td>5. The bill, and how to pay it</td>
+<td>Ten coffees while the fraud check is slow: 20 calls reach it without a breaker and 6 with one; refusals are counted by reason, an alert fires, and the breaker closes after the cool-down.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>FailClosedSpringTest</code>. Each test starts a real bank and a real fraud-check server on free loopback ports and stops them. Nothing is printed that changes between runs.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The bank is a real Spring Boot application, the fraud service is a real HTTP server on the loopback interface, and the ledger is an in-memory H2 database. The breaker reads a clock the demo can move forward, so a 30-second cool-down takes no time to wait for. Only statuses, booleans, balances and counts are printed, never ports or time stamps.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-webmvc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-actuator</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.springframework.boot:spring-boot-starter-jdbc</td>
+<td>4.1.1, set by spring-boot-dependencies</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>com.h2database:h2</td>
+<td>set by the build</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/fail-closed-error-handling-with-spring-boot-explained.html">Failing Closed with Spring Boot, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The decision starts as no; the breaker and the budget sit between the bank and the fraud service.</p>
+<p><img alt="A payment and its fraud check" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Two payment services behind one interface; the error handler and the log are shared.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step can only turn the answer into a refusal.</p>
+<p><img alt="A fraud call, in order" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A payment while the fraud service is down" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/fail-closed-error-handling-with-spring-boot-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Failing closed costs availability.</strong> When the fraud check is down, no payment goes through, and ten coffees during a slow outage are all refused.</li>
+<li><strong>Budgets and retries need tuning.</strong> A budget that is too short refuses healthy calls, and a retry doubles the load on a struggling service: 20 calls instead of 10.</li>
+<li><strong>A breaker can hide an outage.</strong> Refusing fast is better than waiting, but only if the refusal counters raise an alert.</li>
+<li><strong>Transactions have rules.</strong> Rollback on unchecked exceptions only, and only through the proxy; each rule is a way to lose money quietly.</li>
+<li><strong>Generic messages slow support down.</strong> The reference only helps if support can search the log for it.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a check that protects nothing important, failing open can be an acceptable business choice, as long as it is a written decision and not an accident. For payments, access control and anything that moves money or data, fail closed, and pay for it with budgets, breakers and alerts.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>catch (Exception e) { }</code> and logs full of swallowed exceptions.</li>
+<li><code>@Transactional</code> on a method that is called from the same class.</li>
+<li>A JSON error response with a <code>trace</code> field in production.</li>
+<li><code>RestClient</code> or <code>RestTemplate</code> with no timeout at all.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../fail-closed-error-handling">fail-closed-error-handling</a>, in the <a href="..">secure-configuration</a> module. It follows the same story, a bank that must say no when it cannot say yes, on a real framework.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

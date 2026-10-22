@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Failing Closed with Spring Boot, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Failing Closed with Spring Boot, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A Spring Boot bank must start every decision as no, bound every outside call, undo half-done work, and tell the customer as little as the log tells support.</p>
+<h2>The 5 acts</h2>
+<h3>1. Failing open</h3>
+<p>The risky payment is refused while the fraud check works. Then the fraud service is told to drop the connection, answer 500, answer with a maintenance page, and take 2 seconds against a budget of 500 ms. Each time the catch-all swallows the exception and the payment is approved. The decision started as yes, and a check that never ran took nothing away.</p>
+<h3>2. Failing closed</h3>
+<p>A coffee is approved when the check ran and said low risk. The risky payment is refused with 403 when the check works. When the fraud check answers 500, answers with a maintenance page or drops the connection, the payment is refused with 503 and a reference such as REF-0002. A coffee while the fraud check takes 2 seconds against a budget of 500 ms is refused too, and the answer comes before the fraud check finishes. Every refusal is in the log with its reference: 5 lines.</p>
+<h3>3. Failing halfway</h3>
+<p>Ana sends 250.00 to Ben, whose account is frozen. Without a transaction the debit stays: Ana has 750.00 and the bank is 250.00 short. With <code>@Transactional</code> and a checked exception the debit stays as well, because Spring rolls back on unchecked exceptions only. Called from inside the same class, the proxy is skipped and the debit stays again. With <code>@Transactional(rollbackFor = Exception.class)</code> called from outside, Ana keeps 1000.00.</p>
+<h3>4. What the customer is told</h3>
+<p>With the debugging profile the 500 response names the internal server, shows the full card number and shows code lines. With one <code>@RestControllerAdvice</code> the same failure gives 503 and a short message with a reference, and none of those three. The log line has the reference, the reason and the last four digits, and not the full card number, so support can find the detail from the reference.</p>
+<h3>5. The bill, and how to pay it</h3>
+<p>Failing closed costs availability: ten coffees while the fraud check is slow are all refused, and with a retry each, 20 calls reach the fraud check. With a breaker that opens after 3 failed payments, 6 calls reach it and the other 7 payments are refused at once. The refusal counters give {fraud check too slow=3, fraud check unavailable, breaker open=7} and an alert is raised. After the cool-down, with the fraud check back, a coffee is approved and the breaker is closed again.</p>
+<h2>The verdict</h2>
+<p>Start from no, put a time budget on every outside call, limit retries, open a breaker on repeated failure, annotate transfers with rollbackFor and call them from outside the class, use one error handler, switch the error details off, and alert on rising refusals.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li><code>catch (Exception e)</code> with an empty body.</li>
+<li><code>@Transactional</code> on a private method or a method called from <code>this</code>.</li>
+<li><code>spring.web.error.include-stacktrace=always</code> in a shared properties file.</li>
+<li>A client with no timeout.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>catch (Exception e) { }</code> and logs full of swallowed exceptions.</li>
+<li><code>@Transactional</code> on a method that is called from the same class.</li>
+<li>A JSON error response with a <code>trace</code> field in production.</li>
+<li><code>RestClient</code> or <code>RestTemplate</code> with no timeout at all.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

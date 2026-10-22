@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 89 projects. Planned: 63 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 90 projects. Planned: 62 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,9 +24,9 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **48** | **28** | **76** |
+| **Intermediate** | | **49** | **27** | **76** |
 | | web-security | 15 | 0 | 15 |
-| | secure-configuration | 3 | 1 | 4 |
+| | secure-configuration | 4 | 0 | 4 |
 | | api-security | 4 | 3 | 7 |
 | | identity-and-access | 6 | 6 | 12 |
 | | tls-in-practice | 4 | 4 | 8 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **89** | **63** | **152** |
+| **All** | | **90** | **62** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 8 | 28 | 36 |
+| Intermediate | With tools | 9 | 27 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **29** | **28** | **57** |
+| **All** | **With tools** | **30** | **27** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -173,7 +173,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 57 | [security-misconfiguration](intermediate/secure-configuration/security-misconfiguration) | Plain | The settings nobody changed are the first thing an attacker checks | A02, CWE-16 |
 | 58 | [security-misconfiguration-with-spring-boot-actuator](intermediate/secure-configuration/security-misconfiguration-with-spring-boot-actuator) | With tools: spring boot actuator | One line that exposes every actuator endpoint hands a stranger the environment, the route map and the memory of the store | A02, CWE-16 |
 | 59 | [fail-closed-error-handling](intermediate/secure-configuration/fail-closed-error-handling) | Plain | When something breaks, the answer must be no | A10, CWE-636, CWE-755 |
-| 60 | fail-closed-error-handling-with-spring-boot | With tools: spring boot | *planned*: global error handling that never leaks, circuit breakers that fail closed | A10, CWE-636, CWE-755 |
+| 60 | [fail-closed-error-handling-with-spring-boot](intermediate/secure-configuration/fail-closed-error-handling-with-spring-boot) | With tools: spring boot | A catch-all that returns yes, a transaction that does not roll back and an error page that names the server are all one Spring Boot default away | A10, CWE-636, CWE-755 |
 
 ### 3. api-security: APIs and sessions (OWASP API Top 10)
 
