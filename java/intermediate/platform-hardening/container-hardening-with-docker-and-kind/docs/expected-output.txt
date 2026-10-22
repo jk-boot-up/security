@@ -1,0 +1,52 @@
+ONE. What docker run with no options gives an attacker.
+  thirteen attempts, run inside a real container as the user it runs as: write a file, mount, read a limit, check the capabilities
+  (the lab's Docker starts containers with no seccomp filter at all, so the profile that denies what Docker's own default profile denies is passed by file)
+  read-secrets         POSSIBLE  secrets are in the environment, which every process of the container can read
+  tamper-with-app      POSSIBLE  the root file system is writable
+  drop-and-run         POSSIBLE  a file can be written and run from a writable directory
+  become-root          POSSIBLE  it runs as root
+  dangerous-syscalls   blocked   the seccomp profile denies them
+  sniff-network        POSSIBLE  root with the NET_RAW capability
+  mount-host           blocked   no CAP_SYS_ADMIN, and mount is denied by the profile
+  docker-socket        blocked   the Docker socket is not mounted
+  host-files           blocked   no host directories are mounted
+  host-network         blocked   its own network namespace
+  see-host-processes   blocked   its own process namespace
+  exhaust-memory       POSSIBLE  no memory limit
+  fork-bomb            POSSIBLE  no process limit
+  7 of 13 attacks possible
+TWO. The configuration from the tutorial.
+  docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/hostetc:ro shop-app
+  13 of 13 attacks possible; blocked: 13 - 13 = 0
+  one command that works in a tutorial gives the process the host
+THREE. One setting at a time.
+  start: the tutorial configuration              -> 13 of 13 attacks possible
+  no privileged, no host network, PID or mounts  ->  8 of 13 attacks possible
+  a seccomp profile of the default kind          ->  7 of 13 attacks possible
+  drop all capabilities                          ->  5 of 13 attacks possible
+  run as a user that is not root                 ->  5 of 13 attacks possible
+  no new privileges                              ->  5 of 13 attacks possible
+  read-only root, noexec temporary directory     ->  3 of 13 attacks possible
+  memory and process limits                      ->  1 of 13 attacks possible
+  each line adds one option to the one above; the number goes down only when the option takes away something an attack uses
+  no new privileges does not move the number here, because this image has no set-user-id program for an attacker to use; in an image that does, it is what stops it
+FOUR. The hardened container.
+  docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --security-opt seccomp=<profile> --memory 512m --pids-limit 200 shop-app
+  1 of 13 attacks possible
+    still possible: read-secrets  secrets are in the environment, which every process of the container can read; the application must read its secrets, so a hijacked application can too
+  hardened + NET_RAW, which looks harmless: 1 of 13 attacks possible (NET_RAW matters only to root)
+  hardened + root + SYS_ADMIN: 2 of 13 attacks possible: [read-secrets, become-root]  <- ROOT IS BACK, AND ONLY THE FILTER STILL STANDS BETWEEN IT AND MOUNT
+  and without the filter as well: 4 of 13 attacks possible: [read-secrets, become-root, dangerous-syscalls, mount-host]  <- EACH LAYER COVERS FOR A MISTAKE IN THE OTHERS
+FIVE. The same on Kubernetes, with Pod Security Standards on kind.
+  a one-node kind cluster; three namespaces that enforce the privileged, baseline and restricted standards; three pods: the tutorial's, a plain one and the hardened one, sent with --dry-run=server so that the admission decides
+  the tutorial's pod privileged  admitted; baseline    refused (3); restricted  refused (7);
+  a plain pod        privileged  admitted; baseline    admitted; restricted  refused (4);
+  the hardened pod   privileged  admitted; baseline    admitted; restricted  admitted;
+  baseline refuses the tutorial's pod for: [host namespaces, hostPath volumes, privileged]
+  restricted refuses a plain pod for: [allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true, seccompProfile]
+  a namespace that only warns: the plain pod is created: true, with a warning that lists 4 violations
+  the plain pod, admitted by baseline, probed from inside: 7 of 13 attacks possible: [read-secrets, tamper-with-app, drop-and-run, become-root, dangerous-syscalls, sniff-network, exhaust-memory]
+  the hardened pod, admitted by restricted: 2 of 13 attacks possible: [read-secrets, drop-and-run]
+  the standards judge the pod's spec when it is created; a pod with no seccomp profile is admitted by baseline and runs unfiltered, and a writable temporary directory still runs code
+  whoever can edit the namespace's labels can change the standard; the secrets are still readable by the application; limits on processes belong to the kubelet, not to the pod
+  kind is a lab: its node is a container, and kind delete cluster takes the whole cluster away

@@ -1,0 +1,457 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "container-hardening-with-docker-and-kind"
+level = "intermediate"
+module = "platform-hardening"
+title = "Container Hardening with Docker and kind"
+short_title = "Containers on Docker and kind"
+package = "containerhard"
+main_class = "ContainerHardeningDemo"
+tagline = "Assume the process is taken over, and measure with thirteen real attempts what each docker run option and each Pod Security Standard takes away from it"
+bold = "Thirteen real attempts run inside a real container as the user it runs as: the tutorial's docker run gives all thirteen, no options gives seven, and adding a seccomp profile, dropping capabilities, running as another user, a read-only root with a noexec temporary directory and memory and process limits brings it to one, the secret the application has to read; the same on a kind cluster, where Pod Security Standards refuse the tutorial's pod, a plain pod in a restricted namespace, and admit the hardened pod, which still has two attacks left; the layers cover for each other's mistakes, and the standards judge only the spec."
+domain = "an online store"
+domain_note = ""
+youtube_description = "Container hardening measured with thirteen real attempts inside real Docker containers (write to the app, run a dropped file, become root, sniff the network, mount, read the Docker socket, the host's files, the host network and processes, memory and process limits, the secret in the environment) from the tutorial's docker run with 13 of 13 possible down to a hardened container with 1, then a real kind cluster with Pod Security Admission: a tutorial pod refused by baseline and restricted, a plain pod admitted by baseline and refused by restricted, a namespace that only warns, and the attacks that remain in the pods that are admitted."
+thumb_lines = ["HARDENING WITH", "DOCKER AND KIND"]
+thumb_code = "--cap-drop ALL --read-only --user 10001"
+youtube_title = "Container Hardening with Docker and kind: 13 Real Attacks, Pod Security Standards (CIS Benchmarks)"
+youtube_tags = ["container hardening", "docker", "kind", "kubernetes", "pod security standards", "seccomp", "capabilities", "read-only root", "cis benchmarks", "java"]
+
+[readme]
+intro = """
+The plain [container-hardening](../container-hardening) project scores `docker run` options and pod specs with a model. This one measures: it builds the shop's image, starts **real containers** with different options and runs **thirteen real attempts** inside each (write to the application, run a dropped file, become root, sniff the network, mount a file system, find the Docker socket, the host's files, the host's network and processes, a missing memory or process limit, the secret in the environment). Then it makes a real **kind** cluster and lets **Pod Security Admission** judge three pods. It needs Docker, `kind` and `kubectl` (`brew install kind kubernetes-cli`); the tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **No options: 7 of 13.** The shop's image run as it is: secrets in the environment, a writable root, a dropped file that runs, root, raw sockets, no memory or process limit.
+- **The tutorial's command: 13 of 13.** `--privileged`, no seccomp, the host's network and processes, the Docker socket, the host's `/etc`.
+- **One setting at a time.** 13, 8, 7, 5, 5, 5, 3, **1**. The number stays the same where the set changes (a non-root user closes `become-root` and opens `tamper-with-app`, which the app user owns), and `--security-opt no-new-privileges` moves nothing in an image with no set-user-id program.
+- **The hardened container.** `--user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:noexec --security-opt no-new-privileges --memory --pids-limit` and a seccomp profile: one attack left, **the secret** that the application must read. Add NET_RAW and nothing changes; add root and SYS_ADMIN and only the seccomp profile still stands between it and `mount`.
+- **Kubernetes on kind.** Namespaces that enforce privileged, baseline and restricted: the tutorial's pod is refused twice (3 and 7 violations), a plain pod is admitted by baseline and refused by restricted (4), a warn-only namespace admits it with a warning, and the hardened pod is admitted. Probed from inside: the plain pod 7 attacks, the hardened pod 2.
+
+**Maps to:** OWASP Top 10 (2025) A02 Security Misconfiguration · CIS Docker and Kubernetes Benchmarks · Kubernetes Pod Security Standards · CWE-250 (execution with unnecessary privileges), CWE-269.
+"""
+analogy = """
+A bank's back office after a break-in. Instead of asking whether the lock was good, ask what the burglar can reach once inside: the safe, the keys, the neighbours' doors. Each rule you add, a cage around the safe, no keys on the desk, no phone line out, takes something away, and the measuring is done by walking the burglar's route.
+"""
+scenario = """
+An online store runs its application in a container. The demo assumes that a process in it has been taken over, runs the attacker's thirteen first steps in containers started in different ways, and then asks a Kubernetes cluster to refuse the worst of them.
+"""
+costs = [
+    "**Every restriction can break the application:** a read-only root needs a temporary directory, a non-root user needs ownership of its files.",
+    "**The secret the application must read, a hijacked application can read too.**",
+    "**Kubernetes standards judge the spec,** and do not see what happens at run time.",
+    "**Limits need numbers** that someone measures.",
+    "**A lab daemon may differ from production:** here, Docker applies no seccomp filter by itself.",
+]
+too_much = """
+A throw-away container on a developer's laptop that runs a trusted test for a minute does not need all of this. Harden what is exposed to the network, holds secrets or runs for long.
+"""
+met_before = [
+    "`docker run --privileged` in a tutorial.",
+    "`securityContext` in a manifest.",
+    "A namespace label `pod-security.kubernetes.io/enforce`.",
+    "A \"permission denied\" after someone added `readOnlyRootFilesystem`.",
+]
+where = """
+This is the tools version of [container-hardening](../container-hardening), in the [platform-hardening](..) module, after [linux-hardening-with-docker](../linux-hardening-with-docker), which scanned the inside of the image.
+"""
+twin = """
+The containers are real, started by docker run and probed with docker exec; the cluster is real, made by kind with its own kubeconfig file and deleted at the end; the pods are probed with kubectl exec. Ports, names and addresses are never printed; the demo takes about two minutes, most of it the cluster.
+"""
+test_note = "The readers of the probe output and of admission messages are tested on text. The rest starts containers and a kind cluster and removes them (./gradlew integrationTest). They need Docker, kind and kubectl."
+
+[[act]]
+title = "What docker run with no options gives an attacker"
+summary = "Seven of thirteen attempts work: secrets, a writable root, a dropped file, root, raw sockets and no limits."
+detail = """
+Thirteen attempts run inside a real container as the user it runs as. With no options (and a seccomp profile passed by file, because the lab's Docker has none of its own), seven work: the secrets in the environment, the writable root file system, a file written and run, root, a raw socket through NET_RAW, no memory limit and no process limit. Six are blocked: dangerous system calls (the profile), mount, the Docker socket, host files, the host network and the host's processes.
+"""
+speech = """
+First demo: what docker run with no options gives an attacker. [[slnc 400]] Thirteen real attempts, run inside the container. [[slnc 600]]
+Seven work. [[slnc 300]] The secrets, the writable root, a dropped file, root, a raw socket, and no limits.
+"""
+rows = { defaults = "active wrong" }
+console = [
+    ["POSSIBLE: read-secrets, tamper-with-app, drop-and-run, become-root", "bad"],
+    ["POSSIBLE: sniff-network, exhaust-memory, fork-bomb", "bad"],
+    ["7 of 13 attacks possible", "bad"],
+]
+
+[[act]]
+title = "The configuration from the tutorial"
+summary = "--privileged, no seccomp, the host's network and processes, the Docker socket and the host's /etc: all thirteen work."
+detail = """
+docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/hostetc:ro shop-app. All 13 of 13 attacks are possible: blocked 13 - 13 = 0. One command that works in a tutorial gives the process the host.
+"""
+speech = """
+Second demo: the configuration from the tutorial. [[slnc 400]] Privileged, the host's network, the host's processes, the Docker socket. [[slnc 600]]
+All thirteen attacks work. [[slnc 300]] One command gives the process the host.
+"""
+rows = { tutorial = "active wrong" }
+console = [
+    ["docker run --privileged --network host --pid host -v docker.sock ...", "bad"],
+    ["13 of 13 attacks possible", "bad"],
+]
+
+[[act]]
+title = "One setting at a time"
+summary = "13, 8, 7, 5, 5, 5, 3, 1: the number goes down only when an option takes away something an attack uses."
+detail = """
+Each line adds one option to the one above: the tutorial's 13; no privileged, no host network, PID or mounts, 8; a seccomp profile, 7; drop all capabilities, 5; run as a user that is not root, 5 (a different set: root is gone, and the files the app user owns are open); no new privileges, 5; read-only root and a noexec temporary directory, 3; memory and process limits, 1. No new privileges does not move the number here, because this image has no set-user-id program for an attacker to use.
+"""
+speech = """
+Third demo: one setting at a time. [[slnc 400]] Thirteen, eight, seven, five, five, five, three, one. [[slnc 600]]
+The number goes down only when an option takes away something an attack uses.
+"""
+rows = { steps = "active ok" }
+console = [
+    ["13 -> 8 -> 7 -> 5 -> 5 -> 5 -> 3 -> 1", "ok"],
+    ["a non-root user: root is gone, the app's own files are open", "ok"],
+    ["no new privileges: no set-user-id program here to stop", "ok"],
+]
+
+[[act]]
+title = "The hardened container"
+summary = "One attack left, the secret the application must read; NET_RAW changes nothing, and root with SYS_ADMIN is held only by the seccomp profile."
+detail = """
+docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --security-opt seccomp=<profile> --memory 512m --pids-limit 200. One of 13 attacks is possible: read-secrets; the application must read its secrets, so a hijacked application can too. Adding NET_RAW, which looks harmless, changes nothing, because it matters only to root. Adding root and SYS_ADMIN brings back root, and only the seccomp profile still stands between it and mount. Without the filter as well, four are possible: each layer covers for a mistake in the others.
+"""
+speech = """
+Fourth demo: the hardened container. [[slnc 400]] One attack left: the secret the application has to read. [[slnc 600]]
+Add root and a capability, and only the seccomp filter still stands between the attacker and mount. [[slnc 300]] Each layer covers for a mistake in the others.
+"""
+rows = { hardened = "active ok" }
+console = [
+    ["1 of 13 attacks possible: read-secrets", "ok"],
+    ["+ NET_RAW: still 1", "ok"],
+    ["+ root + SYS_ADMIN: 2; without the filter too: 4 (mount-host)", "bad"],
+]
+
+[[act]]
+title = "The same on Kubernetes, with Pod Security Standards on kind"
+summary = "Baseline refuses the tutorial's pod, restricted refuses a plain pod and admits the hardened one, which still has two attacks left."
+detail = """
+A one-node kind cluster with three namespaces that enforce the privileged, baseline and restricted standards, and three pods sent with --dry-run=server so that the admission decides. The tutorial's pod is admitted by privileged, refused by baseline (host namespaces, hostPath volumes, privileged) and by restricted (7 violations). A plain pod is admitted by baseline and refused by restricted (allowPrivilegeEscalation, unrestricted capabilities, runAsNonRoot, seccompProfile). The hardened pod is admitted everywhere. A namespace that only warns creates the plain pod with a warning that lists 4 violations. Probed from inside, the plain pod has 7 attacks possible and the hardened pod 2: the secret, and a writable temporary directory that still runs code.
+"""
+speech = """
+Fifth demo: the same on Kubernetes. [[slnc 400]] A real kind cluster, with pod security standards. [[slnc 600]]
+Baseline refuses the tutorial's pod. Restricted refuses a plain pod, and admits the hardened one. [[slnc 600]]
+The hardened pod still has two attacks left.
+"""
+rows = { kind = "active ok" }
+console = [
+    ["tutorial pod: baseline refuses (3), restricted refuses (7)", "ok"],
+    ["plain pod: baseline admits, restricted refuses (4)", "ok"],
+    ["hardened pod admitted; probed from inside: 2 of 13", "ok"],
+]
+
+[animation]
+subtitle = "An online store's container, thirteen real attempts, and a cluster that says no."
+boxes = [
+    ["defaults", "No options", "7 of 13"],
+    ["tutorial", "The tutorial", "13 of 13"],
+    ["steps", "One at a time", "13 down to 1"],
+    ["hardened", "Hardened", "1 left"],
+    ["kind", "On kind", "admission says no"],
+]
+
+[docs.problem]
+scenario = """
+An online store runs its application in a container, and a vulnerability in the application may one day give an attacker a shell in it.
+"""
+naive = """
+Copy the docker run line from a tutorial, because it works.
+"""
+deliver = [
+    "Thirteen real attempts run inside real containers.",
+    "A step-by-step reduction from 13 to 1.",
+    "A real kind cluster that refuses pods by standard.",
+    "The attacks that remain, and why.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain container-hardening project, for the ideas",
+    "Docker, with the alpine:3.24.3 image (pulled on first use)",
+    "kind and kubectl: brew install kind kubernetes-cli",
+]
+not_required = [
+    "A cloud cluster",
+]
+install = ["docker", "kind", "kubectl"]
+
+[docs.session]
+objectives = [
+    "assume a process is taken over and measure what it can reach",
+    "name the docker run options that take attacks away",
+    "read a Pod Security Admission refusal",
+    "say what is left in the hardened container and why",
+]
+walkthrough = """
+Run act three and find the line where the number does not change although the set does. In act four find the layer that holds when root comes back. In act five find the two attacks left in the hardened pod.
+"""
+exercises = [
+    "Add a fourteenth attempt and see which option stops it.",
+    "Mount the secret as a file instead of an environment variable and rerun the probe.",
+    "Add a seccomp profile to the Kubernetes pod and compare.",
+    "Move the hardened pod's temporary directory to a noexec mount.",
+]
+
+[docs.explained]
+sentence = """
+Hardening a container is taking away, one option at a time, what a taken-over process could use, and measuring what is left.
+"""
+verdict = """
+Run as a user that is not root, drop all capabilities, keep the root file system read-only with a noexec temporary directory, filter system calls, set memory and process limits, never mount the Docker socket or host paths, let the cluster refuse what you did not mean to run, and keep secrets as short-lived as you can.
+"""
+recognise = [
+    "`--privileged` or `--cap-add` in a command or a compose file.",
+    "`securityContext` in a manifest.",
+    "`pod-security.kubernetes.io/enforce` on a namespace.",
+    "A `kind create cluster` in a build script.",
+]
+
+[spec]
+purpose = """
+Teach container hardening by measuring: real attempts inside real containers and a real cluster's admission.
+"""
+nongoals = [
+    "Container escapes.",
+    "Network policies.",
+    "Image vulnerability scanning.",
+]
+problem = """
+Containers are started with options copied from tutorials, and nobody measures what an attacker inside could do.
+"""
+roles = [["The image and containers", "`Image`, `Run`"], ["The attempts", "`Probes`"], ["The cluster", "`Cluster`, `Pods`"], ["Entry point", "`ContainerHardeningDemo`"]]
+requirements = [
+    "Thirteen attempts run inside a container as the user it runs as.",
+    "Each stage of options is measured, not scored.",
+    "A real kind cluster enforces the three standards and judges three pods.",
+    "Pods that are admitted are probed from inside.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "Options go in, thirteen attempts run inside, a cluster judges the spec."
+nodes = [
+    { id = "options", label = "docker run options", sub = "or a pod spec", col = 0, row = 0, colour = "client" },
+    { id = "container", label = "Container or pod", sub = "the shop's image", col = 1, row = 0, colour = "accent" },
+    { id = "probes", label = "13 attempts", sub = "run inside", col = 2, row = 0, colour = "amber" },
+    { id = "psa", label = "Pod Security Admission", sub = "on kind", col = 1, row = 1, colour = "green" },
+]
+edges = [
+    { from = "options", to = "container" },
+    { from = "probes", to = "container", label = "docker exec, kubectl exec" },
+    { from = "psa", to = "options", label = "judges the spec" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "A run, the probes, and the cluster."
+nodes = [
+    { id = "run", label = "Run", sub = ["probe(options)"], col = 0, row = 0, colour = "accent" },
+    { id = "probes", label = "Probes", sub = ["NAMES", "SCRIPT", "parse()"], col = 1, row = 0, colour = "amber" },
+    { id = "cluster", label = "Cluster", sub = ["namespace()", "apply()", "probe()"], col = 2, row = 0, colour = "green" },
+    { id = "pods", label = "Pods", sub = ["tutorial()", "plain()", "hardened()"], col = 2, row = 1, colour = "client" },
+]
+edges = [
+    { from = "run", to = "probes", label = "runs" },
+    { from = "cluster", to = "probes", label = "runs" },
+    { from = "cluster", to = "pods", label = "applies" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "Thirteen down to one"
+caption = "Each option takes away something."
+nodes = [
+    { id = "tutorial", label = "Tutorial", sub = "13", col = 0, row = 0, colour = "red" },
+    { id = "unpriv", label = "Unprivileged, profile", sub = "7", col = 1, row = 0, colour = "amber" },
+    { id = "caps", label = "No caps, non-root, read-only", sub = "3", col = 2, row = 0, colour = "accent" },
+    { id = "limits", label = "Limits", sub = "1", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "tutorial", to = "unpriv" },
+    { from = "unpriv", to = "caps" },
+    { from = "caps", to = "limits" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Probing a container"
+participants = ["Demo", "Docker", "Container"]
+steps = [
+    ["Demo", "Docker", "docker run -d with the stage's options"],
+    ["Demo", "Container", "docker exec sh -c the thirteen attempts"],
+    ["Container", "Demo", "name=POSSIBLE or blocked, thirteen times", "reply"],
+    ["Demo", "Docker", "docker rm -f"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Admission"
+participants = ["kubectl", "API server", "Pod Security Admission"]
+steps = [
+    ["kubectl", "API server", "create the pod in shop-restricted"],
+    ["API server", "Pod Security Admission", "does the spec meet restricted?"],
+    ["Pod Security Admission", "API server", "no: runAsNonRoot, seccompProfile ...", "reply"],
+    ["API server", "kubectl", "403 Forbidden, listing the violations", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Taken over", nodes = ["attacker"], colour = "red" },
+    { label = "The container", nodes = ["process", "root"], colour = "green" },
+    { label = "The host", nodes = ["host"], colour = "amber" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker in the app", sub = "a shell", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "process", label = "Process", sub = "user, capabilities", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "root", label = "Root file system", sub = "read-only, noexec tmp", col = 1, row = 1, colour = "client", shape = "store", threats = ["T3"] },
+    { id = "host", label = "Host and cluster", sub = "socket, kernel, API", col = 2, row = 0, colour = "amber", threats = ["T1", "T4"] },
+]
+edges = [
+    { from = "attacker", to = "process", label = "runs commands", colour = "red", dashed = true, threats = ["T1", "T2", "T3"] },
+    { from = "process", to = "host", label = "mount, socket, syscalls", threats = ["T1", "T4"] },
+]
+
+[threatmodel]
+scope = """
+A container of the shop's application assumed to be taken over, the options it is started with, and the Kubernetes admission that judges its pod spec. It does not cover container escapes through kernel bugs.
+"""
+assets = [
+    "The host and the cluster.",
+    "The shop's secrets and data inside the container.",
+]
+actors = [
+    "An attacker with a shell in the application.",
+    "An operator who copies a command from a tutorial.",
+]
+boundaries = [
+    "The container and the host's kernel.",
+    "The admission controller: the last check before a pod is created.",
+]
+assumptions = [
+    "The attacker starts as the process the container runs.",
+    "The cluster's labels on namespaces are protected by access control.",
+]
+out_of_scope = [
+    "Kernel vulnerabilities.",
+    "Network policies and service meshes.",
+]
+tests = [
+    "`ParsingTest` checks the readers of probe output and admission messages, the stages and the manifests, on text.",
+    "`HardeningTest` runs thirteen real attempts in containers started in each way, and the three pods in a real kind cluster.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next module, detection-and-response, starts with security-logging-with-loki-and-grafana.
+"""
+
+[[threat]]
+id = "T1"
+stride = "E"
+threat = "A taken-over process reaches the host"
+where = "privileged, host namespaces, mounts, capabilities"
+control = "No privileged, no host namespaces or paths, all capabilities dropped, a seccomp filter"
+residual = "Kernel bugs"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "The process is root, or becomes root"
+where = "the user of the container"
+control = "A numeric user that is not root, no new privileges"
+residual = "Files the user owns"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "The attacker changes the application or drops a tool"
+where = "the root file system"
+control = "A read-only root and a temporary directory mounted noexec"
+residual = "A writable temporary directory that runs code (as on Kubernetes emptyDir)"
+
+[[threat]]
+id = "T4"
+stride = "D"
+threat = "One container uses all the memory or processes"
+where = "cgroup limits"
+control = "Memory and process limits"
+residual = "Limits set too high"
+
+[poster]
+headline = [["HARDENING WITH", "text"], ["DOCKER AND KIND", "accent"]]
+taglines = [["Assume the process is taken over, and measure with thirteen real attempts what each docker", "gold"]]
+before = { code = "POSSIBLE: read-secrets, tamper-with-app, drop-and-ru", note = "What docker run with no options gives an", tag = "BEFORE" }
+after = { code = "--cap-drop ALL --read-only --user 10001", note = "The same on Kubernetes, with Pod Securit", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Container Hardening with Docker and kind"
+narration = "Hello, and welcome. [[slnc 400]] This video explains containers on Docker and kind, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Thirteen real attempts run inside a real container as the user it runs as: the tutorial's docker run gives all thirteen, no options gives seven, and adding a seccomp profile, dropping capabilities, running as another user, a read-only root with a noexec temporary directory and memory and process limits brings it to one, the secret the application has to read; the same on a kind cluster, where Pod Security Standards refuse the tutorial's pod, a plain pod in a restricted namespace, and admit the hardened pod, which still has two attacks left; the layers cover for each other's mistakes, and the standards judge only the spec. [[slnc 600]] Think of it this way. [[slnc 300]] A bank's back office after a break-in. Instead of asking whether the lock was good, ask what the burglar can reach once inside: the safe, the keys, the neighbours' doors. Each rule you add, a cage around the safe, no keys on the desk, no phone line out, takes something away, and the measuring is done by walking the burglar's route. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Assume a process is taken over and measure what it can reach. [[slnc 300]] Name the docker run options that take attacks away. [[slnc 300]] Read a Pod Security Admission refusal."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store runs its application in a", "container.", "The demo assumes that a process in it has", "been taken over, runs the attacker's", "thirteen first steps in containers started", "in different ways, and then asks a", "Kubernetes cluster to refuse the worst of"]
+narration = "Here is the scenario. [[slnc 400]] An online store runs its application in a container. [[slnc 400]] The demo assumes that a process in it has been taken over, runs the attacker's thirteen first steps in containers started in different ways, and then asks a Kubernetes cluster to refuse the worst of them."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every restriction can break the application", "The secret the application must read, a hijacked", "application can read too", "Kubernetes standards judge the spec", "Limits need numbers", "A lab daemon may differ from production"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every restriction can break the application. [[slnc 500]] The secret the application must read, a hijacked application can read too. [[slnc 500]] Kubernetes standards judge the spec. [[slnc 500]] Limits need numbers. [[slnc 500]] A lab daemon may differ from production."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The image and containers: Image, Run", "The attempts: Probes", "The cluster: Cluster, Pods", "Entry point: ContainerHardeningDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The image and containers is in Image and Run. [[slnc 500]] The attempts is in Probes. [[slnc 500]] The cluster is in Cluster and Pods. [[slnc 500]] Entry point is in ContainerHardeningDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["--privileged or --cap-add in a command or a compose", "file", "securityContext in a manifest", "A kind create cluster in a build script"]
+narration = "You have probably met this already. [[slnc 400]] --privileged or --cap-add in a command or a compose file. [[slnc 500]] securityContext in a manifest. [[slnc 500]] A kind create cluster in a build script."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Assume a process is taken over and measure what it can", "reach", "Name the docker run options that take attacks away", "Read a Pod Security Admission refusal", "Say what is left in the hardened container and why"]
+narration = "So, how do you use it? [[slnc 400]] Run as a user that is not root, drop all capabilities, keep the root file system read-only with a noexec temporary directory, filter system calls, set memory and process limits, never mount the Docker socket or host paths, let the cluster refuse what you did not mean to run, and keep secrets as short-lived as you can."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's containers on Docker and kind. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Hardening a container is taking away, one option at a time, what a taken-over process could use, and measuring what is left. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a fourteenth attempt and see which option stops it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

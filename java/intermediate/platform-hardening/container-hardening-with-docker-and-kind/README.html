@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Container Hardening with Docker and kind</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Container Hardening with Docker and kind</h1>
+<pre><code>src/main/java/com/jk/explore/security/containerhard/
+├── Cluster.java                 A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── ContainerHardeningDemo.java  What each attack that works means, in a few words
+├── Image.java                   The shop's application image, as an ordinary team would have built it: an app user that owns the app, and a secret in the environment
+├── Pods.java                    The three pods of the lesson as manifests: the tutorial's, the default, and the hardened one
+├── Probes.java                  Thirteen things a hijacked process tries, written as shell commands that run inside the container as whatever user the container runs as
+├── Run.java                     One container started with a list of docker run options, probed, and removed
+├── Seccomp.java                 A seccomp profile that denies the system calls Docker's own default profile denies (mount, unshare, ptrace, kernel modules, keys, bpf, clock changes...)
+└── Sh.java                      Runs a program and returns what it printed, whether it worked or not
+</code></pre>
+<p><strong>Thirteen real attempts run inside a real container as the user it runs as: the tutorial's docker run gives all thirteen, no options gives seven, and adding a seccomp profile, dropping capabilities, running as another user, a read-only root with a noexec temporary directory and memory and process limits brings it to one, the secret the application has to read; the same on a kind cluster, where Pod Security Standards refuse the tutorial's pod, a plain pod in a restricted namespace, and admit the hardened pod, which still has two attacks left; the layers cover for each other's mistakes, and the standards judge only the spec.</strong></p>
+<p>The plain <a href="../container-hardening">container-hardening</a> project scores <code>docker run</code> options and pod specs with a model. This one measures: it builds the shop's image, starts <strong>real containers</strong> with different options and runs <strong>thirteen real attempts</strong> inside each (write to the application, run a dropped file, become root, sniff the network, mount a file system, find the Docker socket, the host's files, the host's network and processes, a missing memory or process limit, the secret in the environment). Then it makes a real <strong>kind</strong> cluster and lets <strong>Pod Security Admission</strong> judge three pods. It needs Docker, <code>kind</code> and <code>kubectl</code> (<code>brew install kind kubernetes-cli</code>); the tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>No options: 7 of 13.</strong> The shop's image run as it is: secrets in the environment, a writable root, a dropped file that runs, root, raw sockets, no memory or process limit.
+- <strong>The tutorial's command: 13 of 13.</strong> <code>--privileged</code>, no seccomp, the host's network and processes, the Docker socket, the host's <code>/etc</code>.
+- <strong>One setting at a time.</strong> 13, 8, 7, 5, 5, 5, 3, <strong>1</strong>. The number stays the same where the set changes (a non-root user closes <code>become-root</code> and opens <code>tamper-with-app</code>, which the app user owns), and <code>--security-opt no-new-privileges</code> moves nothing in an image with no set-user-id program.
+- <strong>The hardened container.</strong> <code>--user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:noexec --security-opt no-new-privileges --memory --pids-limit</code> and a seccomp profile: one attack left, <strong>the secret</strong> that the application must read. Add NET_RAW and nothing changes; add root and SYS_ADMIN and only the seccomp profile still stands between it and <code>mount</code>.
+- <strong>Kubernetes on kind.</strong> Namespaces that enforce privileged, baseline and restricted: the tutorial's pod is refused twice (3 and 7 violations), a plain pod is admitted by baseline and refused by restricted (4), a warn-only namespace admits it with a warning, and the hardened pod is admitted. Probed from inside: the plain pod 7 attacks, the hardened pod 2.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A02 Security Misconfiguration · CIS Docker and Kubernetes Benchmarks · Kubernetes Pod Security Standards · CWE-250 (execution with unnecessary privileges), CWE-269.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank's back office after a break-in. Instead of asking whether the lock was good, ask what the burglar can reach once inside: the safe, the keys, the neighbours' doors. Each rule you add, a cage around the safe, no keys on the desk, no phone line out, takes something away, and the measuring is done by walking the burglar's route.</p>
+<h2>The scenario</h2>
+<p>An online store runs its application in a container. The demo assumes that a process in it has been taken over, runs the attacker's thirteen first steps in containers started in different ways, and then asks a Kubernetes cluster to refuse the worst of them.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. What docker run with no options gives an attacker</td>
+<td>Seven of thirteen attempts work: secrets, a writable root, a dropped file, root, raw sockets and no limits.</td>
+</tr>
+<tr>
+<td>2. The configuration from the tutorial</td>
+<td>--privileged, no seccomp, the host's network and processes, the Docker socket and the host's /etc: all thirteen work.</td>
+</tr>
+<tr>
+<td>3. One setting at a time</td>
+<td>13, 8, 7, 5, 5, 5, 3, 1: the number goes down only when an option takes away something an attack uses.</td>
+</tr>
+<tr>
+<td>4. The hardened container</td>
+<td>One attack left, the secret the application must read; NET_RAW changes nothing, and root with SYS_ADMIN is held only by the seccomp profile.</td>
+</tr>
+<tr>
+<td>5. The same on Kubernetes, with Pod Security Standards on kind</td>
+<td>Baseline refuses the tutorial's pod, restricted refuses a plain pod and admits the hardened one, which still has two attacks left.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>15 tests in <code>DemoRunsTest</code>, <code>HardeningTest</code>, <code>ParsingTest</code>. The readers of the probe output and of admission messages are tested on text. The rest starts containers and a kind cluster and removes them (./gradlew integrationTest). They need Docker, kind and kubectl.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The containers are real, started by docker run and probed with docker exec; the cluster is real, made by kind with its own kubeconfig file and deleted at the end; the pods are probed with kubectl exec. Ports, names and addresses are never printed; the demo takes about two minutes, most of it the cluster.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/container-hardening-with-docker-and-kind-explained.html">Container Hardening with Docker and kind, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Options go in, thirteen attempts run inside, a cluster judges the spec.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A run, the probes, and the cluster.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each option takes away something.</p>
+<p><img alt="Thirteen down to one" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Probing a container" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/container-hardening-with-docker-and-kind-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every restriction can break the application:</strong> a read-only root needs a temporary directory, a non-root user needs ownership of its files.</li>
+<li><strong>The secret the application must read, a hijacked application can read too.</strong></li>
+<li><strong>Kubernetes standards judge the spec,</strong> and do not see what happens at run time.</li>
+<li><strong>Limits need numbers</strong> that someone measures.</li>
+<li><strong>A lab daemon may differ from production:</strong> here, Docker applies no seccomp filter by itself.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A throw-away container on a developer's laptop that runs a trusted test for a minute does not need all of this. Harden what is exposed to the network, holds secrets or runs for long.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>docker run --privileged</code> in a tutorial.</li>
+<li><code>securityContext</code> in a manifest.</li>
+<li>A namespace label <code>pod-security.kubernetes.io/enforce</code>.</li>
+<li>A "permission denied" after someone added <code>readOnlyRootFilesystem</code>.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../container-hardening">container-hardening</a>, in the <a href="..">platform-hardening</a> module, after <a href="../linux-hardening-with-docker">linux-hardening-with-docker</a>, which scanned the inside of the image.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

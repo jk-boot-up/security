@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 112 projects. Planned: 40 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 113 projects. Planned: 39 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -24,7 +24,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | Networking | 7 | 0 | 7 |
 | | Transport security | 7 | 0 | 7 |
 | | Safe habits | 8 | 0 | 8 |
-| **Intermediate** | | **71** | **5** | **76** |
+| **Intermediate** | | **72** | **4** | **76** |
 | | web-security | 15 | 0 | 15 |
 | | secure-configuration | 4 | 0 | 4 |
 | | api-security | 7 | 0 | 7 |
@@ -32,7 +32,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | tls-in-practice | 8 | 0 | 8 |
 | | secure-coding | 8 | 0 | 8 |
 | | secrets-and-supply-chain | 8 | 0 | 8 |
-| | platform-hardening | 3 | 1 | 4 |
+| | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 3 | 2 | 5 |
 | | secure-design | 3 | 2 | 5 |
 | **Advanced** | | **0** | **35** | **35** |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **112** | **40** | **152** |
+| **All** | | **113** | **39** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -55,10 +55,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | Plain | 20 | 0 | 20 |
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
-| Intermediate | With tools | 31 | 5 | 36 |
+| Intermediate | With tools | 32 | 4 | 36 |
 | Advanced | Unclassified | 0 | 35 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **52** | **5** | **57** |
+| **All** | **With tools** | **53** | **4** | **57** |
 | **All** | **Unclassified** | **0** | **35** | **35** |
 <!-- status:end -->
 
@@ -250,7 +250,7 @@ Track index: [intermediate](intermediate/README.md). Plan, with the OWASP, ASVS,
 | 104 | [linux-hardening](intermediate/platform-hardening/linux-hardening) | Plain | Most host compromises begin with a setting that nobody looked at | CIS Benchmarks |
 | 105 | [linux-hardening-with-docker](intermediate/platform-hardening/linux-hardening-with-docker) | With tools: docker | Scan a real container the way an auditor scans a host, fix what a machine can fix, and put every decision where it lasts: in the recipe of the image | CIS Benchmarks |
 | 106 | [container-hardening](intermediate/platform-hardening/container-hardening) | Plain | Assume the process is taken over, and ask what it can reach | CIS Docker and Kubernetes Benchmarks |
-| 107 | container-hardening-with-docker-and-kind | With tools: docker and kind | *planned*: non-root, read-only, dropped capabilities, seccomp, and Pod Security Standards on kind | CIS Docker and Kubernetes Benchmarks |
+| 107 | [container-hardening-with-docker-and-kind](intermediate/platform-hardening/container-hardening-with-docker-and-kind) | With tools: docker and kind | Assume the process is taken over, and measure with thirteen real attempts what each docker run option and each Pod Security Standard takes away from it | CIS Docker and Kubernetes Benchmarks |
 
 ### 9. detection-and-response (OWASP A09; NIST CSF 2.0)
 
