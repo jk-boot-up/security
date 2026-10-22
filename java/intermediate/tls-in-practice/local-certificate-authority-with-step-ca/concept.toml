@@ -1,0 +1,458 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "local-certificate-authority-with-step-ca"
+level = "intermediate"
+module = "tls-in-practice"
+title = "A Local Certificate Authority with step-ca"
+short_title = "Local CA with step-ca"
+package = "stepca"
+main_class = "StepCaDemo"
+tagline = "Run a real certificate authority for the store's own services: tokens and ACME, a policy for names, day-long certificates that renew, and a revocation list that only helps clients that read it"
+bold = "A real step-ca issues day-long certificates to services that ask with a one-time token or through ACME, only for the names its policy allows; a service renews with its own certificate and key, a stolen key is revoked at the CA and listed in a signed revocation list, but a client that never checks the list still accepts the certificate, and everything rests on the machine and the password that hold the issuing key."
+domain = "an online store"
+domain_note = ""
+youtube_description = "A real step-ca 0.3x with the step command: a root and an issuing authority, a client that must be given the root, one-time provisioner tokens that work once and only for their name, a name policy and a lifetime limit, the ACME provisioner answering challenges on port 80, renewal with the old key and with a new key, a key that cannot renew for another certificate, revocation that stops renewal and appears in a signed list, a client that never checks, a client that fails closed without a list, and what the CA's machine and password mean."
+thumb_lines = ["LOCAL CA WITH", "STEP-CA"]
+thumb_code = "step ca certificate --provisioner acme"
+youtube_title = "A Local Certificate Authority with step-ca: Tokens, ACME, Renewal and Revocation (OWASP A04)"
+youtube_tags = ["step-ca", "smallstep", "acme", "certificate authority", "tls", "revocation", "crl", "owasp top 10", "a04", "java"]
+
+[readme]
+intro = """
+The plain [local-certificate-authority](../local-certificate-authority) project writes a small certificate authority in Java and ends with "in practice this is automated with ACME, as the -with-step-ca version shows". This one runs the real thing: **step-ca** and the **step** command (`brew install step`) with a JWK token provisioner and an ACME provisioner, a name policy, and a revocation list. Nothing is installed globally: every run starts a CA in a temporary folder on a free loopback port and stops it at the end. ACME validates a name by calling it back on **port 80**, so that port must be free. The tests are tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **An authority that runs.** A root and an issuing authority that may not create authorities; the CA's own https certificate is trusted only by a client that was given the root; the root key is an encrypted file.
+- **A certificate with a token.** A one-time token for `www.shop.localhost` gives a certificate that lasts **24 hours**; the token works once and only for its name; 2000 hours is refused; `pay.example` is refused by the **policy** (allow `localhost` and `*.shop.localhost`).
+- **A certificate with ACME.** The service asks through the ACME provisioner and the CA calls its name back on port 80; the same policy applies.
+- **Renewal.** `step ca renew` gives a new serial number and the same key; `step ca rekey` gives a new key; another certificate's key cannot renew.
+- **Revocation, and the bill.** A revoked certificate cannot be renewed and appears in the CA's signed list. A client that checks refuses it; a client that never checks accepts it; a client that wants to check and has no list refuses. The issuing key is online and the root key is on disk.
+
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 (improper certificate validation), CWE-298 · RFC 8555 (ACME), RFC 5280 (certificates and CRLs).
+"""
+analogy = """
+A town office that issues day passes. You show a slip signed by your department, or you answer the phone at your own desk, and you get a pass for a day; the office will not issue a pass for a name outside the town; and a list of cancelled passes is only useful at the doors that read it.
+"""
+scenario = """
+An online store runs its services on names under shop.localhost and wants certificates for them without buying any. The demo plays the CA and the teams that ask it for certificates.
+"""
+costs = [
+    "**The CA is a high-value server:** its password and its machine are what the trust rests on.",
+    "**Every service needs a renewal job,** and a job that stops is an outage in a day.",
+    "**Revocation reaches only the clients that check,** and a list must be fresh.",
+    "**ACME proves control of a name, not who should have it:** the policy and the tokens decide that.",
+    "**Every client needs the root,** installed from a source that cannot be changed on the way.",
+]
+too_much = """
+For a single service with one certificate a year, a certificate from a public authority is simpler. A local authority pays off when there are many services, short lifetimes, and names that no public authority will certify.
+"""
+met_before = [
+    "`step ca certificate` or `step ca renew` in a script.",
+    "`acme` as a provisioner name in a CA's configuration.",
+    "A `root_ca.crt` copied into a trust store.",
+    "A job that restarts a service after it renews a certificate.",
+]
+where = """
+This is the tools version of [local-certificate-authority](../local-certificate-authority), in the [tls-in-practice](..) module. The next one, [tls-servers-in-practice-with-nginx-and-caddy](../tls-servers-in-practice-with-nginx-and-caddy), puts these certificates in front of the store.
+"""
+twin = """
+step-ca and step are the real programs. The CA runs in a temporary folder on a free loopback port; the ACME challenge is answered on port 80 by the step command itself. Serial numbers, keys, ports and folders are never printed; the demo takes about half a minute.
+"""
+test_note = "The tests start one CA for the whole class and stop it (./gradlew integrationTest). They need the step command and step-ca (brew install step) and a free port 80."
+
+[[act]]
+title = "A certificate authority that runs"
+summary = "A root, an issuing authority, an https endpoint that only a client with the root can trust, and a root key in an encrypted file."
+detail = """
+step ca init creates a self-signed root and an issuing authority signed by the root that may not create authorities below it. step-ca serves https with a certificate from that authority. A client that trusts the root reads its health; a client that has not been given the root refuses. The root's private key is a file on this machine, encrypted with the CA's password.
+"""
+speech = """
+First demo: a certificate authority that runs. [[slnc 400]] A root and an issuing authority. [[slnc 600]]
+A client that was given the root can talk to it. [[slnc 300]] A client that was not given the root refuses.
+"""
+rows = { ca = "active ok" }
+console = [
+    ["root and issuing authority created by step ca init", "ok"],
+    ["a client with the root reads /health: ok", "ok"],
+    ["a client without the root: refused", "ok"],
+]
+
+[[act]]
+title = "A certificate for a service, with a token"
+summary = "A one-time token gives a day-long certificate for its own name; reuse, another name, a long lifetime and a name outside the policy are refused."
+detail = """
+The web team's service asks with a one-time token for www.shop.localhost and gets a certificate that lasts 24 hours. A client that trusts the root accepts it. The same token used a second time is refused. A token for another name, used for www.shop.localhost, is refused. Asking for 2000 hours is refused, and so is the name pay.example even with a valid token, because the policy allows only localhost and names under shop.localhost.
+"""
+speech = """
+Second demo: a certificate for a service, with a token. [[slnc 400]] The token works once, and only for its own name. [[slnc 600]]
+The certificate lasts a day. [[slnc 300]] A longer lifetime, or a name outside the policy, is refused.
+"""
+rows = { token = "active ok" }
+console = [
+    ["www.shop.localhost: issued, 24 hours, accepted by a client with the root", "ok"],
+    ["the token used twice, or for another name: refused", "ok"],
+    ["2000 hours, or pay.example: refused", "ok"],
+]
+
+[[act]]
+title = "A certificate for a service, with ACME"
+summary = "The service asks through the ACME provisioner, the CA calls its name back on port 80, and the same policy applies."
+detail = """
+The service asks through the ACME provisioner and answers the CA's challenge on port 80 of its own name. The certificate is issued for 24 hours and a client that trusts the root accepts it. ACME for a name outside the policy is refused. ACME proves that the asker controls the name now; it does not prove that the asker is the team that should have it, which is what the policy and the tokens are for.
+"""
+speech = """
+Third demo: a certificate with A C M E. [[slnc 400]] The C A calls the name back on port eighty. [[slnc 600]]
+Whoever answers is given the certificate. [[slnc 300]] The policy still decides which names may ask.
+"""
+rows = { acme = "active ok" }
+console = [
+    ["www.shop.localhost through ACME: issued, 24 hours", "ok"],
+    ["evil.example through ACME: refused by the policy", "ok"],
+]
+
+[[act]]
+title = "Renewing before it ends"
+summary = "Renewal with the certificate and its key gives a new serial number; rekeying gives a new key; another key cannot renew."
+detail = """
+The service renews with its certificate and its key: a new serial number, the same key, and a later end. Renewing with a new key gives a different key. A service that holds another certificate's key cannot renew this one, because the renewal is a TLS call authenticated by the certificate's own key. With a day of life, a renewal job that stops is noticed within a day, when the certificate runs out.
+"""
+speech = """
+Fourth demo: renewing before it ends. [[slnc 400]] The service renews with its certificate and its key. [[slnc 600]]
+A new serial number, and the same key, or a new key. [[slnc 600]]
+Another key cannot renew it.
+"""
+rows = { renew = "active ok" }
+console = [
+    ["renewed: new serial number, the same key, ends later", "ok"],
+    ["rekeyed: a different key", "ok"],
+    ["another certificate's key cannot renew it", "ok"],
+]
+
+[[act]]
+title = "Revocation, and the bill"
+summary = "A revoked certificate cannot be renewed and appears in a signed list; only a client that checks refuses it, and the whole thing rests on one machine and one password."
+detail = """
+The acme certificate's key is reported stolen and revoked. The CA then refuses to renew it and publishes a revocation list signed by the issuing authority with its serial number. A client that checks the list refuses the certificate. A client that never checks still accepts it. A client that wants to check and has no list refuses: it fails closed. The other certificate is accepted against the same list. The issuing key is online and the root key is on disk, so the machine and the password are what the trust rests on.
+"""
+speech = """
+Fifth demo: revocation, and the bill. [[slnc 400]] The C A refuses to renew a revoked certificate, and lists it. [[slnc 600]]
+A client that checks refuses it. [[slnc 300]] A client that never checks accepts it. [[slnc 600]]
+The whole thing rests on one machine and one password.
+"""
+rows = { revoke = "active ok" }
+console = [
+    ["revoked: renewal refused, the serial number is in the signed list", "ok"],
+    ["a client that checks: refused; a client that never checks: accepted", "bad"],
+    ["no list and a client that wants one: refused", "ok"],
+]
+
+[animation]
+subtitle = "An online store, a CA on a loopback port, and certificates that last a day."
+boxes = [
+    ["ca", "The CA", "root, issuing authority"],
+    ["token", "A token", "once, one name"],
+    ["acme", "ACME", "called back on port 80"],
+    ["renew", "Renewal", "the key renews"],
+    ["revoke", "Revocation", "only if it is read"],
+]
+
+[docs.problem]
+scenario = """
+An online store runs many internal services that need certificates, and no public authority will certify its internal names.
+"""
+naive = """
+Self-signed certificates that every client is told to trust, with no expiry.
+"""
+deliver = [
+    "A real step-ca with a token provisioner and an ACME provisioner.",
+    "A policy for names and a limit for lifetimes.",
+    "Renewal and revocation, with clients written with the JDK.",
+    "What a revocation list does not do.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "The plain local-certificate-authority project, for the ideas",
+    "The step command and step-ca: brew install step",
+    "A free port 80, for the ACME challenge",
+]
+not_required = [
+    "Docker or a network connection",
+]
+install = ["step", "step-ca"]
+
+[docs.session]
+objectives = [
+    "start a CA and give a client its root",
+    "get a certificate with a token and with ACME",
+    "renew a certificate and explain who may",
+    "say what revocation covers and what it does not",
+]
+walkthrough = """
+Run act two and find the three ways a token request is refused. In act four ask why only the key's holder can renew. In act five find the client that accepts a revoked certificate.
+"""
+exercises = [
+    "Add a name constraint to the issuing authority and issue for a name outside it.",
+    "Run step ca renew --daemon and stop it, then watch the certificate expire.",
+    "Add a second ACME provisioner with a different policy.",
+    "Serve the store behind nginx with these certificates.",
+]
+
+[docs.explained]
+sentence = """
+A local certificate authority is a service that decides which names get which certificates, for how long, and for whom, and clients trust it because they were given its root.
+"""
+verdict = """
+Keep certificates short so that renewal replaces revocation, restrict names with a policy and a name constraint, protect the issuing key like the crown jewel, give clients the root from a safe place, and make every service renew on its own.
+"""
+recognise = [
+    "`step ca certificate`, `step ca renew` or `step ca revoke`.",
+    "`acme` as a provisioner in `ca.json`.",
+    "A `root_ca.crt` in a trust store.",
+    "A systemd timer or a daemon that renews certificates.",
+]
+
+[spec]
+purpose = """
+Teach running a real certificate authority with step-ca: issuance, policy, renewal and revocation, as seen from a client.
+"""
+nongoals = [
+    "Running a production CA with hardware keys.",
+    "A public ACME service.",
+    "Device attestation.",
+]
+problem = """
+Teams need certificates for internal names and fall back to self-signed ones that no one can revoke or expire.
+"""
+roles = [["The CA", "`StepCa`"], ["The client", "`Pki`"], ["Entry point", "`StepCaDemo`"]]
+requirements = [
+    "A CA starts in a temporary folder on a free port and stops at the end.",
+    "A token works once and only for its name; the policy and the lifetime limit are enforced.",
+    "ACME issues for an allowed name and refuses others.",
+    "Renewal needs the certificate's own key.",
+    "A revoked certificate is refused by a client that checks a fresh signed list, and fails closed without one.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "Services ask the CA; clients trust the root and may read the list."
+nodes = [
+    { id = "svc", label = "Service", sub = "token or ACME", col = 0, row = 0, colour = "client" },
+    { id = "ca", label = "step-ca", sub = "policy, provisioners", col = 1, row = 0, colour = "accent" },
+    { id = "crl", label = "Revocation list", sub = "signed, short-lived", col = 2, row = 0, colour = "amber", shape = "store" },
+    { id = "client", label = "Client", sub = "holds the root", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "svc", to = "ca", label = "asks" },
+    { from = "ca", to = "crl", label = "publishes" },
+    { from = "client", to = "crl", label = "reads (if it checks)" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "StepCa runs the CA and the step command; Pki is the client's side."
+nodes = [
+    { id = "ca", label = "StepCa", sub = ["token()", "issueWithToken()", "issueWithAcme()", "renew()", "revoke()", "crl()"], col = 0, row = 0, colour = "accent" },
+    { id = "pki", label = "Pki", sub = ["validate()", "crl()", "contextTrusting()"], col = 1, row = 0, colour = "amber" },
+    { id = "demo", label = "StepCaDemo", sub = ["run()"], col = 0, row = 1, colour = "green" },
+]
+edges = [
+    { from = "demo", to = "ca", label = "starts" },
+    { from = "demo", to = "pki", label = "checks with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "How a certificate is issued"
+caption = "A proof, a policy, a short life."
+nodes = [
+    { id = "proof", label = "Proof", sub = "token or challenge", col = 0, row = 0, colour = "client" },
+    { id = "policy", label = "Policy", sub = "names, lifetime", col = 1, row = 0, colour = "accent" },
+    { id = "cert", label = "Certificate", sub = "24 hours", col = 2, row = 0, colour = "green" },
+    { id = "renew", label = "Renewal", sub = "with its own key", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "proof", to = "policy" },
+    { from = "policy", to = "cert", label = "issue" },
+    { from = "cert", to = "renew" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "ACME issuance"
+participants = ["Service", "CA"]
+steps = [
+    ["Service", "CA", "new order for www.shop.localhost"],
+    ["CA", "Service", "challenge: serve this token on port 80", "reply"],
+    ["CA", "Service", "GET /.well-known/acme-challenge/..."],
+    ["Service", "CA", "finalize with a request"],
+    ["CA", "Service", "the certificate", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A revoked certificate"
+participants = ["Owner", "CA", "Checking client", "Other client"]
+steps = [
+    ["Owner", "CA", "revoke the stolen certificate"],
+    ["CA", "CA", "list the serial number in the signed list"],
+    ["Checking client", "CA", "read the list"],
+    ["Checking client", "Checking client", "refused: revoked"],
+    ["Other client", "Other client", "never reads the list: accepted"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+    { label = "The CA's machine", nodes = ["ca", "keys"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "a name, or a stolen key", col = 0, row = 0, colour = "red", threats = ["T1", "T2", "T3"] },
+    { id = "ca", label = "step-ca", sub = "policy, tokens", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "keys", label = "CA keys", sub = "root on disk, password", col = 1, row = 1, colour = "amber", shape = "store", threats = ["T4"] },
+    { id = "client", label = "Client", sub = "the root, the list", col = 2, row = 0, colour = "client", threats = ["T3"] },
+]
+edges = [
+    { from = "attacker", to = "ca", label = "asks for a certificate", colour = "red", dashed = true, threats = ["T1", "T2"] },
+    { from = "client", to = "ca", label = "reads the list", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+A step-ca with a token and an ACME provisioner issuing day-long certificates for the store's internal names, and the clients that validate them. It covers who may obtain a certificate, renewal, and revocation. It does not cover hardware-backed keys or the network between services.
+"""
+assets = [
+    "The CA's issuing key and password.",
+    "The certificates and keys of the store's services.",
+]
+actors = [
+    "Teams that run services.",
+    "An attacker who can reach the CA's address.",
+    "An attacker who steals a service's key.",
+]
+boundaries = [
+    "The CA's machine and folder: whoever reads it can issue.",
+    "The client's trust store: the root.",
+]
+assumptions = [
+    "Clients receive the root from a source that cannot be changed on the way.",
+    "The CA's password is not stored with its key.",
+]
+out_of_scope = [
+    "Compromise of the root key on offline media.",
+    "Device attestation.",
+]
+tests = [
+    "`StepCaTest` starts a real step-ca and uses the step command for tokens, ACME, policy, lifetime, renewal, rekeying, revocation and the list, and checks them with the JDK.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in this module, tls-servers-in-practice-with-nginx-and-caddy, serves the store with certificates from this CA.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "Someone obtains a certificate for a name that is not theirs"
+where = "the CA's provisioners"
+control = "One-time tokens for one name, a name policy, ACME challenges"
+residual = "Whoever controls the name's address can pass the challenge"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A long-lived certificate is requested"
+where = "the CA"
+control = "A maximum lifetime of a day"
+residual = "A stolen key works until it ends"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "A revoked certificate is still accepted"
+where = "clients"
+control = "A signed, fresh list, and clients that fail closed without one"
+residual = "Clients that never check"
+
+[[threat]]
+id = "T4"
+stride = "I"
+threat = "The CA's keys are read from its machine"
+where = "the CA's folder"
+control = "An encrypted root key, a password kept elsewhere"
+residual = "The issuing key is online"
+
+[poster]
+headline = [["LOCAL CA WITH", "text"], ["STEP-CA", "accent"]]
+taglines = [["Run a real certificate authority for the store's own services: tokens and ACME, a policy f", "gold"]]
+before = { code = "root and issuing authority created by step ca init", note = "A certificate authority that runs", tag = "BEFORE" }
+after = { code = "step ca certificate --provisioner acme", note = "Revocation, and the bill", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "A Local Certificate Authority with step-ca"
+narration = "Hello, and welcome. [[slnc 400]] This video explains local C A with step-ca, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A real step-ca issues day-long certificates to services that ask with a one-time token or through ACME, only for the names its policy allows; a service renews with its own certificate and key, a stolen key is revoked at the C A and listed in a signed revocation list, but a client that never checks the list still accepts the certificate, and everything rests on the machine and the password that hold the issuing key. [[slnc 600]] Think of it this way. [[slnc 300]] A town office that issues day passes. You show a slip signed by your department, or you answer the phone at your own desk, and you get a pass for a day; the office will not issue a pass for a name outside the town; and a list of cancelled passes is only useful at the doors that read it. [[slnc 700]] In this video, the domain is an online store. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Start a C A and give a client its root. [[slnc 300]] Get a certificate with a token and with ACME. [[slnc 300]] Renew a certificate and explain who may."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["An online store runs its services on names", "under shop.localhost and wants certificates", "for them without buying any.", "The demo plays the CA and the teams that ask", "it for certificates."]
+narration = "Here is the scenario. [[slnc 400]] An online store runs its services on names under shop.localhost and wants certificates for them without buying any. [[slnc 400]] The demo plays the C A and the teams that ask it for certificates."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["The CA is a high-value server", "Every service needs a renewal job", "Revocation reaches only the clients that check", "ACME proves control of a name, not who should have it", "Every client needs the root"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The C A is a high-value server. [[slnc 500]] Every service needs a renewal job. [[slnc 500]] Revocation reaches only the clients that check. [[slnc 500]] ACME proves control of a name, not who should have it. [[slnc 500]] Every client needs the root."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The CA: StepCa", "The client: Pki", "Entry point: StepCaDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The C A is in StepCa. [[slnc 500]] The client is in Pki. [[slnc 500]] Entry point is in StepCaDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["step ca certificate, step ca renew or step ca revoke", "A systemd timer or a daemon that renews certificates"]
+narration = "You have probably met this already. [[slnc 400]] step ca certificate, step ca renew or step ca revoke. [[slnc 500]] A systemd timer or a daemon that renews certificates."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Start a CA and give a client its root", "Get a certificate with a token and with ACME", "Renew a certificate and explain who may", "Say what revocation covers and what it does not"]
+narration = "So, how do you use it? [[slnc 400]] Keep certificates short so that renewal replaces revocation, restrict names with a policy and a name constraint, protect the issuing key like the crown jewel, give clients the root from a safe place, and make every service renew on its own."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's local C A with step-ca. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A local certificate authority is a service that decides which names get which certificates, for how long, and for whom, and clients trust it because they were given its root. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a name constraint to the issuing authority and issue for a name outside it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"

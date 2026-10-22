@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Local Certificate Authority with step-ca</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>A Local Certificate Authority with step-ca</h1>
+<pre><code>src/main/java/com/jk/explore/security/stepca/
+├── Pki.java         What a client does with a certificate: build the path to the root it trusts, and check revocation if it was written to
+├── StepCa.java      A real step-ca in a folder of its own, and the real step command as its client
+└── StepCaDemo.java  A real step-ca: what it issues to whom, how a service gets and renews a certificate, and what revocation does and does not do
+</code></pre>
+<p><strong>A real step-ca issues day-long certificates to services that ask with a one-time token or through ACME, only for the names its policy allows; a service renews with its own certificate and key, a stolen key is revoked at the CA and listed in a signed revocation list, but a client that never checks the list still accepts the certificate, and everything rests on the machine and the password that hold the issuing key.</strong></p>
+<p>The plain <a href="../local-certificate-authority">local-certificate-authority</a> project writes a small certificate authority in Java and ends with "in practice this is automated with ACME, as the -with-step-ca version shows". This one runs the real thing: <strong>step-ca</strong> and the <strong>step</strong> command (<code>brew install step</code>) with a JWK token provisioner and an ACME provisioner, a name policy, and a revocation list. Nothing is installed globally: every run starts a CA in a temporary folder on a free loopback port and stops it at the end. ACME validates a name by calling it back on <strong>port 80</strong>, so that port must be free. The tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>An authority that runs.</strong> A root and an issuing authority that may not create authorities; the CA's own https certificate is trusted only by a client that was given the root; the root key is an encrypted file.
+- <strong>A certificate with a token.</strong> A one-time token for <code>www.shop.localhost</code> gives a certificate that lasts <strong>24 hours</strong>; the token works once and only for its name; 2000 hours is refused; <code>pay.example</code> is refused by the <strong>policy</strong> (allow <code>localhost</code> and <code>*.shop.localhost</code>).
+- <strong>A certificate with ACME.</strong> The service asks through the ACME provisioner and the CA calls its name back on port 80; the same policy applies.
+- <strong>Renewal.</strong> <code>step ca renew</code> gives a new serial number and the same key; <code>step ca rekey</code> gives a new key; another certificate's key cannot renew.
+- <strong>Revocation, and the bill.</strong> A revoked certificate cannot be renewed and appears in the CA's signed list. A client that checks refuses it; a client that never checks accepts it; a client that wants to check and has no list refuses. The issuing key is online and the root key is on disk.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 (improper certificate validation), CWE-298 · RFC 8555 (ACME), RFC 5280 (certificates and CRLs).</p>
+<h2>The idea in everyday terms</h2>
+<p>A town office that issues day passes. You show a slip signed by your department, or you answer the phone at your own desk, and you get a pass for a day; the office will not issue a pass for a name outside the town; and a list of cancelled passes is only useful at the doors that read it.</p>
+<h2>The scenario</h2>
+<p>An online store runs its services on names under shop.localhost and wants certificates for them without buying any. The demo plays the CA and the teams that ask it for certificates.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A certificate authority that runs</td>
+<td>A root, an issuing authority, an https endpoint that only a client with the root can trust, and a root key in an encrypted file.</td>
+</tr>
+<tr>
+<td>2. A certificate for a service, with a token</td>
+<td>A one-time token gives a day-long certificate for its own name; reuse, another name, a long lifetime and a name outside the policy are refused.</td>
+</tr>
+<tr>
+<td>3. A certificate for a service, with ACME</td>
+<td>The service asks through the ACME provisioner, the CA calls its name back on port 80, and the same policy applies.</td>
+</tr>
+<tr>
+<td>4. Renewing before it ends</td>
+<td>Renewal with the certificate and its key gives a new serial number; rekeying gives a new key; another key cannot renew.</td>
+</tr>
+<tr>
+<td>5. Revocation, and the bill</td>
+<td>A revoked certificate cannot be renewed and appears in a signed list; only a client that checks refuses it, and the whole thing rests on one machine and one password.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>11 tests in <code>DemoRunsTest</code>, <code>StepCaTest</code>. The tests start one CA for the whole class and stop it (./gradlew integrationTest). They need the step command and step-ca (brew install step) and a free port 80.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>step-ca and step are the real programs. The CA runs in a temporary folder on a free loopback port; the ACME challenge is answered on port 80 by the step command itself. Serial numbers, keys, ports and folders are never printed; the demo takes about half a minute.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/local-certificate-authority-with-step-ca-explained.html">A Local Certificate Authority with step-ca, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Services ask the CA; clients trust the root and may read the list.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>StepCa runs the CA and the step command; Pki is the client's side.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A proof, a policy, a short life.</p>
+<p><img alt="How a certificate is issued" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="ACME issuance" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/local-certificate-authority-with-step-ca-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The CA is a high-value server:</strong> its password and its machine are what the trust rests on.</li>
+<li><strong>Every service needs a renewal job,</strong> and a job that stops is an outage in a day.</li>
+<li><strong>Revocation reaches only the clients that check,</strong> and a list must be fresh.</li>
+<li><strong>ACME proves control of a name, not who should have it:</strong> the policy and the tokens decide that.</li>
+<li><strong>Every client needs the root,</strong> installed from a source that cannot be changed on the way.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>For a single service with one certificate a year, a certificate from a public authority is simpler. A local authority pays off when there are many services, short lifetimes, and names that no public authority will certify.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li><code>step ca certificate</code> or <code>step ca renew</code> in a script.</li>
+<li><code>acme</code> as a provisioner name in a CA's configuration.</li>
+<li>A <code>root_ca.crt</code> copied into a trust store.</li>
+<li>A job that restarts a service after it renews a certificate.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the tools version of <a href="../local-certificate-authority">local-certificate-authority</a>, in the <a href="..">tls-in-practice</a> module. The next one, <a href="../tls-servers-in-practice-with-nginx-and-caddy">tls-servers-in-practice-with-nginx-and-caddy</a>, puts these certificates in front of the store.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
