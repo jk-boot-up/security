@@ -40,7 +40,8 @@ Developers check that a signature is valid and then read an assertion, without m
 | Tests | 10, all passing |
 | Demo output | 22 lines, identical on every run |
 | Acts | 4 |
+| Video | 06:27, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 
-`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output and `animation.html`; `concept.toml`.
+`README.md` and `README.html`, `docs/` with the problem statement, prerequisites, session guide, explained text, four diagram pages, threat model, spec, expected output, YouTube sheet, thumbnail and `animation.html`; `concept.toml`; `video/` with the scene script and voice settings.

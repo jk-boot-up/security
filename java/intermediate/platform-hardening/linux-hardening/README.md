@@ -73,6 +73,7 @@ Every version below is pinned in the project's build files and was the latest st
 | Gradle | 9.8.1 (wrapper) | build and run; nothing to install, the wrapper downloads it |
 | org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
+| videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material
 
@@ -82,7 +83,7 @@ Every version below is pinned in the project's build files and was the latest st
 | [Prerequisites](docs/prerequisites.md) | what you need to know first |
 | [Linux Hardening Checker, explained](docs/linux-hardening-explained.md) | the acts in prose |
 | [Session guide](docs/session.md) | a one-hour lesson with exercises |
-| [Animated walkthrough](docs/animation.html) | the acts step by step |
+| [Animated walkthrough](docs/animation.html) | the acts step by step, narrated |
 | [Threat model](docs/threat-model.md) | what is protected, who could harm it, and how, using STRIDE |
 | [Spec](docs/spec.md) | what this project must be true of |
 | [Expected output](docs/expected-output.txt) | the golden demo output every test and every port checks against |
@@ -110,6 +111,10 @@ Each round removes a kind of finding.
 
 
 ![An attacker uses a set-user-id shell](docs/images/sequence-diagram.png)
+
+### Video
+
+`video/linux-hardening-explained.mp4` (with `.m4a` audio and `.srt` subtitles) is built by `video/build_video.sh`. Rendered media is not committed.
 
 ## What it costs
 

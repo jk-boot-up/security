@@ -68,18 +68,27 @@ public final class Fixture implements AutoCloseable {
         Modes.set(f, mode);
     }
 
+    /** Overwrites a file the way an administrator would, keeping its mode: a file the fixer made read-only is made writable only for the write. */
+    private void replace(String rel, String content) throws IOException {
+        Path f = root.resolve(rel);
+        int mode = Modes.of(f);
+        Modes.set(f, 0600);
+        Files.writeString(f, content);
+        Modes.set(f, mode);
+    }
+
     /** The hardened configuration: what a person decides after reading the report. */
     public void hardenByHand() throws IOException {
-        Files.writeString(root.resolve("etc/ssh/sshd_config"), "PermitRootLogin no\nPasswordAuthentication no\nX11Forwarding no\nPermitEmptyPasswords no\n");
-        Files.writeString(root.resolve("etc/passwd"), """
+        replace("etc/ssh/sshd_config", "PermitRootLogin no\nPasswordAuthentication no\nX11Forwarding no\nPermitEmptyPasswords no\n");
+        replace("etc/passwd", """
                 root:x:0:0:root:/root:/bin/bash
                 daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
                 ana:x:1002:1002:Ana:/home/ana:/bin/bash
                 www:x:33:33:www:/var/www:/usr/sbin/nologin
                 """);
-        Files.writeString(root.resolve("etc/shadow"), "root:$6$salt$hash:19000:0:99999:7:::\nana:$6$salt$hash2:19000:0:99999:7:::\n");
-        Files.writeString(root.resolve("etc/sysctl.conf"), "kernel.randomize_va_space = 2\nnet.ipv4.tcp_syncookies = 1\nnet.ipv4.conf.all.accept_redirects = 0\n");
-        Files.writeString(root.resolve("proc/net/tcp"), """
+        replace("etc/shadow", "root:$6$salt$hash:19000:0:99999:7:::\nana:$6$salt$hash2:19000:0:99999:7:::\n");
+        replace("etc/sysctl.conf", "kernel.randomize_va_space = 2\nnet.ipv4.tcp_syncookies = 1\nnet.ipv4.conf.all.accept_redirects = 0\n");
+        replace("proc/net/tcp", """
                   sl  local_address rem_address   st tx_queue rx_queue
                    0: 00000000:0016 00000000:0000 0A 00000000:00000000
                    1: 0100007F:0CEA 00000000:0000 0A 00000000:00000000
