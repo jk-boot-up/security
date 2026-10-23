@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 124 projects. Planned: 28 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 125 projects. Planned: 27 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,18 +35,18 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **7** | **28** | **35** |
+| **Advanced** | | **8** | **27** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 2 | 2 | 4 |
-| | devsecops-pipelines | 0 | 4 | 4 |
+| | devsecops-pipelines | 1 | 3 | 4 |
 | | service-identity-and-zero-trust | 0 | 4 | 4 |
 | | applied-cryptography-and-pki | 0 | 5 | 5 |
 | | detection-engineering | 0 | 3 | 3 |
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **124** | **28** | **152** |
+| **All** | | **125** | **27** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 7 | 28 | 35 |
+| Advanced | Unclassified | 8 | 27 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **7** | **28** | **35** |
+| **All** | **Unclassified** | **8** | **27** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -306,7 +306,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | ---: | --- | --- | --- |
 | 127 | sast | *planned*: Static analysis: how taint tracking finds injection, writing a custom rule, triage | Semgrep, CodeQL CLI |
 | 128 | dast | *planned*: Scanning the running intermediate store, authenticated scans, and reading a report | OWASP ZAP |
-| 129 | secret-scanning | *planned*: Finding secrets in history and blocking them before push | gitleaks, pre-commit hooks |
+| 129 | [secret-scanning](advanced/devsecops-pipelines/secret-scanning) | Find a bank's secrets in the files and in the whole git history, compare a scanner you write with gitleaks, and block the next secret before it leaves the laptop | gitleaks, git hooks |
 | 130 | secure-pipeline | *planned*: A local pipeline with signed, reproducible builds, provenance and gates that fail closed | Gradle, cosign, SLSA provenance, a local Gitea and Woodpecker CI |
 
 ### 5. service-identity-and-zero-trust
