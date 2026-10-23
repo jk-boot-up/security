@@ -2,7 +2,7 @@
 
 ```
 src/main/java/com/jk/explore/security/httpsspring/
-├── Certificates.java     The demo keystores, made once with keytool (see infra/make-test-keystores.sh): a root CA's trust store, two server certificates for shop.example.test signed by it (the second stands for a renewed certificate), a client certificate, and an impostor's certificate signed by nobody
+├── Certificates.java     The demo keystores, made with keytool on the first build into build/ and never committed (see infra/make-test-keystores.sh): a root CA's trust store, two server certificates for shop.example.test signed by it (the second stands for a renewed certificate), a client certificate, and an impostor's certificate signed by nobody
 ├── HttpsSpringDemo.java  Runs the online store story in five numbered acts against real Spring Boot servers on the loopback interface
 ├── Reply.java            What a client saw: the status, the headers, the body, and what TLS negotiated
 ├── Shop.java             A running store: a Spring Boot server on two free loopback ports (HTTPS and plain HTTP), configured by properties that name SSL bundles
@@ -55,7 +55,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ## What the simulation got right, and what it left out
 
 The servers run on free loopback ports, so the demo prints only facts that do not depend on a port number. The shop's name, shop.example.test, resolves to this machine through a hosts file in the project that Gradle passes to the JVM.
-The keystores are made once by `infra/make-test-keystores.sh` with keytool, with a demo password, and are valid for a hundred years. Fingerprints are compared, not printed.
+The keystores are made on the first build by `infra/make-test-keystores.sh` with keytool, into `build/` and never committed, with a demo password, and are valid for a hundred years. Fingerprints are compared, not printed.
 
 ## Technologies and versions
 

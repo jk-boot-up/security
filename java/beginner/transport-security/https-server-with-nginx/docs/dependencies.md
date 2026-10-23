@@ -10,9 +10,9 @@ the web server and reverse proxy in front of the store. The image is pinned to a
 
 runs the container for the demo and for the tagged tests. Containers are started with --rm and always stopped at the end.
 
-## What OpenSSL 3.6.3 (script only) is
+## What OpenSSL 3.6.3 is
 
-`infra/make-test-pki.sh` used it once to make the demo root, the shop certificate, an impostor and Ana's client certificate. The files are committed; the root's private key was thrown away.
+`infra/make-test-pki.sh` uses it on the first build to make the demo root, the shop certificate, an impostor and Ana's client certificate, into build/. None of them is committed; the root's private key is thrown away.
 
 ## Why this project uses them
 

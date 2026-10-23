@@ -20,7 +20,7 @@ the web server inside the application. It does the TLS handshake and, with clien
 
 ## What keytool is
 
-the JDK tool that made the keystores, once. The script is infra/make-test-keystores.sh and the password is a demo value.
+the JDK tool that makes the keystores on the first build. The script is infra/make-test-keystores.sh, the output goes to build/ and the password is a demo value.
 
 ## Why this project uses them
 

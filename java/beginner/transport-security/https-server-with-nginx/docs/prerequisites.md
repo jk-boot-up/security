@@ -29,5 +29,5 @@ Pinned in the project's build files, and the latest stable releases when the pro
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | nginx (container image) | nginx:1.31.7-alpine | the web server and reverse proxy in front of the store, pinned to an exact version |
 | Docker | any recent Docker Engine or Docker Desktop | runs the nginx containers for the demo and the container tests |
-| OpenSSL (script only) | 3.6.3 | made the demo certificates once, in infra/make-test-pki.sh; not needed to run the project |
+| OpenSSL 3 | 3.6.3 | makes the demo certificates on the first build (infra/make-test-pki.sh, into build/) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |

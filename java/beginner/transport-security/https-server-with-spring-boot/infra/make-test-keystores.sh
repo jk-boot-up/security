@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Makes the demo's PKCS12 keystores once, with the JDK's keytool. The password is a demo value and the keys protect nothing.
 # A demo root CA signs two server certificates for shop.example.test (the second stands for a renewed certificate) and one client certificate.
-# The root's private key stays in a temporary folder and is thrown away; only what the demo needs is copied to src/main/resources.
+# The root's private key stays in a temporary folder and is thrown away. The build runs this once and writes into build/ (KEYSTORE_OUT);
+# nothing it makes is committed.
 set -euo pipefail
 PW=demo-password
-OUT="$(cd "$(dirname "$0")/.." && pwd)/src/main/resources"
+OUT="${KEYSTORE_OUT:-$(cd "$(dirname "$0")/.." && pwd)/build/generated/demo-keys}"
+mkdir -p "$OUT"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"

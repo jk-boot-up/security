@@ -12,7 +12,7 @@ import java.security.cert.Certificate;
 import java.util.HexFormat;
 
 /**
- * The demo keystores, made once with keytool (see infra/make-test-keystores.sh): a root CA's trust store, two server certificates for
+ * The demo keystores, made with keytool on the first build into build/ and never committed (see infra/make-test-keystores.sh): a root CA's trust store, two server certificates for
  * shop.example.test signed by it (the second stands for a renewed certificate), a client certificate, and an impostor's certificate signed by nobody.
  * The password is a demo value, and the keys protect nothing. They are copied to a folder because Spring's SSL bundles read files, and watch them for changes.
  */

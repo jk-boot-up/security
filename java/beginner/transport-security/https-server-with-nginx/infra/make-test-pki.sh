@@ -2,12 +2,13 @@
 # Makes the demo's certificates and keys once, with OpenSSL 3 and the JDK's keytool. Every secret here is a demo value and protects nothing.
 # A demo root CA signs the server certificate for shop.example.test and a client certificate for Ana. An impostor has the same name and
 # is signed by nobody anyone trusts. The root's private key stays in a temporary folder and is thrown away.
-# Output goes to src/main/resources/pki: root.pem, shop.crt, shop.key, impostor.crt, impostor.key, client.p12, trust.p12 (password: demo-password).
+# The build runs it once and writes into build/ (PKI_OUT); nothing it makes is committed. Output: root.pem, shop.crt, shop.key, impostor.crt, impostor.key, client.p12, trust.p12 (password: demo-password).
 set -euo pipefail
 OPENSSL="${OPENSSL:-/opt/homebrew/opt/openssl@3/bin/openssl}"
 [ -x "$OPENSSL" ] || OPENSSL=openssl
 PW=demo-password
-OUT="$(cd "$(dirname "$0")/.." && pwd)/src/main/resources/pki"
+OUT="${PKI_OUT:-$(cd "$(dirname "$0")/.." && pwd)/build/generated/demo-keys/pki}"
+mkdir -p "$OUT"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"

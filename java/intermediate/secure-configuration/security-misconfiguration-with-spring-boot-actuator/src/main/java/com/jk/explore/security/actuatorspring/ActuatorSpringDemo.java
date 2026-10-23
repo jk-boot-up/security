@@ -6,7 +6,7 @@ import java.util.List;
 /** Runs the store story in five numbered acts against real Spring Boot servers on the loopback interface. */
 public class ActuatorSpringDemo {
 
-    static final String PAYMENT_KEY = "sk_live_4f9a1c77demo";
+    static final String PAYMENT_KEY = "pay-live-4f9a1c77-demo-only";
     static final String DB_PASSWORD = "pg-demo-passw0rd";
 
     private static final Wire WIRE = new Wire();

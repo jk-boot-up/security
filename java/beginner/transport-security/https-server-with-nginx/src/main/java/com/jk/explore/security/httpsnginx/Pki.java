@@ -11,7 +11,7 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
-/** The demo's certificates and keys, made once by infra/make-test-pki.sh. The password is a demo value and the keys protect nothing. */
+/** The demo's certificates and keys, made on the first build by infra/make-test-pki.sh into build/ and never committed. The password is a demo value and the keys protect nothing. */
 final class Pki {
 
     static final char[] PASSWORD = "demo-password".toCharArray();

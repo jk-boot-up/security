@@ -7,7 +7,7 @@ src/main/java/com/jk/explore/security/httpsnginx/
 ├── HttpsNginxDemo.java  Runs the online store story in five numbered acts against real nginx containers and prints repeatable results
 ├── Nginx.java           One nginx container with a given configuration and the demo certificates, started for a demo and stopped afterwards
 ├── NginxConfig.java     Writes the nginx configuration for each version of the online store's front door
-├── Pki.java             The demo's certificates and keys, made once by infra/make-test-pki.sh
+├── Pki.java             The demo's certificates and keys, made on the first build by infra/make-test-pki.sh into build/ and never committed
 ├── Probe.java           Sends raw bytes to a port and reads the whole answer, so malformed requests can be sent that an HTTP client library would never send
 └── TlsClient.java       A Java HTTPS client that checks the certificate chain and the host name, the way a browser does
 ```
@@ -58,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ## What the simulation got right, and what it left out
 
 The demo and its golden-output test start real nginx containers, so they need a running Docker and run with `./gradlew integrationTest`. The default `./gradlew test` needs no Docker: it checks the generated configuration, the score, the demo certificates and the
-reply parser. The demo prints only facts that do not depend on port numbers or on random values. The certificates are made once by `infra/make-test-pki.sh` and the shop is named shop.example.test through a hosts file kept in the project.
+reply parser. The demo prints only facts that do not depend on port numbers or on random values. The certificates are made on the first build by `infra/make-test-pki.sh` into `build/` and are never committed, and the shop is named shop.example.test through a hosts file kept in the project.
 
 ## Technologies and versions
 
@@ -72,7 +72,7 @@ Every version below is pinned in the project's build files and was the latest st
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
 | nginx (container image) | nginx:1.31.7-alpine | the web server and reverse proxy in front of the store, pinned to an exact version |
 | Docker | any recent Docker Engine or Docker Desktop | runs the nginx containers for the demo and the container tests |
-| OpenSSL (script only) | 3.6.3 | made the demo certificates once, in infra/make-test-pki.sh; not needed to run the project |
+| OpenSSL 3 | 3.6.3 | makes the demo certificates on the first build (infra/make-test-pki.sh, into build/) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material
