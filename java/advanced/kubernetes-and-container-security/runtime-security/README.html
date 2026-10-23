@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runtime Security</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Runtime Security</h1>
+<pre><code>src/main/java/com/jk/explore/security/runtimesec/
+├── Alert.java                One finding: which rule, in which pod, and what was seen
+├── Audit.java                Reads the text records of Linux audit into events
+├── Cluster.java              A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── Event.java                One audited syscall of a process in a container: what ran (key exec), what was opened for writing (key write) or what was connected to (key connect)
+├── Falco.java                Falco, run as a container: first to check the rules file, then to try its driver on this machine's kernel
+├── Lab.java                  The bank's cluster, an outside server and the sensor, and what the sensor saw
+├── Pods.java                 The manifests of the bank's pods
+├── Rules.java                The three tests of the bank's runtime rules, the same ones as rules/bank-runtime-rules.yaml
+├── RuntimeSecurityDemo.java  
+├── Sensor.java               The sensor that stands in for Falco on a kernel that cannot run Falco's driver: Linux audit, switched on by a privileged container that shares the kernel's process view, copying the records of Kubernetes containers to a file we read back
+└── Sh.java                   Runs a program and returns what it printed, whether it worked or not
+</code></pre>
+<p><strong>On a real cluster (kind) a bank's payments pod does its normal work (a call to the ledger, a write to its log folder) and raises 0 alerts although the sensor saw all 3 kinds of syscall; then one shell opened with kubectl exec raises 1 alert, one program written to /usr/bin raises 1, one connection to a server outside the cluster raises 1, and the same write in a pod with a read-only root file system is refused and still raises 1; Falco 0.45.1 accepts the bank's 3 rules (falco --validate: yes) but its modern eBPF driver cannot start on Docker Desktop's kernel (no BTF: BPF_TRACE_RAW_TP is not supported), so the same 3 tests run on Linux audit records of that kernel.</strong></p>
+<p>Admission control and network policies decide what may start and what may talk. <strong>Runtime security</strong> watches what a running container actually does. This project runs a real cluster with <strong>kind</strong>, puts a bank's payments pod and a ledger pod in it, and detects three behaviours that a payments service must not show: <strong>a shell</strong>, <strong>a write where it never writes</strong> and <strong>a connection to an address it never calls</strong>. The rules are written for <strong>Falco</strong> and checked by Falco itself; the demo's sensor applies the same three tests to Linux audit records (<code>brew install kind kubectl</code>, Docker running). The demo makes a cluster, so it is tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Falco on this machine.</strong> Falco 0.45.1 accepts the bank's <strong>3 rules</strong>, but its modern eBPF driver cannot start on Docker Desktop's kernel (no BTF: <code>BPF_TRACE_RAW_TP</code> is not supported). The demo says so and uses Linux audit on the same kernel.
+- <strong>Normal work, 0 alerts.</strong> A call to the ledger and a write to the log folder are seen by the sensor (3 of 3 kinds) and raise <strong>0 alerts</strong>.
+- <strong>Three behaviours, 1 alert each.</strong> A shell opened with <code>kubectl exec</code>, a program written to <code>/usr/bin</code>, a connection to a server outside the cluster.
+- <strong>Prevent and detect.</strong> The same write in a pod with a read-only root file system is refused and still raises <strong>1 alert</strong>.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Detect (DE.CM) · NIST SP 800-53 SI-4 · CIS Kubernetes Benchmark 5 · MITRE ATT&amp;CK for Containers (execution, persistence, command and control).</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank branch with locks on the doors and a guest list at the entrance. Neither tells you that someone inside has opened the vault room, carried something out of the back door or phoned an unknown number. A camera that knows the normal routine tells you the moment it changes.</p>
+<h2>The scenario</h2>
+<p>A bank runs a payments service that serves requests, writes its log to one folder and calls the ledger database. It never needs a shell, never writes to the program folders and never calls any other address. The demo does the normal work, then each of the three things it must never do.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 6 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Falco on this machine</td>
+<td>Falco accepts the 3 rules, but its driver cannot start on this kernel.</td>
+</tr>
+<tr>
+<td>2. The service doing its work</td>
+<td>A call to the ledger and a write to the log folder are seen and raise 0 alerts.</td>
+</tr>
+<tr>
+<td>3. A shell in the container</td>
+<td>A shell opened with kubectl exec raises 1 alert.</td>
+</tr>
+<tr>
+<td>4. A write where it never writes</td>
+<td>A program written to /usr/bin raises 1 alert.</td>
+</tr>
+<tr>
+<td>5. A connection it never makes</td>
+<td>A connection to a server outside the cluster raises 1 alert.</td>
+</tr>
+<tr>
+<td>6. Prevent and detect</td>
+<td>A read-only root refuses the write, and the attempt still raises 1 alert.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>27 tests in <code>AuditTest</code>, <code>DemoRunsTest</code>, <code>PodsAndRulesFileTest</code>, <code>RulesTest</code>. The audit parsing, the three rules and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The cluster, the pods, the syscalls and the audit records are real, and Falco's own validator checks the rules. Falco's driver is the one thing that cannot run here, and the demo prints that instead of hiding it. The demo prints counts and pod names, never ids or addresses.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/runtime-security-explained.html">Runtime Security, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A pod is watched from the kernel.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Records, rules and the lab.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each audit record becomes an event and meets three rules.</p>
+<p><img alt="From a syscall to an alert" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A shell is opened" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/runtime-security-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A detector prevents nothing.</strong> It tells you, after the fact.</li>
+<li><strong>Every rule needs a baseline</strong> of what the service does, and a new feature makes the baseline wrong.</li>
+<li><strong>The driver needs the kernel's help.</strong> Falco's eBPF driver cannot load on every kernel.</li>
+<li><strong>A sensor that looks up the container afterwards can miss a short process.</strong></li>
+<li><strong>Alerts need an owner,</strong> or they become noise.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A cluster with no sensitive workload can start with admission control and network policies. Add runtime detection when a taken-over container would do harm, or when a rule says suspicious activity must be detected.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A container that ran a miner for a month.</li>
+<li>A rule that fired a hundred times a day and was muted.</li>
+<li>A debug shell left in production.</li>
+<li>A log line nobody read.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the third project of the <a href="..">kubernetes-and-container-security</a> module, after <a href="../kubernetes-admission-control">kubernetes-admission-control</a> and <a href="../kubernetes-network-policies">kubernetes-network-policies</a>. Those prevent; this one detects what gets through.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

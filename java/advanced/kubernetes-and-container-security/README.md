@@ -8,6 +8,7 @@ Admission, network policy, runtime detection and secrets on a local cluster.
 | --- | --- | --- |
 | 1 | [kubernetes-admission-control](kubernetes-admission-control) | Stop a bank's unsafe workloads at the door of a real Kubernetes cluster with Kyverno policies that validate, mutate, verify signed images and take exceptions |
 | 2 | [kubernetes-network-policies](kubernetes-network-policies) | Default-deny a bank's pods on a real Kubernetes cluster, allow only what the design lists, and measure every pair of pods against the design |
+| 3 | [runtime-security](runtime-security) | Detect a shell, an unexpected write and an unexpected outbound connection in a bank's payments pod on a real Kubernetes cluster, with Falco's rules and the Linux audit trail |
 | 4 | [kubernetes-secrets](kubernetes-secrets) | Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after encryption at rest, and how OpenBao and a bound token replace a long-lived secret |
 
 The module plan is in [`../../../docs/advanced-plan.md`](../../../docs/advanced-plan.md). Run a project as in the other tracks: `./gradlew test`, then `./gradlew run` (these make a cluster with kind and need Docker).

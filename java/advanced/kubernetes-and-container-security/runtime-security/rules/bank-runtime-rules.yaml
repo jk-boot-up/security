@@ -1,0 +1,40 @@
+# Falco rules for the bank's pods: the three behaviours a payments service must not show.
+# Checked with `falco --validate` (the demo does it). They run where Falco's driver can load
+# (a Linux host with kernel BTF, or the kernel module); the demo's own sensor applies the same three tests.
+
+# Addresses the payments service may call: the ledger service and the cluster DNS (filled in by the platform).
+- list: allowed_server_ips
+  items: ["10.96.0.10", "10.96.0.11"]
+
+- list: shell_names
+  items: [sh, bash, ash, dash, zsh]
+
+- macro: bank_pod
+  condition: container and k8s.ns.name = "bank"
+
+- rule: Shell in a bank container
+  desc: A shell started in a pod whose image needs none (the service is started without one).
+  condition: evt.type in (execve, execveat) and bank_pod and proc.name in (shell_names)
+  output: "Shell in container (pod=%k8s.pod.name command=%proc.cmdline)"
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+- rule: Unexpected write in a bank container
+  desc: A file opened for writing outside the folders the service writes to (its log folder and /tmp).
+  condition: >
+    open_write and bank_pod
+    and not fd.name startswith /var/log/payments/
+    and not fd.name startswith /tmp/
+    and not fd.name startswith /dev/
+  output: "Unexpected write (pod=%k8s.pod.name file=%fd.name command=%proc.cmdline)"
+  priority: WARNING
+  tags: [container, filesystem, mitre_persistence]
+
+- rule: Unexpected outbound connection from a bank container
+  desc: A connection to an address the service does not use.
+  condition: >
+    evt.type = connect and bank_pod and fd.typechar = 4
+    and not fd.sip in (allowed_server_ips) and not fd.sip = "127.0.0.1"
+  output: "Unexpected outbound connection (pod=%k8s.pod.name to=%fd.sip:%fd.sport command=%proc.cmdline)"
+  priority: WARNING
+  tags: [container, network, mitre_command_and_control]
