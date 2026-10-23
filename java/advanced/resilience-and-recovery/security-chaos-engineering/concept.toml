@@ -1,0 +1,439 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "security-chaos-engineering"
+level = "advanced"
+module = "resilience-and-recovery"
+title = "Security Chaos Engineering"
+short_title = "Security Chaos Engineering"
+package = "securitychaos"
+main_class = "SecurityChaosDemo"
+tagline = "Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told"
+bold = "A bank payments service has five controls that each call a dependency: a rate limit, a revocation check, authorization, a fraud score and an audit trail; with Toxiproxy between the service and each dependency, 10 experiments (down, slow, hung, reset, trickle, slow close) each test 2 hypotheses, that the control holds and that an alert fires; the first version holds 2 of 20: it approves 6 of 6 payments with authorization down, slow or reset, 6 of 6 without a fraud score, 6 of 6 with a revoked certificate and 40 of 40 from one account with the limit at 5, loses 20 of 20 audit records and raises 0 alerts; the hardened version holds 20 of 20: it approves 0 of 6, holds 6 of 6 payments for review, approves 5 of 40, loses 0 of 20 audit records and raises an alert after 3 failed probes; it still approves 1 of 1 payment whose certificate was revoked during an outage after a good answer was cached."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Security chaos engineering in Java with Toxiproxy: a bank payments service whose authorization, fraud score, audit trail, rate limit and revocation check are tested with injected latency, hangs, resets, a dead dependency and a trickle, a first version that fails open, a hardened version that fails closed, alerts counted in failed probes and a scoreboard of hypotheses held and broken."
+thumb_lines = ["SECURITY", "CHAOS"]
+thumb_code = "if (authz.isEmpty()) approve();"
+youtube_title = "Security Chaos Engineering: Do Your Controls Fail Closed? Toxiproxy Experiments"
+youtube_tags = ["security chaos engineering", "toxiproxy", "fail closed", "fail open", "resilience", "audit log", "rate limiting", "ocsp", "alerting", "java"]
+
+[readme]
+intro = """
+A security control is a dependency like any other: it is a call over a network, and it can be slow, hung, reset or gone. What the service does then is a decision somebody made, often by accident. This project asks the question by experiment. A **bank payments service** (built with the JDK `HttpServer`) calls five dependencies through **Toxiproxy**, which runs in Docker and is driven from Java through its HTTP API. Each of 10 experiments states a **steady state**, **injects a failure**, **observes** and gives a **verdict**, for two hypotheses: the control **fails closed**, and **an alert fires**. The first version has planted weaknesses; the hardened version fixes them. The demo needs Docker and the `ghcr.io/shopify/toxiproxy` image (a few MB) and is tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Fail open.** With authorization down, slow or reset the first version approves **6 of 6** payments; the hardened one approves **0 of 6**.
+- **Unscreened payments.** With the fraud service hung or on a trickle **6 of 6** are approved without a score; the hardened version holds **6 of 6** for review.
+- **Silent loss.** A burst of 20 decisions while the audit sink is down loses **20 of 20** records in the first version and **0 of 20** in the hardened one.
+- **Limits and revocation.** One account gets **40 of 40** payments through a limit of 5 when the store resets, against **5 of 40**; a revoked certificate is approved **6 of 6** when the responder is down or slow, against **0 of 6**.
+- **Alerts.** The first version raises **0** alerts; the hardened version raises one after **3** failed probes, and none for a slow close that costs nothing. Scoreboard: **2 of 20** hypotheses held against **20 of 20**.
+
+**Maps to:** NIST SP 800-53 SI-13, SC-24 (fail in known state), AU-5 (response to audit processing failures), CP-10 · OWASP ASVS V7 and V11 · MITRE ATT&CK T1562 (impair defenses) · Principles of Chaos Engineering.
+"""
+analogy = """
+A fire drill for the locks. You do not wait for a real power cut to find out whether the doors open or stay shut: you cut the power on purpose, with the building watched, and write down what each door did and whether the alarm rang.
+"""
+scenario = """
+A bank's payments service checks every payment against five controls. In a real incident the dependencies fail one at a time. The demo breaks them one at a time on purpose, and counts what the service approves, what it loses and what it reports.
+"""
+costs = [
+    "**Experiments need a safe place:** a copy of the service, not production at first.",
+    "**Fail closed costs customers:** payments wait or are refused while a dependency is down.",
+    "**Probes see failures, not every degradation:** a slow close passes them.",
+    "**A cache or fallback has its own gap,** like a certificate revoked during an outage.",
+    "**Injected failures are tidy;** real ones are messier.",
+]
+too_much = """
+A service with no dependencies that guard anything needs no drill. Start with the controls that, if they quietly stopped, would turn a bad payment into an approved one.
+"""
+met_before = [
+    "A try and catch that returns true.",
+    "A timeout that falls back to allow.",
+    "A log buffer that drops when it is full.",
+    "A revocation check that soft-fails.",
+]
+where = """
+This is a project of the [resilience-and-recovery](..) module. The earlier modules built the controls; this one asks what they do when they are hurt. It uses the same idea as ransomware resilience: assume the failure and measure the response.
+"""
+twin = """
+Toxiproxy is real and runs in Docker. The payments service and its five dependencies are the project's own small programs; the failures are injected on the real connections between them. Nothing is simulated in the service's own code.
+"""
+test_note = "The service, the audit trails and the monitor are tested with stub dependencies and no Docker. The demo starts Toxiproxy (./gradlew integrationTest)."
+
+[[act]]
+title = "Steady state"
+summary = "Before every experiment four ordinary payments give the expected answers and 4 of 4 audit records arrive."
+detail = """
+A chaos experiment starts from a steady state that is checked, not assumed. Two good payments are approved, a risky one is refused by the fraud score and a payment with a revoked certificate is refused, and 4 of 4 audit records reach the sink. Both versions pass this in all 10 experiments, so any later difference is caused by the failure.
+"""
+speech = """
+First demo: the steady state. [[slnc 400]] Four ordinary payments, four right answers, four audit records. [[slnc 600]] Both versions pass, so the difference comes from the failure.
+"""
+rows = { steady = "active ok" }
+console = [
+    ["steady state before: yes", "ok"],
+    ["audit records: 4 of 4", "ok"],
+    ["both versions pass, 10 of 10", "ok"],
+]
+
+[[act]]
+title = "Authorization and fraud"
+summary = "The first version approves 6 of 6 payments with authorization down, slow or reset, and 6 of 6 without a fraud score; the hardened one approves 0 and holds 6 for review."
+detail = """
+Toxiproxy refuses the connection, holds every answer back 5 seconds, resets the connection, accepts and sends nothing, or trickles the answer at 1 KB per second, while the service has a deadline of under a second. The first version reads an unreachable authorization service as yes and an unreachable fraud service as a clean score. The hardened version denies, or holds the payment for review.
+"""
+speech = """
+Second demo: authorization and fraud. [[slnc 400]] Down, slow, reset, hung, on a trickle. [[slnc 600]] The first version says yes every time. [[slnc 600]] The hardened one says no, or waits for a person.
+"""
+rows = { authz = "active wrong" }
+console = [
+    ["authorization down, slow, reset: approved 6 of 6", "bad"],
+    ["fraud hung or trickling: unscreened 6 of 6", "bad"],
+    ["hardened: approved 0 of 6, review 6", "ok"],
+]
+
+[[act]]
+title = "Audit, limit and revocation"
+summary = "The first version loses 20 of 20 audit records, lets 40 of 40 through a limit of 5 and approves 6 of 6 revoked certificates; the hardened one loses 0 and approves 5 of 40 and 0 of 6."
+detail = """
+With the audit sink down for a burst of 20 decisions the first version drops them from a small buffer and nobody knows; the hardened version writes a journal first and sends it when the sink is back. When the rate-limit store resets connections the first version has no limit; the hardened one counts in its own process. When the revocation responder is down or slow the first version reads silence as not revoked; the hardened one refuses.
+"""
+speech = """
+Third demo: audit, limit and revocation. [[slnc 400]] Twenty audit records lost without a sound. [[slnc 600]] A limit of five that lets forty through. [[slnc 600]] A revoked certificate accepted because nobody answered.
+"""
+rows = { audit = "active wrong" }
+console = [
+    ["audit records lost: 20 of 20 against 0 of 20", "bad"],
+    ["one account, limit 5: 40 of 40 against 5 of 40", "bad"],
+    ["revoked certificate: 6 of 6 against 0 of 6", "bad"],
+]
+
+[[act]]
+title = "Does anybody hear it?"
+summary = "The first version raises 0 alerts; the hardened version raises one after 3 failed probes, and none for a slow close."
+detail = """
+A monitor probes the health endpoint of every dependency through its proxy. Three failed probes in a row raise one alert, so the delay is counted in probes and does not depend on the clock. The first version has no monitor, so 9 of the 9 outages that needed an alert were never reported. The slow close of the audit sink does not fail a probe, and the hardened version raises no false alarm for it.
+"""
+speech = """
+Fourth demo: does anybody hear it? [[slnc 400]] Three failed probes, then one alert. [[slnc 600]] The first version has no monitor at all. [[slnc 600]] And a harmless slow close raises nothing.
+"""
+rows = { alert = "active ok" }
+console = [
+    ["first version: 9 of 9 alerts missing", "bad"],
+    ["hardened: alert after 3 failed probes", "ok"],
+    ["slow close: no false alarm", "ok"],
+]
+
+[[act]]
+title = "The scoreboard"
+summary = "Hypotheses held: 2 of 20 for the first version, 20 of 20 for the hardened one, with one gap measured: 1 of 1 certificate revoked during an outage is approved."
+detail = """
+The scoreboard lists the 10 experiments with two verdicts each. The first version holds 2 of 20 hypotheses and the hardened version 20 of 20. The hardened version still has a gap that the experiments measure: a certificate whose last cached answer was good and which is revoked while the responder is down is approved, 1 of 1. Fail closed also has a price: the payments are refused or wait in review while a dependency is down.
+"""
+speech = """
+Fifth demo: the scoreboard. [[slnc 400]] Two of twenty hypotheses held, then twenty of twenty. [[slnc 600]] And one gap that is still open, measured and written down.
+"""
+rows = { score = "active ok" }
+console = [
+    ["held: 2 of 20 against 20 of 20", "ok"],
+    ["stale cache: revoked during outage approved 1 of 1", "bad"],
+    ["fail closed costs: payments wait in review", "ok"],
+]
+
+[animation]
+subtitle = "A bank's controls, hurt on purpose."
+boxes = [
+    ["steady", "Steady state", "4 of 4"],
+    ["authz", "Authorization and fraud", "6 of 6"],
+    ["audit", "Audit, limit and revocation", "20 of 20"],
+    ["alert", "Does anybody hear it?", "3 probes"],
+    ["score", "The scoreboard", "2, then 20"],
+]
+
+[docs.problem]
+scenario = """
+A bank wants to know what its payments service does when the controls it depends on fail, before an attacker or an outage shows it.
+"""
+naive = """
+Read the code and trust that the exception handlers are right.
+"""
+deliver = [
+    "A payments service whose five dependencies are reached through Toxiproxy.",
+    "Experiments with a steady state, an injected failure, an observation and a verdict.",
+    "A first version with planted weaknesses and a hardened one.",
+    "A monitor whose alert delay is counted in probes, and a scoreboard.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "Docker, to run Toxiproxy",
+]
+not_required = [
+    "A cluster",
+    "A cloud account",
+]
+install = ["docker pull ghcr.io/shopify/toxiproxy"]
+
+[docs.session]
+objectives = [
+    "write a chaos experiment as a steady state, an injected failure, an observation and a verdict",
+    "inject down, slow, hung, reset, trickle and slow-close failures with Toxiproxy from Java",
+    "tell fail open from fail closed and count what each approves, loses or leaves unscreened",
+    "measure alert latency in failed probes and keep a scoreboard of hypotheses",
+]
+walkthrough = """
+Run the demo and read E1 for both versions. Then find the experiment where both versions hold, and say why a slow close is not a failure the probes should report.
+"""
+exercises = [
+    "Add a circuit breaker to authorization and rerun E1 to E3.",
+    "Add an experiment that makes the audit sink slow instead of down.",
+    "Make the cache of revocation answers expire after a number of payments and measure the gap again.",
+    "Write the runbook entry for payments held for review.",
+]
+
+[docs.explained]
+sentence = """
+Break the control on purpose, count what the service does, and make sure someone is told.
+"""
+verdict = """
+List the controls that call a dependency, write a hypothesis for each, inject the failures with a proxy, count approvals, losses and unscreened payments, add a probe-based alert for every dependency, and keep the scoreboard in the build.
+"""
+recognise = [
+    "A catch block that returns the permissive answer.",
+    "A bounded in-memory queue in front of an audit sink.",
+    "A revocation check described as best effort.",
+    "A dashboard nobody was paged from.",
+]
+
+[spec]
+purpose = """
+Teach security chaos engineering on a small bank service: fail closed or open, silent loss, unscreened payments, soft-fail revocation and alerts, each measured under injected failure.
+"""
+nongoals = [
+    "Load testing.",
+    "Chaos in production.",
+    "A full monitoring stack.",
+]
+problem = """
+Security controls are tested when they work and rarely when their dependencies fail.
+"""
+roles = [["The payments service", "`BankPayments`"], ["The five dependencies", "`Backends`"], ["Toxiproxy from Java", "`Toxiproxy`, `Fault`"], ["The audit trails", "`DroppingAudit`, `SpooledAudit`"], ["The monitor", "`Monitor`"], ["The experiments and scoreboard", "`Experiment`, `Lab`"]]
+requirements = [
+    "Every dependency is reached through its own Toxiproxy proxy.",
+    "Each experiment checks a steady state, injects one failure, observes and gives a verdict.",
+    "The first version has planted weaknesses and fails several experiments.",
+    "The hardened version holds every hypothesis.",
+    "Alert delay is counted in failed probes.",
+    "The demo prints counts and verdicts only, the same on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "The service reaches every dependency through a proxy that can hurt it."
+nodes = [
+    { id = "service", label = "Payments service", sub = "v1 and hardened", col = 0, row = 0, colour = "accent" },
+    { id = "toxi", label = "Toxiproxy", sub = "5 proxies", col = 1, row = 0, colour = "amber" },
+    { id = "deps", label = "Dependencies", sub = "authz, fraud, audit, limit, ocsp", col = 2, row = 0, colour = "client" },
+    { id = "monitor", label = "Monitor", sub = "3 failed probes", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "service", to = "toxi", label = "calls" },
+    { from = "toxi", to = "deps", label = "forwards, or hurts" },
+    { from = "monitor", to = "toxi", label = "probes" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The service, its audit trail and the monitor."
+nodes = [
+    { id = "pay", label = "BankPayments", sub = ["pay()", "decide()"], col = 0, row = 0, colour = "accent" },
+    { id = "audit", label = "AuditTrail", sub = ["record()", "flush()"], col = 1, row = 0, colour = "amber" },
+    { id = "monitor", label = "Monitor", sub = ["round()", "alerts()"], col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "pay", to = "audit", label = "records to" },
+    { from = "monitor", to = "pay", label = "watches the dependencies of" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a failure to a verdict"
+caption = "Each step produces something that can be counted."
+nodes = [
+    { id = "inject", label = "Inject", sub = "latency, reset, down", col = 0, row = 0, colour = "amber" },
+    { id = "observe", label = "Observe", sub = "approved, lost, unscreened", col = 1, row = 0, colour = "accent" },
+    { id = "verdict", label = "Verdict", sub = "held or broken", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "inject", to = "observe", label = "payments run" },
+    { from = "observe", to = "verdict", label = "compare with hypothesis" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "An authorization outage"
+participants = ["Service", "Toxiproxy", "Authorization"]
+steps = [
+    ["Service", "Toxiproxy", "check payment"],
+    ["Toxiproxy", "Authorization", "refused: proxy disabled"],
+    ["Toxiproxy", "Service", "connection closed", "reply"],
+    ["Service", "Service", "hardened: deny, first version: approve"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "An alert from probes"
+participants = ["Monitor", "Toxiproxy", "Operator"]
+steps = [
+    ["Monitor", "Toxiproxy", "probe 1 fails"],
+    ["Monitor", "Toxiproxy", "probe 2 fails"],
+    ["Monitor", "Toxiproxy", "probe 3 fails"],
+    ["Monitor", "Operator", "alert after 3 failed probes"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+    { label = "Bank", nodes = ["service", "controls"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker or outage", sub = "makes a control fail", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "service", label = "Payments service", sub = "decides under failure", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "controls", label = "Controls", sub = "authz, fraud, audit, limit, ocsp", col = 2, row = 0, colour = "amber", threats = ["T2", "T3"] },
+]
+edges = [
+    { from = "attacker", to = "controls", label = "slow, drop, reset", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "service", to = "controls", label = "calls", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+The decision a payments service takes when a control it calls cannot answer. It does not cover the controls' own correctness.
+"""
+assets = [
+    "Approved payments.",
+    "Audit records.",
+    "The limit on one account.",
+]
+actors = [
+    "An attacker who degrades a dependency.",
+    "An outage.",
+    "An operator.",
+]
+boundaries = [
+    "The network between the service and each dependency.",
+]
+assumptions = [
+    "The experiments run on a copy of the service.",
+]
+out_of_scope = [
+    "Attacks on the proxy.",
+    "Load and capacity.",
+]
+tests = [
+    "`PaymentsTest` runs both versions against stub dependencies, the audit trails and the deadline with the JDK only.",
+    "`MonitorTest` checks that an alert comes after exactly 3 failed probes.",
+    "`DemoRunsTest` starts Toxiproxy and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is the ransomware resilience work.
+"""
+
+[[threat]]
+id = "T1"
+stride = "D"
+threat = "A dependency is slowed or dropped on purpose"
+where = "the network path"
+control = "Fail closed and a deadline on every call"
+residual = "Payments wait in review"
+
+[[threat]]
+id = "T2"
+stride = "T"
+threat = "The service reads silence as permission"
+where = "the decision code"
+control = "Deny, review or a local fallback"
+residual = "A stale cache of revocation answers"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "A failed control is not reported"
+where = "operations"
+control = "Probes with an alert after 3 failures"
+residual = "Degradations the probes do not see"
+
+[poster]
+headline = [["SECURITY", "text"], ["CHAOS", "accent"]]
+taglines = [["Inject failures into the security controls of a bank payments service with Toxiproxy and c", "gold"]]
+before = { code = "if (authz.isEmpty()) approve();", note = "approved 6 of 6, alerts 0", tag = "BEFORE" }
+after = { code = "if (authz.isEmpty()) deny();", note = "approved 0 of 6, alert after 3 probes", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Security Chaos Engineering"
+narration = "Hello, and welcome. [[slnc 400]] This video explains security chaos engineering, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A bank payments service has five controls that each call a dependency: a rate limit, a revocation check, authorization, a fraud score and an audit trail; with Toxiproxy between the service and each dependency, 10 experiments (down, slow, hung, reset, trickle, slow close) each test 2 hypotheses, that the control holds and that an alert fires; the first version holds 2 of 20: it approves 6 of 6 payments with authorization down, slow or reset, 6 of 6 without a fraud score, 6 of 6 with a revoked certificate and 40 of 40 from one account with the limit at 5, loses 20 of 20 audit records and raises 0 alerts; the hardened version holds 20 of 20: it approves 0 of 6, holds 6 of 6 payments for review, approves 5 of 40, loses 0 of 20 audit records and raises an alert after 3 failed probes; it still approves 1 of 1 payment whose certificate was revoked during an outage after a good answer was cached. [[slnc 600]] Think of it this way. [[slnc 300]] A fire drill for the locks. You do not wait for a real power cut to find out whether the doors open or stay shut: you cut the power on purpose, with the building watched, and write down what each door did and whether the alarm rang. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Write a chaos experiment as a steady state, an injected failure, an observation and a verdict. [[slnc 300]] Inject down, slow, hung, reset, trickle and slow-close failures with Toxiproxy from Java. [[slnc 300]] Tell fail open from fail closed and count what each approves, loses or leaves unscreened."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's payments service checks every payment", "against five controls. In a real incident the", "dependencies fail one at a time. The demo breaks", "them one at a time on purpose, and counts what", "the service approves, what it loses and what it", "reports."]
+narration = "Here is the scenario. [[slnc 400]] A bank's payments service checks every payment against five controls. In a real incident the dependencies fail one at a time. The demo breaks them one at a time on purpose, and counts what the service approves, what it loses and what it reports."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Experiments need a safe place: a copy of the service", "Fail closed costs customers: payments wait or are refused while a dependency is down", "Probes see failures", "A cache or fallback has its own gap", "Injected failures are tidy"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Experiments need a safe place: a copy of the service, not production at first. [[slnc 500]] Fail closed costs customers: payments wait or are refused while a dependency is down. [[slnc 500]] Probes see failures, not every degradation: a slow close passes them. [[slnc 500]] A cache or fallback has its own gap, like a certificate revoked during an outage. [[slnc 500]] Injected failures are tidy, real ones are messier."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The payments service: BankPayments", "The five dependencies: Backends", "Toxiproxy from Java: Toxiproxy, Fault", "The audit trails: DroppingAudit, SpooledAudit", "The monitor: Monitor"]
+narration = "Here is who does what in the code. [[slnc 400]] The payments service is in BankPayments. [[slnc 500]] The five dependencies is in Backends. [[slnc 500]] Toxiproxy from Java is in Toxiproxy, Fault. [[slnc 500]] The audit trails is in DroppingAudit, SpooledAudit. [[slnc 500]] The monitor is in Monitor."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A catch block that returns the permissive answer", "A bounded in-memory queue in front of an audit sink", "A revocation check described as best effort", "A dashboard nobody was paged from"]
+narration = "You have probably met this already. [[slnc 400]] A catch block that returns the permissive answer. [[slnc 500]] A bounded in-memory queue in front of an audit sink. [[slnc 500]] A revocation check described as best effort. [[slnc 500]] A dashboard nobody was paged from."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Write a chaos experiment as a steady state, an injected failure, an observation and a verdict", "Inject down, slow, hung, reset, trickle and slow-close failures with Toxiproxy from Java", "Tell fail open from fail closed and count what each approves, loses or leaves unscreened", "Measure alert latency in failed probes and keep a scoreboard of hypotheses"]
+narration = "So, how do you use it? [[slnc 400]] List the controls that call a dependency, write a hypothesis for each, inject the failures with a proxy, count approvals, losses and unscreened payments, add a probe-based alert for every dependency, and keep the scoreboard in the build."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's security chaos engineering. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Break the control on purpose, count what the service does, and make sure someone is told. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a circuit breaker to authorization and rerun E1 to E3. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

@@ -1,0 +1,167 @@
+--- the service under test
+a bank payments service with 5 controls, each reached through its own Toxiproxy proxy: rate limit, certificate revocation, authorization, fraud score, audit trail
+experiments: 10, each with 2 hypotheses (the control holds, the alert fires)
+call deadline: bounded, failures injected: down, latency, hang, reset, trickle, slow close
+=== first version
+--- E1 authorization service down
+hypothesis: no payment is approved while authorization cannot be reached
+injected: authorization, the proxy is disabled, connections are refused
+steady state before: yes
+observed: approved 6 of 6
+control: BROKEN, fails open
+alert: no monitor, none raised -> BROKEN
+--- E2 authorization service slow
+hypothesis: no payment is approved when the authorization answer comes after the deadline
+injected: authorization, every answer is held back 5000 ms
+steady state before: yes
+observed: approved 6 of 6
+control: BROKEN, fails open
+alert: no monitor, none raised -> BROKEN
+--- E3 authorization connection reset
+hypothesis: no payment is approved when the authorization connection is reset
+injected: authorization, the connection is reset by the peer
+steady state before: yes
+observed: approved 6 of 6
+control: BROKEN, fails open
+alert: no monitor, none raised -> BROKEN
+--- E4 fraud service hangs
+hypothesis: no payment is approved without a fraud score
+injected: fraud, the connection is accepted and then nothing is ever sent
+steady state before: yes
+observed: approved without a fraud score 6 of 6, held for review 0
+control: BROKEN, payments go unscreened
+alert: no monitor, none raised -> BROKEN
+--- E5 fraud service on a trickle
+hypothesis: no payment is approved without a fraud score when the answer arrives too slowly
+injected: fraud, the answer trickles at 1 KB per second
+steady state before: yes
+observed: approved without a fraud score 6 of 6, held for review 0
+control: BROKEN, payments go unscreened
+alert: no monitor, none raised -> BROKEN
+--- E6 audit sink down during a burst
+hypothesis: every decision is in the audit sink once the sink is back
+injected: audit, the proxy is disabled, connections are refused
+steady state before: yes
+observed: payments approved 20 of 20, audit records lost 20 of 20
+control: BROKEN, audit records silently lost
+alert: no monitor, none raised -> BROKEN
+--- E7 audit sink closes slowly
+hypothesis: a slow close loses no audit record and raises no false alarm
+injected: audit, the connection closes 3000 ms after the answer
+steady state before: yes
+observed: payments approved 4 of 4, audit records lost 0 of 4
+control: held
+alert: no monitor, none raised -> held
+--- E8 rate-limit store resets connections
+hypothesis: one account never gets more than 5 payments approved in a burst
+injected: ratelimit, the connection is reset by the peer
+steady state before: yes
+observed: approved 40 of 40 from one account, limit 5
+control: BROKEN, the limit disappears
+alert: no monitor, none raised -> BROKEN
+--- E9 revocation responder down
+hypothesis: a payment signed with a revoked certificate is never approved
+injected: revocation, the proxy is disabled, connections are refused
+steady state before: yes
+observed: approved with a revoked certificate 6 of 6
+control: BROKEN, the check soft-fails
+alert: no monitor, none raised -> BROKEN
+--- E10 revocation responder slow
+hypothesis: a payment signed with a revoked certificate is never approved when the answer is late
+injected: revocation, every answer is held back 5000 ms
+steady state before: yes
+observed: approved with a revoked certificate 6 of 6
+control: BROKEN, the check soft-fails
+alert: no monitor, none raised -> BROKEN
+scoreboard, first version: held 2 of 20, broken 18
+=== hardened version
+--- E1 authorization service down
+hypothesis: no payment is approved while authorization cannot be reached
+injected: authorization, the proxy is disabled, connections are refused
+steady state before: yes
+observed: approved 0 of 6
+control: held
+alert: raised for authorization after 3 failed probes -> held
+--- E2 authorization service slow
+hypothesis: no payment is approved when the authorization answer comes after the deadline
+injected: authorization, every answer is held back 5000 ms
+steady state before: yes
+observed: approved 0 of 6
+control: held
+alert: raised for authorization after 3 failed probes -> held
+--- E3 authorization connection reset
+hypothesis: no payment is approved when the authorization connection is reset
+injected: authorization, the connection is reset by the peer
+steady state before: yes
+observed: approved 0 of 6
+control: held
+alert: raised for authorization after 3 failed probes -> held
+--- E4 fraud service hangs
+hypothesis: no payment is approved without a fraud score
+injected: fraud, the connection is accepted and then nothing is ever sent
+steady state before: yes
+observed: approved without a fraud score 0 of 6, held for review 6
+control: held
+alert: raised for fraud after 3 failed probes -> held
+--- E5 fraud service on a trickle
+hypothesis: no payment is approved without a fraud score when the answer arrives too slowly
+injected: fraud, the answer trickles at 1 KB per second
+steady state before: yes
+observed: approved without a fraud score 0 of 6, held for review 6
+control: held
+alert: raised for fraud after 3 failed probes -> held
+--- E6 audit sink down during a burst
+hypothesis: every decision is in the audit sink once the sink is back
+injected: audit, the proxy is disabled, connections are refused
+steady state before: yes
+observed: payments approved 20 of 20, audit records lost 0 of 20
+control: held
+alert: raised for audit after 3 failed probes -> held
+--- E7 audit sink closes slowly
+hypothesis: a slow close loses no audit record and raises no false alarm
+injected: audit, the connection closes 3000 ms after the answer
+steady state before: yes
+observed: payments approved 4 of 4, audit records lost 0 of 4
+control: held
+alert: none in 4 probe rounds -> held
+--- E8 rate-limit store resets connections
+hypothesis: one account never gets more than 5 payments approved in a burst
+injected: ratelimit, the connection is reset by the peer
+steady state before: yes
+observed: approved 5 of 40 from one account, limit 5
+control: held
+alert: raised for ratelimit after 3 failed probes -> held
+--- E9 revocation responder down
+hypothesis: a payment signed with a revoked certificate is never approved
+injected: revocation, the proxy is disabled, connections are refused
+steady state before: yes
+observed: approved with a revoked certificate 0 of 6
+control: held
+alert: raised for revocation after 3 failed probes -> held
+--- E10 revocation responder slow
+hypothesis: a payment signed with a revoked certificate is never approved when the answer is late
+injected: revocation, every answer is held back 5000 ms
+steady state before: yes
+observed: approved with a revoked certificate 0 of 6
+control: held
+alert: raised for revocation after 3 failed probes -> held
+scoreboard, hardened version: held 20 of 20, broken 0
+--- the experiment scoreboard
+E1   authorization service down               first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E2   authorization service slow               first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E3   authorization connection reset           first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E4   fraud service hangs                      first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E5   fraud service on a trickle               first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E6   audit sink down during a burst           first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E7   audit sink closes slowly                 first: control held   alert held   | hardened: control held   alert held  
+E8   rate-limit store resets connections      first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E9   revocation responder down                first: control BROKEN alert BROKEN | hardened: control held   alert held  
+E10  revocation responder slow                first: control BROKEN alert BROKEN | hardened: control held   alert held  
+hypotheses held: first version 2 of 20, hardened version 20 of 20
+--- what the hardened version still accepts
+certificate revoked while the responder is down, last answer was good: approved 1 of 1
+--- the bill
+a control that cannot be reached must decide: the first version decided yes on authorization, fraud, rate limit and revocation
+an audit buffer that drops is a control that fails silently: the lost records are only found by counting them
+an alert is a control too: without probes, 9 of the 9 outages that needed one were never reported
+fail closed has a price: payments wait in review or are refused while the dependency is down

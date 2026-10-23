@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 148 projects. Planned: 4 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 149 projects. Planned: 3 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,7 +35,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **31** | **4** | **35** |
+| **Advanced** | | **32** | **3** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
@@ -44,9 +44,9 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | applied-cryptography-and-pki | 5 | 0 | 5 |
 | | detection-engineering | 3 | 0 | 3 |
 | | offensive-security-methodology | 3 | 1 | 4 |
-| | resilience-and-recovery | 1 | 1 | 2 |
+| | resilience-and-recovery | 2 | 0 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **148** | **4** | **152** |
+| **All** | | **149** | **3** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 31 | 4 | 35 |
+| Advanced | Unclassified | 32 | 3 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **31** | **4** | **35** |
+| **All** | **Unclassified** | **32** | **3** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -350,7 +350,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
 | 147 | [ransomware-resilience](advanced/resilience-and-recovery/ransomware-resilience) | Keep a bank's ledger backups where an attacker with the backup credentials cannot destroy them: object lock, separate credentials, a second store, a guard against poisoned backups, and a restore exercise with a recovery time and point | RustFS object lock, AWS SDK |
-| 148 | security-chaos-engineering | *planned*: Injecting failures into security controls and checking that they fail closed and alert | Toxiproxy, the intermediate store |
+| 148 | [security-chaos-engineering](advanced/resilience-and-recovery/security-chaos-engineering) | Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told | Toxiproxy |
 
 ### 10. governance-risk-and-compliance
 
