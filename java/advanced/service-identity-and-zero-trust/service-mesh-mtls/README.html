@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Service Mesh and Automatic mTLS</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Service Mesh and Automatic mTLS</h1>
+<pre><code>src/main/java/com/jk/explore/security/meshmtls/
+├── CertInfo.java             What a workload certificate says: who it names and for how long it is valid
+├── Cluster.java              A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── Design.java               Which workload may call which, as the design says, and a measured matrix compared with it
+├── Lab.java                  The bank's workloads on a real cluster with Linkerd installed, and the measurements of who can call whom
+├── Linkerd.java              The Linkerd release the demo uses, downloaded from the project's own GitHub releases into build/ the first time
+├── Metrics.java              Reads a proxy's own counters (Prometheus text) and sums one counter by the identity on the other end of the connection
+├── Policies.java             Linkerd's policy objects: a Server names a port of a workload, an AuthorizationPolicy says which mesh identities may use it
+├── Service.java              A workload of the bank: the namespace it runs in, its name and the ServiceAccount its pod runs as
+├── ServiceMeshMtlsDemo.java  
+├── Sh.java                   Runs a program and returns what it printed, whether it worked or not
+└── Sniffer.java              A packet capture run beside the cluster's node (sharing its network and process space), the way someone with root on the node would
+</code></pre>
+<p><strong>On a real kind cluster with Linkerd (edge-26.10.1), a call from web to payments shows the account number on the wire before the proxies (yes) and not after (no), and each proxy counts the other end by certificate: payments sees web.bank.serviceaccount.identity.linkerd.cluster.local, web sees payments, so both ends proved who they are; all 4 workloads hold a certificate named from their ServiceAccount; with mutual TLS alone 16 of 16 caller and service pairs answer (14 unwanted, 4 of 4 from a pod outside the mesh, and the node itself gets HTTP 200); a Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs (2 of 16, 0 unwanted, 0 missing) and refuse the others with HTTP 403, including the pod outside the mesh and the node; the mesh still lets an allowed web send an injection string through intact, shows the account number to root on the node between the proxy and the app, leaves a call to a pod outside the mesh readable, and gives a new pod that runs as the payments ServiceAccount payments' access (HTTP 200) while a ServiceAccount of the same name in another namespace gets 403; a certificate issued for 5 minutes (Linkerd's default is 24 hours) is renewed with the same name and no restart, and the trust anchor is valid for 365 days.</strong></p>
+<p>A service mesh puts a proxy beside every pod. The proxies get a <strong>certificate for the pod from its ServiceAccount</strong>, encrypt every call between them and check each other's certificates, with no change to the application. This project installs <strong>Linkerd</strong> (release <code>edge-26.10.1</code>, downloaded from the project's GitHub releases into <code>build/</code> the first time) on a real <strong>kind</strong> cluster and measures a bank's pods before the proxies, after them, with a policy, and where the mesh stops. A Java program drives <code>kind</code>, <code>kubectl</code>, the Linkerd CLI and a packet capture; the demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code> (Docker, kind, kubectl and a network once).</p>
+<p>What it shows:
+- <strong>Before and after.</strong> A call from web to payments carries the account number in clear on the wire, then not at all once the pods have proxies; each proxy counts the other end by its certificate.
+- <strong>Identities.</strong> All <strong>4</strong> workloads hold a certificate named <code>&lt;serviceaccount&gt;.&lt;namespace&gt;.serviceaccount.identity.linkerd.cluster.local</code>.
+- <strong>Mutual TLS is not a decision.</strong> With no policy <strong>16 of 16</strong> pairs answer, 14 of them unwanted, including a pod outside the mesh and the node.
+- <strong>A policy.</strong> A Server and an AuthorizationPolicy per service leave <strong>2 of 16</strong>, the designed pairs; the others get HTTP <strong>403</strong>.
+- <strong>What the mesh does not protect.</strong> An allowed caller can send any request; root on the node reads the plaintext between the proxy and the app; a pod outside the mesh talks in clear; whoever may create pods may take a ServiceAccount's identity.
+- <strong>Lifetime.</strong> A certificate issued for 5 minutes (default 24 hours) is renewed with the same name and no restart.</p>
+<p><strong>Maps to:</strong> NIST SP 800-207 (zero trust) · NIST SP 800-204A/B (service mesh) · OWASP ASVS V9 · CIS Kubernetes Benchmark 5.</p>
+<h2>The idea in everyday terms</h2>
+<p>A building where every employee wears a badge printed by security from their HR record, and every door has a reader. The badge is only as good as who may order one, the reader only works on doors that have one, and a guard who stands inside the room still sees what is said there.</p>
+<h2>The scenario</h2>
+<p>A bank's web front calls payments, and payments calls the ledger. A statements service and an older batch job sit nearby. The demo measures who can call whom, with and without the mesh.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Before and after the proxies</td>
+<td>The account number can be read from the wire before the proxies and not after; each proxy counts the other end by certificate.</td>
+</tr>
+<tr>
+<td>2. Identities from ServiceAccounts</td>
+<td>All 4 workloads hold a certificate named from their ServiceAccount, namespace and trust domain.</td>
+</tr>
+<tr>
+<td>3. Mutual TLS is not a decision</td>
+<td>With no policy 16 of 16 pairs answer, 14 unwanted, including a pod outside the mesh and the node.</td>
+</tr>
+<tr>
+<td>4. A policy names who may call</td>
+<td>A Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs; the rest get HTTP 403.</td>
+</tr>
+<tr>
+<td>5. What the mesh does not protect</td>
+<td>An allowed caller sends anything, root on the node reads the plaintext, and a new pod can take an identity.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>15 tests in <code>CertInfoTest</code>, <code>DemoRunsTest</code>, <code>DesignTest</code>, <code>MetricsTest</code>, <code>PoliciesTest</code>. The identity names, the policy manifests, the counter parsing, the certificate reading and the pair scoring are tested with no tools. The demo needs Docker, kind and kubectl (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>Linkerd, kind and the packet capture are real and run on your machine. The bank is made up: small web servers stand in for the services. The demo prints counts, names and yes or no, never pod names, addresses or certificate serials.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/service-mesh-mtls-explained.html">Service Mesh and Automatic mTLS, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Proxies in each pod, a control plane that issues identities.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A workload, its policy and the design it is scored against.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The proxies carry the call.</p>
+<p><img alt="A call through two proxies" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A permitted call" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/service-mesh-mtls-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A proxy in every pod</strong> costs memory, latency and a control plane to run.</li>
+<li><strong>Policy has to be written,</strong> or mutual TLS only encrypts.</li>
+<li><strong>Certificates expire,</strong> so the control plane must stay up to renew them.</li>
+<li><strong>Pods outside the mesh are not covered.</strong></li>
+<li><strong>The mesh trusts the cluster's ServiceAccount control.</strong></li>
+</ul>
+<h2>When this is too much</h2>
+<p>A cluster with a few services and a team that already runs mutual TLS in the application may not need a mesh. A mesh pays off when many teams need identities and policy without changing every service.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A security review that asks whether traffic inside the cluster is encrypted.</li>
+<li>A network policy that allows a whole namespace.</li>
+<li>A shared database password between services.</li>
+<li>A certificate that expired on a Sunday.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">service-identity-and-zero-trust</a> module, next to <a href="../mutual-tls-between-services">mutual-tls-between-services</a> where the application does the same work itself. The cluster is the one of <a href="../../kubernetes-and-container-security/kubernetes-network-policies">kubernetes-network-policies</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

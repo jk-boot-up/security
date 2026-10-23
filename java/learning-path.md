@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 140 projects. Planned: 12 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 141 projects. Planned: 11 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,18 +35,18 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **23** | **12** | **35** |
+| **Advanced** | | **24** | **11** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
 | | devsecops-pipelines | 3 | 1 | 4 |
-| | service-identity-and-zero-trust | 2 | 2 | 4 |
+| | service-identity-and-zero-trust | 3 | 1 | 4 |
 | | applied-cryptography-and-pki | 3 | 2 | 5 |
 | | detection-engineering | 0 | 3 | 3 |
 | | offensive-security-methodology | 2 | 2 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **140** | **12** | **152** |
+| **All** | | **141** | **11** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 23 | 12 | 35 |
+| Advanced | Unclassified | 24 | 11 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **23** | **12** | **35** |
+| **All** | **Unclassified** | **24** | **11** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -314,7 +314,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
 | 131 | [mutual-tls-between-services](advanced/service-identity-and-zero-trust/mutual-tls-between-services) | Make a bank's services prove who they are with client certificates from a private CA, authorize by that identity and not by the network, and rotate short-lived certificates without downtime | JDK TLS, step-ca |
-| 132 | service-mesh-mtls | *planned*: Mesh-issued identities and automatic mTLS, and what the mesh does not protect | kind, Linkerd |
+| 132 | [service-mesh-mtls](advanced/service-identity-and-zero-trust/service-mesh-mtls) | Let a mesh give a bank's pods identities from their ServiceAccounts and encrypt every call, measure it on a real Linkerd cluster, and see what the mesh does not protect | kind, Linkerd |
 | 133 | [workload-identity](advanced/service-identity-and-zero-trust/workload-identity) | Replace a shared secret with SPIFFE IDs and short-lived SVIDs from a real SPIRE server and agent, between two Java services at a bank | SPIRE, java-spiffe |
 | 134 | zero-trust-access | *planned*: Every request authenticated, authorized and logged, close to the resource; an identity-aware proxy | Keycloak, OPA, Envoy or oauth2-proxy |
 
