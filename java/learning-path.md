@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 135 projects. Planned: 17 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 136 projects. Planned: 16 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,7 +35,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **18** | **17** | **35** |
+| **Advanced** | | **19** | **16** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
@@ -45,8 +45,8 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | detection-engineering | 0 | 3 | 3 |
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
-| | governance-risk-and-compliance | 3 | 1 | 4 |
-| **All** | | **135** | **17** | **152** |
+| | governance-risk-and-compliance | 4 | 0 | 4 |
+| **All** | | **136** | **16** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 18 | 17 | 35 |
+| Advanced | Unclassified | 19 | 16 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **18** | **17** | **35** |
+| **All** | **Unclassified** | **19** | **16** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -359,7 +359,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | 149 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation |
 | 150 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports |
 | 151 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs |
-| 152 | privacy-engineering | *planned*: Data minimization, pseudonymization, retention and subject access in a bank's data model | Java, PostgreSQL |
+| 152 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL |
 
 ## Other pages
 
