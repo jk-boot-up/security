@@ -12,7 +12,7 @@ One self-contained Java 25 + Gradle project per concept, as in the [beginner](..
 | [applied-cryptography-and-pki](applied-cryptography-and-pki) | Certificates over time, TLS attacks, post-quantum cryptography and hardware keys | 5 |
 | [detection-engineering](detection-engineering) | Detections as code, correlation and hunting | 3 |
 | [offensive-security-methodology](offensive-security-methodology) | Testing, research, reverse engineering and malware triage | 3 |
-| [resilience-and-recovery](resilience-and-recovery) | Backups that survive ransomware, and failures injected into controls | 0 |
+| [resilience-and-recovery](resilience-and-recovery) | Backups that survive ransomware, and failures injected into controls | 2 |
 | [governance-risk-and-compliance](governance-risk-and-compliance) | Risk, controls and evidence, architecture review and privacy | 4 |
 
 The full plan, with every project and the references it maps to, is in [`../../docs/advanced-plan.md`](../../docs/advanced-plan.md).

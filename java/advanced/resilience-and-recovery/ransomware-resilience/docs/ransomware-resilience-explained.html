@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ransomware Resilience, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Ransomware Resilience, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A backup the attacker can delete or poison is not a backup; lock it, separate it, copy it elsewhere, check what goes in, and practise the restore.</p>
+<h2>The 6 acts</h2>
+<h3>1. A plain bucket</h3>
+<p>The bank keeps 24 hourly ledger snapshots in a bucket with no versioning and no lock, written by a service account that can do everything. The attacker uses that account to overwrite every backup with random bytes: 24 of 24 are accepted, 0 of 24 restore with a matching SHA-256, and then the deletes are accepted 24 of 24 times and no object is left.</p>
+<h3>2. Versioning only</h3>
+<p>With versioning every overwrite adds a version: 48 versions, 24 of 24 backups restore when the restore looks through the versions and 0 of 24 when it takes the latest. A delete of a key only adds a delete marker (24 markers, 48 versions still there). A permanent delete by version id is accepted 48 of 48 times and leaves 0 versions and 0 of 24 restorable backups.</p>
+<h3>3. Object lock in COMPLIANCE mode</h3>
+<p>The bucket has object lock with a default retention of 1 day in COMPLIANCE mode (30 days or more in production). The backup credentials, the governance-bypass header and the root administrator are all refused with AccessDenied on 24 of 24 versions. An overwrite by key is accepted as a new version and the new garbage versions are locked too (48 of 48 refused), so 24 of 24 backups restore by version. Shortening the retention and changing COMPLIANCE to GOVERNANCE are AccessDenied, suspending versioning is InvalidBucketState and deleting the bucket is BucketNotEmpty. Root can extend a lock and can remove the default rule, which leaves the 24 stored versions locked but not new backups, unless the writer sets the retention on each object.</p>
+<h3>4. Isolation and an air-gapped copy</h3>
+<p>The backup writer may add objects and list; the recovery account may read every version; nobody else is needed. The writer is refused a version delete, a key delete, a read, a retention change, a legal hold, a bucket delete and another bucket (AccessDenied each); the recovery account is refused a write and a delete. A policy cannot stop the writer from overwriting a key it wrote, which is why the lock matters. The 24 checked backups are copied to a second store whose credentials the first store does not know: the first store's root and the writer get InvalidAccessKeyId there, and a disconnected store answers nothing at all.</p>
+<h3>5. Ransomware and the poisoned backup</h3>
+<p>A simulation encrypts the 9 files of the data directory with AES-256-GCM at 09:20 and deletes the originals. The unguarded job backs up 11 objects at 10:00; they match their own manifest 10 of 10 and look like a ledger 1 of 10 (the ransom note), and they cannot be deleted for the retention. The guard (canary file, file entropy, 4 KiB block entropy) refuses the run and writes 0 objects. Ransomware that skips the canary is caught by entropy, half-encrypted files only by the block test, and a compressed export is a false alarm. Restore picks the newest run that passes both checks: 09:00, identical for 9 of 9 files, with 3000 transactions lost at 1800 an hour.</p>
+<h3>6. The restore exercise</h3>
+<p>The exercise restores the 24 backups into a fresh directory, checks every SHA-256 against the manifest and the ledger total, and counts 120 steps. The recovery time is computed, not timed: 15 minutes to declare, 45 to build a clean environment, 120 steps of 3 seconds and 24 backups of 25 GiB at 400 MiB/s, which is 91.6 minutes; after the first store is destroyed the copy at 100 MiB/s gives 168.4 minutes. Both meet the 240 minute target. The recovery point depends on the schedule: 19200, 4800, 3000 and 2550 transactions lost for backups every 1440, 240, 60 and 15 minutes.</p>
+<h2>The verdict</h2>
+<p>Use object lock in COMPLIANCE mode for data that cannot be recreated, give the backup job only the right to add objects, keep a recovery account that can only read, copy to a store with other credentials, check the data before it is backed up and after it is restored, and practise a timed restore with a computed recovery time and point.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>A backup account with full access.</li>
+<li>Versioning mistaken for immutability.</li>
+<li>A nightly job that backs up whatever is there.</li>
+<li>A restore plan nobody has run.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>Backups on a share that the same admin account can delete.</li>
+<li>A backup job that copies encrypted files every night.</li>
+<li>A restore that has never been tried.</li>
+<li>A retention period nobody checked against the time an attacker stays unnoticed.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
