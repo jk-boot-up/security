@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hardware-Backed Keys</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Hardware-Backed Keys</h1>
+<pre><code>src/main/java/com/jk/explore/security/hsmkeys/
+├── Attacker.java                A second process on the same machine (or on a thief's machine with a copy of the token directory)
+├── AuditLog.java                A hash-chained record of what was signed: each entry carries the hash of the one before, so an edit or a removed entry breaks the chain
+├── Der.java                     A few lines of DER, enough to build a self-signed certificate whose signature is made by someone else (the token)
+├── HardwareBackedKeysDemo.java  Keys that never leave a token: a bank's payment-signing key on a SoftHSM2 token, used through PKCS#11, and what that does and does not protect
+├── Lab.java                     A scratch directory with a SoftHSM2 configuration, one initialised token, and the SunPKCS11 provider pointed at it
+├── Malware.java                 Code that got into the application's process, for example through a poisoned library
+├── Native.java                  The one libc call Java does not have: setenv
+├── PaymentFile.java             A made-up bank payment file: the thing the key signs
+├── PinGuard.java                A lockout kept by the application: after N wrong PINs it stops asking the token
+├── Provisioning.java            Key ceremony: the bank's payment-signing key is born on the token with its private half sensitive and not extractable
+├── Raw.java                     The PKCS#11 calls the JDK provider does not offer (reading attributes, wrapping a key, unwrapping it again), made straight on the library through the foreign function API
+├── Sh.java                      Runs a program and returns what it printed, whether it worked or not
+├── SigningService.java          The bank's own rules in front of the key: at most N signatures in a window, and a payment file over a limit needs two approvers who are not the person who asked
+├── SoftKey.java                 The contrast: the same signing key as a PKCS12 file protected by a password
+└── TokenAccess.java             Logging in to the token through the JDK provider, and signing and verifying with the result
+</code></pre>
+<p><strong>A payment-signing RSA key is born on a SoftHSM2 token as sensitive and not extractable; Java signs 5 payment files through the PKCS11 KeyStore and all 5 verify with the exported public key, while 0 of 5 ways of getting the private key out work (the same key in a file falls to a dictionary at guess 6 of 8). The token refuses 12 of 12 wrong PINs but never locks (SoftHSM2 has no lockout), a copy of the token directory takes 300 guesses with no lock, and code inside the application's process signs 500 of 500 forged files with no PIN, past the rate limit, the approvers and the audit log.</strong></p>
+<p>A key that never leaves a token cannot be copied with the file it lives in. This project creates a <strong>SoftHSM2</strong> token (<code>brew install softhsm</code>), generates a bank's payment-signing key on it, and uses it from Java through the <strong>SunPKCS11</strong> provider and through raw PKCS#11 calls made with the foreign function API. SoftHSM is a software token: it behaves like an HSM at the PKCS#11 interface but is a directory of files, and the demo says so where it matters. The demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Born on the token.</strong> The RSA 2048 key is sensitive, not extractable and never extractable; 5 payment files signed through the KeyStore verify <strong>5 of 5</strong> with the exported public key.
+- <strong>Five ways out.</strong> Reading the exponent, <code>getEncoded()</code>, wrapping under the bank's key, wrapping under an attacker's key and a PKCS12 export: <strong>0 of 5</strong> work. The same key as a file falls to a dictionary at guess <strong>6 of 8</strong>.
+- <strong>The PIN.</strong> No login shows <strong>0</strong> private keys; <strong>12 of 12</strong> wrong PINs are refused but SoftHSM2 never locks, so the application keeps its own lockout, which a direct call to the provider ignores. A copy of the token directory takes <strong>300</strong> guesses with no lock.
+- <strong>Backup.</strong> A key made extractable on purpose is wrapped (80 bytes), destroyed and restored; but a logged-in attacker opens it with a wrapping key of their own.
+- <strong>The limit.</strong> Code in the application's process signs <strong>500 of 500</strong> forged files, past the rate limit, the approvers and the audit log.</p>
+<p><strong>Maps to:</strong> NIST SP 800-57 key management · FIPS 140-3 · PKCS#11 v2.40 · PCI DSS 4.0 requirement 3.7 · CWE-321, CWE-522.</p>
+<h2>The idea in everyday terms</h2>
+<p>A safe deposit box where the bank signs documents inside the vault and only the signed paper comes out. The signature is good, and nobody can take the stamp home, but anyone the clerk lets into the vault can still stamp whatever they like.</p>
+<h2>The scenario</h2>
+<p>A bank signs its payment files with one key. The demo puts that key on a token, signs, tries to steal the key five ways, compares it with a key in a file, and then acts as an attacker who is already on the host.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The key ceremony</td>
+<td>The RSA 2048 payment-signing key is generated by the token, sensitive and not extractable.</td>
+</tr>
+<tr>
+<td>2. Five ways out</td>
+<td>Five attempts to get the private key out fail; 5 payment files signed with it verify.</td>
+</tr>
+<tr>
+<td>3. PINs and a file for contrast</td>
+<td>12 of 12 wrong PINs are refused but SoftHSM2 never locks; the same key in a file falls at guess 6 of 8.</td>
+</tr>
+<tr>
+<td>4. Rate, approvers and audit</td>
+<td>The bank's code signs 8 of 14 requests, refuses 4 for the rate and 2 for approvers, and keeps a hash-chained log of 14.</td>
+</tr>
+<tr>
+<td>5. A compromised host</td>
+<td>Code in the application's process signs 500 of 500 forged files with no PIN, and an extractable key is lost to a logged-in attacker.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>21 tests in <code>AuditLogTest</code>, <code>DemoRunsTest</code>, <code>DerAndSoftKeyTest</code>, <code>PinGuardTest</code>, <code>SigningServiceTest</code>, <code>TokenAccessAndRawTest</code>. The audit log, signing rules, PIN guard, DER and keystore-file code run with no tools. The demo needs SoftHSM2 (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>SoftHSM2, the JDK SunPKCS11 provider and PKCS#11 are real; the bank, the payment files and the people are made up. The token lives in a scratch directory under build/ that is deleted at the end. The demo prints counts, names of return values and yes or no, never PINs, handles or signatures.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/hardware-backed-keys-explained.html">Hardware-Backed Keys, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The application reaches the token only through PKCS#11.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The rules, the token access and the audit log.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The bank's rules run before the token is asked.</p>
+<p><img alt="From a request to a signature" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Signing a payment file" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/hardware-backed-keys-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A token is a new thing to run:</strong> slots, PINs, a PKCS#11 library and a security officer.</li>
+<li><strong>Throughput and latency</strong> are bounded by the token.</li>
+<li><strong>Backup needs wrapping,</strong> and a wrappable key is a weaker key.</li>
+<li><strong>The PIN is a secret in the application,</strong> and a logged-in process can sign.</li>
+<li><strong>SoftHSM is not hardware;</strong> it teaches the interface, not the tamper resistance.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A key that signs a low-value internal token can live in a managed KMS or a protected file. Use a token for keys whose theft costs more than the token, such as payment signing, code release and root CA keys.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A signing key in a keystore file in the repository.</li>
+<li>A key password in an environment variable on the build server.</li>
+<li>A key copied to a second server as a backup.</li>
+<li>An HSM that the whole application server can use without limits.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">applied-cryptography-and-pki</a> module, with <a href="../crypto-agility">crypto-agility</a> and <a href="../post-quantum-cryptography">post-quantum-cryptography</a>. Those show which algorithm to use; this one shows where the private key lives.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

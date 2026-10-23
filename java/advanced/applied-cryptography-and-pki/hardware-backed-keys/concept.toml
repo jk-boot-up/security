@@ -1,0 +1,442 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "hardware-backed-keys"
+level = "advanced"
+module = "applied-cryptography-and-pki"
+title = "Hardware-Backed Keys"
+short_title = "Hardware Keys"
+package = "hsmkeys"
+main_class = "HardwareBackedKeysDemo"
+tagline = "Generate a bank's payment-signing key on a PKCS#11 token, sign with it from Java, try 5 ways to get the key out, and measure what the token does not protect against"
+bold = "A payment-signing RSA key is born on a SoftHSM2 token as sensitive and not extractable; Java signs 5 payment files through the PKCS11 KeyStore and all 5 verify with the exported public key, while 0 of 5 ways of getting the private key out work (the same key in a file falls to a dictionary at guess 6 of 8). The token refuses 12 of 12 wrong PINs but never locks (SoftHSM2 has no lockout), a copy of the token directory takes 300 guesses with no lock, and code inside the application's process signs 500 of 500 forged files with no PIN, past the rate limit, the approvers and the audit log."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Hardware-backed keys for a bank: a payment-signing key generated on a SoftHSM2 token, signing from Java with PKCS#11, five failed attempts to export it, PINs, a key in a file for contrast, key wrapping, and what a compromised host can still do."
+thumb_lines = ["HARDWARE-BACKED", "KEYS"]
+thumb_code = "CKR_KEY_UNEXTRACTABLE"
+youtube_title = "Hardware-Backed Keys: PKCS#11, SoftHSM and What a Token Does Not Protect"
+youtube_tags = ["hsm", "pkcs11", "softhsm", "sunpkcs11", "key management", "code signing", "payment signing", "key wrapping", "non-extractable keys", "java"]
+
+[readme]
+intro = """
+A key that never leaves a token cannot be copied with the file it lives in. This project creates a **SoftHSM2** token (`brew install softhsm`), generates a bank's payment-signing key on it, and uses it from Java through the **SunPKCS11** provider and through raw PKCS#11 calls made with the foreign function API. SoftHSM is a software token: it behaves like an HSM at the PKCS#11 interface but is a directory of files, and the demo says so where it matters. The demo is tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Born on the token.** The RSA 2048 key is sensitive, not extractable and never extractable; 5 payment files signed through the KeyStore verify **5 of 5** with the exported public key.
+- **Five ways out.** Reading the exponent, `getEncoded()`, wrapping under the bank's key, wrapping under an attacker's key and a PKCS12 export: **0 of 5** work. The same key as a file falls to a dictionary at guess **6 of 8**.
+- **The PIN.** No login shows **0** private keys; **12 of 12** wrong PINs are refused but SoftHSM2 never locks, so the application keeps its own lockout, which a direct call to the provider ignores. A copy of the token directory takes **300** guesses with no lock.
+- **Backup.** A key made extractable on purpose is wrapped (80 bytes), destroyed and restored; but a logged-in attacker opens it with a wrapping key of their own.
+- **The limit.** Code in the application's process signs **500 of 500** forged files, past the rate limit, the approvers and the audit log.
+
+**Maps to:** NIST SP 800-57 key management · FIPS 140-3 · PKCS#11 v2.40 · PCI DSS 4.0 requirement 3.7 · CWE-321, CWE-522.
+"""
+analogy = """
+A safe deposit box where the bank signs documents inside the vault and only the signed paper comes out. The signature is good, and nobody can take the stamp home, but anyone the clerk lets into the vault can still stamp whatever they like.
+"""
+scenario = """
+A bank signs its payment files with one key. The demo puts that key on a token, signs, tries to steal the key five ways, compares it with a key in a file, and then acts as an attacker who is already on the host.
+"""
+costs = [
+    "**A token is a new thing to run:** slots, PINs, a PKCS#11 library and a security officer.",
+    "**Throughput and latency** are bounded by the token.",
+    "**Backup needs wrapping,** and a wrappable key is a weaker key.",
+    "**The PIN is a secret in the application,** and a logged-in process can sign.",
+    "**SoftHSM is not hardware;** it teaches the interface, not the tamper resistance.",
+]
+too_much = """
+A key that signs a low-value internal token can live in a managed KMS or a protected file. Use a token for keys whose theft costs more than the token, such as payment signing, code release and root CA keys.
+"""
+met_before = [
+    "A signing key in a keystore file in the repository.",
+    "A key password in an environment variable on the build server.",
+    "A key copied to a second server as a backup.",
+    "An HSM that the whole application server can use without limits.",
+]
+where = """
+This is a project of the [applied-cryptography-and-pki](..) module, with [crypto-agility](../crypto-agility) and [post-quantum-cryptography](../post-quantum-cryptography). Those show which algorithm to use; this one shows where the private key lives.
+"""
+twin = """
+SoftHSM2, the JDK SunPKCS11 provider and PKCS#11 are real; the bank, the payment files and the people are made up. The token lives in a scratch directory under build/ that is deleted at the end. The demo prints counts, names of return values and yes or no, never PINs, handles or signatures.
+"""
+test_note = "The audit log, signing rules, PIN guard, DER and keystore-file code run with no tools. The demo needs SoftHSM2 (./gradlew integrationTest)."
+
+[[act]]
+title = "The key ceremony"
+summary = "The RSA 2048 payment-signing key is generated by the token, sensitive and not extractable."
+detail = """
+The token generates the pair with C_GenerateKeyPair and a template that makes the private half sensitive and not extractable, so it is also never extractable and always sensitive. A certificate signed by the token key is stored next to it, which is what makes the Java KeyStore list the key.
+"""
+speech = """
+First demo: the key ceremony. [[slnc 400]] The token generates the key itself. [[slnc 600]] It is sensitive and never extractable.
+"""
+rows = { ceremony = "active ok" }
+console = [
+    ["RSA 2048 pair generated by the token", "ok"],
+    ["sensitive: yes, extractable: no", "ok"],
+    ["never extractable: yes", "ok"],
+]
+
+[[act]]
+title = "Five ways out"
+summary = "Five attempts to get the private key out fail; 5 payment files signed with it verify."
+detail = """
+Reading the private exponent gives CKR_ATTRIBUTE_SENSITIVE, getEncoded() gives null, wrapping under the bank's key or an attacker's key gives CKR_KEY_UNEXTRACTABLE, and a PKCS12 export is refused. Meanwhile 5 of 5 signatures verify with the exported public key.
+"""
+speech = """
+Second demo: five ways out. [[slnc 400]] None of them works. [[slnc 600]] And signing still does.
+"""
+rows = { ways = "active ok" }
+console = [
+    ["private key obtained: 0 of 5 ways", "ok"],
+    ["signatures that verify: 5 of 5", "ok"],
+    ["getEncoded(): null", "ok"],
+]
+
+[[act]]
+title = "PINs and a file for contrast"
+summary = "12 of 12 wrong PINs are refused but SoftHSM2 never locks; the same key in a file falls at guess 6 of 8."
+detail = """
+Without a login a session sees 0 private keys, with one it sees 1. The token never answers CKR_PIN_LOCKED, so an application lockout of 3 tries is added, and the same right PIN given straight to the provider is still accepted. A stolen copy of the token directory takes 300 guesses with no lock and signs once the PIN is known; the key in a PKCS12 file falls to a dictionary at guess 6 of 8.
+"""
+speech = """
+Third demo: the PIN. [[slnc 400]] The token refuses wrong PINs but never locks. [[slnc 600]] A copy of the token directory is a clone.
+"""
+rows = { pin = "active wrong" }
+console = [
+    ["12 wrong PINs: refused 12 of 12", "ok"],
+    ["token locked itself: no", "bad"],
+    ["file key: found at guess 6 of 8", "bad"],
+]
+
+[[act]]
+title = "Rate, approvers and audit"
+summary = "The bank's code signs 8 of 14 requests, refuses 4 for the rate and 2 for approvers, and keeps a hash-chained log of 14."
+detail = """
+At most 8 signatures in 60 seconds and two approvers other than the requester for files of 100,000.00 or more. Each decision is an entry in a hash chain: editing one entry or removing one breaks the chain.
+"""
+speech = """
+Fourth demo: limits kept in the bank's code. [[slnc 400]] Eight signed, four refused for the rate, two for approvers. [[slnc 600]] The log is hash chained.
+"""
+rows = { limits = "active ok" }
+console = [
+    ["signed 8, rate 4, approvers 2", "ok"],
+    ["8 of 8 signatures verify", "ok"],
+    ["edited or removed entry: chain fails", "ok"],
+]
+
+[[act]]
+title = "A compromised host"
+summary = "Code in the application's process signs 500 of 500 forged files with no PIN, and an extractable key is lost to a logged-in attacker."
+detail = """
+The token is logged in for the whole process, so code that finds the provider signs 500 of 500 forged files, adds 0 audit entries and ignores the policy. After a logout it fails. A process that has learned the PIN signs too. A key made extractable for backup is wrapped, destroyed and restored, but an attacker wraps it under a key of their own and opens the blob in Java.
+"""
+speech = """
+Fifth demo: a compromised host. [[slnc 400]] The token signs for anyone in the logged-in process. [[slnc 600]] Five hundred of five hundred.
+"""
+rows = { host = "active wrong" }
+console = [
+    ["forged files signed: 500 of 500", "bad"],
+    ["audit entries added: 0", "bad"],
+    ["after logout: refused", "ok"],
+]
+
+[animation]
+subtitle = "A bank's signing key, inside a token."
+boxes = [
+    ["ceremony", "The key ceremony", "born on token"],
+    ["ways", "Five ways out", "0 of 5"],
+    ["pin", "PINs and a file for contrast", "no lockout"],
+    ["limits", "Rate, approvers and audit", "8 of 14"],
+    ["host", "A compromised host", "500 of 500"],
+]
+
+[docs.problem]
+scenario = """
+A bank signs payment files with one key and wants a thief who gets onto a server or a backup not to walk away with it.
+"""
+naive = """
+Keep the key in a keystore file with a password next to the application.
+"""
+deliver = [
+    "A key generated on a PKCS#11 token.",
+    "Signing from Java through SunPKCS11.",
+    "Five attempts to export the key and their answers.",
+    "Measured limits of a token: PIN, wrapping and a host that is already logged in.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "SoftHSM2 (brew install softhsm)",
+    "Public-key signatures basics",
+]
+not_required = [
+    "A hardware HSM",
+    "Docker",
+    "A cloud account",
+]
+install = ["softhsm2-util"]
+
+[docs.session]
+objectives = [
+    "generate a key on a PKCS#11 token that cannot be extracted",
+    "sign from Java through the PKCS11 KeyStore",
+    "say what a token protects and what it does not",
+    "explain why wrapping a key for backup weakens it",
+]
+walkthrough = """
+Run the demo and read the five attempts to get the key out. Then read the compromised host section and find which of the bank's own controls the token does not enforce.
+"""
+exercises = [
+    "Make the release key non-extractable and see which backup step fails.",
+    "Add a per-key signing counter in SigningService and persist it.",
+    "Log out between batches and measure how many forged signatures fit in the window.",
+    "Add a second approver check on the PIN login.",
+]
+
+[docs.explained]
+sentence = """
+A token stops the key from being copied, not from being used, so limit and watch how it is used.
+"""
+verdict = """
+Generate signing keys on a token as sensitive and not extractable, log in only for the time you sign, keep rate limits, approvers and audit outside the process that holds the login, and treat a wrappable key as exported.
+"""
+recognise = [
+    "A .p12 file and its password in a deployment.",
+    "A build server that can sign any release.",
+    "A backup of a key on a second machine.",
+    "An HSM with one shared PIN for every application.",
+]
+
+[spec]
+purpose = """
+Teach hardware-backed keys by generating a key on a PKCS#11 token, signing with it from Java and measuring what a token does and does not protect.
+"""
+nongoals = [
+    "Certifying anything to FIPS 140.",
+    "Measuring real HSM tamper resistance.",
+    "Key ceremonies with people and witnesses.",
+]
+problem = """
+Signing keys live in files and are copied, and tokens are trusted to protect more than they do.
+"""
+roles = [["Token, scratch directory, provider", "`Lab`"], ["Raw PKCS#11 calls", "`Raw`"], ["Key ceremony", "`Provisioning`"], ["Login and signing", "`TokenAccess`"], ["Rate, approvers", "`SigningService`"], ["Hash-chained log", "`AuditLog`"], ["Code in the process", "`Malware`"], ["Entry point", "`HardwareBackedKeysDemo`"]]
+requirements = [
+    "The key is generated on the token, sensitive and not extractable.",
+    "Java signs through the PKCS11 KeyStore and verifies with the exported public key.",
+    "Five ways of exporting the key are tried and their answers printed.",
+    "Wrong PINs, a software key, a copied token and a compromised host are measured.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "The application reaches the token only through PKCS#11."
+nodes = [
+    { id = "app", label = "Payment service", sub = "Java, rules and audit", col = 0, row = 0, colour = "accent" },
+    { id = "prov", label = "SunPKCS11", sub = "provider", col = 1, row = 0, colour = "amber" },
+    { id = "token", label = "SoftHSM2 token", sub = "key and PIN check", col = 2, row = 0, colour = "green" },
+    { id = "log", label = "Audit log", sub = "hash chain", col = 3, row = 0, colour = "client" },
+]
+edges = [
+    { from = "app", to = "prov", label = "sign" },
+    { from = "prov", to = "token", label = "C_Sign" },
+    { from = "app", to = "log", label = "appends" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The rules, the token access and the audit log."
+nodes = [
+    { id = "svc", label = "SigningService", sub = ["submit()", "audit()"], col = 0, row = 0, colour = "accent" },
+    { id = "acc", label = "TokenAccess", sub = ["login()", "sign()"], col = 1, row = 0, colour = "amber" },
+    { id = "raw", label = "Raw", sub = ["wrap()", "attribute()"], col = 2, row = 0, colour = "green" },
+    { id = "log", label = "AuditLog", sub = ["append()", "verify()"], col = 3, row = 0, colour = "client" },
+]
+edges = [
+    { from = "svc", to = "acc", label = "signs with" },
+    { from = "svc", to = "log", label = "records in" },
+    { from = "acc", to = "raw", label = "same library" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a request to a signature"
+caption = "The bank's rules run before the token is asked."
+nodes = [
+    { id = "req", label = "Request", sub = "payment file", col = 0, row = 0, colour = "client" },
+    { id = "rules", label = "Rules", sub = "rate, approvers", col = 1, row = 0, colour = "amber" },
+    { id = "sig", label = "Token signs", sub = "key stays inside", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "req", to = "rules" },
+    { from = "rules", to = "sig", label = "allowed" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Signing a payment file"
+participants = ["Payment service", "SunPKCS11", "Token"]
+steps = [
+    ["Payment service", "SunPKCS11", "initSign(key), update(file)"],
+    ["SunPKCS11", "Token", "C_SignInit, C_Sign"],
+    ["Token", "SunPKCS11", "256 byte signature", "reply"],
+    ["SunPKCS11", "Payment service", "signature", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Trying to export the key"
+participants = ["Attacker", "Token"]
+steps = [
+    ["Attacker", "Token", "C_WrapKey under own key"],
+    ["Token", "Attacker", "CKR_KEY_UNEXTRACTABLE", "reply"],
+    ["Attacker", "Token", "C_GetAttributeValue exponent"],
+    ["Token", "Attacker", "CKR_ATTRIBUTE_SENSITIVE", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+    { label = "Bank host", nodes = ["host"], colour = "amber" },
+    { label = "Token", nodes = ["token"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "thief or malware", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "host", label = "Payment host", sub = "logged-in process", col = 1, row = 0, colour = "accent", threats = ["T2", "T3"] },
+    { id = "token", label = "Token", sub = "key and PIN", col = 2, row = 0, colour = "amber", threats = ["T1", "T3"] },
+]
+edges = [
+    { from = "attacker", to = "token", label = "export, guess PIN", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "host", to = "token", label = "sign requests", threats = ["T2", "T3"] },
+]
+
+[threatmodel]
+scope = """
+A signing key on a PKCS#11 token used by one application host. It does not cover physical attacks on hardware, the people who hold PINs or the key ceremony.
+"""
+assets = [
+    "The payment-signing private key.",
+    "The user PIN.",
+    "The backup blob and its wrapping key.",
+]
+actors = [
+    "A thief with a copy of a file or a token directory.",
+    "Malware in the application's process.",
+    "An insider with the PIN.",
+]
+boundaries = [
+    "The PKCS#11 interface between the host and the token.",
+]
+assumptions = [
+    "The token enforces sensitive and non-extractable attributes.",
+]
+out_of_scope = [
+    "Side channels.",
+    "Tamper resistance of real hardware.",
+]
+tests = [
+    "`AuditLogTest`, `SigningServiceTest`, `PinGuardTest`, `DerAndSoftKeyTest` and `TokenAccessAndRawTest` need no tools.",
+    "`DemoRunsTest` runs SoftHSM2 and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is certificate-lifecycle.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "The signing key is copied from a file or backup"
+where = "the key"
+control = "Generate it on the token as sensitive and not extractable"
+residual = "A SoftHSM token directory can be copied; the PIN is then the only barrier"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "Code in the logged-in process signs anything"
+where = "the host"
+control = "Log in only while signing; keep limits and audit outside the process"
+residual = "Signing during the login window"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "Signatures are made that nobody logged"
+where = "the audit log"
+control = "Hash-chained audit of every decision"
+residual = "Signatures made past the application's log"
+
+[poster]
+headline = [["HARDWARE-BACKED", "text"], ["KEYS", "accent"]]
+taglines = [["Generate a bank's payment-signing key on a PKCS#11 token, sign with it from Java, try 5 wa", "gold"]]
+before = { code = "key.getEncoded() -> null", note = "On the token", tag = "BEFORE" }
+after = { code = "forged files signed: 500 of 500", note = "Inside the process", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Hardware-Backed Keys"
+narration = "Hello, and welcome. [[slnc 400]] This video explains hardware-backed keys, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A payment-signing RSA key is born on a SoftHSM2 token as sensitive and not extractable; Java signs 5 payment files through the PKCS11 KeyStore and all 5 verify with the exported public key, while 0 of 5 ways of getting the private key out work (the same key in a file falls to a dictionary at guess 6 of 8). The token refuses 12 of 12 wrong PINs but never locks (SoftHSM2 has no lockout), a copy of the token directory takes 300 guesses with no lock, and code inside the application's process signs 500 of 500 forged files with no PIN, past the rate limit, the approvers and the audit log. [[slnc 600]] Think of it this way. [[slnc 300]] A safe deposit box where the bank signs documents inside the vault and only the signed paper comes out. The signature is good, and nobody can take the stamp home, but anyone the clerk lets into the vault can still stamp whatever they like. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Generate a key on a PKCS#11 token that cannot be extracted. [[slnc 300]] Sign from Java through the PKCS11 KeyStore. [[slnc 300]] Say what a token protects and what it does not."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank signs its payment files with one key. The", "demo puts that key on a token, signs, tries to", "steal the key five ways, compares it with a key", "in a file, and then acts as an attacker who is", "already on the host."]
+narration = "Here is the scenario. [[slnc 400]] A bank signs its payment files with one key. The demo puts that key on a token, signs, tries to steal the key five ways, compares it with a key in a file, and then acts as an attacker who is already on the host."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["A token is a new thing to run: slots", "Throughput and latency are bounded by the token", "Backup needs wrapping", "The PIN is a secret in the application", "SoftHSM is not hardware"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A token is a new thing to run: slots, PINs, a PKCS#11 library and a security officer. [[slnc 500]] Throughput and latency are bounded by the token. [[slnc 500]] Backup needs wrapping, and a wrappable key is a weaker key. [[slnc 500]] The PIN is a secret in the application, and a logged-in process can sign. [[slnc 500]] SoftHSM is not hardware, it teaches the interface, not the tamper resistance."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Token, scratch directory, provider: Lab", "Raw PKCS#11 calls: Raw", "Key ceremony: Provisioning", "Login and signing: TokenAccess", "Rate, approvers: SigningService"]
+narration = "Here is who does what in the code. [[slnc 400]] Token, scratch directory, provider is in Lab. [[slnc 500]] Raw PKCS#11 calls is in Raw. [[slnc 500]] Key ceremony is in Provisioning. [[slnc 500]] Login and signing is in TokenAccess. [[slnc 500]] Rate, approvers is in SigningService."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A .p12 file and its password in a deployment", "A build server that can sign any release", "A backup of a key on a second machine", "An HSM with one shared PIN for every application"]
+narration = "You have probably met this already. [[slnc 400]] A .p12 file and its password in a deployment. [[slnc 500]] A build server that can sign any release. [[slnc 500]] A backup of a key on a second machine. [[slnc 500]] An HSM with one shared PIN for every application."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Generate a key on a PKCS#11 token that cannot be extracted", "Sign from Java through the PKCS11 KeyStore", "Say what a token protects and what it does not", "Explain why wrapping a key for backup weakens it"]
+narration = "So, how do you use it? [[slnc 400]] Generate signing keys on a token as sensitive and not extractable, log in only for the time you sign, keep rate limits, approvers and audit outside the process that holds the login, and treat a wrappable key as exported."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's hardware-backed keys. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A token stops the key from being copied, not from being used, so limit and watch how it is used. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Make the release key non-extractable and see which backup step fails. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

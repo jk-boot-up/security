@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 143 projects. Planned: 9 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 144 projects. Planned: 8 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,18 +35,18 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **26** | **9** | **35** |
+| **Advanced** | | **27** | **8** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
 | | devsecops-pipelines | 3 | 1 | 4 |
 | | service-identity-and-zero-trust | 3 | 1 | 4 |
-| | applied-cryptography-and-pki | 4 | 1 | 5 |
+| | applied-cryptography-and-pki | 5 | 0 | 5 |
 | | detection-engineering | 0 | 3 | 3 |
 | | offensive-security-methodology | 3 | 1 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **143** | **9** | **152** |
+| **All** | | **144** | **8** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 26 | 9 | 35 |
+| Advanced | Unclassified | 27 | 8 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **26** | **9** | **35** |
+| **All** | **Unclassified** | **27** | **8** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -326,7 +326,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | 136 | [tls-attacks-and-downgrades](advanced/applied-cryptography-and-pki/tls-attacks-and-downgrades) | Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the weaknesses that were planted, watch a client fall back to TLS 1.0, read a recorded session with a leaked key, and check what TLS 1.3 removed | OpenSSL, testssl.sh |
 | 137 | [post-quantum-cryptography](advanced/applied-cryptography-and-pki/post-quantum-cryptography) | Use ML-KEM and ML-DSA from the JDK, combine X25519 with ML-KEM in a hybrid exchange, measure what the new sizes cost, and count where a bank's code still depends on RSA and elliptic curves | JDK 25, Bouncy Castle |
 | 138 | [crypto-agility](advanced/applied-cryptography-and-pki/crypto-agility) | Inventory the algorithms in a bank's code, store data in a versioned envelope, and rotate the algorithm and the key under 10,100 records without losing one | JDK 25 |
-| 139 | hardware-backed-keys | *planned*: Keys that never leave a token; signing with PKCS#11 | SoftHSM, the JDK PKCS#11 provider |
+| 139 | [hardware-backed-keys](advanced/applied-cryptography-and-pki/hardware-backed-keys) | Generate a bank's payment-signing key on a PKCS#11 token, sign with it from Java, try 5 ways to get the key out, and measure what the token does not protect against | SoftHSM, SunPKCS11 |
 
 ### 7. detection-engineering
 
