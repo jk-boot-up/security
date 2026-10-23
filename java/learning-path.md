@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 146 projects. Planned: 6 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 147 projects. Planned: 5 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,18 +35,18 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **29** | **6** | **35** |
+| **Advanced** | | **30** | **5** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
 | | devsecops-pipelines | 3 | 1 | 4 |
 | | service-identity-and-zero-trust | 3 | 1 | 4 |
 | | applied-cryptography-and-pki | 5 | 0 | 5 |
-| | detection-engineering | 2 | 1 | 3 |
+| | detection-engineering | 3 | 0 | 3 |
 | | offensive-security-methodology | 3 | 1 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **146** | **6** | **152** |
+| **All** | | **147** | **5** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 29 | 6 | 35 |
+| Advanced | Unclassified | 30 | 5 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **29** | **6** | **35** |
+| **All** | **Unclassified** | **30** | **5** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -333,7 +333,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
 | 140 | [detection-as-code](advanced/detection-engineering/detection-as-code) | Write a bank's detections as Sigma rules tagged with MITRE ATT&CK, test them against a week of labelled logs, hold each to a false-positive budget, and run the pySigma-converted queries in OpenSearch | Sigma, pySigma, OpenSearch |
-| 141 | siem-basics | *planned*: Collecting, normalizing and correlating events from the store, the database and the hosts | Wazuh or OpenSearch Security Analytics |
+| 141 | [siem-basics](advanced/detection-engineering/siem-basics) | Collect a bank's web, database and host logs in three formats, normalize them into one shape and one clock, and correlate across sources to see an attack that no single source shows | Java |
 | 142 | [threat-hunting](advanced/detection-engineering/threat-hunting) | Hunt through a simulated week of a bank's logs with four hypotheses, judge the leads against what really happened, and turn the hunt that worked into a rule | Java |
 
 ### 8. offensive-security-methodology
