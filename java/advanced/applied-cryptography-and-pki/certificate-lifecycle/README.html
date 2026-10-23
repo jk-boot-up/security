@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Certificate Lifecycle</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Certificate Lifecycle</h1>
+<pre><code>src/main/java/com/jk/explore/security/certlife/
+├── CertificateLifecycleDemo.java  The life of a certificate in a bank's private PKI: issued by a root and an intermediate (openssl), revoked and checked by CRL, OCSP and stapling, replaced by short-lived certificates that step-ca renews, and the outage when a renewal is missed
+├── Chains.java                    Chain building and validation with the JDK's PKIX provider, with a clock we choose and revocation checking we configure
+├── Credential.java                A certificate chain (leaf first) with its private key, read from files
+├── Crls.java                      The CA database (openssl's index.txt) written directly, to see how big a CRL gets without issuing 100,000 certificates
+├── ExpiryWatch.java               An expiry monitor for one live endpoint: it connects like a scanner (it trusts nothing, it only reads the certificate that is presented) and raises an alert when less than a quarter of the certificate's life is left
+├── Fleet.java                     An inventory of certificates and the expiry monitor that reads it: buckets by time left, and a day-by-day model of what the monitor saves
+├── Load.java                      A client of the service: real TLS handshakes with the JDK's own trust manager (chain, dates and host name checked), counted
+├── Openssl.java                   Finds an OpenSSL 3 or 4 command line program (not LibreSSL: its ca and ocsp commands differ)
+├── Pki.java                       A private certificate authority made with openssl: a self-signed root that signs an intermediate, and the intermediate that signs the certificates (openssl ca, with its index.txt database)
+├── Renewer.java                   Renews the certificate of a service when two thirds of its life are over, asking step-ca for a new one for the same key
+├── Responder.java                 The OCSP responder of the lab: a real &quot;openssl ocsp -index&quot; process answers from the CA's database, behind a small relay on 127.0.0.1 that counts the requests and can be switched to answer, to refuse connections (the responder is down), or to accept and never answer (it hangs)
+├── Service.java                   A TLS service on 127.0.0.1 whose certificate can be replaced while it runs: the next handshake uses the new one
+├── Sh.java                        Runs a program and returns what it printed, whether it worked or not
+├── StapleClient.java              A JDK TLS client that asks for a stapled OCSP response and decides about revocation itself: the response the server sent is the only source it is given, unless the policy lets it ask the responder named in the certificate
+├── StaplingServer.java            A TLS server that is openssl s_server on 127.0.0.1, with or without a stapled OCSP response
+├── StepCa.java                    A real certificate authority, step-ca, running on this machine and driven with the step command line
+└── Verdict.java                   Whether a certificate chain was accepted, and the reason in a few words when it was not
+</code></pre>
+<p><strong>A private CA (openssl root and intermediate) issues a bank's certificates; a client that cannot reach the OCSP responder refuses a good certificate (hard fail) or accepts a revoked one (soft fail), a CRL grows from 20 KB at 1,000 entries to 2120 KB at 100,000, and a stapled response answers with 0 requests to the responder. With 12-second certificates that step-ca renews after two thirds of their life, 300 handshakes in 30 seconds see 3 renewals and 0 failures, a 2-second CA outage costs 0 of 200 handshakes, and a CA that stays down past the expiry refuses 100 of 100 handshakes, 2 seconds after an expiry monitor had already alerted; a monitor over 60 certificates finds 4 already expired and prevents 23 of 26 outages with a 7-day alert.</strong></p>
+<p>A certificate has a life: it is issued, trusted, sometimes revoked, renewed and, if nobody looks, it expires in the middle of a working day. This project builds a private CA with <strong>openssl</strong> (a root and an intermediate), reads the certificates in Java (names, key usage, extended key usage, basic constraints, chain building with the PKIX provider), and then follows them through the whole life with real tools: an <code>openssl ocsp</code> responder, <code>openssl ca</code> CRLs, a stapled response from <code>openssl s_server</code>, and <strong>step-ca</strong> issuing and renewing certificates that live 12 seconds. A Java program drives the tools and counts what clients do; the demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code> (about two minutes; <code>brew install step openssl@3</code>).</p>
+<p>What it shows:
+- <strong>Reading a certificate.</strong> A chain is built to the root with the intermediate; without the intermediate, 31 days later, or a day before issue, it is refused, each for its own reason.
+- <strong>OCSP and the dead responder.</strong> Good and revoked certificates against a responder that is up, down or hanging, for a client that fails hard and one that fails soft: the soft client accepts the revoked certificate whenever the answer can be blocked.
+- <strong>CRL.</strong> A client holding the old list accepts a certificate revoked after it was published; a list past its next update is refused by a hard-fail client. Size: <strong>20 KB</strong> at 1,000 entries, <strong>2120 KB</strong> at 100,000.
+- <strong>Stapling.</strong> The server sends the signed answer in the handshake: <strong>0</strong> requests to the responder, a dead responder does not matter, and a stale staple hides a revocation for as long as it lives.
+- <strong>Short lives.</strong> 12-second certificates renewed by step-ca after two thirds of their life: <strong>3</strong> renewals, <strong>0 of 300</strong> handshakes fail; a 2-second CA outage costs <strong>0 of 200</strong>.
+- <strong>The missed renewal.</strong> A CA that stays down past the expiry: <strong>100 of 100</strong> handshakes refused, the monitor alerted <strong>2 seconds</strong> earlier.
+- <strong>The fleet.</strong> An inventory of <strong>60</strong> certificates: <strong>4</strong> expired, <strong>6</strong> under 7 days, <strong>14</strong> under 30 days, <strong>36</strong> ok; a 7-day alert prevents <strong>23 of 26</strong> outages when the owner needs 3 days and none when the owner needs 10.</p>
+<p><strong>Maps to:</strong> NIST SP 800-57 Part 1 (key and certificate lifetimes) · NIST SP 800-52 Rev. 2 (TLS, certificate status) · RFC 5280 (CRL), RFC 6960 (OCSP), RFC 6066 (stapling) · CA/Browser Forum Baseline Requirements (shortening lifetimes).</p>
+<h2>The idea in everyday terms</h2>
+<p>A passport is valid for ten years, a stolen one is reported to a list at the border, and the officer who cannot reach the list either lets everyone through or stops the queue. A boarding pass is valid for the flight and needs no list at all, but the airline's printer must never break.</p>
+<h2>The scenario</h2>
+<p>A bank's internal services call each other over TLS. The demo builds the bank's private CA, issues certificates, revokes one, takes the revocation service down, switches to certificates that live 12 seconds, breaks the renewal, and scans an inventory of 60 certificates for the ones about to expire.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Issue and read</td>
+<td>A root signs an intermediate, the intermediate signs a server certificate, and Java reads every field that a client checks.</td>
+</tr>
+<tr>
+<td>2. Revocation and a dead responder</td>
+<td>A client that cannot reach the OCSP responder refuses a good certificate or accepts a revoked one; a CRL is up to a lifetime old.</td>
+</tr>
+<tr>
+<td>3. Stapling</td>
+<td>The server sends the signed OCSP answer in the handshake: no request to the responder, and a dead responder does not matter.</td>
+</tr>
+<tr>
+<td>4. Short lives and rotation</td>
+<td>12-second certificates renewed by step-ca after two thirds of their life: 3 renewals and 0 of 300 handshakes fail.</td>
+</tr>
+<tr>
+<td>5. The missed renewal</td>
+<td>A CA that stays down past the expiry refuses 100 of 100 handshakes, after a monitor alerted 2 seconds earlier.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>18 tests in <code>CrlsAndVerdictTest</code>, <code>DemoRunsTest</code>, <code>FleetTest</code>, <code>ScheduleTest</code>. The expiry buckets, the model, the renewal schedule and the CA database are tested with no tools. The demo runs openssl, step and step-ca (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>openssl and step-ca are real, and the clients are the JDK's own PKIX and TLS code. The lifetimes are seconds and the clocks are real, so the demo prints counts and yes or no, never serial numbers, ports, paths or times. Where a clock is moved (2 hours or 2 days later) the JDK is asked to validate at that time.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/certificate-lifecycle-explained.html">Certificate Lifecycle, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A private CA, its answers and the services that use them.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The CA, the checks and the renewal.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>A certificate is renewed before it ends, or an alert is raised.</p>
+<p><img alt="From issue to expiry" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A revocation check" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/certificate-lifecycle-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Revocation needs an answer;</strong> with hard fail a dead responder is an outage, with soft fail it is a bypass.</li>
+<li><strong>A CRL is big and old;</strong> an OCSP answer is small but must be asked for, and a staple is as old as its last refresh.</li>
+<li><strong>Short lives need automation;</strong> the headroom for a CA outage is a third of the life.</li>
+<li><strong>A monitor needs an inventory</strong> and an owner who has time to act.</li>
+<li><strong>The demo runs for about two minutes</strong> because it uses real clocks.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A handful of long-lived certificates on internal tools can be renewed by a person with a calendar. Automate when there are dozens of certificates, when lifetimes shrink below a year, or when one expiry would stop a payment.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A certificate that expired on a weekend and took a service down.</li>
+<li>A browser that says the revocation check failed and carries on.</li>
+<li>A CRL download that takes longer than the page load.</li>
+<li>A spreadsheet of certificates and renewal dates.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">applied-cryptography-and-pki</a> module, with <a href="../post-quantum-cryptography">post-quantum-cryptography</a>, <a href="../crypto-agility">crypto-agility</a> and <a href="../tls-attacks-and-downgrades">tls-attacks-and-downgrades</a>. Those projects choose algorithms and protocol settings; this one follows the certificates themselves.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

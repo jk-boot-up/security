@@ -1,0 +1,444 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "certificate-lifecycle"
+level = "advanced"
+module = "applied-cryptography-and-pki"
+title = "Certificate Lifecycle"
+short_title = "Certificate Lifecycle"
+package = "certlife"
+main_class = "CertificateLifecycleDemo"
+tagline = "Issue certificates from a private root and intermediate, revoke them with a CRL, an OCSP responder and a stapled response, replace them with short-lived certificates that step-ca renews, and watch what a missed renewal does"
+bold = "A private CA (openssl root and intermediate) issues a bank's certificates; a client that cannot reach the OCSP responder refuses a good certificate (hard fail) or accepts a revoked one (soft fail), a CRL grows from 20 KB at 1,000 entries to 2120 KB at 100,000, and a stapled response answers with 0 requests to the responder. With 12-second certificates that step-ca renews after two thirds of their life, 300 handshakes in 30 seconds see 3 renewals and 0 failures, a 2-second CA outage costs 0 of 200 handshakes, and a CA that stays down past the expiry refuses 100 of 100 handshakes, 2 seconds after an expiry monitor had already alerted; a monitor over 60 certificates finds 4 already expired and prevents 23 of 26 outages with a 7-day alert."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Certificate lifecycle for a bank: a private root and intermediate with openssl, CRL, OCSP and stapling with hard fail and soft fail, short-lived certificates renewed by step-ca, the outage of a missed renewal, and an expiry monitor over a fleet."
+thumb_lines = ["CERTIFICATE", "LIFECYCLE"]
+thumb_code = "step ca renew"
+youtube_title = "Certificate Lifecycle: OCSP, CRL, Stapling, Short-Lived Certificates and Missed Renewals"
+youtube_tags = ["certificate lifecycle", "ocsp", "crl", "ocsp stapling", "step-ca", "short-lived certificates", "certificate expiry", "pki", "openssl", "java"]
+
+[readme]
+intro = """
+A certificate has a life: it is issued, trusted, sometimes revoked, renewed and, if nobody looks, it expires in the middle of a working day. This project builds a private CA with **openssl** (a root and an intermediate), reads the certificates in Java (names, key usage, extended key usage, basic constraints, chain building with the PKIX provider), and then follows them through the whole life with real tools: an `openssl ocsp` responder, `openssl ca` CRLs, a stapled response from `openssl s_server`, and **step-ca** issuing and renewing certificates that live 12 seconds. A Java program drives the tools and counts what clients do; the demo is tagged `integration`: `./gradlew integrationTest` (about two minutes; `brew install step openssl@3`).
+
+What it shows:
+- **Reading a certificate.** A chain is built to the root with the intermediate; without the intermediate, 31 days later, or a day before issue, it is refused, each for its own reason.
+- **OCSP and the dead responder.** Good and revoked certificates against a responder that is up, down or hanging, for a client that fails hard and one that fails soft: the soft client accepts the revoked certificate whenever the answer can be blocked.
+- **CRL.** A client holding the old list accepts a certificate revoked after it was published; a list past its next update is refused by a hard-fail client. Size: **20 KB** at 1,000 entries, **2120 KB** at 100,000.
+- **Stapling.** The server sends the signed answer in the handshake: **0** requests to the responder, a dead responder does not matter, and a stale staple hides a revocation for as long as it lives.
+- **Short lives.** 12-second certificates renewed by step-ca after two thirds of their life: **3** renewals, **0 of 300** handshakes fail; a 2-second CA outage costs **0 of 200**.
+- **The missed renewal.** A CA that stays down past the expiry: **100 of 100** handshakes refused, the monitor alerted **2 seconds** earlier.
+- **The fleet.** An inventory of **60** certificates: **4** expired, **6** under 7 days, **14** under 30 days, **36** ok; a 7-day alert prevents **23 of 26** outages when the owner needs 3 days and none when the owner needs 10.
+
+**Maps to:** NIST SP 800-57 Part 1 (key and certificate lifetimes) · NIST SP 800-52 Rev. 2 (TLS, certificate status) · RFC 5280 (CRL), RFC 6960 (OCSP), RFC 6066 (stapling) · CA/Browser Forum Baseline Requirements (shortening lifetimes).
+"""
+analogy = """
+A passport is valid for ten years, a stolen one is reported to a list at the border, and the officer who cannot reach the list either lets everyone through or stops the queue. A boarding pass is valid for the flight and needs no list at all, but the airline's printer must never break.
+"""
+scenario = """
+A bank's internal services call each other over TLS. The demo builds the bank's private CA, issues certificates, revokes one, takes the revocation service down, switches to certificates that live 12 seconds, breaks the renewal, and scans an inventory of 60 certificates for the ones about to expire.
+"""
+costs = [
+    "**Revocation needs an answer;** with hard fail a dead responder is an outage, with soft fail it is a bypass.",
+    "**A CRL is big and old;** an OCSP answer is small but must be asked for, and a staple is as old as its last refresh.",
+    "**Short lives need automation;** the headroom for a CA outage is a third of the life.",
+    "**A monitor needs an inventory** and an owner who has time to act.",
+    "**The demo runs for about two minutes** because it uses real clocks.",
+]
+too_much = """
+A handful of long-lived certificates on internal tools can be renewed by a person with a calendar. Automate when there are dozens of certificates, when lifetimes shrink below a year, or when one expiry would stop a payment.
+"""
+met_before = [
+    "A certificate that expired on a weekend and took a service down.",
+    "A browser that says the revocation check failed and carries on.",
+    "A CRL download that takes longer than the page load.",
+    "A spreadsheet of certificates and renewal dates.",
+]
+where = """
+This is a project of the [applied-cryptography-and-pki](..) module, with [post-quantum-cryptography](../post-quantum-cryptography), [crypto-agility](../crypto-agility) and [tls-attacks-and-downgrades](../tls-attacks-and-downgrades). Those projects choose algorithms and protocol settings; this one follows the certificates themselves.
+"""
+twin = """
+openssl and step-ca are real, and the clients are the JDK's own PKIX and TLS code. The lifetimes are seconds and the clocks are real, so the demo prints counts and yes or no, never serial numbers, ports, paths or times. Where a clock is moved (2 hours or 2 days later) the JDK is asked to validate at that time.
+"""
+test_note = "The expiry buckets, the model, the renewal schedule and the CA database are tested with no tools. The demo runs openssl, step and step-ca (./gradlew integrationTest)."
+
+[[act]]
+title = "Issue and read"
+summary = "A root signs an intermediate, the intermediate signs a server certificate, and Java reads every field that a client checks."
+detail = """
+openssl makes the root and an intermediate with a path length of 0, and the intermediate signs a 30-day server certificate with two names, digitalSignature, serverAuth, CA false and a pointer to an OCSP responder. Java builds the chain with the intermediate and accepts it. Without the intermediate, 31 days later or a day before issue, it is refused, each for its own reason.
+"""
+speech = """
+First demo: issue and read. [[slnc 400]] A root, an intermediate and a server certificate. [[slnc 600]] The chain is accepted, and refused for three different reasons.
+"""
+rows = { issue = "active ok" }
+console = [
+    ["path length limit of the intermediate: 0", "ok"],
+    ["chain with the intermediate: accepted", "ok"],
+    ["without it: no chain to the root", "bad"],
+]
+
+[[act]]
+title = "Revocation and a dead responder"
+summary = "A client that cannot reach the OCSP responder refuses a good certificate or accepts a revoked one; a CRL is up to a lifetime old."
+detail = """
+With the responder up, a good certificate is accepted and a revoked one refused. With it down or hanging, a hard-fail client refuses both and a soft-fail client accepts both, including the revoked one. A client holding the old CRL accepts a certificate revoked after it was published, and a CRL past its next update is refused by a hard-fail client. A CRL of 1,000 entries is 20 KB; of 100,000 entries, 2120 KB.
+"""
+speech = """
+Second demo: revocation. [[slnc 400]] Hard fail makes a dead responder an outage. [[slnc 600]] Soft fail makes it a bypass.
+"""
+rows = { revoke = "active wrong" }
+console = [
+    ["responder down, hard fail: refused", "bad"],
+    ["responder down, soft fail: revoked accepted", "bad"],
+    ["CRL at 100,000 entries: 2120 KB", "bad"],
+]
+
+[[act]]
+title = "Stapling"
+summary = "The server sends the signed OCSP answer in the handshake: no request to the responder, and a dead responder does not matter."
+detail = """
+openssl s_server sends a response made by the intermediate. The Java client reads it from the handshake and accepts with 0 requests to the responder, even with the responder down. A staple made before a revocation is still accepted until it is refreshed; a client that asks the responder instead refuses at once; a staple made after the revocation is refused; a staple past its next update is not used.
+"""
+speech = """
+Third demo: stapling. [[slnc 400]] The answer travels with the handshake. [[slnc 600]] It is as fresh as its last refresh.
+"""
+rows = { staple = "active ok" }
+console = [
+    ["staple, responder up: 0 requests", "ok"],
+    ["staple, responder down: accepted", "ok"],
+    ["old staple after revocation: accepted", "bad"],
+]
+
+[[act]]
+title = "Short lives and rotation"
+summary = "12-second certificates renewed by step-ca after two thirds of their life: 3 renewals and 0 of 300 handshakes fail."
+detail = """
+step-ca issues certificates that live 12 seconds. A renewer asks for a new one for the same key when 8 seconds have passed, and the service presents it to the next handshake. In 30 seconds there are 300 real TLS handshakes, 3 renewals and 0 failures. A CA that is away for 2 seconds just before a renewal costs 0 of 200 handshakes: the headroom is a third of the life.
+"""
+speech = """
+Fourth demo: short lives. [[slnc 400]] Renew at two thirds of the life. [[slnc 600]] Three renewals, no failed handshake.
+"""
+rows = { rotate = "active ok" }
+console = [
+    ["renewals in 30 seconds: 3", "ok"],
+    ["failed handshakes: 0 of 300", "ok"],
+    ["CA away 2 seconds: 0 of 200", "ok"],
+]
+
+[[act]]
+title = "The missed renewal"
+summary = "A CA that stays down past the expiry refuses 100 of 100 handshakes, after a monitor alerted 2 seconds earlier."
+detail = """
+With the CA stopped, the renewer fails every attempt and the certificate expires: 50 handshakes before the expiry are accepted, and 100 of 100 after it are refused with certificate expired. A monitor that alerts at a quarter of the life left had alerted at least 2 seconds before the first refusal. The CA refuses to renew an expired certificate; a new one is issued and 20 of 20 handshakes pass. A monitor over 60 certificates finds 4 already expired, and a 7-day alert prevents 23 of 26 outages when the owner needs 3 days.
+"""
+speech = """
+Fifth demo: the missed renewal. [[slnc 400]] Every handshake is refused. [[slnc 600]] A monitor with enough warning would have prevented it.
+"""
+rows = { missed = "active wrong" }
+console = [
+    ["before the expiry: 0 of 50 refused", "ok"],
+    ["after the expiry: 100 of 100 refused", "bad"],
+    ["fleet of 60: 4 expired, 7-day alert prevents 23 of 26", "ok"],
+]
+
+[animation]
+subtitle = "A bank's certificates from issue to expiry."
+boxes = [
+    ["issue", "Issue and read", "chain"],
+    ["revoke", "Revocation and a dead responder", "soft fail"],
+    ["staple", "Stapling", "0 requests"],
+    ["rotate", "Short lives and rotation", "3 renewals"],
+    ["missed", "The missed renewal", "100 of 100"],
+]
+
+[docs.problem]
+scenario = """
+A bank's services trust each other through certificates, and one that expires or is stolen can stop or expose a payment.
+"""
+naive = """
+Issue certificates for a year, trust a revocation check that quietly gives up, and find expiries by the first customer complaint.
+"""
+deliver = [
+    "A private CA with a root and an intermediate.",
+    "CRL, OCSP and stapling measured with hard and soft fail.",
+    "Short-lived certificates renewed by step-ca, and the outage when a renewal is missed.",
+    "An expiry monitor over a fleet of certificates.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "openssl 3 or 4 and step with step-ca (brew install step openssl@3)",
+    "About two minutes for the demo",
+]
+not_required = [
+    "Docker",
+    "A cloud account",
+]
+install = ["step"]
+
+[docs.session]
+objectives = [
+    "read the fields of a certificate that a client checks",
+    "explain hard fail and soft fail for revocation",
+    "compare a CRL, an OCSP response and a staple",
+    "renew short-lived certificates before they expire",
+    "monitor a fleet for expiry",
+]
+walkthrough = """
+Run the demo and read the revocation table first. Then find the line that shows the revoked certificate accepted and say which client policy and which failure allowed it.
+"""
+exercises = [
+    "Change the lifetime to 9 seconds and predict the number of renewals in 30 seconds.",
+    "Add a must-staple extension to the certificate and make the client refuse a server with no staple.",
+    "Make the monitor alert on the fleet by owner.",
+    "Serve the CRL over HTTP and let the JDK fetch it.",
+]
+
+[docs.explained]
+sentence = """
+A certificate fails when it is revoked without anyone asking or expires without anyone watching, so make the answer reach the client and make renewal automatic and watched.
+"""
+verdict = """
+Prefer short-lived certificates renewed automatically, staple OCSP where revocation matters, choose hard or soft fail on purpose, and watch every certificate's expiry from an inventory with an alert early enough for its owner.
+"""
+recognise = [
+    "A service down because a certificate expired on a weekend.",
+    "A browser that skips the revocation check when the check fails.",
+    "A CRL that has grown for years.",
+    "A renewal job that fails quietly.",
+]
+
+[spec]
+purpose = """
+Teach the life of a certificate by running a private CA and measuring revocation, rotation and expiry with real tools.
+"""
+nongoals = [
+    "Running a public CA.",
+    "Certificate transparency.",
+    "Hardware security modules.",
+]
+problem = """
+Revocation is trusted without asking what the client does when it cannot reach the answer, and renewal is trusted without watching it.
+"""
+roles = [["The private CA", "`Pki`"], ["The OCSP responder with its switch", "`Responder`"], ["Chain and revocation checks", "`Chains`"], ["The stapling client", "`StapleClient`"], ["The CA that renews", "`StepCa`, `Renewer`"], ["The expiry monitor", "`Fleet`, `ExpiryWatch`"], ["Entry point", "`CertificateLifecycleDemo`"]]
+requirements = [
+    "Certificates are issued by a root and an intermediate made with openssl and by step-ca.",
+    "CRL, OCSP and stapling are checked with hard fail and with soft fail.",
+    "Short-lived certificates are renewed after two thirds of their life with no failed handshake.",
+    "A missed renewal is shown to refuse every handshake, and a monitor alerts first.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "A private CA, its answers and the services that use them."
+nodes = [
+    { id = "ca", label = "CA", sub = "openssl, step-ca", col = 0, row = 0, colour = "amber" },
+    { id = "resp", label = "Answers", sub = "CRL, OCSP, staple", col = 1, row = 0, colour = "accent" },
+    { id = "svc", label = "Service", sub = "TLS, JDK", col = 2, row = 0, colour = "client" },
+    { id = "mon", label = "Monitor", sub = "inventory", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "ca", to = "resp", label = "signs" },
+    { from = "resp", to = "svc", label = "tells" },
+    { from = "mon", to = "svc", label = "watches" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The CA, the checks and the renewal."
+nodes = [
+    { id = "pki", label = "Pki", sub = ["issue()", "revoke()", "generateCrl()"], col = 0, row = 0, colour = "amber" },
+    { id = "chains", label = "Chains", sub = ["validate()", "Policy", "Source"], col = 1, row = 0, colour = "accent" },
+    { id = "renew", label = "Renewer", sub = ["renewAt()", "renewed()"], col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "pki", to = "chains", label = "answers for" },
+    { from = "renew", to = "pki", label = "asks for new" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From issue to expiry"
+caption = "A certificate is renewed before it ends, or an alert is raised."
+nodes = [
+    { id = "issue", label = "Issue", sub = "CA signs", col = 0, row = 0, colour = "client" },
+    { id = "use", label = "Use", sub = "handshakes", col = 1, row = 0, colour = "accent" },
+    { id = "renew", label = "Renew", sub = "at two thirds", col = 2, row = 0, colour = "green" },
+    { id = "end", label = "Expire", sub = "or alert", col = 3, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "issue", to = "use" },
+    { from = "use", to = "renew", label = "two thirds" },
+    { from = "renew", to = "use", label = "new certificate" },
+    { from = "use", to = "end", label = "if missed" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A revocation check"
+participants = ["Client", "Service", "Responder"]
+steps = [
+    ["Client", "Service", "handshake"],
+    ["Service", "Client", "certificate chain"],
+    ["Client", "Responder", "is this serial good?"],
+    ["Responder", "Client", "good or revoked", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A renewal"
+participants = ["Renewer", "step-ca", "Service"]
+steps = [
+    ["Renewer", "step-ca", "renew with the current certificate"],
+    ["step-ca", "Renewer", "new certificate, same key", "reply"],
+    ["Renewer", "Service", "install it"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Bank network", nodes = ["svc", "ca"], colour = "green" },
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "holds a stolen key", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "svc", label = "Service", sub = "presents a certificate", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "ca", label = "CA and responder", sub = "issues and answers", col = 2, row = 0, colour = "amber", threats = ["T2", "T3"] },
+]
+edges = [
+    { from = "attacker", to = "svc", label = "uses the certificate", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "svc", to = "ca", label = "asks to renew", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+Certificates inside a bank's network: issue, revocation checks, renewal and expiry. It does not cover public CAs, browsers or hardware key storage.
+"""
+assets = [
+    "The private keys of the services.",
+    "The availability of the services.",
+    "The CA keys.",
+]
+actors = [
+    "An attacker who holds a stolen key.",
+    "An operator who forgets a renewal.",
+    "A network that blocks the responder.",
+]
+boundaries = [
+    "Between the services and the CA.",
+]
+assumptions = [
+    "The root key is kept offline.",
+    "Clocks are close to right.",
+]
+out_of_scope = [
+    "Compromise of the CA key.",
+    "Certificate transparency.",
+]
+tests = [
+    "`FleetTest`, `ScheduleTest` and `CrlsAndVerdictTest` check the buckets, the model, the renewal schedule and the database with no tools.",
+    "`DemoRunsTest` runs openssl, step and step-ca and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is key-management-and-hsm.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A stolen key is used until it expires"
+where = "the service"
+control = "Short lifetimes, revocation with a stated policy"
+residual = "A soft-fail client that accepts when the answer is blocked"
+
+[[threat]]
+id = "T2"
+stride = "D"
+threat = "A missed renewal refuses every handshake"
+where = "the service"
+control = "Renewal at two thirds, headroom, an expiry monitor"
+residual = "A CA outage longer than the headroom"
+
+[[threat]]
+id = "T3"
+stride = "T"
+threat = "A revocation is hidden by a stale CRL or staple"
+where = "the client"
+control = "Short CRL and staple lifetimes, OCSP"
+residual = "The window until the next refresh"
+
+[poster]
+headline = [["CERTIFICATE", "text"], ["LIFECYCLE", "accent"]]
+taglines = [["Issue certificates from a private root and intermediate, revoke them with a CRL, an OCSP r", "gold"]]
+before = { code = "renew: failed, expired", note = "The missed renewal", tag = "BEFORE" }
+after = { code = "renewals: 3, failed: 0 of 300", note = "Renewal at 2/3", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Certificate Lifecycle"
+narration = "Hello, and welcome. [[slnc 400]] This video explains certificate lifecycle, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A private CA (openssl root and intermediate) issues a bank's certificates; a client that cannot reach the OCSP responder refuses a good certificate (hard fail) or accepts a revoked one (soft fail), a CRL grows from 20 KB at 1,000 entries to 2120 KB at 100,000, and a stapled response answers with 0 requests to the responder. With 12-second certificates that step-ca renews after two thirds of their life, 300 handshakes in 30 seconds see 3 renewals and 0 failures, a 2-second CA outage costs 0 of 200 handshakes, and a CA that stays down past the expiry refuses 100 of 100 handshakes, 2 seconds after an expiry monitor had already alerted; a monitor over 60 certificates finds 4 already expired and prevents 23 of 26 outages with a 7-day alert. [[slnc 600]] Think of it this way. [[slnc 300]] A passport is valid for ten years, a stolen one is reported to a list at the border, and the officer who cannot reach the list either lets everyone through or stops the queue. A boarding pass is valid for the flight and needs no list at all, but the airline's printer must never break. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Read the fields of a certificate that a client checks. [[slnc 300]] Explain hard fail and soft fail for revocation. [[slnc 300]] Compare a CRL, an OCSP response and a staple."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's internal services call each other over", "TLS. The demo builds the bank's private CA,", "issues certificates, revokes one, takes the", "revocation service down, switches to", "certificates that live 12 seconds, breaks the", "renewal, and scans an inventory of 60", "certificates for the ones about to expire."]
+narration = "Here is the scenario. [[slnc 400]] A bank's internal services call each other over TLS. The demo builds the bank's private CA, issues certificates, revokes one, takes the revocation service down, switches to certificates that live 12 seconds, breaks the renewal, and scans an inventory of 60 certificates for the ones about to expire."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Revocation needs an answer", "A CRL is big and old", "Short lives need automation", "A monitor needs an inventory and an owner who has time to act", "The demo runs for about two minutes because it uses real clocks"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Revocation needs an answer, with hard fail a dead responder is an outage, with soft fail it is a bypass. [[slnc 500]] A CRL is big and old, an OCSP answer is small but must be asked for, and a staple is as old as its last refresh. [[slnc 500]] Short lives need automation, the headroom for a CA outage is a third of the life. [[slnc 500]] A monitor needs an inventory and an owner who has time to act. [[slnc 500]] The demo runs for about two minutes because it uses real clocks."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The private CA: Pki", "The OCSP responder with its switch: Responder", "Chain and revocation checks: Chains", "The stapling client: StapleClient", "The CA that renews: StepCa, Renewer"]
+narration = "Here is who does what in the code. [[slnc 400]] The private CA is in Pki. [[slnc 500]] The OCSP responder with its switch is in Responder. [[slnc 500]] Chain and revocation checks is in Chains. [[slnc 500]] The stapling client is in StapleClient. [[slnc 500]] The CA that renews is in StepCa, Renewer."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A service down because a certificate expired on a weekend", "A browser that skips the revocation check when the check fails", "A CRL that has grown for years", "A renewal job that fails quietly"]
+narration = "You have probably met this already. [[slnc 400]] A service down because a certificate expired on a weekend. [[slnc 500]] A browser that skips the revocation check when the check fails. [[slnc 500]] A CRL that has grown for years. [[slnc 500]] A renewal job that fails quietly."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Read the fields of a certificate that a client checks", "Explain hard fail and soft fail for revocation", "Compare a CRL, an OCSP response and a staple", "Renew short-lived certificates before they expire", "Monitor a fleet for expiry"]
+narration = "So, how do you use it? [[slnc 400]] Prefer short-lived certificates renewed automatically, staple OCSP where revocation matters, choose hard or soft fail on purpose, and watch every certificate's expiry from an inventory with an alert early enough for its owner."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's certificate lifecycle. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A certificate fails when it is revoked without anyone asking or expires without anyone watching, so make the answer reach the client and make renewal automatic and watched. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the lifetime to 9 seconds and predict the number of renewals in 30 seconds. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

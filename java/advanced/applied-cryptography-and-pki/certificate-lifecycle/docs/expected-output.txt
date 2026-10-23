@@ -1,0 +1,83 @@
+--- the authority: a root and an intermediate, both made with openssl
+root: self-signed yes, CA yes, path length limit none, key usage keyCertSign and cRLSign
+intermediate: signed by the root yes, CA yes, path length limit 0, key usage keyCertSign and cRLSign, signature SHA256withECDSA
+the root key signs only the intermediate; the intermediate key signs every certificate and every CRL and OCSP response below
+--- a server certificate issued by the intermediate, read in Java
+names (subject alternative names): api.bank.example, payments.bank.example
+key usage: digitalSignature; extended key usage: serverAuth; CA: no
+public key: EC 256 bits; signature: SHA256withECDSA
+lifetime: 30 days
+pointers inside the certificate: OCSP responder yes, CRL distribution point no
+chain to the root with the intermediate: accepted
+chain to the root without the intermediate: refused (no chain to the root)
+same chain 31 days later: refused (expired)
+same chain a day before it was issued: refused (not yet valid)
+--- revocation by OCSP: an openssl ocsp responder that is up, down or hanging
+hard fail = the client refuses when it cannot learn the status; soft fail = it accepts
+good certificate, responder up: hard fail accepted, soft fail accepted
+OCSP requests the responder saw for those 2 checks: 2
+revoked certificate, responder up: hard fail refused (revoked), soft fail refused (revoked)
+good certificate, responder down: hard fail refused (revocation status unknown), soft fail accepted
+revoked certificate, responder down: hard fail refused (revocation status unknown), soft fail accepted
+revoked certificate, responder hangs: hard fail refused (revocation status unknown), soft fail accepted
+each check of the hanging responder waited about 1 second (the demo's timeout; the JDK default is 15): yes
+a revoked certificate gets through a soft-fail client whenever the answer can be blocked: yes
+--- revocation by CRL: a signed list that the client downloads
+CRL signed by the intermediate and verified in Java: yes; entries: 1; good for 3600 seconds in this lab (the entry is the card service certificate revoked above)
+the certificate is revoked after that CRL was published; a client holding the old CRL: accepted
+new CRL: entries 2; a client holding it: refused (revoked)
+client clock 2 hours later, the CRL's next update has passed: hard fail refused (revocation status unknown), soft fail accepted
+a revoked certificate stays usable for clients that hold the old list until their next download: up to 3600 seconds in this lab
+--- OCSP stapling: the server sends a signed, dated OCSP response inside the TLS handshake (openssl s_server -status_file)
+size of the response: under 512 bytes yes
+server that staples, responder up: accepted, responses in the handshake 1, requests to the responder 0
+server that does not staple, responder up: accepted, responses in the handshake 0, requests to the responder 1 (the responder learns which site the client visits)
+server that does not staple, responder down: hard fail refused (revocation status unknown), soft fail accepted
+server that staples, responder down: hard fail accepted
+same staple read 2 days later, past its next update, responder down: hard fail refused (OCSP response out of date)
+certificate revoked, the server still sends the staple made before: accepted, requests to the responder 0
+same server, a client that ignores the staple and asks the responder: refused (revoked)
+server with a staple made after the revocation: refused (revoked)
+a staple moves the question to the server and survives a dead responder; it is as old as its last refresh (1 day in this lab)
+--- how big a CRL gets (the CA database is written with this many revoked entries, then openssl ca writes the CRL)
+revoked entries 1,000: CRL 20 KB, 21 bytes per entry, a phone at 1 Mbit/s needs 0.2 seconds for it
+revoked entries 10,000: CRL 205 KB, 21 bytes per entry, a phone at 1 Mbit/s needs 1.7 seconds for it
+revoked entries 100,000: CRL 2120 KB, 22 bytes per entry, a phone at 1 Mbit/s needs 17.4 seconds for it
+100,000 revoked entries, 90,000 of them for certificates that have expired, after openssl ca -updatedb: CRL 2120 KB (openssl keeps revoked entries after expiry; -updatedb only marks valid ones)
+the same CA if it dropped the 90,000 entries that RFC 5280 lets it drop: CRL 205 KB
+a CA that drops expired entries keeps the list as long as the lifetimes of the certificates on it: short lifetimes, short lists
+--- short-lived certificates from step-ca, renewed after two thirds of their life
+lifetime of each certificate: 12 seconds (as issued: within a second of that yes), chain sent: 2 certificates
+a renewal is due 8 seconds after issue; a stolen certificate is worth at most 12 seconds instead of 30 days
+window of 30 seconds, one handshake every 100 ms: 300 handshakes, 0 failed
+renewals in the window: 3, failed renewals: 0
+expiry alerts raised while rotation works: 0
+the service now presents a different certificate than at the start: yes
+--- the CA is unreachable for about 2 seconds, just before a renewal is due (the headroom is 4 seconds)
+handshakes in 20 seconds: 200, failed: 0
+renewal attempts that failed while the CA was away: yes, renewed once it was back: yes
+--- a missed renewal: the CA stays down past the end of the certificate
+before the expiry: 50 handshakes, 0 refused
+after the expiry: 100 handshakes, 100 refused, the reason: certificate expired
+renewal attempts that failed: more than 10 yes, renewals: 0
+the expiry monitor (an alert at a quarter of the life left) alerted before the first refused handshake: yes, at least 2 seconds before: yes
+the CA is back; renewing the expired certificate: refused yes (it has to be issued anew)
+after a new certificate is installed: 20 handshakes, 0 refused
+--- an inventory of 60 certificates, scanned by an expiry monitor
+  expired: 4
+  under 7 days: 6
+  under 30 days: 14
+  30 days or more: 36
+the first scan finds 4 certificates that are already refused by clients, before anyone reported them
+model: 60 days, a scan every morning, a certificate expiring in that window is an outage unless its owner renews in time
+expiring inside the 60 days: 26
+no monitor: 26 outages
+alert under 7 days, owner needs 3 days: 3 outages, 23 prevented
+alert under 7 days, owner needs 10 days: 26 outages, 0 prevented
+alert under 30 days, owner needs 10 days: 8 outages, 18 prevented
+an alert is worth the time the owner needs: a 7 day alert does not help a team with a 10 day change process
+--- the bill
+revocation is a question that needs an answer: with hard fail a dead responder is an outage, with soft fail it is a bypass
+a CRL is big and old, an OCSP answer is small and live but must be asked for, a staple is small and moves the ask to the server
+a short life makes revocation almost unnecessary and turns renewal into the thing that must never fail
+the headroom for a CA outage is a third of the life; a monitor that counts the days left is the last line
