@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kubernetes Network Policies</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Kubernetes Network Policies</h1>
+<pre><code>src/main/java/com/jk/explore/security/k8snetpol/
+├── Cluster.java                        A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── Intent.java                         Which pod may reach which pod, as the design says, and a measured matrix compared with it
+├── KubernetesNetworkPoliciesDemo.java  
+├── Lab.java                            The bank's five pods on a real cluster, a server outside it, and the measurement of who can reach whom
+├── Policies.java                       The bank's network policies as manifests, one small builder for each shape
+├── Sh.java                             Runs a program and returns what it printed, whether it worked or not
+└── Workload.java                       A pod of the bank: where it runs, its name, and the label that policies select it by
+</code></pre>
+<p><strong>Five pods of a bank on a real cluster (kind) reach each other on 20 of 20 pairs with no policy, 17 of them unwanted; a default deny closes all 20 and one allow for each line of the design opens exactly the 3 that are meant, and the measurement equals the design; three mistakes that the API server accepts show up only in the measurement: an allow for a whole namespace (1 unwanted pair), a typo in the app label of an allow (1 missing pair) and a deny written for one app that forgets a pod (4 unwanted pairs); a default deny of egress also stops the name lookup until DNS is allowed, and stops a server outside the cluster from being called; and a pod relabelled app=web gets the web's access.</strong></p>
+<p>A Kubernetes cluster is a flat network: every pod can reach every other pod unless a <strong>NetworkPolicy</strong> says otherwise. This project runs a real cluster with <strong>kind</strong> (its default network plugin, kindnet, enforces policies), puts five pods of a bank in three namespaces and <strong>measures</strong> which pod can reach which. A Java program applies the policies and runs <code>curl</code> inside each pod against every other pod (<code>brew install kind kubectl</code>, Docker running); the demo makes a cluster, so it is tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>A flat network.</strong> With no policy, <strong>20 of 20</strong> pairs of pods reach each other; the design allows 3, so <strong>17 are unwanted</strong>.
+- <strong>Default deny, then the design.</strong> One deny closes all 20 pairs; one allow for each line of the design opens exactly <strong>3 of 20</strong> and the measurement equals the design.
+- <strong>Three mistakes the API server accepts.</strong> An allow for a whole namespace (<strong>1 unwanted</strong> pair), a typo in an app label (<strong>1 missing</strong> pair), a deny written for one app that forgets a pod (<strong>4 unwanted</strong> pairs). Only the measurement shows them.
+- <strong>Egress and DNS.</strong> Denying egress also stops the name lookup until DNS is allowed, and stops a taken-over api from calling a server outside the cluster.
+- <strong>The label is the credential.</strong> A pod relabelled <code>app=web</code> gets the web's access.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Protect (PR.IR) · NIST SP 800-53 SC-7 · CIS Kubernetes Benchmark 5.3 · Zero trust microsegmentation.</p>
+<h2>The idea in everyday terms</h2>
+<p>An office building where every door is unlocked. Locking them all is the easy part. The work is to cut a key for each line of the floor plan, and then to walk the building and try every door, because a key cut for the wrong room works just as well.</p>
+<h2>The scenario</h2>
+<p>A bank runs a shop front, a payments api, a database and an operators' admin pod in three namespaces. The design lists three allowed conversations and nothing else. The demo applies policies and then tries every pair of pods.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. A flat network</td>
+<td>With no policy 20 of 20 pairs of pods reach each other; the design allows 3.</td>
+</tr>
+<tr>
+<td>2. Default deny, then the design</td>
+<td>One deny closes all 20 pairs, three allows open exactly the 3 in the design.</td>
+</tr>
+<tr>
+<td>3. Mistakes the API server accepts</td>
+<td>An allow for a whole namespace, a typo in a label and a forgotten pod are all valid, and only the measurement shows them.</td>
+</tr>
+<tr>
+<td>4. Egress and DNS</td>
+<td>Denying egress stops the name lookup until DNS is allowed, and stops a call to a server outside the cluster.</td>
+</tr>
+<tr>
+<td>5. The label is the credential</td>
+<td>A pod relabelled app=web is let in by the web's allow.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>IntentTest</code>, <code>PoliciesTest</code>. The design comparison and the policy manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The cluster, the policies and the network plugin are real, and the pods are small web servers. The demo prints counts and pod names, never addresses or ids.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/kubernetes-network-policies-explained.html">Kubernetes Network Policies, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A policy selects pods; the plugin enforces it.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>Pods, the design and the lab.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Every pod tries every other pod.</p>
+<p><img alt="From a probe to a matrix" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A blocked request" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/kubernetes-network-policies-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A policy that selects nothing is valid,</strong> and does nothing.</li>
+<li><strong>Labels become credentials,</strong> and whoever can set them chooses the policy.</li>
+<li><strong>Egress rules need DNS too,</strong> or names stop working.</li>
+<li><strong>Enforcement depends on the network plugin;</strong> some accept policies and ignore them.</li>
+<li><strong>Every pair must be tested</strong> to know what the policies do.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A cluster with one team and no sensitive data can start with namespaces and RBAC. Use network policies when a taken-over pod must not reach the database, or when a rule says which service may call which.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A cluster where every pod can reach the database.</li>
+<li>A policy copied from a blog post and never tested.</li>
+<li>An egress rule that broke DNS on a Friday.</li>
+<li>A label changed to get a pod working.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the second project of the <a href="..">kubernetes-and-container-security</a> module, after <a href="../kubernetes-admission-control">kubernetes-admission-control</a>. The same measuring of a design against a network was done with Docker networks in <a href="../../cloud-security-without-a-cloud/network-isolation">network-isolation</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
