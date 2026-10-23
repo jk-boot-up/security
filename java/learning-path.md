@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 133 projects. Planned: 19 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 134 projects. Planned: 18 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,18 +35,18 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **16** | **19** | **35** |
+| **Advanced** | | **17** | **18** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
 | | devsecops-pipelines | 3 | 1 | 4 |
 | | service-identity-and-zero-trust | 1 | 3 | 4 |
-| | applied-cryptography-and-pki | 1 | 4 | 5 |
+| | applied-cryptography-and-pki | 2 | 3 | 5 |
 | | detection-engineering | 0 | 3 | 3 |
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 2 | 2 | 4 |
-| **All** | | **133** | **19** | **152** |
+| **All** | | **134** | **18** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 16 | 19 | 35 |
+| Advanced | Unclassified | 17 | 18 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **16** | **19** | **35** |
+| **All** | **Unclassified** | **17** | **18** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -325,7 +325,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | 135 | certificate-lifecycle | *planned*: Issuance, OCSP and CRLs, stapling, short-lived certificates and automated rotation, and the outages that missed renewals cause | step-ca, OpenSSL |
 | 136 | tls-attacks-and-downgrades | *planned*: Downgrades, weak key exchange, and why TLS 1.3 removed what it removed, shown on deliberately weak local servers | OpenSSL, testssl.sh |
 | 137 | [post-quantum-cryptography](advanced/applied-cryptography-and-pki/post-quantum-cryptography) | Use ML-KEM and ML-DSA from the JDK, combine X25519 with ML-KEM in a hybrid exchange, measure what the new sizes cost, and count where a bank's code still depends on RSA and elliptic curves | JDK 25, Bouncy Castle |
-| 138 | crypto-agility | *planned*: Inventorying algorithms, versioned formats and rotating an algorithm without losing data | JDK 25, Tink |
+| 138 | [crypto-agility](advanced/applied-cryptography-and-pki/crypto-agility) | Inventory the algorithms in a bank's code, store data in a versioned envelope, and rotate the algorithm and the key under 10,100 records without losing one | JDK 25 |
 | 139 | hardware-backed-keys | *planned*: Keys that never leave a token; signing with PKCS#11 | SoftHSM, the JDK PKCS#11 provider |
 
 ### 7. detection-engineering
