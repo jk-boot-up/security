@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 151 projects. Planned: 1 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 151 projects. Planned: 0 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,7 +35,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **34** | **1** | **35** |
+| **Advanced** | | **34** | **0** | **34** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
@@ -43,10 +43,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | service-identity-and-zero-trust | 4 | 0 | 4 |
 | | applied-cryptography-and-pki | 5 | 0 | 5 |
 | | detection-engineering | 3 | 0 | 3 |
-| | offensive-security-methodology | 3 | 1 | 4 |
+| | offensive-security-methodology | 3 | 0 | 3 |
 | | resilience-and-recovery | 2 | 0 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **151** | **1** | **152** |
+| **All** | | **151** | **0** | **151** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 34 | 1 | 35 |
+| Advanced | Unclassified | 34 | 0 | 34 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **34** | **1** | **35** |
+| **All** | **Unclassified** | **34** | **0** | **34** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -340,26 +340,25 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 143 | penetration-testing-methodology | *planned*: Scoping, rules of engagement, reconnaissance, testing, reporting and retesting, against the project's own vulnerable store | OWASP ZAP, the intermediate store |
-| 144 | [vulnerability-research](advanced/offensive-security-methodology/vulnerability-research) | Fuzz a bank's statement reader with Jazzer, take the crashes to their root causes, fix them, prove the fix, and write the advisory with a coordinated disclosure timeline | Jazzer, CVSS 3.1 |
-| 145 | [reverse-engineering-fundamentals](advanced/offensive-security-methodology/reverse-engineering-fundamentals) | Read a bank client's class files with the JDK's class file API, javap and the CFR decompiler, find a hard-coded key, patch a licence check, and see what obfuscation does and does not stop | javap, CFR, the JDK class file API |
-| 146 | [malware-analysis-fundamentals](advanced/offensive-security-methodology/malware-analysis-fundamentals) | Triage harmless, purpose-built samples with hashes, strings, entropy and YARA rules, and run one in a disposable container to see what a sandbox stops | YARA, a disposable container |
+| 143 | [vulnerability-research](advanced/offensive-security-methodology/vulnerability-research) | Fuzz a bank's statement reader with Jazzer, take the crashes to their root causes, fix them, prove the fix, and write the advisory with a coordinated disclosure timeline | Jazzer, CVSS 3.1 |
+| 144 | [reverse-engineering-fundamentals](advanced/offensive-security-methodology/reverse-engineering-fundamentals) | Read a bank client's class files with the JDK's class file API, javap and the CFR decompiler, find a hard-coded key, patch a licence check, and see what obfuscation does and does not stop | javap, CFR, the JDK class file API |
+| 145 | [malware-analysis-fundamentals](advanced/offensive-security-methodology/malware-analysis-fundamentals) | Triage harmless, purpose-built samples with hashes, strings, entropy and YARA rules, and run one in a disposable container to see what a sandbox stops | YARA, a disposable container |
 
 ### 9. resilience-and-recovery
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 147 | [ransomware-resilience](advanced/resilience-and-recovery/ransomware-resilience) | Keep a bank's ledger backups where an attacker with the backup credentials cannot destroy them: object lock, separate credentials, a second store, a guard against poisoned backups, and a restore exercise with a recovery time and point | RustFS object lock, AWS SDK |
-| 148 | [security-chaos-engineering](advanced/resilience-and-recovery/security-chaos-engineering) | Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told | Toxiproxy |
+| 146 | [ransomware-resilience](advanced/resilience-and-recovery/ransomware-resilience) | Keep a bank's ledger backups where an attacker with the backup credentials cannot destroy them: object lock, separate credentials, a second store, a guard against poisoned backups, and a restore exercise with a recovery time and point | RustFS object lock, AWS SDK |
+| 147 | [security-chaos-engineering](advanced/resilience-and-recovery/security-chaos-engineering) | Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told | Toxiproxy |
 
 ### 10. governance-risk-and-compliance
 
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
-| 149 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation |
-| 150 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports |
-| 151 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs |
-| 152 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL |
+| 148 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation |
+| 149 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports |
+| 150 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs |
+| 151 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL |
 
 ## Other pages
 

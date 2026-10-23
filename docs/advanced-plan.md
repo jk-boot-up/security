@@ -79,24 +79,23 @@ The conventions are the same as in the other tracks:
 ### 8. offensive-security-methodology
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 26 | `penetration-testing-methodology` | Scoping, rules of engagement, reconnaissance, testing, reporting and retesting, against the project's own vulnerable store | OWASP ZAP, the intermediate store |
-| 27 | `vulnerability-research` | From a crash found by fuzzing to a root cause, a patch and an advisory, with coordinated disclosure | Jazzer, a debugger |
-| 28 | `reverse-engineering-fundamentals` | Reading Java bytecode and a decompiled jar, finding a hard-coded key, and obfuscation's limits | javap, CFR, Ghidra |
-| 29 | `malware-analysis-fundamentals` | Static triage of a harmless, purpose-built sample: strings, hashes, YARA rules and sandbox safety | YARA, a disposable container |
+| 26 | `vulnerability-research` | From a crash found by fuzzing to a root cause, a patch and an advisory, with coordinated disclosure | Jazzer, a debugger |
+| 27 | `reverse-engineering-fundamentals` | Reading Java bytecode and a decompiled jar, finding a hard-coded key, and obfuscation's limits | javap, CFR, Ghidra |
+| 28 | `malware-analysis-fundamentals` | Static triage of a harmless, purpose-built sample: strings, hashes, YARA rules and sandbox safety | YARA, a disposable container |
 
 ### 9. resilience-and-recovery
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 30 | `ransomware-resilience` | Immutable backups, isolated recovery, and a timed restore exercise | RustFS object lock, OpenTofu |
-| 31 | `security-chaos-engineering` | Injecting failures into security controls and checking that they fail closed and alert | Toxiproxy, the intermediate store |
+| 29 | `ransomware-resilience` | Immutable backups, isolated recovery, and a timed restore exercise | RustFS object lock, OpenTofu |
+| 30 | `security-chaos-engineering` | Injecting failures into security controls and checking that they fail closed and alert | Toxiproxy, the intermediate store |
 
 ### 10. governance-risk-and-compliance
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 32 | `risk-management` | A risk register with quantified risk (FAIR-style ranges), treatment decisions and residual risk | Java, Monte Carlo simulation |
-| 33 | `controls-and-evidence` | Mapping controls to NIST CSF 2.0 and ISO 27001, and collecting evidence automatically from tests | Java, the earlier projects' tests |
-| 34 | `security-architecture-review` | Reviewing a design: trust boundaries, data flows, and decision records | Structurizr (C4), ADRs |
-| 35 | `privacy-engineering` | Data minimization, pseudonymization, retention and subject access in a bank's data model | Java, PostgreSQL |
+| 31 | `risk-management` | A risk register with quantified risk (FAIR-style ranges), treatment decisions and residual risk | Java, Monte Carlo simulation |
+| 32 | `controls-and-evidence` | Mapping controls to NIST CSF 2.0 and ISO 27001, and collecting evidence automatically from tests | Java, the earlier projects' tests |
+| 33 | `security-architecture-review` | Reviewing a design: trust boundaries, data flows, and decision records | Structurizr (C4), ADRs |
+| 34 | `privacy-engineering` | Data minimization, pseudonymization, retention and subject access in a bank's data model | Java, PostgreSQL |
 
 ## Order of work
 
