@@ -1,0 +1,434 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "threat-hunting"
+level = "advanced"
+module = "detection-engineering"
+title = "Threat Hunting"
+short_title = "Threat Hunting"
+package = "threathunt"
+main_class = "ThreatHuntingDemo"
+tagline = "Hunt through a simulated week of a bank's logs with four hypotheses, judge the leads against what really happened, and turn the hunt that worked into a rule"
+bold = "A simulated week at a bank has 74,831 name lookups, 11,204 process starts and 803 logins, with 4 planted attacks (a beacon, a shell started by a document, an upload in bulk, a stolen service account) and benign things that look like them; looking only for regular calls gives 87 leads, adding rarity gives 2 (1 attack, 1 heartbeat), a limit that is too strict misses the beacon's 10% jitter, rare parent and child pairs give 3 leads (2 attacks), a new address at a new hour gives 1 lead (an attack), and bulk volume gives 2 leads (1 attack); the four hunts hand over 7 leads to review and find 4 of the 4 attacks the logs can show, while a fifth attack, a scheduled task, is in no log; the beacon hunt becomes a rule that raises 1 false alert on a clean week until the heartbeat is allowlisted."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Threat hunting at a bank on a simulated week of logs: hypotheses about beaconing, rare process pairs, odd logins and bulk volume, the leads each one gives, the false leads that teach an allowlist, a data gap no hunt can close, and turning a hunt into a rule."
+thumb_lines = ["THREAT", "HUNTING"]
+thumb_code = "hunt: calls every ~300 s to a rare domain"
+youtube_title = "Threat Hunting: Hypotheses, Leads, False Leads and Turning a Hunt into a Rule"
+youtube_tags = ["threat hunting", "hypothesis-driven hunting", "beaconing detection", "long tail analysis", "stacking", "anomaly detection", "detection engineering", "mitre att&ck", "soc", "java"]
+
+[readme]
+intro = """
+A hunt starts with a guess about what an intruder does, not with an alert. This project simulates **a week at a bank** (40 workstations, 5 servers, 60 users, about 74,000 name lookups, 11,000 process starts and 800 logins) with **four attacks** hidden in it and several ordinary things that look like attacks, and runs four hunts in Java: a **timer** in the lookups (beaconing), **programs nobody else runs** (stacking parent and child pairs), **accounts in odd places** and **data leaving in bulk**. Each hunt gives leads; a person judges them against what really happened. It needs only the JDK: `./gradlew test`, then `./gradlew run`.
+
+What it shows:
+- **Beaconing.** Regular calls alone give **87** leads; regular calls to a rare domain give **2**: the beacon and a monitoring heartbeat. A limit on regularity that is too strict loses the beacon's 10% jitter.
+- **Rare pairs.** Pairs seen at most twice give **3** leads: a document starting a shell, the shell asking who the user is, and an administrator's `ipconfig`.
+- **Odd logins and bulk volume.** A new address at a new hour gives **1** lead; a host-day far above its own median gives **2**, one of them a patch download.
+- **The scoreboard.** **7** leads, **4 of 4** attacks the logs can show; the fifth attack, a scheduled task, is in no log: a gap in the data, not in the hunt.
+- **From a hunt to a rule.** The beacon hunt as a rule raises **1** false alert on a clean week until the heartbeat is allowlisted.
+
+**Maps to:** MITRE ATT&CK T1071 (application layer protocol), T1059 (command interpreters), T1078 (valid accounts), T1041 (exfiltration over C2) · NIST CSF 2.0 DE.AE and DE.CM · SANS PEAK threat hunting framework.
+"""
+analogy = """
+A night watchman who does not wait for the alarm. She has a theory that someone is visiting the building on a schedule, so she reads the visitor book for names that come at regular times. Most of what she finds is the cleaner. She writes down the cleaner's name so that she does not stop for it again, and she writes the rule for the one she did not know.
+"""
+scenario = """
+A bank's security team has a week of logs and a worry that someone is already inside. The demo gives them four hypotheses to test and counts what each one turns up.
+"""
+costs = [
+    "**Every lead costs a person's time,** and most are not attacks.",
+    "**A hunt can only look at data that exists.**",
+    "**Thresholds are guesses** that need tuning on your own data.",
+    "**Benign periodic things** such as heartbeats and updates look like beacons.",
+    "**A hunt is not repeatable** until it is written down as a rule.",
+]
+too_much = """
+A small team with managed detection can start with the vendor's content. Hunt when you have good logs, a theory about an adversary, and people with time to follow leads.
+"""
+met_before = [
+    "A search for a bad IP address from a news article.",
+    "A dashboard of top talkers that nobody reads.",
+    "An alert threshold set once and never tuned.",
+    "A hunt done by one person and never written down.",
+]
+where = """
+This is a project of the [detection-engineering](..) module, after [detection-as-code](../detection-as-code), which turns what a hunt finds into tested rules.
+"""
+twin = """
+The week is made by a seeded generator, so each run is the same; the attacks and the ordinary things are planted and known. The names and addresses are invented and the domains end in .invalid or .example.
+"""
+test_note = "The hunts and the generator are tested with the JDK only. The demo is compared with its golden output."
+
+[[act]]
+title = "The week"
+summary = "A simulated week with 74,831 lookups, 11,204 process starts and 803 logins, and 4 planted attacks."
+detail = """
+40 workstations and 5 servers make lookups, start programs and log in for a week. Hidden in it are a beacon from one workstation, a document that starts a shell, a bulk upload from a server and a stolen service account. A fifth attack, a scheduled task kept on a server, is in no log.
+"""
+speech = """
+First demo: the week. [[slnc 400]] Seventy-four thousand lookups and four attacks hidden in them. [[slnc 600]] A fifth attack leaves no log at all.
+"""
+rows = { week = "active ok" }
+console = [
+    ["name lookups: 74831", "ok"],
+    ["planted: 4 attacks in the logs", "bad"],
+    ["a fifth is in no log", "bad"],
+]
+
+[[act]]
+title = "Hunt 1: a timer in the lookups"
+summary = "Regular calls alone give 87 leads; adding rarity gives 2; a limit that is too strict loses the beacon."
+detail = """
+Looking for calls at regular intervals finds every update check and time sync: 87 leads. Adding the condition that at most 3 hosts call the domain leaves 2: the beacon, calling every 300 seconds with 10% jitter, and a monitoring heartbeat. Asking for a variation under 1% keeps the perfect heartbeat and loses the beacon. After the analyst allowlists the heartbeat, one lead is left, and it is an attack.
+"""
+speech = """
+Second demo: a timer in the lookups. [[slnc 400]] Eighty-seven leads, then two. [[slnc 600]] One is the beacon and one is a heartbeat the analyst learns to allow.
+"""
+rows = { timer = "active ok" }
+console = [
+    ["regular calls only: 87 leads", "bad"],
+    ["regular and rare: 2 leads, 1 attack", "ok"],
+    ["too strict: the jittery beacon is lost", "bad"],
+]
+
+[[act]]
+title = "Hunts 2 and 3: pairs and accounts"
+summary = "Rare parent and child pairs give 3 leads, 2 of them attacks; a new address at a new hour gives 1 lead, an attack."
+detail = """
+Counting parent and child program pairs and reading the rarest: a document starting a shell, the shell asking who the user is, and an administrator's ipconfig. For logins, a new address after the first four days gives 2 leads; also requiring an hour the account has never been seen gives 1: the backup account at three in the morning from an address it has never used.
+"""
+speech = """
+Third demo: pairs and accounts. [[slnc 400]] The rarest pairs are a document starting a shell. [[slnc 600]] A new address at a new hour is the backup account.
+"""
+rows = { pairs = "active ok" }
+console = [
+    ["rare pairs: 3 leads, 2 attacks", "ok"],
+    ["new address: 2 leads, 1 attack", "bad"],
+    ["and a new hour: 1 lead, an attack", "ok"],
+]
+
+[[act]]
+title = "Hunt 4 and the scoreboard"
+summary = "Bulk volume gives 2 leads; the four hunts hand over 7 leads and find 4 of the 4 attacks the logs can show."
+detail = """
+A host-day of more than 50 MB and far above that host's own median gives 2 leads: the upload from a server, and a patch download. In all there are 7 leads to review, which contain every attack that the logs can show. The scheduled task is not in any log, so no hunt finds it: that is a gap in the data.
+"""
+speech = """
+Fourth demo: the scoreboard. [[slnc 400]] Seven leads, and every attack the logs can show. [[slnc 600]] The one that no log records, no hunt can find.
+"""
+rows = { score = "active ok" }
+console = [
+    ["bulk volume: 2 leads, 1 attack", "ok"],
+    ["leads to review: 7", "ok"],
+    ["the scheduled task: a gap in the data", "bad"],
+]
+
+[[act]]
+title = "From a hunt to a rule"
+summary = "The beacon hunt as a rule raises 1 false alert on a clean week until the heartbeat is allowlisted."
+detail = """
+The beacon hunt becomes a rule with the same thresholds. On a clean week it raises 1 alert, the monitoring heartbeat, and with the allowlist none. On the attack week it raises 1 alert and it is true. A hunt that worked becomes a rule with its allowlist and its tests.
+"""
+speech = """
+Fifth demo: from a hunt to a rule. [[slnc 400]] On a clean week the rule raises one false alert. [[slnc 600]] The allowlist is what the false lead taught.
+"""
+rows = { rule = "active wrong" }
+console = [
+    ["clean week, no allowlist: 1 false alert", "bad"],
+    ["with the allowlist: 0", "ok"],
+    ["attack week: 1 true alert", "ok"],
+]
+
+[animation]
+subtitle = "A bank's week of logs, hunted."
+boxes = [
+    ["week", "The week", "74,831 lookups"],
+    ["timer", "Hunt 1: a timer in the lookups", "87 to 2"],
+    ["pairs", "Hunts 2 and 3: pairs and accounts", "3 and 1"],
+    ["score", "Hunt 4 and the scoreboard", "4 of 4"],
+    ["rule", "From a hunt to a rule", "1 false alert"],
+]
+
+[docs.problem]
+scenario = """
+A bank's team suspects that someone is already inside, and the alerts say nothing.
+"""
+naive = """
+Wait for the alert, and search for the IP address from the last news article.
+"""
+deliver = [
+    "A seeded week of lookups, process starts and logins.",
+    "Four hypotheses written as queries.",
+    "Leads judged against what really happened.",
+    "The hunt that worked turned into a rule.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+]
+not_required = [
+    "A SIEM",
+    "Docker",
+]
+install = []
+
+[docs.session]
+objectives = [
+    "turn a hypothesis about an intruder into a query",
+    "judge a lead against what really happened",
+    "explain why benign periodic traffic looks like a beacon",
+    "turn a hunt into a rule with an allowlist",
+]
+walkthrough = """
+Run the demo and compare the first two lines of hunt 1. Then change the limit on regularity and see when the beacon appears and disappears.
+"""
+exercises = [
+    "Add a hunt for logins from two places at once.",
+    "Add jitter detection that does not depend on a fixed limit.",
+    "Write the rare pair hunt as a rule and backtest it on the clean week.",
+    "Add the scheduled task to the logs and write the hunt that finds it.",
+]
+
+[docs.explained]
+sentence = """
+A hunt asks the data a question that an alert never asked.
+"""
+verdict = """
+Start from a hypothesis, query the data you have, judge every lead against what really happened, allowlist what is benign and write down why, name the data you are missing, and turn what works into a rule with tests.
+"""
+recognise = [
+    "A hunt that is a search for an indicator from the news.",
+    "A beacon rule with no allowlist.",
+    "A threshold nobody has tuned.",
+    "A hunt in one person's notebook.",
+]
+
+[spec]
+purpose = """
+Teach threat hunting by running four hypothesis-driven hunts over a seeded week of bank logs and scoring the leads.
+"""
+nongoals = [
+    "Tools for hunting at scale.",
+    "Machine-learning anomaly detection.",
+    "Incident response.",
+]
+problem = """
+Teams wait for alerts and do not look for what the alerts miss, or they hunt without a hypothesis and cannot say what they learned.
+"""
+roles = [["The events", "`Events`"], ["The seeded week", "`Generator`"], ["The hunts", "`Hunts`"], ["A lead", "`Hunts.Lead`"], ["The scoreboard", "`ThreatHuntingDemo`"], ["Entry point", "`ThreatHuntingDemo`"]]
+requirements = [
+    "The week is seeded and has known attacks and known benign look-alikes.",
+    "Each hunt starts from a hypothesis and gives leads.",
+    "Leads are judged against the truth and counted.",
+    "A hunt can be written as a rule and backtested with and without an allowlist.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "A hypothesis becomes a query and a query becomes leads."
+nodes = [
+    { id = "logs", label = "Logs", sub = "lookups, programs, logins", col = 0, row = 0, colour = "client" },
+    { id = "hunts", label = "Hunts", sub = "4 hypotheses", col = 1, row = 0, colour = "amber" },
+    { id = "leads", label = "Leads", sub = "to review", col = 2, row = 0, colour = "accent" },
+    { id = "rule", label = "Rule", sub = "with an allowlist", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "hunts", to = "logs", label = "query" },
+    { from = "leads", to = "hunts", label = "come from" },
+    { from = "rule", to = "leads", label = "written from the true ones" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The events, the hunts and the week."
+nodes = [
+    { id = "events", label = "Events", sub = ["Dns", "Proc", "Login"], col = 0, row = 0, colour = "accent" },
+    { id = "hunts", label = "Hunts", sub = ["beaconing()", "rarePairs()", "oddLogins()", "volume()"], col = 1, row = 0, colour = "amber" },
+    { id = "gen", label = "Generator", sub = ["week()"], col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "hunts", to = "events", label = "reads" },
+    { from = "gen", to = "events", label = "makes" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a guess to a rule"
+caption = "Each step uses what the one before taught."
+nodes = [
+    { id = "guess", label = "Hypothesis", sub = "a timer", col = 0, row = 0, colour = "client" },
+    { id = "lead", label = "Lead", sub = "judge it", col = 1, row = 0, colour = "amber" },
+    { id = "rule", label = "Rule", sub = "test, allowlist", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "guess", to = "lead", label = "query" },
+    { from = "lead", to = "rule", label = "if true" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A beacon hunt"
+participants = ["Analyst", "Hunt", "Logs"]
+steps = [
+    ["Analyst", "Hunt", "regular calls to a rare domain"],
+    ["Hunt", "Logs", "gaps between calls per host and domain"],
+    ["Logs", "Hunt", "two pairs with a variation under 30%", "reply"],
+    ["Hunt", "Analyst", "two leads: judge them", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Learning an allowlist"
+participants = ["Analyst", "Lead", "Rule"]
+steps = [
+    ["Analyst", "Lead", "a heartbeat to a partner"],
+    ["Analyst", "Rule", "add it to the allowlist, with a reason"],
+    ["Rule", "Analyst", "0 false alerts on a clean week", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Intruder", nodes = ["intruder"], colour = "red" },
+    { label = "SOC", nodes = ["hunt"], colour = "green" },
+]
+nodes = [
+    { id = "intruder", label = "Intruder", sub = "already inside", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "hunt", label = "Hunt", sub = "hypotheses over logs", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "logs", label = "Logs", sub = "what was collected", col = 2, row = 0, colour = "amber", threats = ["T2"] },
+]
+edges = [
+    { from = "intruder", to = "hunt", label = "leaves traces", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "hunt", to = "logs", label = "reads", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+The use of logs to find an intruder who has not raised an alert. It does not cover response.
+"""
+assets = [
+    "The logs.",
+    "The hunt notes and rules.",
+]
+actors = [
+    "An intruder who stays quiet.",
+    "An analyst.",
+    "An administrator whose work looks odd.",
+]
+boundaries = [
+    "The log pipeline: what is not collected cannot be hunted.",
+]
+assumptions = [
+    "The logs are complete and have not been tampered with.",
+]
+out_of_scope = [
+    "Attacks that leave no log.",
+    "Response.",
+]
+tests = [
+    "`HuntsTest` checks each hunt, the generator and the median with the JDK only.",
+    "`DemoRunsTest` compares the whole demo with the golden output.",
+]
+next = """
+The next project in the module is siem-basics.
+"""
+
+[[threat]]
+id = "T1"
+stride = "R"
+threat = "An intruder stays unseen because no rule asks the right question"
+where = "the detections"
+control = "Hypothesis-driven hunts that become rules"
+residual = "Techniques nobody thought of"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A gap in the logs hides an attack"
+where = "the log sources"
+control = "List the data gaps and close them"
+residual = "Sources that cannot be collected"
+
+[[threat]]
+id = "T3"
+stride = "D"
+threat = "Too many false leads exhaust the analysts"
+where = "the team"
+control = "Rarity and baseline filters, allowlists with reasons"
+residual = "Time spent on each lead"
+
+[poster]
+headline = [["THREAT", "text"], ["HUNTING", "accent"]]
+taglines = [["Hunt through a simulated week of a bank's logs with four hypotheses, judge the leads again", "gold"]]
+before = { code = "hunt: calls every ~300 s to a rare domain", note = "87 leads", tag = "BEFORE" }
+after = { code = "regular and rare: 2 leads", note = "Rarity", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Threat Hunting"
+narration = "Hello, and welcome. [[slnc 400]] This video explains threat hunting, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A simulated week at a bank has 74,831 name lookups, 11,204 process starts and 803 logins, with 4 planted attacks (a beacon, a shell started by a document, an upload in bulk, a stolen service account) and benign things that look like them; looking only for regular calls gives 87 leads, adding rarity gives 2 (1 attack, 1 heartbeat), a limit that is too strict misses the beacon's 10% jitter, rare parent and child pairs give 3 leads (2 attacks), a new address at a new hour gives 1 lead (an attack), and bulk volume gives 2 leads (1 attack); the four hunts hand over 7 leads to review and find 4 of the 4 attacks the logs can show, while a fifth attack, a scheduled task, is in no log; the beacon hunt becomes a rule that raises 1 false alert on a clean week until the heartbeat is allowlisted. [[slnc 600]] Think of it this way. [[slnc 300]] A night watchman who does not wait for the alarm. She has a theory that someone is visiting the building on a schedule, so she reads the visitor book for names that come at regular times. Most of what she finds is the cleaner. She writes down the cleaner's name so that she does not stop for it again, and she writes the rule for the one she did not know. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Turn a hypothesis about an intruder into a query. [[slnc 300]] Judge a lead against what really happened. [[slnc 300]] Explain why benign periodic traffic looks like a beacon."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's security team has a week of logs and a", "worry that someone is already inside. The demo", "gives them four hypotheses to test and counts", "what each one turns up."]
+narration = "Here is the scenario. [[slnc 400]] A bank's security team has a week of logs and a worry that someone is already inside. The demo gives them four hypotheses to test and counts what each one turns up."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every lead costs a person's time", "A hunt can only look at data that exists", "Thresholds are guesses that need tuning on your own data", "Benign periodic things such as heartbeats and updates look like beacons", "A hunt is not repeatable until it is written down as a rule"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every lead costs a person's time, and most are not attacks. [[slnc 500]] A hunt can only look at data that exists. [[slnc 500]] Thresholds are guesses that need tuning on your own data. [[slnc 500]] Benign periodic things such as heartbeats and updates look like beacons. [[slnc 500]] A hunt is not repeatable until it is written down as a rule."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The events: Events", "The seeded week: Generator", "The hunts: Hunts", "A lead: Hunts.Lead", "The scoreboard: ThreatHuntingDemo"]
+narration = "Here is who does what in the code. [[slnc 400]] The events is in Events. [[slnc 500]] The seeded week is in Generator. [[slnc 500]] The hunts is in Hunts. [[slnc 500]] A lead is in Hunts.Lead. [[slnc 500]] The scoreboard is in ThreatHuntingDemo."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A hunt that is a search for an indicator from the news", "A beacon rule with no allowlist", "A threshold nobody has tuned", "A hunt in one person's notebook"]
+narration = "You have probably met this already. [[slnc 400]] A hunt that is a search for an indicator from the news. [[slnc 500]] A beacon rule with no allowlist. [[slnc 500]] A threshold nobody has tuned. [[slnc 500]] A hunt in one person's notebook."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Turn a hypothesis about an intruder into a query", "Judge a lead against what really happened", "Explain why benign periodic traffic looks like a beacon", "Turn a hunt into a rule with an allowlist"]
+narration = "So, how do you use it? [[slnc 400]] Start from a hypothesis, query the data you have, judge every lead against what really happened, allowlist what is benign and write down why, name the data you are missing, and turn what works into a rule with tests."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's threat hunting. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A hunt asks the data a question that an alert never asked. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a hunt for logins from two places at once. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

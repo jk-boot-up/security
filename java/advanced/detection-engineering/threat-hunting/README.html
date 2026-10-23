@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Threat Hunting</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Threat Hunting</h1>
+<pre><code>src/main/java/com/jk/explore/security/threathunt/
+├── Events.java             The three kinds of record that the hunts read: name lookups with the bytes sent out, process starts, and logins
+├── Generator.java          A made-up but seeded week at a bank: 40 workstations, 5 servers, 60 users, a lot of ordinary activity, four attacks, and benign things that look like attacks
+├── Hunts.java              The hunts: each starts from a hypothesis about what an intruder does and asks the data for leads that a person then judges
+└── ThreatHuntingDemo.java  What really happened in the week: the leads that are attacks
+</code></pre>
+<p><strong>A simulated week at a bank has 74,831 name lookups, 11,204 process starts and 803 logins, with 4 planted attacks (a beacon, a shell started by a document, an upload in bulk, a stolen service account) and benign things that look like them; looking only for regular calls gives 87 leads, adding rarity gives 2 (1 attack, 1 heartbeat), a limit that is too strict misses the beacon's 10% jitter, rare parent and child pairs give 3 leads (2 attacks), a new address at a new hour gives 1 lead (an attack), and bulk volume gives 2 leads (1 attack); the four hunts hand over 7 leads to review and find 4 of the 4 attacks the logs can show, while a fifth attack, a scheduled task, is in no log; the beacon hunt becomes a rule that raises 1 false alert on a clean week until the heartbeat is allowlisted.</strong></p>
+<p>A hunt starts with a guess about what an intruder does, not with an alert. This project simulates <strong>a week at a bank</strong> (40 workstations, 5 servers, 60 users, about 74,000 name lookups, 11,000 process starts and 800 logins) with <strong>four attacks</strong> hidden in it and several ordinary things that look like attacks, and runs four hunts in Java: a <strong>timer</strong> in the lookups (beaconing), <strong>programs nobody else runs</strong> (stacking parent and child pairs), <strong>accounts in odd places</strong> and <strong>data leaving in bulk</strong>. Each hunt gives leads; a person judges them against what really happened. It needs only the JDK: <code>./gradlew test</code>, then <code>./gradlew run</code>.</p>
+<p>What it shows:
+- <strong>Beaconing.</strong> Regular calls alone give <strong>87</strong> leads; regular calls to a rare domain give <strong>2</strong>: the beacon and a monitoring heartbeat. A limit on regularity that is too strict loses the beacon's 10% jitter.
+- <strong>Rare pairs.</strong> Pairs seen at most twice give <strong>3</strong> leads: a document starting a shell, the shell asking who the user is, and an administrator's <code>ipconfig</code>.
+- <strong>Odd logins and bulk volume.</strong> A new address at a new hour gives <strong>1</strong> lead; a host-day far above its own median gives <strong>2</strong>, one of them a patch download.
+- <strong>The scoreboard.</strong> <strong>7</strong> leads, <strong>4 of 4</strong> attacks the logs can show; the fifth attack, a scheduled task, is in no log: a gap in the data, not in the hunt.
+- <strong>From a hunt to a rule.</strong> The beacon hunt as a rule raises <strong>1</strong> false alert on a clean week until the heartbeat is allowlisted.</p>
+<p><strong>Maps to:</strong> MITRE ATT&amp;CK T1071 (application layer protocol), T1059 (command interpreters), T1078 (valid accounts), T1041 (exfiltration over C2) · NIST CSF 2.0 DE.AE and DE.CM · SANS PEAK threat hunting framework.</p>
+<h2>The idea in everyday terms</h2>
+<p>A night watchman who does not wait for the alarm. She has a theory that someone is visiting the building on a schedule, so she reads the visitor book for names that come at regular times. Most of what she finds is the cleaner. She writes down the cleaner's name so that she does not stop for it again, and she writes the rule for the one she did not know.</p>
+<h2>The scenario</h2>
+<p>A bank's security team has a week of logs and a worry that someone is already inside. The demo gives them four hypotheses to test and counts what each one turns up.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The week</td>
+<td>A simulated week with 74,831 lookups, 11,204 process starts and 803 logins, and 4 planted attacks.</td>
+</tr>
+<tr>
+<td>2. Hunt 1: a timer in the lookups</td>
+<td>Regular calls alone give 87 leads; adding rarity gives 2; a limit that is too strict loses the beacon.</td>
+</tr>
+<tr>
+<td>3. Hunts 2 and 3: pairs and accounts</td>
+<td>Rare parent and child pairs give 3 leads, 2 of them attacks; a new address at a new hour gives 1 lead, an attack.</td>
+</tr>
+<tr>
+<td>4. Hunt 4 and the scoreboard</td>
+<td>Bulk volume gives 2 leads; the four hunts hand over 7 leads and find 4 of the 4 attacks the logs can show.</td>
+</tr>
+<tr>
+<td>5. From a hunt to a rule</td>
+<td>The beacon hunt as a rule raises 1 false alert on a clean week until the heartbeat is allowlisted.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>9 tests in <code>DemoRunsTest</code>, <code>HuntsTest</code>. The hunts and the generator are tested with the JDK only. The demo is compared with its golden output.</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The week is made by a seeded generator, so each run is the same; the attacks and the ordinary things are planted and known. The names and addresses are invented and the domains end in .invalid or .example.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/threat-hunting-explained.html">Threat Hunting, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A hypothesis becomes a query and a query becomes leads.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The events, the hunts and the week.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each step uses what the one before taught.</p>
+<p><img alt="From a guess to a rule" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A beacon hunt" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/threat-hunting-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Every lead costs a person's time,</strong> and most are not attacks.</li>
+<li><strong>A hunt can only look at data that exists.</strong></li>
+<li><strong>Thresholds are guesses</strong> that need tuning on your own data.</li>
+<li><strong>Benign periodic things</strong> such as heartbeats and updates look like beacons.</li>
+<li><strong>A hunt is not repeatable</strong> until it is written down as a rule.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A small team with managed detection can start with the vendor's content. Hunt when you have good logs, a theory about an adversary, and people with time to follow leads.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A search for a bad IP address from a news article.</li>
+<li>A dashboard of top talkers that nobody reads.</li>
+<li>An alert threshold set once and never tuned.</li>
+<li>A hunt done by one person and never written down.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">detection-engineering</a> module, after <a href="../detection-as-code">detection-as-code</a>, which turns what a hunt finds into tested rules.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
