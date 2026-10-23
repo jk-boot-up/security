@@ -17,7 +17,7 @@ public final class SecurityChaosDemo {
     /** The whole demo as text; the same on every run. */
     public static String run() throws IOException, InterruptedException {
         StringBuilder out = new StringBuilder();
-        try (Backends backends = new Backends("0.0.0.0")) {
+        try (Backends backends = new Backends("127.0.0.1")) {
             Map<String, Integer> upstream = new LinkedHashMap<>();
             for (String name : backends.names()) {
                 upstream.put(name, backends.port(name));

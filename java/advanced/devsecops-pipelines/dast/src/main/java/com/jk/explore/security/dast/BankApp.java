@@ -3,6 +3,7 @@ package com.jk.explore.security.dast;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +35,8 @@ public final class BankApp implements AutoCloseable {
             s.execute("CREATE TABLE accounts(id INT PRIMARY KEY, owner VARCHAR(40), balance INT)");
             s.execute("INSERT INTO accounts VALUES (1, 'Asha', 1200), (2, 'Ben', 300)");
         }
-        this.server = HttpServer.create(new InetSocketAddress(0), 0);
+        // loopback only: Docker Desktop forwards host.docker.internal to it, and nothing else on the network can reach the deliberately weak site
+        this.server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         server.createContext("/", ex -> respond(ex, 200, page("Bank", "<a href=\"/search?q=card\">Search</a> <a href=\"/account?id=1\">Account</a> <a href=\"/login\">Log in</a> <a href=\"/admin\">Admin</a>")));
         server.createContext("/search", ex -> respond(ex, 200, page("Search", "<p>Results for " + out(query(ex).getOrDefault("q", "")) + "</p>")));
         server.createContext("/account", this::account);

@@ -28,7 +28,7 @@ final class OpenSearch implements AutoCloseable {
     OpenSearch() throws IOException, InterruptedException {
         int port = freePort();
         base = "http://localhost:" + port;
-        Process p = new ProcessBuilder("docker", "run", "-d", "--name", container, "-p", port + ":9200", "-e", "discovery.type=single-node",
+        Process p = new ProcessBuilder("docker", "run", "-d", "--name", container, "-p", "127.0.0.1:" + port + ":9200", "-e", "discovery.type=single-node",
                 "-e", "DISABLE_SECURITY_PLUGIN=true", "-e", "DISABLE_INSTALL_DEMO_CONFIG=true", "-e", "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m", IMAGE)
                 .redirectErrorStream(true).start();
         String out = new String(p.getInputStream().readAllBytes());
