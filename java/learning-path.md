@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 141 projects. Planned: 11 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 142 projects. Planned: 10 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,7 +35,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **24** | **11** | **35** |
+| **Advanced** | | **25** | **10** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
 | | kubernetes-and-container-security | 4 | 0 | 4 |
@@ -43,10 +43,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | service-identity-and-zero-trust | 3 | 1 | 4 |
 | | applied-cryptography-and-pki | 3 | 2 | 5 |
 | | detection-engineering | 0 | 3 | 3 |
-| | offensive-security-methodology | 2 | 2 | 4 |
+| | offensive-security-methodology | 3 | 1 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 4 | 0 | 4 |
-| **All** | | **141** | **11** | **152** |
+| **All** | | **142** | **10** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 24 | 11 | 35 |
+| Advanced | Unclassified | 25 | 10 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **24** | **11** | **35** |
+| **All** | **Unclassified** | **25** | **10** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -341,7 +341,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | # | Project | You learn | Tools |
 | ---: | --- | --- | --- |
 | 143 | penetration-testing-methodology | *planned*: Scoping, rules of engagement, reconnaissance, testing, reporting and retesting, against the project's own vulnerable store | OWASP ZAP, the intermediate store |
-| 144 | vulnerability-research | *planned*: From a crash found by fuzzing to a root cause, a patch and an advisory, with coordinated disclosure | Jazzer, a debugger |
+| 144 | [vulnerability-research](advanced/offensive-security-methodology/vulnerability-research) | Fuzz a bank's statement reader with Jazzer, take the crashes to their root causes, fix them, prove the fix, and write the advisory with a coordinated disclosure timeline | Jazzer, CVSS 3.1 |
 | 145 | [reverse-engineering-fundamentals](advanced/offensive-security-methodology/reverse-engineering-fundamentals) | Read a bank client's class files with the JDK's class file API, javap and the CFR decompiler, find a hard-coded key, patch a licence check, and see what obfuscation does and does not stop | javap, CFR, the JDK class file API |
 | 146 | [malware-analysis-fundamentals](advanced/offensive-security-methodology/malware-analysis-fundamentals) | Triage harmless, purpose-built samples with hashes, strings, entropy and YARA rules, and run one in a disposable container to see what a sandbox stops | YARA, a disposable container |
 
