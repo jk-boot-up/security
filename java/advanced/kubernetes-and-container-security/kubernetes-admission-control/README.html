@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kubernetes Admission Control</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Kubernetes Admission Control</h1>
+<pre><code>src/main/java/com/jk/explore/security/k8sadmission/
+├── Cluster.java                         A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── KubernetesAdmissionControlDemo.java  
+├── Kyverno.java                         Kyverno, an admission controller, installed from its release manifest, and the bank's policies applied from the policies/ folder
+├── Pods.java                            Pod and Deployment manifests for the requests, built as text
+├── Registry.java                        A local image registry (a container on kind's Docker network), the bank's cosign key, and images pushed and signed in it
+├── Sh.java                              Runs a program and returns what it printed, whether it worked or not
+└── Verdict.java                         What the API server said to a request: admitted, or refused by which policies
+</code></pre>
+<p><strong>A real cluster (kind) with Kyverno as its admission controller refuses 6 of 10 requests for a bank's payments namespace, each by name (privileged, no limits, another registry, an image nobody signed with the bank's cosign key, and a Deployment checked through its pods); a signed image named by a tag is admitted and its tag is replaced by the digest that was signed; a rule starts in audit mode, the policy report shows the writable root filesystem and a privileged pod that was running before any policy, and the same rule then refuses a new pod; an exception for one pod is honoured only from the kyverno namespace and only until its date (1 of 4 requests admitted); and with the admission controller stopped Kyverno removes its webhooks (0 left) and the API server stops asking anyone.</strong></p>
+<p>A request to create a pod passes the API server's authentication and authorization, and then the <strong>admission controllers</strong>: the last gate before the workload exists. This project runs a real cluster with <strong>kind</strong>, installs <strong>Kyverno</strong> (v1.19.2) as the admission controller and applies a bank's policies written in CEL. A Java program makes the cluster, a local registry and the bank's cosign key, and sends the requests (<code>brew install kind kubectl cosign</code>, Docker running); the demo makes a cluster, so it is tagged <code>integration</code>: <code>./gradlew integrationTest</code>. The policies are in <a href="policies"><code>policies/</code></a>.</p>
+<p>What it shows:
+- <strong>Policies that refuse.</strong> Ten requests to a labelled namespace: <strong>6 are refused</strong>, each by the policies that name the reason (privileged, no limits, another registry, an image nobody signed); a privileged pod in a namespace without the label is admitted.
+- <strong>Audit first.</strong> A privileged pod that was running before the policies keeps running. A rule in audit mode admits a writable root filesystem, the <strong>policy report</strong> lists it, and when the rule becomes a denial the next such pod is refused.
+- <strong>Mutation and signed images.</strong> A pod that said nothing gets <code>allowPrivilegeEscalation: false</code>; the tag of a signed image is replaced by the <strong>digest</strong> that was signed; an image nobody signed is refused.
+- <strong>Exceptions.</strong> One named pod may break one rule until a date, from the <code>kyverno</code> namespace only: <strong>1 of 4</strong> requests is admitted.
+- <strong>The bill.</strong> With the admission controller stopped Kyverno removes its webhooks (<strong>0 left</strong>) and the API server admits what it is given.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Protect (PR.PS) · NIST SP 800-53 CM-7, CM-14 · CIS Kubernetes Benchmark 5.2 · Pod Security Standards · SLSA and signed images.</p>
+<h2>The idea in everyday terms</h2>
+<p>A building's front desk. Every visitor is asked who they are, whether they may enter this floor, and then the desk checks the bag. The desk can also hand out a badge with the right colour. But it only sees people arriving: someone already inside is not checked, and if the desk is empty nobody is asked.</p>
+<h2>The scenario</h2>
+<p>A bank runs its payments namespace on Kubernetes and wants no privileged pod, no pod without limits and no image that was not signed by its own build to be created there. The demo creates a real cluster and sends it good and bad requests.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Policies that refuse</td>
+<td>Ten requests to a labelled namespace: 6 are refused, each by the policies that name the reason, and 4 are admitted.</td>
+</tr>
+<tr>
+<td>2. Audit first, then deny</td>
+<td>A privileged pod that was running before the policies keeps running; the policy report lists it, and a new rule refuses only new pods once it is switched to deny.</td>
+</tr>
+<tr>
+<td>3. Mutation and signed images</td>
+<td>A pod that said nothing gets allowPrivilegeEscalation false, and the tag of a signed image is replaced by its digest.</td>
+</tr>
+<tr>
+<td>4. Exceptions</td>
+<td>An exception for one named pod is honoured from the kyverno namespace until its date, and in no other case.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>With the admission controller stopped, 0 policy webhooks are left and the API server admits what it is given.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>12 tests in <code>DemoRunsTest</code>, <code>PodsAndPoliciesTest</code>, <code>VerdictTest</code>. The requests, the verdicts and the policy files are tested with no tools. The demo makes a cluster (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The cluster, Kyverno, the registry and the signatures are real. Only the images are tiny, built for the demo. The demo prints decisions and counts, never addresses, ids or timestamps.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/kubernetes-admission-control-explained.html">Kubernetes Admission Control, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The API server asks Kyverno before a pod exists.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>A cluster, the controller on it, and the answers.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Mutation comes before validation.</p>
+<p><img alt="From a request to a pod" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A refused request" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/kubernetes-admission-control-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>An engine in the path of every request;</strong> when it is down, its webhooks are gone and nothing is checked.</li>
+<li><strong>Admission sees requests, not what already runs.</strong></li>
+<li><strong>A namespace without the label is not covered.</strong></li>
+<li><strong>Mutation changes what the team wrote,</strong> so the pod that runs differs from the file in git.</li>
+<li><strong>A first run needs a network</strong> for the cluster images and Kyverno.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A single team on a managed cluster can start with the built-in Pod Security Admission labels. Reach for a policy engine when the rules are the bank's own (a registry, signatures, an owner label), or when mutation, reports and exceptions are needed.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A cluster where every developer is an administrator.</li>
+<li>An image pulled by tag from any registry.</li>
+<li>A policy engine installed in audit mode and left there.</li>
+<li>An exception granted in a chat message.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the first project of the <a href="..">kubernetes-and-container-security</a> module. The rules as code and their tests are in <a href="../../infrastructure-as-code-security/policy-as-code">policy-as-code</a>; here an engine enforces them in a cluster.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
