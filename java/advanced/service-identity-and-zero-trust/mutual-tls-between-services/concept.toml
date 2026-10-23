@@ -1,0 +1,448 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "mutual-tls-between-services"
+level = "advanced"
+module = "service-identity-and-zero-trust"
+title = "Mutual TLS Between Services"
+short_title = "mTLS"
+package = "mtls"
+main_class = "MutualTlsDemo"
+tagline = "Make a bank's services prove who they are with client certificates from a private CA, authorize by that identity and not by the network, and rotate short-lived certificates without downtime"
+bold = "A bank's ledger service runs real HTTPS that demands a client certificate from a real private CA (step-ca): a call with no certificate and a call with a certificate from another CA that names itself payments are both refused at the handshake and neither reaches the ledger's code (0 requests); the identity is the URI in the certificate's SAN, so payments is allowed to POST /transfers (200) and refused GET /statements (403), reporting is the other way round, and a valid fraud-engine certificate with no rule gets 403; an allow-the-network rule lets 2 of 2 callers on the same host in, the certificate identity 1 of 2; a certificate that lives 8 seconds is renewed halfway, the server reloads its certificate and trust file without a restart with 0 failed calls out of at least 20 made meanwhile, and the old certificate is refused after its expiry while the renewed one gets 200; a stolen certificate that is revoked at the CA still gets 200 at the ledger until the ledger reads the CA's revocation list, and then gets 403."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Mutual TLS between a bank's services with step-ca and the JDK: client certificates, authorization by the identity in the certificate and not by the network, short-lived certificates renewed with the server reloading trust, and what a revoked certificate can still do."
+thumb_lines = ["MUTUAL", "TLS"]
+thumb_code = "client cert -> identity -> 200 or 403"
+youtube_title = "Mutual TLS Between Services: Client Certificates, Identity and Rotation"
+youtube_tags = ["mutual tls", "mtls", "client certificates", "step-ca", "zero trust", "service identity", "certificate rotation", "revocation", "private ca", "java"]
+
+[readme]
+intro = """
+In ordinary TLS only the server proves who it is. In **mutual TLS** the caller shows a certificate too, so the server learns **which service** is calling and can decide by that identity instead of by the network address. This project runs a bank's **ledger service** as a real HTTPS server (the JDK's `HttpsServer`) that demands a client certificate, and a real private CA, **step-ca**, that issues the certificates; the Java code drives the `step` command line and makes real TLS calls with the JDK's `HttpClient`. The demo is tagged `integration` (needs `step` and `step-ca` on the PATH, about 25 seconds): `./gradlew integrationTest`.
+
+What it shows:
+- **Who gets in.** No certificate, or a certificate from another CA that names itself `payments`, is refused at the handshake and **0** requests reach the ledger's code. A server that shows a certificate for another host is refused by the client.
+- **Identity from the SAN.** The ledger takes the caller from the URI in the certificate (`spiffe://bank/payments`), not from the subject name. `payments` gets **200** on `POST /transfers` and **403** on `GET /statements`; `reporting` the other way round; `fraud-engine`, with a valid certificate and no rule, gets **403**.
+- **Identity, not the network.** An allow-the-network rule lets **2 of 2** callers on the same host in; the certificate identity lets **1 of 2**.
+- **Rotation.** A certificate that lives **8 seconds** is renewed halfway; the server reloads its certificate and trust file without a restart, and **0** of at least 20 calls on new connections fail; the old certificate is refused after its expiry and the renewed one gets 200.
+- **A compromised certificate.** Revoked at the CA, it still gets **200** at the ledger until the ledger reads the CA's revocation list; then **403**.
+
+**Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204B · OWASP ASVS V9 · PCI DSS 4.0 req. 4.2 and 8.6 · RFC 8446, RFC 5280.
+"""
+analogy = """
+A staff door that reads a badge instead of looking at the corridor. Anyone in the corridor is not let in for being there; the badge says who they are and the door knows what that person may open. Badges expire in minutes and are reissued, so a lost badge stops working soon, even if nobody remembers to cancel it.
+"""
+scenario = """
+A bank's payments, reporting and fraud-engine services call a ledger service. The ledger must know which of them is calling, let payments move money, let reporting read statements, and refuse the rest, even from the same host.
+"""
+costs = [
+    "**A CA is now critical infrastructure:** if it is down, nothing renews.",
+    "**Short lifetimes need a renewal job that never fails,** and a clock that is right.",
+    "**Revocation does not happen by itself:** a server must read the list.",
+    "**Every CA in a trust file can mint any identity.**",
+    "**Every service needs a key it can keep secret.**",
+]
+too_much = """
+A few services behind one gateway on a private network may be fine with the gateway doing TLS. Use mutual TLS when many services call each other and the network alone cannot say who is calling.
+"""
+met_before = [
+    "An internal API that trusts anything from the office network.",
+    "A shared API key in every service's configuration.",
+    "A certificate that expired on a Sunday and stopped payments.",
+    "A firewall rule named after a subnet that nobody can explain.",
+]
+where = """
+This is the first project of the [service-identity-and-zero-trust](..) module. The service mesh version, where the mesh issues the identities and does the handshake, comes next.
+"""
+twin = """
+step-ca, the step command line, the TLS handshake and the HTTP calls are real and run on this machine. The bank, its services and the endpoints are made up. The demo prints counts and yes or no, never ports, serial numbers or paths.
+"""
+test_note = "The identity rule and the policy are tested with no tools. The demo starts step-ca and takes about 25 seconds (./gradlew integrationTest)."
+
+[[act]]
+title = "Who gets in"
+summary = "No certificate, or a certificate from another CA, is refused at the handshake and no request reaches the ledger's code."
+detail = """
+step-ca issues a certificate to each service, with the identity as a URI in the SAN and a different subject name. The ledger demands a client certificate. A call with none fails, and so does a call with a certificate from another CA that claims to be payments: the ledger's code runs 0 times. The client checks the server too: a ledger that shows a certificate for another host is refused.
+"""
+speech = """
+First demo: who gets in. [[slnc 400]] No certificate, refused. [[slnc 600]] A certificate from another CA that names itself payments, refused, and the ledger's code never runs.
+"""
+rows = { gate = "active ok" }
+console = [
+    ["no client certificate: handshake refused", "ok"],
+    ["another CA, names itself payments: refused", "ok"],
+    ["requests that reached the ledger: 0", "ok"],
+]
+
+[[act]]
+title = "Identity, not the network"
+summary = "payments and reporting get different answers for the same call; an allow-the-network rule lets both in."
+detail = """
+The ledger reads the identity from the SAN. payments gets 200 on POST /transfers and 403 on GET /statements; reporting gets 200 on GET /statements and 403 on POST /transfers; fraud-engine has a valid certificate and no rule, so 403. A rule that allows the trusted network lets both of two callers on the same host in; the certificate identity lets one.
+"""
+speech = """
+Second demo: identity, not the network. [[slnc 400]] Same host, same call, two answers. [[slnc 600]] The network rule lets both in, the certificate rule lets one.
+"""
+rows = { identity = "active ok" }
+console = [
+    ["payments POST /transfers: 200", "ok"],
+    ["reporting POST /transfers: 403", "ok"],
+    ["by network: 2 of 2, by identity: 1 of 2", "ok"],
+]
+
+[[act]]
+title = "Rotation"
+summary = "A certificate that lives 8 seconds is renewed halfway and the server reloads trust with no failed call; the old one is refused after expiry."
+detail = """
+A caller's certificate lives 8 seconds. Halfway through, step ca renew gives a new serial number and a later expiry; the server reloads its own certificate and its trust file without a restart, and a second CA added to the trust file is accepted at once. At least 20 calls on new connections run meanwhile, with 0 failures. After 8 seconds the first certificate is refused and the renewed one gets 200.
+"""
+speech = """
+Third demo: rotation. [[slnc 400]] A certificate that lives eight seconds, renewed halfway. [[slnc 600]] The server reloads without a restart, and no call fails.
+"""
+rows = { rotation = "active ok" }
+console = [
+    ["lifetime: 8 seconds", "ok"],
+    ["calls during the reload: failed 0", "ok"],
+    ["first certificate after expiry: refused", "ok"],
+    ["renewed certificate: 200", "ok"],
+]
+
+[[act]]
+title = "A compromised certificate"
+summary = "A stolen certificate revoked at the CA still gets 200 until the ledger reads the revocation list."
+detail = """
+A copy of a certificate and its key works from any process: 200. The CA revokes it and lists it on its revocation list, but the ledger still answers 200 because nothing told it. Once the ledger loads the list it answers 403 with the reason. A certificate that was not revoked is unaffected.
+"""
+speech = """
+Fourth demo: a compromised certificate. [[slnc 400]] Revoked at the CA, and the ledger still says yes. [[slnc 600]] Only when the ledger reads the list does it say no.
+"""
+rows = { revoked = "active wrong" }
+console = [
+    ["revoked at the CA: on its list", "ok"],
+    ["the ledger afterwards: 200", "bad"],
+    ["after loading the list: 403", "ok"],
+]
+
+[[act]]
+title = "The bill"
+summary = "A revocation is only as good as the server that reads it; short lifetimes are the revocation that always works; a CA in the trust file can mint any identity."
+detail = """
+The CA records a revocation but a server that does not read the list never learns of it. A short lifetime is the revocation that always works, and it costs a renewal job that must not fail. Adding a CA to the trust file lets it mint any identity, payments included: the trust file is part of the policy.
+"""
+speech = """
+Fifth demo: the bill. [[slnc 400]] Revocation needs a reader. [[slnc 600]] Short lifetimes work always, and the trust file is policy.
+"""
+rows = { bill = "active wrong" }
+console = [
+    ["revocation needs a server that reads it", "bad"],
+    ["short lifetime needs a renewal that never fails", "bad"],
+    ["a CA in the trust file can mint any identity", "bad"],
+]
+
+[animation]
+subtitle = "A bank's services, showing badges at the door."
+boxes = [
+    ["gate", "Who gets in", "0 reached"],
+    ["identity", "Identity, not the network", "2 of 2, then 1 of 2"],
+    ["rotation", "Rotation", "8 seconds"],
+    ["revoked", "A compromised certificate", "200, then 403"],
+    ["bill", "The bill", "three costs"],
+]
+
+[docs.problem]
+scenario = """
+A bank wants its ledger to know which service is calling, and to refuse the rest, even from inside the network.
+"""
+naive = """
+Allow the internal network and give every service the same API key.
+"""
+deliver = [
+    "Client certificates from a private CA.",
+    "Authorization by the identity in the certificate.",
+    "Short-lived certificates renewed without downtime.",
+    "A look at what a revoked certificate can still do.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "step and step-ca on the PATH (brew install step step-ca)",
+]
+not_required = [
+    "A Kubernetes cluster",
+    "A cloud account",
+]
+install = ["step", "step-ca"]
+
+[docs.session]
+objectives = [
+    "explain what a client certificate proves and what it does not",
+    "take a service identity from a certificate SAN and authorize by it",
+    "renew a short-lived certificate and reload a server without downtime",
+    "say what a revoked certificate can still do",
+]
+walkthrough = """
+Run the demo and compare the second act with the first: the same host gets two answers. Open Identities.java and see which part of the certificate is the identity. Then read the rotation act and find where the server stops using the old certificate.
+"""
+exercises = [
+    "Add a service to the policy and issue it a certificate.",
+    "Make the ledger read the revocation list every 10 seconds on a timer and measure how long a revoked certificate still works.",
+    "Add name constraints to the second CA so it can only mint identities under its own prefix.",
+    "Check the revocation list inside the handshake with a custom trust manager instead of in the handler.",
+]
+
+[docs.explained]
+sentence = """
+A certificate is a badge: check who it names, give it a short life, and renew it before it ends.
+"""
+verdict = """
+Use a private CA, give every service a certificate with its identity in the SAN, authorize by that identity, keep lifetimes short and renew automatically, make servers reload certificates and trust without a restart, and read the revocation list or rely on expiry. Treat the trust file as part of the policy.
+"""
+recognise = [
+    "An internal API that trusts the source address.",
+    "A client certificate checked for validity but never for who it names.",
+    "A certificate renewal that is a calendar reminder.",
+    "A revocation that nobody's server reads.",
+]
+
+[spec]
+purpose = """
+Teach mutual TLS between services by running a real private CA and a real server, and measuring who gets in, how identity decides, what rotation costs and what a revoked certificate can still do.
+"""
+nongoals = [
+    "A service mesh (the next project).",
+    "Browser or end-user certificates.",
+    "Hardware-protected keys.",
+]
+problem = """
+Services trust the network, so any caller on it is trusted, and certificates are issued once and forgotten.
+"""
+roles = [["The private CA and the step commands", "`Ca`"], ["The ledger server, its reload and the revocation check", "`Ledger`"], ["The identity in a certificate", "`Identities`"], ["Who may call what", "`Policy`"], ["The TLS settings that can be replaced while running", "`Tls`"], ["A calling service", "`Caller`"], ["Entry point", "`MutualTlsDemo`"]]
+requirements = [
+    "The CA is a real step-ca and the calls are real TLS.",
+    "The identity comes from the SAN, never from the subject name.",
+    "A refused handshake never reaches the application code.",
+    "The server reloads its certificate and trust without a restart and without a failed call.",
+    "The demo prints the same output on every run and leaves no key behind.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "A CA issues badges; the ledger reads them."
+nodes = [
+    { id = "ca", label = "step-ca", sub = "private CA", col = 0, row = 0, colour = "amber" },
+    { id = "caller", label = "Callers", sub = "payments, reporting", col = 1, row = 0, colour = "client" },
+    { id = "ledger", label = "Ledger", sub = "HTTPS, client cert", col = 2, row = 0, colour = "accent" },
+    { id = "policy", label = "Policy", sub = "identity to endpoint", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "ca", to = "caller", label = "issues certificate" },
+    { from = "caller", to = "ledger", label = "mutual TLS" },
+    { from = "ledger", to = "policy", label = "asks" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The CA, the ledger and its rules."
+nodes = [
+    { id = "ca", label = "Ca", sub = ["issue()", "renew()", "revoke()"], col = 0, row = 0, colour = "amber" },
+    { id = "ledger", label = "Ledger", sub = ["reload()", "revoke()"], col = 1, row = 0, colour = "accent" },
+    { id = "policy", label = "Policy", sub = ["allows()"], col = 2, row = 0, colour = "green" },
+    { id = "ident", label = "Identities", sub = ["of()"], col = 3, row = 0, colour = "client" },
+]
+edges = [
+    { from = "ledger", to = "policy", label = "asks" },
+    { from = "ledger", to = "ident", label = "reads identity with" },
+    { from = "ca", to = "ledger", label = "issues certificates for" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a certificate to an answer"
+caption = "The handshake first, then the identity."
+nodes = [
+    { id = "hello", label = "Handshake", sub = "certificate chain", col = 0, row = 0, colour = "client" },
+    { id = "trust", label = "Trust file", sub = "is the CA trusted and the certificate valid?", col = 1, row = 0, colour = "amber" },
+    { id = "san", label = "SAN", sub = "identity", col = 2, row = 0, colour = "accent" },
+    { id = "answer", label = "Policy", sub = "200 or 403", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "hello", to = "trust" },
+    { from = "trust", to = "san", label = "chain valid" },
+    { from = "san", to = "answer" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A call with a client certificate"
+participants = ["Payments", "Ledger", "Policy"]
+steps = [
+    ["Payments", "Ledger", "TLS handshake with client certificate"],
+    ["Ledger", "Policy", "identity payments, POST /transfers"],
+    ["Policy", "Ledger", "allowed", "reply"],
+    ["Ledger", "Payments", "200", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Renewing a short-lived certificate"
+participants = ["Service", "step-ca", "Ledger"]
+steps = [
+    ["Service", "step-ca", "renew with the old certificate"],
+    ["step-ca", "Service", "new certificate, later expiry", "reply"],
+    ["Service", "Ledger", "next connection uses the new one"],
+    ["Ledger", "Ledger", "reload its own certificate and trust file"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Callers", nodes = ["caller", "thief"], colour = "red" },
+    { label = "Ledger side", nodes = ["ledger", "ca"], colour = "green" },
+]
+nodes = [
+    { id = "caller", label = "Payments service", sub = "holds a key and a certificate", col = 0, row = 0, colour = "client", threats = ["T1"] },
+    { id = "thief", label = "A thief or rogue CA", sub = "copies or forges", col = 1, row = 0, colour = "red", threats = ["T2", "T3"] },
+    { id = "ledger", label = "Ledger", sub = "checks chain, then identity", col = 2, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "ca", label = "step-ca", sub = "issues, renews, revokes", col = 3, row = 0, colour = "amber", threats = ["T3"] },
+]
+edges = [
+    { from = "caller", to = "ledger", label = "mutual TLS", threats = ["T1"] },
+    { from = "thief", to = "ledger", label = "forged or copied certificate", colour = "red", dashed = true, threats = ["T2", "T3"] },
+    { from = "ca", to = "caller", label = "short-lived certificate", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Calls between a bank's services inside its network. It does not cover end users, browsers or the protection of keys in hardware.
+"""
+assets = [
+    "The ledger's transfers and statements.",
+    "The private keys of the services.",
+    "The CA and its trust file.",
+]
+actors = [
+    "A service with a valid certificate and no business calling an endpoint.",
+    "A process on the same host.",
+    "A thief holding a copy of a certificate and key.",
+    "A second CA that the ledger is told to trust.",
+]
+boundaries = [
+    "The TLS handshake: the chain is checked before any application code runs.",
+    "The policy: the identity decides what a caller may do.",
+]
+assumptions = [
+    "Each service keeps its private key secret.",
+    "The clocks agree within a second.",
+]
+out_of_scope = [
+    "Hardware-protected keys.",
+    "A compromised CA.",
+    "Traffic analysis.",
+]
+tests = [
+    "`IdentitiesTest` and `PolicyTest` check the identity rule and the policy with no tools.",
+    "`DemoRunsTest` starts step-ca and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is service-mesh-mtls.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A service calls the ledger as another service or with no identity"
+where = "the ledger"
+control = "Mutual TLS with a private CA; the identity is read from the SAN and authorized per endpoint"
+residual = "A service that is allowed too much"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A certificate from another CA names itself payments"
+where = "the trust file"
+control = "The chain must lead to a trusted root; a handshake that fails never reaches the code"
+residual = "A CA added to the trust file can mint any identity"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A stolen certificate and key is used from another machine"
+where = "the keys"
+control = "Lifetimes of minutes or hours, renewal, and a revocation list that the ledger reads"
+residual = "Use until expiry if the list is not read"
+
+[poster]
+headline = [["MUTUAL", "text"], ["TLS", "accent"]]
+taglines = [["Make a bank's services prove who they are with client certificates from a private CA, auth", "gold"]]
+before = { code = "0 requests reached the ledger", note = "Who gets in", tag = "BEFORE" }
+after = { code = "2 of 2 by network, 1 of 2 by identity", note = "Identity", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Mutual TLS Between Services"
+narration = "Hello, and welcome. [[slnc 400]] This video explains mutual tls between services, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A bank's ledger service runs real HTTPS that demands a client certificate from a real private CA (step-ca): a call with no certificate and a call with a certificate from another CA that names itself payments are both refused at the handshake and neither reaches the ledger's code (0 requests); the identity is the URI in the certificate's SAN, so payments is allowed to POST /transfers (200) and refused GET /statements (403), reporting is the other way round, and a valid fraud-engine certificate with no rule gets 403; an allow-the-network rule lets 2 of 2 callers on the same host in, the certificate identity 1 of 2; a certificate that lives 8 seconds is renewed halfway, the server reloads its certificate and trust file without a restart with 0 failed calls out of at least 20 made meanwhile, and the old certificate is refused after its expiry while the renewed one gets 200; a stolen certificate that is revoked at the CA still gets 200 at the ledger until the ledger reads the CA's revocation list, and then gets 403. [[slnc 600]] Think of it this way. [[slnc 300]] A staff door that reads a badge instead of looking at the corridor. Anyone in the corridor is not let in for being there; the badge says who they are and the door knows what that person may open. Badges expire in minutes and are reissued, so a lost badge stops working soon, even if nobody remembers to cancel it. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain what a client certificate proves and what it does not. [[slnc 300]] Take a service identity from a certificate SAN and authorize by it. [[slnc 300]] Renew a short-lived certificate and reload a server without downtime."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's payments, reporting and fraud-engine", "services call a ledger service. The ledger must", "know which of them is calling, let payments move", "money, let reporting read statements, and refuse", "the rest, even from the same host."]
+narration = "Here is the scenario. [[slnc 400]] A bank's payments, reporting and fraud-engine services call a ledger service. The ledger must know which of them is calling, let payments move money, let reporting read statements, and refuse the rest, even from the same host."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["A CA is now critical infrastructure: if it is down", "Short lifetimes need a renewal job that never fails", "Revocation does not happen by itself: a server must read the list", "Every CA in a trust file can mint any identity", "Every service needs a key it can keep secret"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A CA is now critical infrastructure: if it is down, nothing renews. [[slnc 500]] Short lifetimes need a renewal job that never fails, and a clock that is right. [[slnc 500]] Revocation does not happen by itself: a server must read the list. [[slnc 500]] Every CA in a trust file can mint any identity. [[slnc 500]] Every service needs a key it can keep secret."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The private CA and the step commands: Ca", "The ledger server, its reload and the revocation check: Ledger", "The identity in a certificate: Identities", "Who may call what: Policy", "The TLS settings that can be replaced while running: Tls"]
+narration = "Here is who does what in the code. [[slnc 400]] The private CA and the step commands is in Ca. [[slnc 500]] The ledger server, its reload and the revocation check is in Ledger. [[slnc 500]] The identity in a certificate is in Identities. [[slnc 500]] Who may call what is in Policy. [[slnc 500]] The TLS settings that can be replaced while running is in Tls."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["An internal API that trusts the source address", "A client certificate checked for validity but never for who it names", "A certificate renewal that is a calendar reminder", "A revocation that nobody's server reads"]
+narration = "You have probably met this already. [[slnc 400]] An internal API that trusts the source address. [[slnc 500]] A client certificate checked for validity but never for who it names. [[slnc 500]] A certificate renewal that is a calendar reminder. [[slnc 500]] A revocation that nobody's server reads."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain what a client certificate proves and what it does not", "Take a service identity from a certificate SAN and authorize by it", "Renew a short-lived certificate and reload a server without downtime", "Say what a revoked certificate can still do"]
+narration = "So, how do you use it? [[slnc 400]] Use a private CA, give every service a certificate with its identity in the SAN, authorize by that identity, keep lifetimes short and renew automatically, make servers reload certificates and trust without a restart, and read the revocation list or rely on expiry. Treat the trust file as part of the policy."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's mutual tls between services. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A certificate is a badge: check who it names, give it a short life, and renew it before it ends. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a service to the policy and issue it a certificate. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

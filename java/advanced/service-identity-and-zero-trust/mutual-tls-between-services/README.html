@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mutual TLS Between Services</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Mutual TLS Between Services</h1>
+<pre><code>src/main/java/com/jk/explore/security/mtls/
+├── Ca.java             A real private certificate authority: step-ca running on this machine, driven with the step command line
+├── Caller.java         A service calling another over HTTPS with the certificate it holds (or none)
+├── Credential.java     A certificate chain with its private key, read from files
+├── Identities.java     Reads the identity of a service from a certificate: the URI in the subject alternative name, never the subject name
+├── Ledger.java         The bank's ledger service: HTTPS that demands a client certificate and decides by the identity in it
+├── MutualTlsDemo.java  
+├── NetworkGate.java    The old way: a plain HTTP service that lets in anything coming from the trusted network (here the loopback range) and asks nothing else
+├── Policy.java         Which service identity may call which endpoint
+├── Sh.java             Runs a program and returns what it printed, whether it worked or not
+├── Tls.java            Builds the TLS settings of a service: the certificate it shows and the authorities it trusts
+└── Traffic.java        A service that keeps calling the ledger on new connections while certificates are renewed and the server reloads
+</code></pre>
+<p><strong>A bank's ledger service runs real HTTPS that demands a client certificate from a real private CA (step-ca): a call with no certificate and a call with a certificate from another CA that names itself payments are both refused at the handshake and neither reaches the ledger's code (0 requests); the identity is the URI in the certificate's SAN, so payments is allowed to POST /transfers (200) and refused GET /statements (403), reporting is the other way round, and a valid fraud-engine certificate with no rule gets 403; an allow-the-network rule lets 2 of 2 callers on the same host in, the certificate identity 1 of 2; a certificate that lives 8 seconds is renewed halfway, the server reloads its certificate and trust file without a restart with 0 failed calls out of at least 20 made meanwhile, and the old certificate is refused after its expiry while the renewed one gets 200; a stolen certificate that is revoked at the CA still gets 200 at the ledger until the ledger reads the CA's revocation list, and then gets 403.</strong></p>
+<p>In ordinary TLS only the server proves who it is. In <strong>mutual TLS</strong> the caller shows a certificate too, so the server learns <strong>which service</strong> is calling and can decide by that identity instead of by the network address. This project runs a bank's <strong>ledger service</strong> as a real HTTPS server (the JDK's <code>HttpsServer</code>) that demands a client certificate, and a real private CA, <strong>step-ca</strong>, that issues the certificates; the Java code drives the <code>step</code> command line and makes real TLS calls with the JDK's <code>HttpClient</code>. The demo is tagged <code>integration</code> (needs <code>step</code> and <code>step-ca</code> on the PATH, about 25 seconds): <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Who gets in.</strong> No certificate, or a certificate from another CA that names itself <code>payments</code>, is refused at the handshake and <strong>0</strong> requests reach the ledger's code. A server that shows a certificate for another host is refused by the client.
+- <strong>Identity from the SAN.</strong> The ledger takes the caller from the URI in the certificate (<code>spiffe://bank/payments</code>), not from the subject name. <code>payments</code> gets <strong>200</strong> on <code>POST /transfers</code> and <strong>403</strong> on <code>GET /statements</code>; <code>reporting</code> the other way round; <code>fraud-engine</code>, with a valid certificate and no rule, gets <strong>403</strong>.
+- <strong>Identity, not the network.</strong> An allow-the-network rule lets <strong>2 of 2</strong> callers on the same host in; the certificate identity lets <strong>1 of 2</strong>.
+- <strong>Rotation.</strong> A certificate that lives <strong>8 seconds</strong> is renewed halfway; the server reloads its certificate and trust file without a restart, and <strong>0</strong> of at least 20 calls on new connections fail; the old certificate is refused after its expiry and the renewed one gets 200.
+- <strong>A compromised certificate.</strong> Revoked at the CA, it still gets <strong>200</strong> at the ledger until the ledger reads the CA's revocation list; then <strong>403</strong>.</p>
+<p><strong>Maps to:</strong> NIST SP 800-207 (zero trust) · NIST SP 800-204B · OWASP ASVS V9 · PCI DSS 4.0 req. 4.2 and 8.6 · RFC 8446, RFC 5280.</p>
+<h2>The idea in everyday terms</h2>
+<p>A staff door that reads a badge instead of looking at the corridor. Anyone in the corridor is not let in for being there; the badge says who they are and the door knows what that person may open. Badges expire in minutes and are reissued, so a lost badge stops working soon, even if nobody remembers to cancel it.</p>
+<h2>The scenario</h2>
+<p>A bank's payments, reporting and fraud-engine services call a ledger service. The ledger must know which of them is calling, let payments move money, let reporting read statements, and refuse the rest, even from the same host.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Who gets in</td>
+<td>No certificate, or a certificate from another CA, is refused at the handshake and no request reaches the ledger's code.</td>
+</tr>
+<tr>
+<td>2. Identity, not the network</td>
+<td>payments and reporting get different answers for the same call; an allow-the-network rule lets both in.</td>
+</tr>
+<tr>
+<td>3. Rotation</td>
+<td>A certificate that lives 8 seconds is renewed halfway and the server reloads trust with no failed call; the old one is refused after expiry.</td>
+</tr>
+<tr>
+<td>4. A compromised certificate</td>
+<td>A stolen certificate revoked at the CA still gets 200 until the ledger reads the revocation list.</td>
+</tr>
+<tr>
+<td>5. The bill</td>
+<td>A revocation is only as good as the server that reads it; short lifetimes are the revocation that always works; a CA in the trust file can mint any identity.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>9 tests in <code>DemoRunsTest</code>, <code>IdentitiesTest</code>, <code>PolicyTest</code>. The identity rule and the policy are tested with no tools. The demo starts step-ca and takes about 25 seconds (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>step-ca, the step command line, the TLS handshake and the HTTP calls are real and run on this machine. The bank, its services and the endpoints are made up. The demo prints counts and yes or no, never ports, serial numbers or paths.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/mutual-tls-between-services-explained.html">Mutual TLS Between Services, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>A CA issues badges; the ledger reads them.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The CA, the ledger and its rules.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The handshake first, then the identity.</p>
+<p><img alt="From a certificate to an answer" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A call with a client certificate" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/mutual-tls-between-services-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>A CA is now critical infrastructure:</strong> if it is down, nothing renews.</li>
+<li><strong>Short lifetimes need a renewal job that never fails,</strong> and a clock that is right.</li>
+<li><strong>Revocation does not happen by itself:</strong> a server must read the list.</li>
+<li><strong>Every CA in a trust file can mint any identity.</strong></li>
+<li><strong>Every service needs a key it can keep secret.</strong></li>
+</ul>
+<h2>When this is too much</h2>
+<p>A few services behind one gateway on a private network may be fine with the gateway doing TLS. Use mutual TLS when many services call each other and the network alone cannot say who is calling.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>An internal API that trusts anything from the office network.</li>
+<li>A shared API key in every service's configuration.</li>
+<li>A certificate that expired on a Sunday and stopped payments.</li>
+<li>A firewall rule named after a subnet that nobody can explain.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the first project of the <a href="..">service-identity-and-zero-trust</a> module. The service mesh version, where the mesh issues the identities and does the handshake, comes next.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
