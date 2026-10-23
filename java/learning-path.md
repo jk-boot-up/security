@@ -12,7 +12,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 <!-- status:start -->
 ## Status
 
-**Built: 126 projects. Planned: 26 projects.** Counted from the tables below by `conceptkit.sh progress`.
+**Built: 127 projects. Planned: 25 projects.** Counted from the tables below by `conceptkit.sh progress`.
 
 | Level | Module | Built | Planned | Total |
 | --- | --- | ---: | ---: | ---: |
@@ -35,10 +35,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | platform-hardening | 4 | 0 | 4 |
 | | detection-and-response | 5 | 0 | 5 |
 | | secure-design | 5 | 0 | 5 |
-| **Advanced** | | **9** | **26** | **35** |
+| **Advanced** | | **10** | **25** | **35** |
 | | cloud-security-without-a-cloud | 3 | 0 | 3 |
 | | infrastructure-as-code-security | 2 | 0 | 2 |
-| | kubernetes-and-container-security | 2 | 2 | 4 |
+| | kubernetes-and-container-security | 3 | 1 | 4 |
 | | devsecops-pipelines | 2 | 2 | 4 |
 | | service-identity-and-zero-trust | 0 | 4 | 4 |
 | | applied-cryptography-and-pki | 0 | 5 | 5 |
@@ -46,7 +46,7 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | | offensive-security-methodology | 0 | 4 | 4 |
 | | resilience-and-recovery | 0 | 2 | 2 |
 | | governance-risk-and-compliance | 0 | 4 | 4 |
-| **All** | | **126** | **26** | **152** |
+| **All** | | **127** | **25** | **152** |
 
 **By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.
 
@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 9 | 26 | 35 |
+| Advanced | Unclassified | 10 | 25 | 35 |
 | **All** | **Plain** | **60** | **0** | **60** |
 | **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **9** | **26** | **35** |
+| **All** | **Unclassified** | **10** | **25** | **35** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -298,7 +298,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | 123 | [kubernetes-admission-control](advanced/kubernetes-and-container-security/kubernetes-admission-control) | Stop a bank's unsafe workloads at the door of a real Kubernetes cluster with Kyverno policies that validate, mutate, verify signed images and take exceptions | kind, Kyverno, cosign |
 | 124 | [kubernetes-network-policies](advanced/kubernetes-and-container-security/kubernetes-network-policies) | Default-deny a bank's pods on a real Kubernetes cluster, allow only what the design lists, and measure every pair of pods against the design | kind, kindnet |
 | 125 | runtime-security | *planned*: Detecting a shell in a container, unexpected writes and outbound connections | kind, Falco |
-| 126 | kubernetes-secrets | *planned*: Why base64 is not encryption; encryption at rest, external secrets and short-lived tokens | kind, OpenBao |
+| 126 | [kubernetes-secrets](advanced/kubernetes-and-container-security/kubernetes-secrets) | Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after encryption at rest, and how OpenBao and a bound token replace a long-lived secret | kind, OpenBao |
 
 ### 4. devsecops-pipelines
 

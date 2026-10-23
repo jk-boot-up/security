@@ -1,0 +1,443 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "kubernetes-secrets"
+level = "advanced"
+module = "kubernetes-and-container-security"
+title = "Kubernetes Secrets"
+short_title = "Secrets"
+package = "k8ssecrets"
+main_class = "KubernetesSecretsDemo"
+tagline = "Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after encryption at rest, and how OpenBao and a bound token replace a long-lived secret"
+bold = "A card key in a Kubernetes Secret on a real cluster (kind) decodes with no key, and the auditor who may only list secrets reads it (yes), while a ServiceAccount with no rule cannot (no); read raw from etcd with etcdctl the value holds the key as plain text (yes) and not even as base64 (no); after the API server is restarted with an aescbc EncryptionConfiguration the old secret is still plain text, a new one is encrypted (yes) with no plain text, and only after every secret is rewritten is every secret in etcd encrypted (yes), the key being a file on the control-plane node and the auditor still reading the value; OpenBao holds the database password outside Kubernetes (none in any Secret, none in etcd): a pod logs in with its ServiceAccount token (HTTP 200), gets a token of 10 seconds, reads the password (HTTP 200), another ServiceAccount is refused (HTTP 403) and the same token is refused 12 seconds later (HTTP 403); a bound ServiceAccount token lives 600 seconds, has one audience and is tied to a pod and stops working when the pod is deleted (no), while the old token Secret has no expiry (no) and still works (yes)."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Kubernetes Secrets for a bank on a real kind cluster: base64 is not encryption, reading the raw value from etcd before and after encryption at rest, OpenBao with a short-lived token, and bound ServiceAccount tokens against the old token Secret."
+thumb_lines = ["KUBERNETES", "SECRETS"]
+thumb_code = "k8s:enc:aescbc:v1:key1"
+youtube_title = "Kubernetes Secrets: Base64, Encryption at Rest, OpenBao and Short-Lived Tokens"
+youtube_tags = ["kubernetes secrets", "encryption at rest", "etcd", "openbao", "vault", "service account token", "kind", "kubernetes security", "devsecops", "java"]
+
+[readme]
+intro = """
+A Kubernetes **Secret** looks protected and is not: its values are only base64, and by default etcd stores them as they are. This project runs a real cluster with **kind**, puts a bank's card key in a Secret, reads it raw out of **etcd** (with `etcdctl` inside the etcd pod) before and after turning on **encryption at rest**, then moves a database password to **OpenBao** and compares a short-lived **bound token** with the old token Secret. A Java program drives `kind`, `kubectl` and `docker` (`brew install kind kubectl`, Docker running, a network for the images); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Base64 is an encoding.** The value decodes with no key, an auditor who may only **list** secrets reads it (yes), and an account with no rule cannot (no).
+- **Raw etcd, before.** The stored value holds the card key as plain text (yes), not even as base64 (no).
+- **Encryption at rest.** After the API server restarts with an `aescbc` EncryptionConfiguration, the old secret is still plain text, a new one is encrypted; only after a rewrite of every secret is **every secret in etcd encrypted**. The key is a file on the control-plane node, and the auditor still reads the value.
+- **OpenBao and a short-lived token.** The database password is in no Secret and not in etcd. A pod logs in with its ServiceAccount token (HTTP 200), gets a token of **10 seconds**, reads the password (200); another ServiceAccount is refused (403) and the same token is refused 12 seconds later (403).
+- **A bound ServiceAccount token.** 600 seconds, one audience, tied to a pod, and refused once the pod is gone; the old token Secret has no expiry and still works.
+
+OpenBao runs in **development mode** (in memory, a known root token): it is the closest thing to a real server that runs on a laptop, and it speaks the same API. A KMS provider for the encryption key is not run here; the key sits on the control plane and the docs say so.
+
+**Maps to:** NIST CSF 2.0 Protect (PR.DS) · NIST SP 800-53 SC-28 and IA-5 · CIS Kubernetes Benchmark 1.2.27 and 5.4 · OWASP Kubernetes Top 10 K08.
+"""
+analogy = """
+A note in a safe-looking envelope that is only folded, not sealed. Anyone who is handed the envelope reads it, and so does anyone who finds it in the drawer. Sealing the drawer helps against a thief, not against the clerk with the key; the better way is to hand out a pass that works for ten seconds.
+"""
+scenario = """
+A bank keeps a card key and a database password for its payments service. The demo stores the key in a Secret, reads it from etcd, turns encryption on, moves the password to OpenBao and compares two kinds of ServiceAccount token.
+"""
+costs = [
+    "**Base64 hides nothing,** and anyone who may list secrets reads them.",
+    "**Encryption at rest protects a disk or an etcd backup,** not a person with the right to read secrets.",
+    "**Existing secrets stay plain** until each one is rewritten.",
+    "**The key sits on the control plane** unless a KMS provider keeps it outside.",
+    "**An external secret store is one more system** to run, unseal and audit.",
+]
+too_much = """
+A cluster with no sensitive data and one team can use plain Secrets with tight RBAC. Turn on encryption at rest when etcd backups or disks leave your control, and use an external store when a secret must be short-lived or audited.
+"""
+met_before = [
+    "A Secret committed to Git as base64.",
+    "A role that allows list on secrets in every namespace.",
+    "An etcd backup in a shared bucket.",
+    "A service account token that never expires.",
+]
+where = """
+This is the third project of the [kubernetes-and-container-security](..) module, after [kubernetes-admission-control](../kubernetes-admission-control) and [kubernetes-network-policies](../kubernetes-network-policies).
+"""
+twin = """
+The cluster, etcd, the encryption configuration, OpenBao and the tokens are real. OpenBao runs in development mode and the encryption key is a local file. The demo prints yes/no, counts and HTTP codes, never ids or tokens.
+"""
+test_note = "The token reader, the etcd value check, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest)."
+
+[[act]]
+title = "Base64 is not encryption"
+summary = "A Secret's value decodes with no key and a role that may only list secrets reads it."
+detail = """
+The card key stored in a Secret comes back as base64 and decodes at once. The auditor ServiceAccount may only list secrets and reads the value (yes); a ServiceAccount with no rule on secrets cannot (no).
+"""
+speech = """
+First demo: base64. [[slnc 400]] The value decodes with no key. [[slnc 600]] A role that may only list secrets reads it.
+"""
+rows = { base64 = "active wrong" }
+console = [
+    ["key=ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=", "bad"],
+    ["decoded with no key", "bad"],
+    ["auditor reads the value: yes", "bad"],
+]
+
+[[act]]
+title = "Raw etcd, before"
+summary = "Read with etcdctl, the stored value holds the key as plain text."
+detail = """
+etcdctl inside the etcd pod reads /registry/secrets/payments/card-key. The value contains the card key as plain text (yes), not even as base64 (no), and not every secret in etcd is encrypted (no).
+"""
+speech = """
+Second demo: etcd. [[slnc 400]] Read the raw value. [[slnc 600]] The key is there as plain text.
+"""
+rows = { etcd = "active wrong" }
+console = [
+    ["etcdctl get /registry/secrets/payments/card-key", "ok"],
+    ["plain text in etcd: yes", "bad"],
+    ["every secret encrypted: no", "bad"],
+]
+
+[[act]]
+title = "Encryption at rest"
+summary = "After a restart with aescbc only new secrets are encrypted; a rewrite encrypts the rest."
+detail = """
+The API server restarts with an EncryptionConfiguration. card-key stays plain text, card-key-2 is stored as k8s:enc:aescbc with no plain text. After every secret is rewritten, every secret in etcd is encrypted and the card key is nowhere in etcd. The key is a file on the node, and the auditor still reads the value.
+"""
+speech = """
+Third demo: encryption at rest. [[slnc 400]] New secrets are encrypted, old ones are not until rewritten. [[slnc 600]] It protects the disk, not the reader.
+"""
+rows = { rest = "active ok" }
+console = [
+    ["card-key, written before: plain text: yes", "bad"],
+    ["card-key-2: encrypted: yes", "ok"],
+    ["every secret encrypted: yes", "ok"],
+]
+
+[[act]]
+title = "OpenBao and a 10 second token"
+summary = "The password is outside Kubernetes; a pod logs in with its ServiceAccount token and gets 10 seconds."
+detail = """
+OpenBao holds the database password: no Secret and no etcd value contains it. payments-app logs in with its ServiceAccount token (HTTP 200), gets a token of 10 seconds and reads the password (200). other-app is refused (403), and the same token is refused 12 seconds later (403).
+"""
+speech = """
+Fourth demo: OpenBao. [[slnc 400]] The pod proves who it is with its ServiceAccount token. [[slnc 600]] It gets a token for ten seconds, and then it is refused.
+"""
+rows = { openbao = "active ok" }
+console = [
+    ["login: HTTP 200, 10 seconds", "ok"],
+    ["other-app: HTTP 403", "ok"],
+    ["12 seconds later: HTTP 403", "ok"],
+]
+
+[[act]]
+title = "A bound ServiceAccount token"
+summary = "A token tied to a pod and an audience for 600 seconds, against the old token Secret that never expires."
+detail = """
+kubectl create token gives a token with a lifetime of 600 seconds, the audience openbao and the pod report-job. The old token Secret has no expiry and no pod. When the pod is deleted the API server stops accepting the bound token (no) and still accepts the old one (yes).
+"""
+speech = """
+Fifth demo: bound tokens. [[slnc 400]] Tied to a pod, to an audience and to ten minutes. [[slnc 600]] The old token never expires.
+"""
+rows = { bound = "active ok" }
+console = [
+    ["lifetime 600 seconds, tied to the pod", "ok"],
+    ["the old token: no expiry", "bad"],
+    ["pod deleted: bound no, old yes", "ok"],
+]
+
+[animation]
+subtitle = "A bank's card key, from base64 to a ten second token."
+boxes = [
+    ["base64", "Base64 is not encryption", "decoded"],
+    ["etcd", "Raw etcd, before", "plain text"],
+    ["rest", "Encryption at rest", "aescbc"],
+    ["openbao", "OpenBao and a 10 second token", "HTTP 403"],
+    ["bound", "A bound ServiceAccount token", "600 s"],
+]
+
+[docs.problem]
+scenario = """
+A bank stores a card key and a database password in Kubernetes and believes they are protected.
+"""
+naive = """
+Create a Secret and assume it is encrypted.
+"""
+deliver = [
+    "A real cluster and a Secret that decodes with no key.",
+    "The raw etcd value before and after encryption at rest.",
+    "OpenBao with a 10 second token.",
+    "A bound ServiceAccount token against the old one.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "Docker running",
+    "kind and kubectl (brew install kind kubectl)",
+    "A network the first time, for the images",
+]
+not_required = [
+    "A cloud account",
+    "A KMS",
+    "helm",
+]
+install = ["kind", "kubectl"]
+
+[docs.session]
+objectives = [
+    "explain why base64 is not encryption",
+    "read a Secret raw from etcd and tell whether it is encrypted",
+    "turn on encryption at rest and rewrite existing secrets",
+    "explain what a short-lived and a bound token change",
+]
+walkthrough = """
+Run the demo and compare the etcd lines of the second and third act. In the fourth act find the two 403 lines and what each one means.
+"""
+exercises = [
+    "Remove identity from the providers and find what breaks for an old secret.",
+    "Add a second key, make it first, and rewrite the secrets.",
+    "Change the token TTL to 60 seconds and check when the read fails.",
+    "Write an admission rule from kubernetes-admission-control that refuses a Secret of type service-account-token.",
+]
+
+[docs.explained]
+sentence = """
+A Secret is only as safe as the people and the disks that can reach it.
+"""
+verdict = """
+Turn on encryption at rest with a KMS provider and rewrite old secrets, give list and get on secrets to very few, keep long-lived secrets in an external store, and use bound tokens that expire and name an audience.
+"""
+recognise = [
+    "A Secret committed to Git.",
+    "A role with list on secrets everywhere.",
+    "An etcd backup left on a shared disk.",
+    "A token Secret created years ago.",
+]
+
+[spec]
+purpose = """
+Teach the limits of Kubernetes Secrets by reading them raw from etcd and by replacing a long-lived secret with short-lived tokens.
+"""
+nongoals = [
+    "A KMS provider and key rotation in production.",
+    "A production OpenBao (storage, unsealing, audit).",
+    "External Secrets Operator and the CSI driver.",
+]
+problem = """
+Secrets are believed to be encrypted because they are called secrets, and tokens are left to live forever.
+"""
+roles = [["The cluster and etcd reads", "`Cluster`"], ["The encryption configuration", "`Encryption`"], ["A raw etcd value", "`Stored`"], ["A ServiceAccount token", "`Jwt`"], ["OpenBao setup and calls", "`OpenBao`"], ["The manifests", "`Manifests`"], ["Entry point", "`KubernetesSecretsDemo`"]]
+requirements = [
+    "A Secret's value is recovered with no key.",
+    "Before encryption etcd holds the value as plain text.",
+    "After the configuration only new and rewritten secrets are encrypted.",
+    "A pod gets a token that is refused after 10 seconds.",
+    "A bound token stops working with its pod and the old one does not.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "The API server, etcd and OpenBao."
+nodes = [
+    { id = "pod", label = "pod", sub = "ServiceAccount token", col = 0, row = 0, colour = "client" },
+    { id = "api", label = "API server", sub = "EncryptionConfiguration", col = 1, row = 0, colour = "accent" },
+    { id = "etcd", label = "etcd", sub = "stored value", col = 2, row = 0, colour = "amber" },
+    { id = "bao", label = "OpenBao", sub = "password, 10 s token", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "pod", to = "api", label = "reads a Secret" },
+    { from = "api", to = "etcd", label = "aescbc" },
+    { from = "pod", to = "bao", label = "login, then read" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The cluster, OpenBao and the token reader."
+nodes = [
+    { id = "cluster", label = "Cluster", sub = ["etcdValue()", "enableEncryption()"], col = 0, row = 0, colour = "accent" },
+    { id = "bao", label = "OpenBao", sub = ["configure()", "login()", "read()"], col = 1, row = 0, colour = "green" },
+    { id = "jwt", label = "Jwt", sub = ["lifetimeSeconds()", "boundPod()"], col = 2, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "cluster", to = "bao", label = "hosts" },
+    { from = "bao", to = "jwt", label = "checks" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a Secret to etcd"
+caption = "The API server encrypts on the way in."
+nodes = [
+    { id = "secret", label = "Secret", sub = "base64 in the API", col = 0, row = 0, colour = "client" },
+    { id = "api", label = "API server", sub = "aescbc", col = 1, row = 0, colour = "accent" },
+    { id = "etcd", label = "etcd", sub = "k8s:enc:aescbc", col = 2, row = 0, colour = "amber" },
+]
+edges = [
+    { from = "secret", to = "api", label = "write" },
+    { from = "api", to = "etcd", label = "encrypted" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "Reading a Secret raw from etcd"
+participants = ["etcdctl", "etcd", "disk"]
+steps = [
+    ["etcdctl", "etcd", "get /registry/secrets/payments/card-key"],
+    ["etcd", "disk", "value as the API server wrote it", "reply"],
+    ["etcdctl", "etcdctl", "plain text, or k8s:enc:aescbc"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A pod logs in to OpenBao"
+participants = ["Pod", "OpenBao", "API server"]
+steps = [
+    ["Pod", "OpenBao", "login with the ServiceAccount token"],
+    ["OpenBao", "API server", "TokenReview"],
+    ["API server", "OpenBao", "payments-app, audience openbao", "reply"],
+    ["OpenBao", "Pod", "a token of 10 seconds", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Cluster", nodes = ["etcd", "api"], colour = "red" },
+    { label = "Outside", nodes = ["bao"], colour = "green" },
+]
+nodes = [
+    { id = "etcd", label = "etcd and its backups", sub = "the stored value", col = 0, row = 0, colour = "red", threats = ["T1"] },
+    { id = "api", label = "API server", sub = "RBAC, encryption", col = 1, row = 0, colour = "accent", threats = ["T2", "T3"] },
+    { id = "bao", label = "OpenBao", sub = "short-lived tokens", col = 2, row = 0, colour = "amber", threats = ["T3"] },
+]
+edges = [
+    { from = "etcd", to = "api", label = "reads the disk", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "api", to = "bao", label = "token review", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Secrets stored in the cluster, the API server and etcd, and the tokens pods use. It does not cover a taken-over node, a KMS or a production OpenBao.
+"""
+assets = [
+    "The card key.",
+    "The database password.",
+    "ServiceAccount tokens.",
+]
+actors = [
+    "Someone with a copy of an etcd backup or disk.",
+    "A user or account that may list secrets.",
+    "A pod that leaks its token.",
+]
+boundaries = [
+    "The API server and RBAC: who may read a Secret.",
+    "etcd: the disk.",
+]
+assumptions = [
+    "Encryption at rest is judged by reading etcd directly, as the demo does.",
+]
+out_of_scope = [
+    "Compromise of the control-plane node.",
+    "A KMS provider and key rotation.",
+]
+tests = [
+    "`JwtTest`, `StoredAndEncryptionTest` and `HttpAndManifestsTest` check the parts with no tools.",
+    "`DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project of the plan starts the devsecops-pipelines module.
+"""
+
+[[threat]]
+id = "T1"
+stride = "I"
+threat = "An etcd backup or disk reveals the secrets"
+where = "etcd"
+control = "Encryption at rest, rewrite old secrets, a KMS for the key"
+residual = "The key on the control plane"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "A role with list or get on secrets reads them in plain form"
+where = "RBAC"
+control = "Few readers, no list on secrets, audit"
+residual = "Anyone allowed to read"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "A long-lived token or password is stolen and used for ever"
+where = "tokens and passwords"
+control = "Bound tokens, an external store with short TTLs"
+residual = "The seconds before expiry"
+
+[poster]
+headline = [["KUBERNETES", "text"], ["SECRETS", "accent"]]
+taglines = [["Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after en", "gold"]]
+before = { code = "card-key in etcd: plain text: yes", note = "A plain Secret", tag = "BEFORE" }
+after = { code = "card-key-2: encrypted: yes", note = "Encryption at rest", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Kubernetes Secrets"
+narration = "Hello, and welcome. [[slnc 400]] This video explains kubernetes secrets, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A card key in a Kubernetes Secret on a real cluster (kind) decodes with no key, and the auditor who may only list secrets reads it (yes), while a ServiceAccount with no rule cannot (no); read raw from etcd with etcdctl the value holds the key as plain text (yes) and not even as base64 (no); after the API server is restarted with an aescbc EncryptionConfiguration the old secret is still plain text, a new one is encrypted (yes) with no plain text, and only after every secret is rewritten is every secret in etcd encrypted (yes), the key being a file on the control-plane node and the auditor still reading the value; OpenBao holds the database password outside Kubernetes (none in any Secret, none in etcd): a pod logs in with its ServiceAccount token (HTTP 200), gets a token of 10 seconds, reads the password (HTTP 200), another ServiceAccount is refused (HTTP 403) and the same token is refused 12 seconds later (HTTP 403); a bound ServiceAccount token lives 600 seconds, has one audience and is tied to a pod and stops working when the pod is deleted (no), while the old token Secret has no expiry (no) and still works (yes). [[slnc 600]] Think of it this way. [[slnc 300]] A note in a safe-looking envelope that is only folded, not sealed. Anyone who is handed the envelope reads it, and so does anyone who finds it in the drawer. Sealing the drawer helps against a thief, not against the clerk with the key; the better way is to hand out a pass that works for ten seconds. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why base64 is not encryption. [[slnc 300]] Read a Secret raw from etcd and tell whether it is encrypted. [[slnc 300]] Turn on encryption at rest and rewrite existing secrets."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank keeps a card key and a database password", "for its payments service. The demo stores the", "key in a Secret, reads it from etcd, turns", "encryption on, moves the password to OpenBao and", "compares two kinds of ServiceAccount token."]
+narration = "Here is the scenario. [[slnc 400]] A bank keeps a card key and a database password for its payments service. The demo stores the key in a Secret, reads it from etcd, turns encryption on, moves the password to OpenBao and compares two kinds of ServiceAccount token."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Base64 hides nothing", "Encryption at rest protects a disk or an etcd backup", "Existing secrets stay plain until each one is rewritten", "The key sits on the control plane unless a KMS provider keeps it outside", "An external secret store is one more system to run"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Base64 hides nothing, and anyone who may list secrets reads them. [[slnc 500]] Encryption at rest protects a disk or an etcd backup, not a person with the right to read secrets. [[slnc 500]] Existing secrets stay plain until each one is rewritten. [[slnc 500]] The key sits on the control plane unless a KMS provider keeps it outside. [[slnc 500]] An external secret store is one more system to run, unseal and audit."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The cluster and etcd reads: Cluster", "The encryption configuration: Encryption", "A raw etcd value: Stored", "A ServiceAccount token: Jwt", "OpenBao setup and calls: OpenBao"]
+narration = "Here is who does what in the code. [[slnc 400]] The cluster and etcd reads is in Cluster. [[slnc 500]] The encryption configuration is in Encryption. [[slnc 500]] A raw etcd value is in Stored. [[slnc 500]] A ServiceAccount token is in Jwt. [[slnc 500]] OpenBao setup and calls is in OpenBao."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A Secret committed to Git", "A role with list on secrets everywhere", "An etcd backup left on a shared disk", "A token Secret created years ago"]
+narration = "You have probably met this already. [[slnc 400]] A Secret committed to Git. [[slnc 500]] A role with list on secrets everywhere. [[slnc 500]] An etcd backup left on a shared disk. [[slnc 500]] A token Secret created years ago."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why base64 is not encryption", "Read a Secret raw from etcd and tell whether it is encrypted", "Turn on encryption at rest and rewrite existing secrets", "Explain what a short-lived and a bound token change"]
+narration = "So, how do you use it? [[slnc 400]] Turn on encryption at rest with a KMS provider and rewrite old secrets, give list and get on secrets to very few, keep long-lived secrets in an external store, and use bound tokens that expire and name an audience."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's kubernetes secrets. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A Secret is only as safe as the people and the disks that can reach it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Remove identity from the providers and find what breaks for an old secret. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kubernetes Secrets</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Kubernetes Secrets</h1>
+<pre><code>src/main/java/com/jk/explore/security/k8ssecrets/
+├── Cluster.java                A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
+├── Encryption.java             The EncryptionConfiguration file the API server reads, and the marker that an encrypted value carries in etcd
+├── Http.java                   An HTTP answer from OpenBao: the status code and the JSON body (empty when there is none)
+├── Jwt.java                    The claims of a ServiceAccount token
+├── KubernetesSecretsDemo.java  Whether every Secret that etcd holds is encrypted
+├── Manifests.java              The Kubernetes objects of the demo, as text
+├── OpenBao.java                Sets up OpenBao in the cluster (policy, Kubernetes login) and talks to it from a pod, the way an application would
+├── Sh.java                     Runs a program and returns what it printed, whether it worked or not
+└── Stored.java                 A value read straight out of etcd: whether it is encrypted, and whether a given text can be found in it
+</code></pre>
+<p><strong>A card key in a Kubernetes Secret on a real cluster (kind) decodes with no key, and the auditor who may only list secrets reads it (yes), while a ServiceAccount with no rule cannot (no); read raw from etcd with etcdctl the value holds the key as plain text (yes) and not even as base64 (no); after the API server is restarted with an aescbc EncryptionConfiguration the old secret is still plain text, a new one is encrypted (yes) with no plain text, and only after every secret is rewritten is every secret in etcd encrypted (yes), the key being a file on the control-plane node and the auditor still reading the value; OpenBao holds the database password outside Kubernetes (none in any Secret, none in etcd): a pod logs in with its ServiceAccount token (HTTP 200), gets a token of 10 seconds, reads the password (HTTP 200), another ServiceAccount is refused (HTTP 403) and the same token is refused 12 seconds later (HTTP 403); a bound ServiceAccount token lives 600 seconds, has one audience and is tied to a pod and stops working when the pod is deleted (no), while the old token Secret has no expiry (no) and still works (yes).</strong></p>
+<p>A Kubernetes <strong>Secret</strong> looks protected and is not: its values are only base64, and by default etcd stores them as they are. This project runs a real cluster with <strong>kind</strong>, puts a bank's card key in a Secret, reads it raw out of <strong>etcd</strong> (with <code>etcdctl</code> inside the etcd pod) before and after turning on <strong>encryption at rest</strong>, then moves a database password to <strong>OpenBao</strong> and compares a short-lived <strong>bound token</strong> with the old token Secret. A Java program drives <code>kind</code>, <code>kubectl</code> and <code>docker</code> (<code>brew install kind kubectl</code>, Docker running, a network for the images); the demo makes a cluster, so it is tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Base64 is an encoding.</strong> The value decodes with no key, an auditor who may only <strong>list</strong> secrets reads it (yes), and an account with no rule cannot (no).
+- <strong>Raw etcd, before.</strong> The stored value holds the card key as plain text (yes), not even as base64 (no).
+- <strong>Encryption at rest.</strong> After the API server restarts with an <code>aescbc</code> EncryptionConfiguration, the old secret is still plain text, a new one is encrypted; only after a rewrite of every secret is <strong>every secret in etcd encrypted</strong>. The key is a file on the control-plane node, and the auditor still reads the value.
+- <strong>OpenBao and a short-lived token.</strong> The database password is in no Secret and not in etcd. A pod logs in with its ServiceAccount token (HTTP 200), gets a token of <strong>10 seconds</strong>, reads the password (200); another ServiceAccount is refused (403) and the same token is refused 12 seconds later (403).
+- <strong>A bound ServiceAccount token.</strong> 600 seconds, one audience, tied to a pod, and refused once the pod is gone; the old token Secret has no expiry and still works.</p>
+<p>OpenBao runs in <strong>development mode</strong> (in memory, a known root token): it is the closest thing to a real server that runs on a laptop, and it speaks the same API. A KMS provider for the encryption key is not run here; the key sits on the control plane and the docs say so.</p>
+<p><strong>Maps to:</strong> NIST CSF 2.0 Protect (PR.DS) · NIST SP 800-53 SC-28 and IA-5 · CIS Kubernetes Benchmark 1.2.27 and 5.4 · OWASP Kubernetes Top 10 K08.</p>
+<h2>The idea in everyday terms</h2>
+<p>A note in a safe-looking envelope that is only folded, not sealed. Anyone who is handed the envelope reads it, and so does anyone who finds it in the drawer. Sealing the drawer helps against a thief, not against the clerk with the key; the better way is to hand out a pass that works for ten seconds.</p>
+<h2>The scenario</h2>
+<p>A bank keeps a card key and a database password for its payments service. The demo stores the key in a Secret, reads it from etcd, turns encryption on, moves the password to OpenBao and compares two kinds of ServiceAccount token.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Base64 is not encryption</td>
+<td>A Secret's value decodes with no key and a role that may only list secrets reads it.</td>
+</tr>
+<tr>
+<td>2. Raw etcd, before</td>
+<td>Read with etcdctl, the stored value holds the key as plain text.</td>
+</tr>
+<tr>
+<td>3. Encryption at rest</td>
+<td>After a restart with aescbc only new secrets are encrypted; a rewrite encrypts the rest.</td>
+</tr>
+<tr>
+<td>4. OpenBao and a 10 second token</td>
+<td>The password is outside Kubernetes; a pod logs in with its ServiceAccount token and gets 10 seconds.</td>
+</tr>
+<tr>
+<td>5. A bound ServiceAccount token</td>
+<td>A token tied to a pod and an audience for 600 seconds, against the old token Secret that never expires.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>14 tests in <code>DemoRunsTest</code>, <code>HttpAndManifestsTest</code>, <code>JwtTest</code>, <code>StoredAndEncryptionTest</code>. The token reader, the etcd value check, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>The cluster, etcd, the encryption configuration, OpenBao and the tokens are real. OpenBao runs in development mode and the encryption key is a local file. The demo prints yes/no, counts and HTTP codes, never ids or tokens.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/kubernetes-secrets-explained.html">Kubernetes Secrets, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The API server, etcd and OpenBao.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The cluster, OpenBao and the token reader.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The API server encrypts on the way in.</p>
+<p><img alt="From a Secret to etcd" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="Reading a Secret raw from etcd" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/kubernetes-secrets-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Base64 hides nothing,</strong> and anyone who may list secrets reads them.</li>
+<li><strong>Encryption at rest protects a disk or an etcd backup,</strong> not a person with the right to read secrets.</li>
+<li><strong>Existing secrets stay plain</strong> until each one is rewritten.</li>
+<li><strong>The key sits on the control plane</strong> unless a KMS provider keeps it outside.</li>
+<li><strong>An external secret store is one more system</strong> to run, unseal and audit.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A cluster with no sensitive data and one team can use plain Secrets with tight RBAC. Turn on encryption at rest when etcd backups or disks leave your control, and use an external store when a secret must be short-lived or audited.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A Secret committed to Git as base64.</li>
+<li>A role that allows list on secrets in every namespace.</li>
+<li>An etcd backup in a shared bucket.</li>
+<li>A service account token that never expires.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is the third project of the <a href="..">kubernetes-and-container-security</a> module, after <a href="../kubernetes-admission-control">kubernetes-admission-control</a> and <a href="../kubernetes-network-policies">kubernetes-network-policies</a>.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
