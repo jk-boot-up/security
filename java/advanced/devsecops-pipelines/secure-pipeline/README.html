@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secure Pipeline</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secure Pipeline</h1>
+<pre><code>src/main/java/com/jk/explore/security/securepipe/
+├── BankLib.java             The small Gradle library of a bank that the pipelines build: a git repository with two commits, in one of several flavours
+├── Bundle.java              The four files a release is made of: the jar, its signature, the provenance and the signature of the provenance
+├── Cosign.java              The real cosign command line, with a key pair that lives in a temporary directory and nowhere else
+├── Deploy.java              The last step: a directory that stands for production, which takes a jar only when its release verifies
+├── Digest.java              SHA-256 of bytes and files, as lower-case hex
+├── Gate.java                How a gate that runs an outside tool turns what happened into pass, fail or error
+├── Git.java                 A git repository driven through the git command line, with fixed author and dates so that runs do not differ
+├── Gradle.java              Runs this project's own Gradle wrapper inside a checkout of the library, so that the build there never touches this project's build directory
+├── Pipeline.java            The stages of a release, driven from Java: checkout, secret scan, dependency check, unit tests, build, provenance, signing and a signature check
+├── Provenance.java          An in-toto statement with a SLSA v1 provenance predicate: what was built, from what, by whom and how
+├── Reproducibility.java     Builds the same commit in two clean checkouts in different directories and compares the jars
+├── Sbom.java                A small CycloneDX software bill of materials made from the dependencies a build.gradle declares for the code that ships
+├── Scratch.java             Temporary directories and files that the demo makes, all removed at the end (the signing keys among them)
+├── SecurePipelineDemo.java  A release pipeline for a bank's Gradle library, driven from Java: reproducible builds, signatures and provenance, gates that fail closed, and a deploy step that accepts only what verifies
+├── Sh.java                  Runs a program and returns what it printed, whether it worked or not
+├── SignatureCheck.java      Says whether a signature file is a valid signature of a file under a public key
+└── Verifier.java            Everything that must be true before a release is trusted
+</code></pre>
+<p><strong>The same commit built in two clean checkouts gives identical jars with preserveFileTimestamps off and reproducibleFileOrder on (identical: yes), and different jars when the old settings keep file times (no) or when the build path is written into the jar (no, 1 entry: build-info.properties); cosign verifies the jar and its provenance with the public key and refuses a jar with one bit changed and a signature checked with another key; the in-toto provenance names the builder, the command, 3 inputs, the jar digest and the source commit and tree, and an edited commit no longer verifies; 4 gates (secret scan with gitleaks, dependency check with trivy on a CycloneDX bill of materials, unit tests, signature check) stop 6 of 6 planted failures, 0 let through, each at the gate that owns the flaw; 3 of 3 broken tools (gitleaks missing, gitleaks crashing, trivy without its database) stop the pipeline that fails closed and 3 of 3 are released by one that fails open; the deploy step accepts the genuine release and refuses 3 of 3 forged releases (a swapped jar, an attacker's own build and a replayed old release), so 1 jar is in production.</strong></p>
+<p>A release pipeline is the road every change takes to production, so it has to be the hardest road to cheat on. This project builds one for a small Gradle library of a bank and then tries to cheat it. The stages are driven from Java and use the real tools: <strong>git</strong>, <strong>Gradle</strong>, <strong>gitleaks</strong>, <strong>trivy</strong> and <strong>cosign</strong>. No Gitea or Woodpecker server is run: the stages are the same ones a Woodpecker pipeline would call, in a Java program that can measure them. The demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code> (trivy needs its vulnerability database, downloaded once).</p>
+<p>What it shows:
+- <strong>Reproducible build.</strong> The same commit in two directories gives identical jars: <strong>yes</strong>. With the old archive settings: <strong>no</strong> (file times). With the build path written into the jar: <strong>no</strong> (1 entry).
+- <strong>Signing.</strong> cosign verifies the jar and the provenance; a jar with one bit changed and a signature checked with another key both fail.
+- <strong>Provenance.</strong> An in-toto statement with a SLSA v1 predicate: builder, command, <strong>3</strong> inputs, jar digest, source commit and tree.
+- <strong>Gates.</strong> <strong>4</strong> gates stop <strong>6 of 6</strong> planted failures, each at its own gate. <strong>3 of 3</strong> broken tools stop a pipeline that fails closed and get past one that fails open.
+- <strong>Deploy.</strong> The genuine release is accepted and <strong>3 of 3</strong> forged releases are refused.</p>
+<p><strong>Maps to:</strong> SLSA v1 (build levels and provenance) · in-toto attestation · NIST SSDF PS.1, PS.2 and PW.4 · OWASP CI/CD Security Risks · CIS software supply chain guide.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank vault with a guard at every door. The guard at each door has an order: if you cannot tell whether the visitor is allowed in, the answer is no. A guard who lets people in when the phone is dead is not a guard.</p>
+<h2>The scenario</h2>
+<p>A bank keeps a small ledger library. Every release must come out of a clean build, must be signed, must say where it came from, and must pass four checks. The demo plants six failures, breaks three tools and forges three releases to see what gets through.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Build it twice</td>
+<td>The same commit built in two directories gives identical jars only with fixed archive settings and no path in the jar.</td>
+</tr>
+<tr>
+<td>2. Sign it</td>
+<td>cosign signs the jar and the provenance; one changed bit or another key fails verification.</td>
+</tr>
+<tr>
+<td>3. Say where it came from</td>
+<td>An in-toto statement with a SLSA predicate names the builder, the command, 3 inputs, the jar digest and the source.</td>
+</tr>
+<tr>
+<td>4. Gates that fail closed</td>
+<td>4 gates stop 6 of 6 planted failures, and 3 of 3 broken tools stop the pipeline that fails closed.</td>
+</tr>
+<tr>
+<td>5. Deploy only what verifies</td>
+<td>The deploy step accepts the genuine release and refuses 3 of 3 forged releases.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>20 tests in <code>DemoRunsTest</code>, <code>JdkSignatures</code>, <code>PipelinePartsTest</code>, <code>VerifierTest</code>. The verifier, the provenance, the bill of materials, the gate rules and the comparison of jars are tested with the JDK only (a JDK ECDSA key stands in for cosign). The demo runs the tools (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>git, Gradle, gitleaks, trivy and cosign are the real tools. The pipeline is a Java program, not a Gitea and Woodpecker server, and the signing key pair is made for each run and never stored. The library, the planted flaws and the builder id are the project's own.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/secure-pipeline-explained.html">Secure Pipeline, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>Source goes through four gates and a signature to a deploy step that checks it all again.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The pipeline and the deploy step share one verifier.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>Each stage can say no.</p>
+<p><img alt="From a commit to production" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="A release" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/secure-pipeline-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>Reproducible builds need care:</strong> one timestamp or path in a jar is enough to break them.</li>
+<li><strong>Gates add minutes</strong> to every change and tools need updating (the trivy database is large).</li>
+<li><strong>Fail closed stops releases</strong> when a tool has a bad day.</li>
+<li><strong>Provenance is only as good as the builder</strong> that writes it; a compromised builder signs lies.</li>
+<li><strong>Keys must be kept</strong> somewhere better than a pipeline variable.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>A personal project that nobody else installs does not need signatures and provenance. Anything that other people or other machines trust and run does.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A pipeline that is green because the scanner was not installed.</li>
+<li>A jar on a shared drive that nobody can trace to a commit.</li>
+<li>A hotfix built on a laptop.</li>
+<li>An old release that was valid yesterday and is replayed today.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">devsecops-pipelines</a> module. secret-scanning, sast and dast are three of the gates; this project puts gates, signatures and provenance on one road. The signed-images idea reappears in kubernetes-admission-control, where the cluster does the verifying.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>

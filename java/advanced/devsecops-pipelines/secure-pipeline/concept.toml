@@ -1,0 +1,442 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "secure-pipeline"
+level = "advanced"
+module = "devsecops-pipelines"
+title = "Secure Pipeline"
+short_title = "Secure Pipeline"
+package = "securepipe"
+main_class = "SecurePipelineDemo"
+tagline = "A release pipeline for a bank's Gradle library with reproducible builds, cosign signatures, SLSA-style provenance and gates that fail closed, and a deploy step that refuses forged releases"
+bold = "The same commit built in two clean checkouts gives identical jars with preserveFileTimestamps off and reproducibleFileOrder on (identical: yes), and different jars when the old settings keep file times (no) or when the build path is written into the jar (no, 1 entry: build-info.properties); cosign verifies the jar and its provenance with the public key and refuses a jar with one bit changed and a signature checked with another key; the in-toto provenance names the builder, the command, 3 inputs, the jar digest and the source commit and tree, and an edited commit no longer verifies; 4 gates (secret scan with gitleaks, dependency check with trivy on a CycloneDX bill of materials, unit tests, signature check) stop 6 of 6 planted failures, 0 let through, each at the gate that owns the flaw; 3 of 3 broken tools (gitleaks missing, gitleaks crashing, trivy without its database) stop the pipeline that fails closed and 3 of 3 are released by one that fails open; the deploy step accepts the genuine release and refuses 3 of 3 forged releases (a swapped jar, an attacker's own build and a replayed old release), so 1 jar is in production."
+domain = "a bank"
+domain_note = ""
+youtube_description = "A local release pipeline in Java for a bank's Gradle library: reproducible builds, cosign signatures, SLSA-style provenance, gates for secrets, dependencies, tests and signatures that fail closed when a tool is missing or crashes, and a deploy step that refuses forged releases."
+thumb_lines = ["SECURE", "PIPELINE"]
+thumb_code = "$ cosign verify-blob --key cosign.pub"
+youtube_title = "Secure Pipeline: Reproducible Builds, Signing, Provenance and Gates That Fail Closed"
+youtube_tags = ["devsecops", "secure pipeline", "reproducible builds", "cosign", "slsa", "provenance", "supply chain", "gitleaks", "trivy", "fail closed", "gradle", "java"]
+
+[readme]
+intro = """
+A release pipeline is the road every change takes to production, so it has to be the hardest road to cheat on. This project builds one for a small Gradle library of a bank and then tries to cheat it. The stages are driven from Java and use the real tools: **git**, **Gradle**, **gitleaks**, **trivy** and **cosign**. No Gitea or Woodpecker server is run: the stages are the same ones a Woodpecker pipeline would call, in a Java program that can measure them. The demo is tagged `integration`: `./gradlew integrationTest` (trivy needs its vulnerability database, downloaded once).
+
+What it shows:
+- **Reproducible build.** The same commit in two directories gives identical jars: **yes**. With the old archive settings: **no** (file times). With the build path written into the jar: **no** (1 entry).
+- **Signing.** cosign verifies the jar and the provenance; a jar with one bit changed and a signature checked with another key both fail.
+- **Provenance.** An in-toto statement with a SLSA v1 predicate: builder, command, **3** inputs, jar digest, source commit and tree.
+- **Gates.** **4** gates stop **6 of 6** planted failures, each at its own gate. **3 of 3** broken tools stop a pipeline that fails closed and get past one that fails open.
+- **Deploy.** The genuine release is accepted and **3 of 3** forged releases are refused.
+
+**Maps to:** SLSA v1 (build levels and provenance) · in-toto attestation · NIST SSDF PS.1, PS.2 and PW.4 · OWASP CI/CD Security Risks · CIS software supply chain guide.
+"""
+analogy = """
+A bank vault with a guard at every door. The guard at each door has an order: if you cannot tell whether the visitor is allowed in, the answer is no. A guard who lets people in when the phone is dead is not a guard.
+"""
+scenario = """
+A bank keeps a small ledger library. Every release must come out of a clean build, must be signed, must say where it came from, and must pass four checks. The demo plants six failures, breaks three tools and forges three releases to see what gets through.
+"""
+costs = [
+    "**Reproducible builds need care:** one timestamp or path in a jar is enough to break them.",
+    "**Gates add minutes** to every change and tools need updating (the trivy database is large).",
+    "**Fail closed stops releases** when a tool has a bad day.",
+    "**Provenance is only as good as the builder** that writes it; a compromised builder signs lies.",
+    "**Keys must be kept** somewhere better than a pipeline variable.",
+]
+too_much = """
+A personal project that nobody else installs does not need signatures and provenance. Anything that other people or other machines trust and run does.
+"""
+met_before = [
+    "A pipeline that is green because the scanner was not installed.",
+    "A jar on a shared drive that nobody can trace to a commit.",
+    "A hotfix built on a laptop.",
+    "An old release that was valid yesterday and is replayed today.",
+]
+where = """
+This is a project of the [devsecops-pipelines](..) module. secret-scanning, sast and dast are three of the gates; this project puts gates, signatures and provenance on one road. The signed-images idea reappears in kubernetes-admission-control, where the cluster does the verifying.
+"""
+twin = """
+git, Gradle, gitleaks, trivy and cosign are the real tools. The pipeline is a Java program, not a Gitea and Woodpecker server, and the signing key pair is made for each run and never stored. The library, the planted flaws and the builder id are the project's own.
+"""
+test_note = "The verifier, the provenance, the bill of materials, the gate rules and the comparison of jars are tested with the JDK only (a JDK ECDSA key stands in for cosign). The demo runs the tools (./gradlew integrationTest)."
+
+[[act]]
+title = "Build it twice"
+summary = "The same commit built in two directories gives identical jars only with fixed archive settings and no path in the jar."
+detail = """
+The library is cloned twice into clean directories and built with Gradle. With preserveFileTimestamps off and reproducibleFileOrder on, the two jars have the same SHA-256. With the old settings (file times kept) they differ, though the entries are the same and no content differs. With a build-info file that records the build path, one entry (build-info.properties) differs. The fix is to fix the archive settings and to put nothing about the machine in the jar. Gradle 9 does the first by default.
+"""
+speech = """
+First demo: build it twice. [[slnc 400]] Two clean directories, one commit. [[slnc 600]] Same jar, only when nothing about the machine gets in.
+"""
+rows = { repro = "active ok" }
+console = [
+    ["fixed archive settings: identical yes", "ok"],
+    ["file times kept: identical no", "bad"],
+    ["build path in the jar: identical no, 1 entry", "bad"],
+]
+
+[[act]]
+title = "Sign it"
+summary = "cosign signs the jar and the provenance; one changed bit or another key fails verification."
+detail = """
+A cosign key pair is made in a temporary directory. The jar and the provenance are signed with cosign sign-blob, and cosign verify-blob checks them with the public key. A jar with one bit changed fails. A signature checked against the public key of another key pair fails. The key files are deleted at the end of the run.
+"""
+speech = """
+Second demo: sign it. [[slnc 400]] The signature belongs to these exact bytes. [[slnc 600]] Change one bit, or use the wrong key, and it is refused.
+"""
+rows = { sign = "active ok" }
+console = [
+    ["jar signature verifies: yes", "ok"],
+    ["one bit changed: no", "bad"],
+    ["another key: no", "bad"],
+]
+
+[[act]]
+title = "Say where it came from"
+summary = "An in-toto statement with a SLSA predicate names the builder, the command, 3 inputs, the jar digest and the source."
+detail = """
+The provenance names the builder id, the build command (gradlew jar), 3 inputs (the source commit and tree, build.gradle and 1 dependency), and the SHA-256 of the jar as its subject. The verifier checks that the subject digest equals the jar, that the source commit equals the commit that was checked out, and that the tree matches. The provenance of the previous release names another commit, and an edited provenance no longer verifies.
+"""
+speech = """
+Third demo: say where it came from. [[slnc 400]] The provenance names the jar, the commit and the builder. [[slnc 600]] Edit it and the signature breaks.
+"""
+rows = { prov = "active ok" }
+console = [
+    ["subject digest equals the jar: yes", "ok"],
+    ["source commit equals the checkout: yes", "ok"],
+    ["edited provenance verifies: no", "bad"],
+]
+
+[[act]]
+title = "Gates that fail closed"
+summary = "4 gates stop 6 of 6 planted failures, and 3 of 3 broken tools stop the pipeline that fails closed."
+detail = """
+The gates are a secret scan (gitleaks over the whole history), a dependency check (trivy on a CycloneDX bill of materials made from build.gradle), the unit tests, and a signature check. Planted: a failing test, a vulnerable dependency (commons-text 1.9), a committed secret built from fragments, an unsigned artifact, a jar altered after signing and a jar signed with an unknown key. 6 of 6 are stopped and each at the gate that owns the flaw. Then tools are broken: gitleaks missing, gitleaks crashing on its configuration and trivy without its database. A pipeline that fails closed stops in 3 of 3; one that fails open releases 3 of 3.
+"""
+speech = """
+Fourth demo: gates that fail closed. [[slnc 400]] Six planted failures, six stopped. [[slnc 600]] A tool that cannot answer must count as no.
+"""
+rows = { gates = "active ok" }
+console = [
+    ["planted failures: 6, stopped: 6", "ok"],
+    ["broken tools, fail closed: 3 of 3 stopped", "ok"],
+    ["broken tools, fail open: 3 of 3 released", "bad"],
+]
+
+[[act]]
+title = "Deploy only what verifies"
+summary = "The deploy step accepts the genuine release and refuses 3 of 3 forged releases."
+detail = """
+Deploy verifies the signatures of the jar and the provenance, the digest, the builder and the source commit and tree before it copies anything. The genuine release is accepted. A jar swapped after signing is refused at the artifact signature. An attacker's own build with a matching provenance, signed with the attacker's key, is refused at the artifact signature. The genuine previous release, replayed, is refused at the source commit. One jar is in production.
+"""
+speech = """
+Fifth demo: deploy only what verifies. [[slnc 400]] Three forgeries, three refusals. [[slnc 600]] Even a genuine old release is refused, because it names the wrong commit.
+"""
+rows = { deploy = "active ok" }
+console = [
+    ["genuine release: accepted", "ok"],
+    ["forged releases: 3, refused: 3", "ok"],
+    ["jars in production: 1", "ok"],
+]
+
+[animation]
+subtitle = "A bank's release road, with a guard at every door."
+boxes = [
+    ["repro", "Build it twice", "identical"],
+    ["sign", "Sign it", "verify"],
+    ["prov", "Say where it came from", "3 inputs"],
+    ["gates", "Gates that fail closed", "6 of 6"],
+    ["deploy", "Deploy only what verifies", "3 refused"],
+]
+
+[docs.problem]
+scenario = """
+A bank wants every release of its ledger library to come out of a clean build, to be signed, to say where it came from and to pass checks that cannot be skipped by a tool that is missing.
+"""
+naive = """
+Build on a laptop, run the checks if the tools are there, and copy the jar.
+"""
+deliver = [
+    "A reproducible build.",
+    "Signatures and provenance that are verified.",
+    "Gates that fail closed.",
+    "A deploy step that checks everything again.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java and Gradle basics",
+    "git, gitleaks, trivy and cosign installed",
+    "A network once, for the trivy database",
+]
+not_required = [
+    "Docker",
+    "A Gitea or Woodpecker server",
+]
+install = ["brew install gitleaks trivy cosign"]
+
+[docs.session]
+objectives = [
+    "make a build reproducible and explain what breaks it",
+    "sign an artifact and its provenance with cosign and verify both",
+    "check a provenance against an artifact and a commit",
+    "make gates fail closed and deploy only what verifies",
+]
+walkthrough = """
+Run the demo and read the five parts in order. In the gates part, find the difference between the two lines about a missing tool.
+"""
+exercises = [
+    "Add a dependency to the library with a known critical flaw and see which gate stops it.",
+    "Make a build that embeds the date and fix it.",
+    "Add a fifth forged release whose provenance names an untrusted builder.",
+    "Write the same stages as a Woodpecker pipeline file.",
+]
+
+[docs.explained]
+sentence = """
+A pipeline you can trust is a build you can repeat, an artifact you can verify and gates that say no when they cannot say yes.
+"""
+verdict = """
+Build in clean directories with fixed archive settings and compare the digests, sign the artifact and its provenance, verify both again at deploy together with the commit, and make every gate fail when its tool does not answer.
+"""
+recognise = [
+    "A green pipeline where a scanner was never installed.",
+    "A jar with no record of its source.",
+    "A build that differs on every run.",
+    "A check that is skipped when the tool is missing.",
+]
+
+[spec]
+purpose = """
+Teach a release pipeline with reproducible builds, signatures, provenance and gates that fail closed, measured on planted failures and forgeries.
+"""
+nongoals = [
+    "Running a Gitea and Woodpecker server.",
+    "Keyless signing and a transparency log.",
+    "Securing the builder itself.",
+]
+problem = """
+Releases are built wherever, checked when convenient and trusted without proof.
+"""
+roles = [["The stages and gates", "`Pipeline`, `Gate`"], ["Building twice and comparing", "`Reproducibility`"], ["Signing with cosign", "`Cosign`"], ["The provenance statement", "`Provenance`"], ["The bill of materials", "`Sbom`"], ["Everything checked before trust", "`Verifier`"], ["The step before production", "`Deploy`"]]
+requirements = [
+    "The same commit gives identical jars in two directories, and the variants that do not are shown.",
+    "The artifact and its provenance are signed and verified with a key made for the run.",
+    "The provenance subject equals the jar and the source equals the checked-out commit.",
+    "Each planted failure stops the pipeline at its own gate.",
+    "A tool that is missing or crashes stops the pipeline.",
+    "Deploy accepts only a release that verifies and refuses forged ones.",
+    "The demo prints the same output on every run and stores no key.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "Source goes through four gates and a signature to a deploy step that checks it all again."
+nodes = [
+    { id = "source", label = "Source", sub = "a commit", col = 0, row = 0, colour = "client" },
+    { id = "pipeline", label = "Pipeline", sub = "gates, build, sign", col = 1, row = 0, colour = "amber" },
+    { id = "release", label = "Release", sub = "jar, provenance, signatures", col = 2, row = 0, colour = "accent" },
+    { id = "deploy", label = "Deploy", sub = "verifies again", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "source", to = "pipeline", label = "checked out" },
+    { from = "pipeline", to = "release", label = "makes" },
+    { from = "release", to = "deploy", label = "offered" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The pipeline and the deploy step share one verifier."
+nodes = [
+    { id = "pipeline", label = "Pipeline", sub = ["run()"], col = 0, row = 0, colour = "accent" },
+    { id = "verifier", label = "Verifier", sub = ["verify()"], col = 1, row = 0, colour = "amber" },
+    { id = "deploy", label = "Deploy", sub = ["deploy()"], col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "pipeline", to = "verifier", label = "checks with" },
+    { from = "deploy", to = "verifier", label = "checks with" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a commit to production"
+caption = "Each stage can say no."
+nodes = [
+    { id = "scan", label = "Scan", sub = "secrets, dependencies", col = 0, row = 0, colour = "client" },
+    { id = "test", label = "Test and build", sub = "unit tests, jar", col = 1, row = 0, colour = "amber" },
+    { id = "sign", label = "Sign and verify", sub = "cosign, provenance", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "scan", to = "test", label = "clean" },
+    { from = "test", to = "sign", label = "built" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A release"
+participants = ["Pipeline", "Cosign", "Deploy"]
+steps = [
+    ["Pipeline", "Cosign", "sign the jar and the provenance"],
+    ["Cosign", "Pipeline", "signatures", "reply"],
+    ["Pipeline", "Deploy", "jar, provenance, signatures"],
+    ["Deploy", "Cosign", "verify against the public key"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A forged release"
+participants = ["Attacker", "Deploy"]
+steps = [
+    ["Attacker", "Deploy", "jar with matching provenance, own key"],
+    ["Deploy", "Attacker", "refused: artifact signature", "reply"],
+    ["Attacker", "Deploy", "genuine old release replayed"],
+    ["Deploy", "Attacker", "refused: source commit", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+    { label = "Pipeline", nodes = ["gates", "builder"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "forges or replays a release", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "gates", label = "Gates", sub = "tools that can fail", col = 1, row = 0, colour = "accent", threats = ["T2"] },
+    { id = "builder", label = "Builder", sub = "jar and provenance", col = 2, row = 0, colour = "amber", threats = ["T1", "T3"] },
+]
+edges = [
+    { from = "attacker", to = "builder", label = "swapped jar", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "gates", to = "builder", label = "lets a change through", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+The release path of one library: checkout, gates, build, signing, provenance and deploy. It does not cover the security of the machine that builds.
+"""
+assets = [
+    "The jar that runs in production.",
+    "The signing key.",
+    "The record of where a release came from.",
+]
+actors = [
+    "An attacker who can reach the artifact store.",
+    "A developer who commits a secret.",
+    "A broken or missing tool.",
+]
+boundaries = [
+    "The artifact store between the builder and production.",
+]
+assumptions = [
+    "The builder is not compromised.",
+    "The signing key stays in the pipeline.",
+]
+out_of_scope = [
+    "Compromise of the builder.",
+    "Keyless signing and a transparency log.",
+]
+tests = [
+    "`VerifierTest` checks every refusal of the verifier and the deploy step with JDK signatures.",
+    "`PipelinePartsTest` checks the bill of materials, the provenance, the gate rules and the comparison of jars.",
+    "`DemoRunsTest` runs the real tools and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is the next in docs/advanced-plan.md.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "A jar is swapped or forged after the build"
+where = "the artifact store"
+control = "Signatures, provenance and a digest check at deploy"
+residual = "A compromised builder"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A gate passes because its tool did not run"
+where = "the gates"
+control = "A tool that cannot answer is a failure"
+residual = "A tool with a wrong answer"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "A genuine old release is replayed"
+where = "the artifact store"
+control = "Provenance names the commit, and deploy checks it"
+residual = "A commit that is old but wanted"
+
+[poster]
+headline = [["SECURE", "text"], ["PIPELINE", "accent"]]
+taglines = [["A release pipeline for a bank's Gradle library with reproducible builds, cosign signatures", "gold"]]
+before = { code = "$ cosign verify-blob --key cosign.pub", note = "6 of 6 stopped", tag = "BEFORE" }
+after = { code = "forged releases: 3, refused: 3", note = "Verified", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Secure Pipeline"
+narration = "Hello, and welcome. [[slnc 400]] This video explains secure pipeline, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] The same commit built in two clean checkouts gives identical jars with preserveFileTimestamps off and reproducibleFileOrder on (identical: yes), and different jars when the old settings keep file times (no) or when the build path is written into the jar (no, 1 entry: build-info.properties); cosign verifies the jar and its provenance with the public key and refuses a jar with one bit changed and a signature checked with another key; the in-toto provenance names the builder, the command, 3 inputs, the jar digest and the source commit and tree, and an edited commit no longer verifies; 4 gates (secret scan with gitleaks, dependency check with trivy on a CycloneDX bill of materials, unit tests, signature check) stop 6 of 6 planted failures, 0 let through, each at the gate that owns the flaw; 3 of 3 broken tools (gitleaks missing, gitleaks crashing, trivy without its database) stop the pipeline that fails closed and 3 of 3 are released by one that fails open; the deploy step accepts the genuine release and refuses 3 of 3 forged releases (a swapped jar, an attacker's own build and a replayed old release), so 1 jar is in production. [[slnc 600]] Think of it this way. [[slnc 300]] A bank vault with a guard at every door. The guard at each door has an order: if you cannot tell whether the visitor is allowed in, the answer is no. A guard who lets people in when the phone is dead is not a guard. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Make a build reproducible and explain what breaks it. [[slnc 300]] Sign an artifact and its provenance with cosign and verify both. [[slnc 300]] Check a provenance against an artifact and a commit."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank keeps a small ledger library. Every", "release must come out of a clean build, must be", "signed, must say where it came from, and must", "pass four checks. The demo plants six failures,", "breaks three tools and forges three releases to", "see what gets through."]
+narration = "Here is the scenario. [[slnc 400]] A bank keeps a small ledger library. Every release must come out of a clean build, must be signed, must say where it came from, and must pass four checks. The demo plants six failures, breaks three tools and forges three releases to see what gets through."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Reproducible builds need care: one timestamp or path in a jar is enough to break them", "Gates add minutes to every change and tools need updating (the trivy database is large)", "Fail closed stops releases when a tool has a bad day", "Provenance is only as good as the builder that writes it", "Keys must be kept somewhere better than a pipeline variable"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Reproducible builds need care: one timestamp or path in a jar is enough to break them. [[slnc 500]] Gates add minutes to every change and tools need updating (the trivy database is large). [[slnc 500]] Fail closed stops releases when a tool has a bad day. [[slnc 500]] Provenance is only as good as the builder that writes it, a compromised builder signs lies. [[slnc 500]] Keys must be kept somewhere better than a pipeline variable."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The stages and gates: Pipeline, Gate", "Building twice and comparing: Reproducibility", "Signing with cosign: Cosign", "The provenance statement: Provenance", "The bill of materials: Sbom"]
+narration = "Here is who does what in the code. [[slnc 400]] The stages and gates is in Pipeline, Gate. [[slnc 500]] Building twice and comparing is in Reproducibility. [[slnc 500]] Signing with cosign is in Cosign. [[slnc 500]] The provenance statement is in Provenance. [[slnc 500]] The bill of materials is in Sbom."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A green pipeline where a scanner was never installed", "A jar with no record of its source", "A build that differs on every run", "A check that is skipped when the tool is missing"]
+narration = "You have probably met this already. [[slnc 400]] A green pipeline where a scanner was never installed. [[slnc 500]] A jar with no record of its source. [[slnc 500]] A build that differs on every run. [[slnc 500]] A check that is skipped when the tool is missing."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Make a build reproducible and explain what breaks it", "Sign an artifact and its provenance with cosign and verify both", "Check a provenance against an artifact and a commit", "Make gates fail closed and deploy only what verifies"]
+narration = "So, how do you use it? [[slnc 400]] Build in clean directories with fixed archive settings and compare the digests, sign the artifact and its provenance, verify both again at deploy together with the commit, and make every gate fail when its tool does not answer."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's secure pipeline. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A pipeline you can trust is a build you can repeat, an artifact you can verify and gates that say no when they cannot say yes. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a dependency to the library with a known critical flaw and see which gate stops it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

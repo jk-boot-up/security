@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Secure Pipeline, Explained</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>Secure Pipeline, Explained</h1>
+<h2>The idea in one sentence</h2>
+<p>A pipeline you can trust is a build you can repeat, an artifact you can verify and gates that say no when they cannot say yes.</p>
+<h2>The 5 acts</h2>
+<h3>1. Build it twice</h3>
+<p>The library is cloned twice into clean directories and built with Gradle. With preserveFileTimestamps off and reproducibleFileOrder on, the two jars have the same SHA-256. With the old settings (file times kept) they differ, though the entries are the same and no content differs. With a build-info file that records the build path, one entry (build-info.properties) differs. The fix is to fix the archive settings and to put nothing about the machine in the jar. Gradle 9 does the first by default.</p>
+<h3>2. Sign it</h3>
+<p>A cosign key pair is made in a temporary directory. The jar and the provenance are signed with cosign sign-blob, and cosign verify-blob checks them with the public key. A jar with one bit changed fails. A signature checked against the public key of another key pair fails. The key files are deleted at the end of the run.</p>
+<h3>3. Say where it came from</h3>
+<p>The provenance names the builder id, the build command (gradlew jar), 3 inputs (the source commit and tree, build.gradle and 1 dependency), and the SHA-256 of the jar as its subject. The verifier checks that the subject digest equals the jar, that the source commit equals the commit that was checked out, and that the tree matches. The provenance of the previous release names another commit, and an edited provenance no longer verifies.</p>
+<h3>4. Gates that fail closed</h3>
+<p>The gates are a secret scan (gitleaks over the whole history), a dependency check (trivy on a CycloneDX bill of materials made from build.gradle), the unit tests, and a signature check. Planted: a failing test, a vulnerable dependency (commons-text 1.9), a committed secret built from fragments, an unsigned artifact, a jar altered after signing and a jar signed with an unknown key. 6 of 6 are stopped and each at the gate that owns the flaw. Then tools are broken: gitleaks missing, gitleaks crashing on its configuration and trivy without its database. A pipeline that fails closed stops in 3 of 3; one that fails open releases 3 of 3.</p>
+<h3>5. Deploy only what verifies</h3>
+<p>Deploy verifies the signatures of the jar and the provenance, the digest, the builder and the source commit and tree before it copies anything. The genuine release is accepted. A jar swapped after signing is refused at the artifact signature. An attacker's own build with a matching provenance, signed with the attacker's key, is refused at the artifact signature. The genuine previous release, replayed, is refused at the source commit. One jar is in production.</p>
+<h2>The verdict</h2>
+<p>Build in clean directories with fixed archive settings and compare the digests, sign the artifact and its provenance, verify both again at deploy together with the commit, and make every gate fail when its tool does not answer.</p>
+<h2>How to recognise this in code you did not write</h2>
+<ul>
+<li>A green pipeline where a scanner was never installed.</li>
+<li>A jar with no record of its source.</li>
+<li>A build that differs on every run.</li>
+<li>A check that is skipped when the tool is missing.</li>
+</ul>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A pipeline that is green because the scanner was not installed.</li>
+<li>A jar on a shared drive that nobody can trace to a commit.</li>
+<li>A hotfix built on a laptop.</li>
+<li>An old release that was valid yesterday and is replayed today.</li>
+</ul></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
