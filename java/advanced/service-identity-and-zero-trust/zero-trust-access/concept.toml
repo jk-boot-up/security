@@ -1,0 +1,466 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "zero-trust-access"
+level = "advanced"
+module = "service-identity-and-zero-trust"
+title = "Zero Trust Access"
+short_title = "Zero Trust Access"
+package = "zerotrust"
+main_class = "ZeroTrustAccessDemo"
+tagline = "Put an identity-aware proxy in front of a bank's ledger API: every request is authenticated with a Keycloak token, authorized by OPA and written to an audit log, close to the resource"
+bold = "A bank's ledger API behind the network perimeter answers 10 of 10 requests that carry no identity, 3 of them transfers; behind an identity-aware proxy the same 10 requests get 0 successes, and a request that skips the proxy and goes straight to the ledger gets 0 too; the proxy checks a Keycloak JWT (signature from the JWKS, issuer, audience, expiry) and refuses 7 of 7 bad tokens with 401 (none, expired, wrong audience, edited roles, flipped signature, forged with the attacker's own key, algorithm none), then asks OPA, which answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00; of 39 requests every one has exactly one audit record (39 of 39) and 0 of 22 tokens appear in the log; a token outlives its ended session and is still accepted (200) until it expires, a session check at Keycloak refuses it (401) for 1 extra call per request, a 4 second lifetime bounds the exposure, and with OPA down the proxy answers 503."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Zero trust access in Java with Keycloak and OPA: an identity-aware proxy that checks a JWT, asks a policy engine for a decision and writes an audit record for every request, compared with the network perimeter, plus token lifetime, revocation and what happens when a part is down."
+thumb_lines = ["ZERO TRUST", "ACCESS"]
+thumb_code = "token -> policy -> 200 or 403"
+youtube_title = "Zero Trust Access: Identity-Aware Proxy with Keycloak and OPA, Audit and Revocation"
+youtube_tags = ["zero trust", "identity-aware proxy", "keycloak", "opa", "rego", "jwt", "audit log", "token revocation", "policy as code", "java"]
+
+[readme]
+intro = """
+Zero trust says that being inside the network proves nothing: **every request is authenticated, authorized and logged, close to the resource**. This project puts that into one small system for a bank's internal **ledger API**. A real **Keycloak** (in Docker) issues the tokens, a real **OPA** server decides, and an **identity-aware proxy** written in Java (the JDK's HttpServer) sits in front of the ledger: it validates the JWT, asks OPA, enforces the answer, and writes one audit record. Everything is measured with real HTTP requests; the demo is tagged `integration`: `./gradlew integrationTest` (needs Docker and the opa binary).
+
+What it shows:
+- **The perimeter.** The ledger inside the network answers **10 of 10** requests with no identity. Behind the proxy the same 10 get **0**, and 0 more when they go straight to the ledger.
+- **Authentication.** **7 of 7** bad tokens get 401: none, expired, wrong audience, roles edited, signature flipped, signed with the attacker's own key, algorithm none.
+- **Authorization.** OPA answers 403 for the wrong role, a device that is not compliant and a transfer outside business hours; its Rego has **15 of 15** tests.
+- **Audit.** **39** requests, **39** records, **0 of 22** tokens in the log.
+- **Lifetime.** A token stays valid after its session ends (**200**) until it expires; a session check refuses it (**401**) for one more call per request; a **4 second** lifetime bounds the window.
+
+**Maps to:** NIST SP 800-207 (zero trust architecture) · OWASP ASVS V3 and V4 · RFC 7519 (JWT) and RFC 8725 (JWT best practices) · CIS Controls 6 and 8 · ISO/IEC 27001:2022 A.8.2 and A.8.15.
+"""
+analogy = """
+A building where the lobby guard used to wave everyone through because they were already inside. Now every office door checks a badge, looks up what that badge may open, and writes down each attempt, so being in the lobby opens nothing.
+"""
+scenario = """
+A bank's ledger API serves balances, transfers, audit exports and account freezes. Today anything that can reach it can call it. The demo puts a proxy in front that knows who is calling, asks a policy whether they may, and records every answer.
+"""
+costs = [
+    "**Every request pays for a signature check and a policy decision,** and the proxy and policy engine become part of availability.",
+    "**A token is valid until it expires,** so revoking a session needs a short lifetime or a check on every request.",
+    "**A device posture claim is only as good as its source;** here it is set by the demo.",
+    "**Policies are code** that needs its own tests and review.",
+    "**The last hop matters:** a ledger that any process can reach directly undoes the proxy.",
+]
+too_much = """
+A single-tenant tool that only one trusted process calls does not need a proxy and a policy engine. Use this where many people and services reach sensitive operations and someone must later say who did what.
+"""
+met_before = [
+    "A VPN that puts a laptop on the same flat network as the databases.",
+    "An internal admin page with no login because it is internal.",
+    "A role check copied into five services, each slightly different.",
+    "An access log with IP addresses and no names.",
+]
+where = """
+This is a project of the [service-identity-and-zero-trust](..) module. mutual-tls-between-services and workload-identity prove which service is calling; this one adds which person, on which device, may do what, and the record of it.
+"""
+twin = """
+Keycloak and the opa binary are real. The proxy and the ledger are the project's own small Java programs. Envoy and oauth2-proxy were not run: they would do the proxy's job, and writing it in Java shows every step. The device posture is a claim set per Keycloak client, standing in for a device management system.
+"""
+test_note = "The JWT validation, the proxy, the audit log and the ledger are tested with the JDK only, with a stand-in for OPA. The demo runs Keycloak in Docker and the opa binary (./gradlew integrationTest)."
+
+[[act]]
+title = "The perimeter"
+summary = "The ledger inside the network answers all 10 requests that carry no identity."
+detail = """
+The ledger API trusts the network. Ten requests with no identity (3 balances, 3 transfers, 2 audit exports, 2 freezes) all succeed, its code runs 10 times and 3 transfers are executed for callers nobody can name. The ledger can log an address, not a person.
+"""
+speech = """
+First demo: the perimeter. [[slnc 400]] Ten requests, no identity. [[slnc 600]] Ten answers, three of them transfers.
+"""
+rows = { perimeter = "active wrong" }
+console = [
+    ["requests with no identity: 10", "bad"],
+    ["succeed: 10", "bad"],
+    ["transfers executed: 3", "bad"],
+]
+
+[[act]]
+title = "Who is calling"
+summary = "The proxy refuses 7 of 7 bad tokens with 401, and the same 10 identity-less requests now get 0 successes."
+detail = """
+The proxy checks the signature against the keys Keycloak publishes, the issuer, the audience and the expiry, and accepts only RS256. No token, an expired token, a token for another audience, a token with its roles edited to admin, a flipped signature character, a token signed with the attacker's own key and a token with the algorithm none all get 401. The ten identity-less requests get 0 successes, and 0 when sent straight to the ledger.
+"""
+speech = """
+Second demo: who is calling. [[slnc 400]] Seven bad tokens, seven refusals. [[slnc 600]] The same ten requests now get nothing.
+"""
+rows = { authn = "active ok" }
+console = [
+    ["bad tokens refused: 7 of 7", "ok"],
+    ["no identity, through the proxy: 0 of 10", "ok"],
+    ["no identity, straight to the ledger: 0 of 10", "ok"],
+]
+
+[[act]]
+title = "May they"
+summary = "OPA answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00."
+detail = """
+With a good token, the proxy asks OPA with the user, roles, device posture claim, method, path and hour. Bob the auditor cannot transfer, Alice the teller cannot read the audit, Carol the admin is not a teller, a device that is not compliant is refused, and a teller's transfer at 23:00 is refused while the same transfer at 10:00 gets 200. The Rego file has 15 of 15 tests passing.
+"""
+speech = """
+Third demo: may they. [[slnc 400]] A good token is not enough. [[slnc 600]] The role, the device and the hour all have to say yes.
+"""
+rows = { authz = "active ok" }
+console = [
+    ["wrong role: 403", "ok"],
+    ["device not compliant: 403", "ok"],
+    ["transfer at 23:00: 403", "ok"],
+]
+
+[[act]]
+title = "Logged"
+summary = "39 requests, 39 audit records, and 0 of 22 tokens in the log."
+detail = """
+Each request ends in one place that writes one record: allow or deny, the status, the reason, the user, the method and the path. Of 39 requests sent, 39 records match in order with the status the caller saw: 12 allow and 27 deny, each with a reason. None of the 22 tokens used appears in the log.
+"""
+speech = """
+Fourth demo: logged. [[slnc 400]] Thirty-nine requests, thirty-nine records. [[slnc 600]] And not one token in the log.
+"""
+rows = { audit = "active ok" }
+console = [
+    ["requests: 39, records: 39", "ok"],
+    ["allow 12, deny 27", "ok"],
+    ["tokens in the log: 0 of 22", "ok"],
+]
+
+[[act]]
+title = "A token outlives its session"
+summary = "After logout the token is still accepted until it expires; a session check or a 4 second lifetime closes the window."
+detail = """
+Alice's session is ended at Keycloak, and her token, good for 300 seconds, still gets 200: the proxy checks signature and expiry. With a session check at Keycloak on every request the same token gets 401, at a cost of one call per request (3 for 3). A token with a 4 second lifetime is accepted at once after its session ends and refused after 4 seconds. With Keycloak stopped, old tokens still work without the check and are refused with it; with OPA stopped the answer is 503.
+"""
+speech = """
+Fifth demo: a token outlives its session. [[slnc 400]] Logout does not reach a token that checks only its signature. [[slnc 600]] A short life or a session check closes the window.
+"""
+rows = { expiry = "active wrong" }
+console = [
+    ["after logout, no check: 200", "bad"],
+    ["after logout, session check: 401", "ok"],
+    ["OPA down: 503", "ok"],
+]
+
+[animation]
+subtitle = "A bank's ledger, one door and one record per request."
+boxes = [
+    ["perimeter", "The perimeter", "10 of 10"],
+    ["authn", "Who is calling", "7 of 7"],
+    ["authz", "May they", "403"],
+    ["audit", "Logged", "39 of 39"],
+    ["expiry", "A token outlives its session", "300 s, 4 s"],
+]
+
+[docs.problem]
+scenario = """
+A bank's ledger API is reachable by anything inside the network and keeps no record of who did what.
+"""
+naive = """
+Rely on the firewall and log the IP address.
+"""
+deliver = [
+    "A real identity provider issuing short-lived tokens.",
+    "A proxy that validates the token and asks a policy engine.",
+    "A default-deny policy with roles, device posture and time.",
+    "One audit record per request, with no token in it.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "Docker running (the Keycloak image is about 475 MB, pulled once)",
+    "The opa binary on the path",
+]
+not_required = [
+    "Envoy",
+    "oauth2-proxy",
+    "A Kubernetes cluster",
+]
+install = ["brew install opa", "docker pull quay.io/keycloak/keycloak:26.8.1"]
+
+[docs.session]
+objectives = [
+    "validate a JWT with a key set, an issuer, an audience and an expiry",
+    "ask a policy engine for an allow or deny with reasons",
+    "write one audit record per request and keep tokens out of it",
+    "explain what a token lifetime and a session check do for revocation",
+]
+walkthrough = """
+Run the demo and compare the first section with the second: the same 10 requests, 10 successes and then 0. In the audit section find the reason for each denial.
+"""
+exercises = [
+    "Add a rule that lets an auditor read balances only from a compliant device between 08:00 and 20:00.",
+    "Make the proxy cache the session check for 5 seconds and measure what that does to the revocation window.",
+    "Add a rate limit per user to the proxy and record it in the audit log.",
+    "Replace the proxy-to-ledger mark with mutual TLS using the project before this one.",
+]
+
+[docs.explained]
+sentence = """
+Inside the network proves nothing: check who, check what they may do, and write it down on every request.
+"""
+verdict = """
+Put the check at the resource: validate the token with the issuer's keys, decide with a default-deny policy, log one record per request without the token, keep token lifetimes short and add a session check where revocation must be quick, and make the resource refuse anything that skips the proxy.
+"""
+recognise = [
+    "A service reachable by every pod because it is internal.",
+    "A JWT whose payload is trusted before the signature is checked.",
+    "An access log that cannot name a person.",
+    "A logout button that leaves the token working.",
+]
+
+[spec]
+purpose = """
+Teach the three steps of zero trust access on a bank's ledger API: authenticate, authorize and log every request with a real identity provider and policy engine.
+"""
+nongoals = [
+    "Running Envoy or oauth2-proxy.",
+    "A real device management system.",
+    "Single sign-on in a browser.",
+]
+problem = """
+Internal APIs answer anyone on the network and cannot say who did what.
+"""
+roles = [["The identity-aware proxy", "`Proxy`"], ["Token validation", "`Jwt`, `Jwks`"], ["The identity provider", "`Keycloak`"], ["The policy engine", "`Opa`, `policy/ledger.rego`"], ["The ledger", "`Ledger`"], ["The audit log", "`AuditLog`"]]
+requirements = [
+    "Every request is authenticated, authorized and logged.",
+    "A token is accepted only with a good signature, issuer, audience and expiry.",
+    "The policy denies by default and names its reasons.",
+    "Every request has exactly one audit record and no record holds a token.",
+    "A request that skips the proxy is refused by the ledger.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "A request meets identity, policy and a log before the ledger."
+nodes = [
+    { id = "caller", label = "Caller", sub = "token", col = 0, row = 0, colour = "client" },
+    { id = "proxy", label = "Proxy", sub = "authenticate, authorize, log", col = 1, row = 0, colour = "accent" },
+    { id = "opa", label = "OPA", sub = "decides", col = 2, row = 0, colour = "amber" },
+    { id = "ledger", label = "Ledger", sub = "answers the proxy only", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "caller", to = "proxy", label = "request with a token" },
+    { from = "proxy", to = "opa", label = "asks" },
+    { from = "proxy", to = "ledger", label = "forwards if allowed" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The proxy, the token check and the audit log."
+nodes = [
+    { id = "proxy", label = "Proxy", sub = ["process()", "setSessionCheck()"], col = 0, row = 0, colour = "accent" },
+    { id = "jwt", label = "Jwt", sub = ["verify()"], col = 1, row = 0, colour = "amber" },
+    { id = "audit", label = "AuditLog", sub = ["record()", "entries()"], col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "proxy", to = "jwt", label = "authenticates with" },
+    { from = "proxy", to = "audit", label = "writes one record to" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a token to a record"
+caption = "Each step can refuse; the last one always writes."
+nodes = [
+    { id = "token", label = "Token", sub = "signature, iss, aud, exp", col = 0, row = 0, colour = "client" },
+    { id = "policy", label = "Policy", sub = "role, device, hour", col = 1, row = 0, colour = "amber" },
+    { id = "record", label = "Record", sub = "allow or deny, reason", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "token", to = "policy", label = "valid" },
+    { from = "policy", to = "record", label = "decision" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "One allowed request"
+participants = ["Teller", "Proxy", "OPA", "Ledger"]
+steps = [
+    ["Teller", "Proxy", "POST /transfers with a token"],
+    ["Proxy", "OPA", "user, roles, device, method, path, hour"],
+    ["OPA", "Proxy", "allow", "reply"],
+    ["Proxy", "Ledger", "forward with the mark"],
+    ["Ledger", "Proxy", "200", "reply"],
+    ["Proxy", "Teller", "200, one audit record", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A token after logout"
+participants = ["Alice", "Keycloak", "Proxy"]
+steps = [
+    ["Alice", "Keycloak", "logout"],
+    ["Alice", "Proxy", "old token"],
+    ["Proxy", "Alice", "200 without a session check", "reply"],
+    ["Proxy", "Keycloak", "is the session alive?"],
+    ["Keycloak", "Proxy", "no", "reply"],
+    ["Proxy", "Alice", "401 with the check", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Outside", nodes = ["attacker"], colour = "red" },
+    { label = "Bank", nodes = ["proxy", "opa", "ledger"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "forges or reuses a token", col = 0, row = 0, colour = "red", threats = ["T1", "T4", "T5"] },
+    { id = "proxy", label = "Proxy", sub = "checks every request", col = 1, row = 0, colour = "accent", threats = ["T1", "T3", "T5"] },
+    { id = "opa", label = "OPA", sub = "default deny", col = 2, row = 0, colour = "amber", threats = ["T2"] },
+    { id = "ledger", label = "Ledger", sub = "the resource", col = 3, row = 0, colour = "green", threats = ["T4"] },
+]
+edges = [
+    { from = "attacker", to = "proxy", label = "forged, edited or old token", colour = "red", dashed = true, threats = ["T1", "T5"] },
+    { from = "attacker", to = "ledger", label = "skips the proxy", colour = "red", dashed = true, threats = ["T4"] },
+    { from = "proxy", to = "opa", label = "asks for a decision", threats = ["T2"] },
+    { from = "proxy", to = "ledger", label = "forwards allowed requests", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Access to a bank's ledger API through an identity-aware proxy with Keycloak and OPA, on one machine. It does not cover the security of Keycloak itself, the user's device, or the network between the proxy and the ledger.
+"""
+assets = [
+    "Balances and transfers.",
+    "The audit log.",
+    "The signing keys of the identity provider.",
+]
+actors = [
+    "An attacker inside the network.",
+    "A teller, an auditor and an admin.",
+    "A user whose session was ended.",
+]
+boundaries = [
+    "The proxy: a request outside it is untrusted.",
+    "The ledger: it trusts only the proxy.",
+]
+assumptions = [
+    "Keycloak's keys are published over a channel the proxy trusts.",
+    "The proxy and the ledger share a mark made at run time (mutual TLS in production).",
+]
+out_of_scope = [
+    "Browser sessions and single sign-on.",
+    "Real device posture signals.",
+]
+tests = [
+    "`JwtTest` checks the token rules with a key made in the test.",
+    "`ProxyTest` checks the status codes, the one record per request, the session check and the failure to decide, with no Docker.",
+    "`DemoRunsTest` runs Keycloak and OPA and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+This is the last project of the service-identity-and-zero-trust module.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A forged or edited token"
+where = "the proxy"
+control = "RS256 only, signature from the JWKS, then issuer, audience and expiry"
+residual = "A stolen valid token works until it expires"
+
+[[threat]]
+id = "T2"
+stride = "E"
+threat = "A valid user does what their role or device does not allow"
+where = "OPA"
+control = "Default-deny Rego with roles, device posture and hour, tested"
+residual = "The posture claim is only as good as its source"
+
+[[threat]]
+id = "T3"
+stride = "R"
+threat = "An action with no record of who did it"
+where = "the audit log"
+control = "One record per request, with user and reason, no token"
+residual = "The log must be protected and shipped elsewhere"
+
+[[threat]]
+id = "T4"
+stride = "T"
+threat = "A caller inside the network skips the proxy"
+where = "the ledger"
+control = "The ledger answers only a request that carries the proxy's mark"
+residual = "A mark on a flat network is weak: use mutual TLS"
+
+[[threat]]
+id = "T5"
+stride = "E"
+threat = "A token used after its session ended"
+where = "the proxy"
+control = "Short lifetime and a session check at the issuer"
+residual = "The check costs a call per request and needs Keycloak up"
+
+[poster]
+headline = [["ZERO TRUST", "text"], ["ACCESS", "accent"]]
+taglines = [["Put an identity-aware proxy in front of a bank's ledger API: every request is authenticate", "gold"]]
+before = { code = "POST /transfers   (no identity)", note = "10 of 10 succeed", tag = "BEFORE" }
+after = { code = "POST /transfers + token + policy", note = "0 of 10 succeed", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Zero Trust Access"
+narration = "Hello, and welcome. [[slnc 400]] This video explains zero trust access, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A bank's ledger API behind the network perimeter answers 10 of 10 requests that carry no identity, 3 of them transfers; behind an identity-aware proxy the same 10 requests get 0 successes, and a request that skips the proxy and goes straight to the ledger gets 0 too; the proxy checks a Keycloak JWT (signature from the JWKS, issuer, audience, expiry) and refuses 7 of 7 bad tokens with 401 (none, expired, wrong audience, edited roles, flipped signature, forged with the attacker's own key, algorithm none), then asks OPA, which answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00; of 39 requests every one has exactly one audit record (39 of 39) and 0 of 22 tokens appear in the log; a token outlives its ended session and is still accepted (200) until it expires, a session check at Keycloak refuses it (401) for 1 extra call per request, a 4 second lifetime bounds the exposure, and with OPA down the proxy answers 503. [[slnc 600]] Think of it this way. [[slnc 300]] A building where the lobby guard used to wave everyone through because they were already inside. Now every office door checks a badge, looks up what that badge may open, and writes down each attempt, so being in the lobby opens nothing. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Validate a JWT with a key set, an issuer, an audience and an expiry. [[slnc 300]] Ask a policy engine for an allow or deny with reasons. [[slnc 300]] Write one audit record per request and keep tokens out of it."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's ledger API serves balances, transfers,", "audit exports and account freezes. Today", "anything that can reach it can call it. The demo", "puts a proxy in front that knows who is calling,", "asks a policy whether they may, and records", "every answer."]
+narration = "Here is the scenario. [[slnc 400]] A bank's ledger API serves balances, transfers, audit exports and account freezes. Today anything that can reach it can call it. The demo puts a proxy in front that knows who is calling, asks a policy whether they may, and records every answer."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["Every request pays for a signature check and a policy decision", "A token is valid until it expires", "A device posture claim is only as good as its source", "Policies are code that needs its own tests and review", "The last hop matters: a ledger that any process can reach directly undoes the proxy"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every request pays for a signature check and a policy decision, and the proxy and policy engine become part of availability. [[slnc 500]] A token is valid until it expires, so revoking a session needs a short lifetime or a check on every request. [[slnc 500]] A device posture claim is only as good as its source, here it is set by the demo. [[slnc 500]] Policies are code that needs its own tests and review. [[slnc 500]] The last hop matters: a ledger that any process can reach directly undoes the proxy."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The identity-aware proxy: Proxy", "Token validation: Jwt, Jwks", "The identity provider: Keycloak", "The policy engine: Opa, policy/ledger.rego", "The ledger: Ledger"]
+narration = "Here is who does what in the code. [[slnc 400]] The identity-aware proxy is in Proxy. [[slnc 500]] Token validation is in Jwt, Jwks. [[slnc 500]] The identity provider is in Keycloak. [[slnc 500]] The policy engine is in Opa, policy/ledger.rego. [[slnc 500]] The ledger is in Ledger."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A service reachable by every pod because it is internal", "A JWT whose payload is trusted before the signature is checked", "An access log that cannot name a person", "A logout button that leaves the token working"]
+narration = "You have probably met this already. [[slnc 400]] A service reachable by every pod because it is internal. [[slnc 500]] A JWT whose payload is trusted before the signature is checked. [[slnc 500]] An access log that cannot name a person. [[slnc 500]] A logout button that leaves the token working."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Validate a JWT with a key set, an issuer, an audience and an expiry", "Ask a policy engine for an allow or deny with reasons", "Write one audit record per request and keep tokens out of it", "Explain what a token lifetime and a session check do for revocation"]
+narration = "So, how do you use it? [[slnc 400]] Put the check at the resource: validate the token with the issuer's keys, decide with a default-deny policy, log one record per request without the token, keep token lifetimes short and add a session check where revocation must be quick, and make the resource refuse anything that skips the proxy."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's zero trust access. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Inside the network proves nothing: check who, check what they may do, and write it down on every request. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a rule that lets an auditor read balances only from a compliant device between 08:00 and 20:00. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

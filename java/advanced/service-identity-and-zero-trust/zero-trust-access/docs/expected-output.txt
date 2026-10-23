@@ -1,0 +1,78 @@
+--- before: the perimeter
+the ledger API listens inside the network and answers whoever can reach it; the firewall is the only control
+10 requests with no identity (3 balances, 3 transfers, 2 audit exports, 2 freezes): 10 succeed
+the ledger's code ran 10 times, 3 of them transfers, for callers nobody can name
+the ledger can log an address; it cannot say which person did it, or whether that person was allowed
+--- identity from Keycloak, decisions from OPA
+Keycloak 26.8.1 (start-dev in Docker) imported the realm bank from a file: 3 users, 4 clients, 3 roles
+users: alice (teller), bob (auditor), carol (admin); the device posture is a claim named compliant, set by the client the token was asked through
+signing keys the proxy learned from the JWKS: 1
+the policy is one Rego file run by the opa binary as a server; its own tests: 15 of 15 pass
+alice's token: valid yes, audience ledger-api, roles [teller], compliant true, lifetime 300 seconds
+--- every request is authenticated, authorized and logged
+-- authentication: who is calling
+no token, GET /accounts/1001/balance: 401
+alice's token after its 4 second lifetime, GET /accounts/1001/balance: 401
+alice's token made for another audience (reports-api), GET /accounts/1001/balance: 401
+bob's token with the roles edited to admin and the old signature, POST /admin/freeze: 401
+alice's token with one character of the signature changed, GET /accounts/1001/balance: 401
+a token the attacker signed with their own key, claiming admin with the right issuer and audience, POST /admin/freeze: 401
+the same token with the algorithm none and no signature, POST /admin/freeze: 401
+-- authorization: may this person do this
+alice (teller), GET /accounts/1001/balance: 200
+alice (teller), POST /transfers at 10:00: 200
+alice (teller), POST /transfers at 23:00: 403
+bob (auditor), GET /audit/entries: 200
+bob (auditor), POST /transfers: 403
+alice (teller), GET /audit/entries: 403
+carol (admin), POST /admin/freeze: 200
+carol (admin), POST /transfers: 403
+alice (teller), GET /nope: 403
+-- the device: is the machine one the bank manages
+alice (teller) on a compliant device, GET /accounts/1001/balance: 200
+alice (teller) on a device that is not compliant, GET /accounts/1001/balance: 403
+requests sent: 18, answered 200: 5, reached the ledger's code: 5 (only the allowed ones get past the proxy)
+--- the same ten requests with no identity, now
+through the proxy: 0 succeed (before: 10)
+straight to the ledger from inside the network, skipping the proxy: 0 succeed (the ledger wants the proxy's mark)
+the ledger's code ran 0 more times for callers without an identity
+--- revocation: how long a token outlives its session
+alice's token (300 second lifetime), GET /accounts/1001/balance: 200
+alice's session is ended at Keycloak; the same token, GET /accounts/1001/balance: 200 (the proxy checks signature and expiry, and both are still good)
+with a session check at Keycloak on every request, the ended session's token: 401
+with the session check, a token from a new login: 200
+with the session check, bob, GET /audit/entries: 200
+calls to Keycloak for those 3 requests: 3 (a request refused before the session check costs none)
+a token with a 4 second lifetime, GET /accounts/1001/balance: 200
+its session is ended; at once, with no session check: 200
+after its lifetime, with no session check: 401 (the exposure was at most 4 seconds, against 300 for the standard token)
+--- when a part is down
+Keycloak stopped; alice's token issued before, GET /accounts/1001/balance: 200 (the keys are cached and the signature needs no call)
+Keycloak stopped, with the session check on: 401 (it cannot confirm the session, so it refuses)
+OPA stopped, a valid token, GET /accounts/1001/balance: 503 (no decision is a no)
+--- the audit log
+requests sent to the proxy: 39, decision records written: 39
+records that match the request in order, with the status the caller saw: 39 of 39
+every request has exactly one record: yes
+allow: 12, deny: 27
+  allowed: 12
+  bad signature: 3
+  decision unavailable: 1
+  device not compliant: 1
+  expired: 2
+  no token: 11
+  outside business hours: 1
+  role not allowed: 3
+  session ended: 2
+  unknown operation: 1
+  unsupported algorithm: 1
+  wrong audience: 1
+tokens (access or refresh) found in the log file: 0 of 22
+records that name the user: 23 (a forged or unreadable token names no one: its claims are not trusted)
+each record holds: seq, decision, status, reason, user, method, path and a timestamp
+--- the bill
+the proxy is the one door: the ledger turns away anything without its mark, and a mark in a flat network is a weak link; production wants mutual TLS between proxy and ledger
+a token stays valid until it expires: a short lifetime and a session check shrink that window, and each costs a refresh or a call per request
+Keycloak and OPA are on the path of every request; the proxy fails closed when OPA is gone, and keeps serving old tokens when Keycloak is gone
+the device posture here is a claim the demo sets per client; a real one comes from a device management system and is only as good as it
+no Envoy and no oauth2-proxy was run: the proxy is a small Java program so that every step shows, and either of them would do the same job in front of a real ledger
