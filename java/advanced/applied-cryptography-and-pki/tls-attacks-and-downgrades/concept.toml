@@ -1,0 +1,441 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "tls-attacks-and-downgrades"
+level = "advanced"
+module = "applied-cryptography-and-pki"
+title = "TLS Attacks and Downgrades"
+short_title = "TLS Attacks"
+package = "tlsattacks"
+main_class = "TlsAttacksDemo"
+tagline = "Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the weaknesses that were planted, watch a client fall back to TLS 1.0, read a recorded session with a leaked key, and check what TLS 1.3 removed"
+bold = "A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC."
+domain = "a bank"
+domain_note = ""
+youtube_description = "TLS attacks and downgrades on deliberately weak local servers: openssl and testssl.sh scored against planted weaknesses, the fallback dance and TLS_FALLBACK_SCSV, a recorded session opened with a leaked key, and what TLS 1.3 removed."
+thumb_lines = ["TLS ATTACKS", "AND DOWNGRADES"]
+thumb_code = "-fallback_scsv"
+youtube_title = "TLS Attacks and Downgrades: Weak Servers, testssl.sh, SCSV and What TLS 1.3 Removed"
+youtube_tags = ["tls", "tls downgrade", "testssl.sh", "openssl", "forward secrecy", "tls 1.3", "fallback scsv", "static rsa", "cipher suites", "java"]
+
+[readme]
+intro = """
+A TLS server is as strong as the oldest thing it still accepts. This project starts **three local servers** with `openssl s_server` on 127.0.0.1: a weak one with **6 planted weaknesses**, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with `openssl s_client`, runs **testssl.sh v3.2.4** (cloned into `build/` and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3 or 4, git and network access once; it is tagged `integration`: `./gradlew integrationTest`.
+
+What it shows:
+- **Truth and measurement.** Our own probes find **6 of 6** planted weaknesses; testssl.sh finds **6 of 6**, **4** by a finding that names the problem and **2** (static RSA, the 1024-bit group) only by reading the key exchange column of its cipher table. The strong server raises **0**.
+- **The downgrade dance.** A network that breaks every handshake above TLS 1.0 pushes a retrying client to **TLS 1.0 with AES128-SHA after 4 attempts**; with `TLS_FALLBACK_SCSV` the server refuses; a client with a minimum of TLS 1.2 stops after 2.
+- **Forward secrecy.** A recorded session is opened later with the leaked server key: the static RSA one is (**1 of 3**), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption.
+- **What TLS 1.3 removed.** A TLS 1.3 only server refuses **3 of 3** older versions, static RSA and CBC; compression and renegotiation have no place in the protocol.
+- **Honest limits.** This OpenSSL build has no RC4 and no zlib, and refuses DH groups below 1024 bits, so those could not be planted.
+
+**Maps to:** OWASP Top 10 A02 Cryptographic Failures · NIST SP 800-52 Rev. 2 · RFC 7507 (fallback SCSV), RFC 8446 (TLS 1.3), RFC 8996 (TLS 1.0 and 1.1 deprecated) · PCI DSS 4.0 requirement 4.2.1 · CWE-326, CWE-327.
+"""
+analogy = """
+A bank branch that still has its old side door. The main door has a good lock, but if a customer who finds it stuck is told to try the old door, and nobody checks who sent him there, the old door is the one that counts. Forward secrecy is the shredder: the key of the night safe may leak next year, and the receipts of last year are already gone.
+"""
+scenario = """
+A bank's online banking front end must serve a few old devices. The demo starts a server that accepts everything it ever did, scans it, makes a client fall back to the oldest version, opens a recording with a leaked key, and checks that TLS 1.3 does not allow any of it.
+"""
+costs = [
+    "**The old settings are kept for a few old clients,** and every one of them is open to all the callers.",
+    "**A scanner reports what is offered,** and a person reads the table for what it does not name.",
+    "**Forward secrecy needs ephemeral keys,** one more computation per connection.",
+    "**TLS 1.3 has no way back,** so the old clients must be updated or kept on a separate endpoint.",
+    "**The lab depends on the OpenSSL build:** no RC4, no zlib and no tiny DH groups here.",
+]
+too_much = """
+An internal tool that only talks to servers you control needs no scan of its own. Use this when a service is reachable by clients you do not control, or when you must show that old settings are really off.
+"""
+met_before = [
+    "A load balancer that still lists TLS 1.0 for one partner.",
+    "A scan report with a green grade and a static RSA suite in the middle of it.",
+    "A client library that retries with a lower version on any error.",
+    "A configuration with a 1024-bit DH file nobody has opened since 2015.",
+]
+where = """
+This is a project of the [applied-cryptography-and-pki](..) module, with [post-quantum-cryptography](../post-quantum-cryptography). The earlier [mutual-tls-between-services](../../service-identity-and-zero-trust/mutual-tls-between-services) project builds the strong side of TLS; this one attacks the weak side.
+"""
+twin = """
+OpenSSL and testssl.sh are real; the servers are local, on 127.0.0.1, with a throw-away key and certificate in a temporary folder. The demo never prints ports, keys or serials, and it never scans anything that is not its own.
+"""
+test_note = "The record parser, the key derivation, the middlebox and the report parsing are tested with no tools. The demo runs OpenSSL and testssl.sh (./gradlew integrationTest)."
+
+[[act]]
+title = "The weak server"
+summary = "A local server has 6 planted weaknesses; a strong and a TLS 1.3 only server are the controls."
+detail = """
+The weak server accepts TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit finite-field DH group and a NULL cipher. openssl s_client probes show what each of the three servers accepts: 4 protocol versions and 8 cipher suites, as yes and no.
+"""
+speech = """
+First demo: the weak server. [[slnc 400]] Six planted weaknesses. [[slnc 600]] Two other servers are the controls.
+"""
+rows = { weak = "active ok" }
+console = [
+    ["planted weaknesses: 6", "bad"],
+    ["DH group: 1024 bits", "bad"],
+    ["strong server: none", "ok"],
+]
+
+[[act]]
+title = "Probes and testssl.sh"
+summary = "Our probes and testssl.sh each find 6 of 6; testssl.sh names 4 and shows 2 only in its cipher table."
+detail = """
+Java reads the testssl.sh JSON and counts it against the planted list. TLS 1.0, TLS 1.1, the NULL cipher and the CBC suites have a finding of their own. Static RSA and the 1024-bit group have none: they show only in the key exchange column of the cipher table. The strong server raises nothing.
+"""
+speech = """
+Second demo: probes and testssl.sh. [[slnc 400]] Both find six of six. [[slnc 600]] Two of them only in the cipher table.
+"""
+rows = { scan = "active ok" }
+console = [
+    ["own probes: 6 of 6", "ok"],
+    ["testssl.sh: 6 of 6, 4 named", "ok"],
+    ["strong server: 0", "ok"],
+]
+
+[[act]]
+title = "The downgrade dance"
+summary = "A client that retries ends on TLS 1.0 with AES128-SHA; the fallback signal and a minimum version stop it."
+detail = """
+A middlebox breaks every handshake above TLS 1.0. The retrying client needs 4 attempts and ends on TLS 1.0 with a static RSA CBC suite. With TLS_FALLBACK_SCSV the server answers inappropriate fallback. A client with a minimum of TLS 1.2 stops after 2 attempts. The JDK client never retries. A TLS 1.3 server that is pushed down marks its ServerHello with DOWNGRD.
+"""
+speech = """
+Third demo: the downgrade dance. [[slnc 400]] A failing network and a retrying client end on TLS one point zero. [[slnc 600]] The fallback signal stops it.
+"""
+rows = { downgrade = "active wrong" }
+console = [
+    ["falls back: TLSv1, AES128-SHA, 4 attempts", "bad"],
+    ["with SCSV: inappropriate fallback", "ok"],
+    ["minimum TLS 1.2: 2 attempts, no", "ok"],
+]
+
+[[act]]
+title = "The leaked key"
+summary = "A recording is opened with the leaked server key for static RSA and not for DHE or ECDHE."
+detail = """
+The demo records three sessions through a tap. Java derives the TLS 1.2 keys from the RSA-decrypted pre-master secret and decrypts the AES-GCM record: the request is read for the static RSA session. For DHE and ECDHE the secret was agreed from keys that were thrown away, and the leaked key opens nothing. A key that is not the server's opens none.
+"""
+speech = """
+Fourth demo: the leaked key. [[slnc 400]] Static RSA is opened a year later. [[slnc 600]] The ephemeral exchanges are not.
+"""
+rows = { leak = "active wrong" }
+console = [
+    ["static RSA: opened, amount=2500", "bad"],
+    ["DHE: not opened", "ok"],
+    ["ECDHE: not opened", "ok"],
+]
+
+[[act]]
+title = "What TLS 1.3 removed"
+summary = "A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC; compression and renegotiation have no place."
+detail = """
+The TLS 1.3 only server answers protocol version to TLS 1.0, 1.1 and 1.2, and refuses a static RSA and a CBC suite. None of the 3 TLS 1.3 suites has a fixed key exchange or lacks AEAD. A TLS 1.3 hello offers only the null compression method, the client library refuses to renegotiate, and the 1024-bit group in the server's file is not used. RC4 and zlib are not in this OpenSSL build.
+"""
+speech = """
+Fifth demo: what TLS one point three removed. [[slnc 400]] Old versions, static RSA, CBC. [[slnc 600]] Refused, three of three.
+"""
+rows = { tls13 = "active ok" }
+console = [
+    ["older versions refused: 3 of 3", "ok"],
+    ["static RSA and CBC refused", "ok"],
+    ["1024-bit group used: no", "ok"],
+]
+
+[animation]
+subtitle = "A bank's old side door, and the one TLS 1.3 shut."
+boxes = [
+    ["weak", "The weak server", "6 planted"],
+    ["scan", "Probes and testssl.sh", "6 of 6"],
+    ["downgrade", "The downgrade dance", "4 attempts"],
+    ["leak", "The leaked key", "1 of 3"],
+    ["tls13", "What TLS 1.3 removed", "3 of 3"],
+]
+
+[docs.problem]
+scenario = """
+A bank wants to know what its TLS endpoints still accept, who could read old traffic, and what a newer protocol version would remove.
+"""
+naive = """
+Run one scanner, accept the grade, and keep the settings that the scanner does not name.
+"""
+deliver = [
+    "Three local servers with planted weaknesses.",
+    "Probes and testssl.sh scored against the truth.",
+    "A downgrade, the fallback signal and a minimum version.",
+    "A recorded session opened with a leaked key, and a TLS 1.3 only server.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "OpenSSL 3 or 4 on the PATH (brew install openssl@3) or OPENSSL set",
+    "git and network access once, to clone testssl.sh v3.2.4 into build/",
+]
+not_required = [
+    "Docker",
+    "A certificate authority",
+]
+install = ["openssl", "git"]
+
+[docs.session]
+objectives = [
+    "read a testssl.sh report and count it against a known truth",
+    "explain a protocol downgrade and what stops it",
+    "tell why static RSA loses forward secrecy and ECDHE does not",
+    "list what TLS 1.3 removed and why",
+]
+walkthrough = """
+Run the demo and find the two weaknesses that testssl.sh shows only in its cipher table. Then change the fallback client to send the signal and see the server's answer.
+"""
+exercises = [
+    "Add a seventh planted weakness, a certificate that is signed with SHA-1, and see who finds it.",
+    "Make the middlebox break TLS 1.2 only and see which version the client ends on.",
+    "Run the decryption on a CBC suite (AES128-SHA).",
+    "Start the strong server with a 2048-bit DH group and scan it again.",
+]
+
+[docs.explained]
+sentence = """
+Offering an old thing is the weakness, even if no client uses it today, so count what a server accepts against what it should.
+"""
+verdict = """
+Allow TLS 1.2 and 1.3 only, with ephemeral key exchange and AEAD, let the clients send the fallback signal or never retry, scan with testssl.sh on every release, and read its cipher table and not only its grade.
+"""
+recognise = [
+    "A grade of A with a static RSA suite in the table.",
+    "A client that retries with a lower version.",
+    "A 1024-bit DH file in a web server configuration.",
+    "A partner endpoint that still lists TLS 1.0.",
+]
+
+[spec]
+purpose = """
+Teach TLS downgrades and weak key exchange by attacking deliberately weak local servers and counting what the tools find against what was planted.
+"""
+nongoals = [
+    "Scanning or attacking servers you do not own.",
+    "Breaking a 1024-bit DH group.",
+    "Padding oracle and compression attacks that need a build with those features.",
+]
+problem = """
+Weak TLS settings are found by a scanner grade that does not say what a recording would reveal.
+"""
+roles = [["The local servers", "`Server`"], ["The planted truth", "`Weakness`"], ["Our own probes", "`Audit`, `Probe`"], ["testssl.sh and its JSON", "`TestSsl`"], ["The network that breaks handshakes", "`Tap`"], ["Reading a leaked session", "`Decryptor`, `TlsRecords`"], ["Entry point", "`TlsAttacksDemo`"]]
+requirements = [
+    "Three local servers: weak, strong, TLS 1.3 only.",
+    "Probes and testssl.sh are counted against 6 planted weaknesses.",
+    "A retrying client, the fallback signal and a minimum version are compared.",
+    "A recorded session is opened with a leaked key for static RSA only.",
+    "A TLS 1.3 only server refuses what TLS 1.3 removed.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "The tools probe local servers; a tap sits between a client and a server."
+nodes = [
+    { id = "client", label = "s_client, JDK", sub = "and testssl.sh", col = 0, row = 0, colour = "amber" },
+    { id = "tap", label = "Tap", sub = "breaks and records", col = 1, row = 0, colour = "red" },
+    { id = "server", label = "s_server", sub = "weak, strong, 1.3", col = 2, row = 0, colour = "accent" },
+    { id = "truth", label = "Weakness list", sub = "the truth", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "client", to = "tap", label = "connects" },
+    { from = "tap", to = "server", label = "forwards" },
+    { from = "truth", to = "client", label = "counts results of" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The servers, the two ways to find a weakness and the leaked-key reader."
+nodes = [
+    { id = "server", label = "Server", sub = ["WEAK", "STRONG", "TLS13_ONLY"], col = 0, row = 0, colour = "accent" },
+    { id = "audit", label = "Audit", sub = ["find()"], col = 1, row = 0, colour = "amber" },
+    { id = "testssl", label = "TestSsl", sub = ["scan()", "detect()"], col = 2, row = 0, colour = "amber" },
+    { id = "dec", label = "Decryptor", sub = ["clientData()", "prf()"], col = 3, row = 0, colour = "red" },
+]
+edges = [
+    { from = "audit", to = "server", label = "probes" },
+    { from = "testssl", to = "server", label = "scans" },
+    { from = "dec", to = "server", label = "opens a recording of" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a scan to a count"
+caption = "The testssl.sh JSON is compared with the planted weaknesses."
+nodes = [
+    { id = "scan", label = "Scan", sub = "testssl.sh", col = 0, row = 0, colour = "client" },
+    { id = "json", label = "JSON", sub = "findings by id", col = 1, row = 0, colour = "amber" },
+    { id = "count", label = "Count", sub = "found of planted", col = 2, row = 0, colour = "green" },
+]
+edges = [
+    { from = "scan", to = "json" },
+    { from = "json", to = "count", label = "compare" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "The downgrade dance"
+participants = ["Client", "Tap", "Server"]
+steps = [
+    ["Client", "Tap", "hello: up to TLS 1.3"],
+    ["Tap", "Client", "connection reset", "reply"],
+    ["Client", "Tap", "hello: TLS 1.0 and the fallback signal"],
+    ["Tap", "Server", "forwards"],
+    ["Server", "Client", "inappropriate fallback", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "A leaked key opens a recording"
+participants = ["Attacker", "Recording", "Java"]
+steps = [
+    ["Attacker", "Recording", "ClientKeyExchange"],
+    ["Recording", "Java", "pre-master secret encrypted to the server key"],
+    ["Java", "Attacker", "keys, then the request in clear", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Internet", nodes = ["attacker"], colour = "red" },
+    { label = "Bank", nodes = ["server"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "on the network", col = 0, row = 0, colour = "red", threats = ["T1", "T2"] },
+    { id = "server", label = "TLS endpoint", sub = "accepts old settings", col = 1, row = 0, colour = "accent", threats = ["T1", "T3"] },
+    { id = "rec", label = "Recorded traffic", sub = "kept for years", col = 2, row = 0, colour = "amber", threats = ["T2"] },
+]
+edges = [
+    { from = "attacker", to = "server", label = "breaks handshakes", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "attacker", to = "rec", label = "records", threats = ["T2"] },
+]
+
+[threatmodel]
+scope = """
+TLS endpoints of a bank, tested on local servers with a throw-away key. It does not cover the certificate chain, the hosts or the people.
+"""
+assets = [
+    "The sessions of online banking.",
+    "The server's private key.",
+    "Recorded traffic.",
+]
+actors = [
+    "An attacker on the network path.",
+    "An attacker who gets the server key later.",
+    "A scanner.",
+]
+boundaries = [
+    "The network between the client and the endpoint.",
+]
+assumptions = [
+    "The lab servers behave like the settings they copy.",
+]
+out_of_scope = [
+    "Certificate validation.",
+    "Attacks that need RC4 or zlib, which this OpenSSL build lacks.",
+]
+tests = [
+    "`TlsRecordsTest`, `DecryptorTest`, `TapTest` and `ReportAndProbeTest` check the parser, the key derivation, the tap and the report with no tools.",
+    "`DemoRunsTest` starts OpenSSL and testssl.sh and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The module goes on with the other applied cryptography and PKI projects.
+"""
+
+[[threat]]
+id = "T1"
+stride = "T"
+threat = "A failing network pushes a client down to an old version"
+where = "the handshake"
+control = "Only TLS 1.2 and 1.3, the fallback signal, no retry with lower versions"
+residual = "Old clients that must be served"
+
+[[threat]]
+id = "T2"
+stride = "I"
+threat = "Recorded traffic is read later with the leaked server key"
+where = "recordings"
+control = "Ephemeral key exchange only, so no static RSA"
+residual = "A leak of the key still allows an impersonation from then on"
+
+[[threat]]
+id = "T3"
+stride = "I"
+threat = "A weak group or suite is offered and nobody notices"
+where = "the endpoint"
+control = "Scan every release and read the cipher table"
+residual = "Settings the scanner does not name"
+
+[poster]
+headline = [["TLS ATTACKS", "text"], ["AND DOWNGRADES", "accent"]]
+taglines = [["Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the", "gold"]]
+before = { code = "planted weaknesses: 6", note = "The weak server", tag = "BEFORE" }
+after = { code = "older versions refused: 3 of 3", note = "TLS 1.3 only", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "TLS Attacks and Downgrades"
+narration = "Hello, and welcome. [[slnc 400]] This video explains tls attacks and downgrades, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC. [[slnc 600]] Think of it this way. [[slnc 300]] A bank branch that still has its old side door. The main door has a good lock, but if a customer who finds it stuck is told to try the old door, and nobody checks who sent him there, the old door is the one that counts. Forward secrecy is the shredder: the key of the night safe may leak next year, and the receipts of last year are already gone. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Read a testssl.sh report and count it against a known truth. [[slnc 300]] Explain a protocol downgrade and what stops it. [[slnc 300]] Tell why static RSA loses forward secrecy and ECDHE does not."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's online banking front end must serve a", "few old devices. The demo starts a server that", "accepts everything it ever did, scans it, makes", "a client fall back to the oldest version, opens", "a recording with a leaked key, and checks that", "TLS 1.3 does not allow any of it."]
+narration = "Here is the scenario. [[slnc 400]] A bank's online banking front end must serve a few old devices. The demo starts a server that accepts everything it ever did, scans it, makes a client fall back to the oldest version, opens a recording with a leaked key, and checks that TLS 1.3 does not allow any of it."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["The old settings are kept for a few old clients", "A scanner reports what is offered", "Forward secrecy needs ephemeral keys", "TLS 1.3 has no way back", "The lab depends on the OpenSSL build: no RC4"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The old settings are kept for a few old clients, and every one of them is open to all the callers. [[slnc 500]] A scanner reports what is offered, and a person reads the table for what it does not name. [[slnc 500]] Forward secrecy needs ephemeral keys, one more computation per connection. [[slnc 500]] TLS 1.3 has no way back, so the old clients must be updated or kept on a separate endpoint. [[slnc 500]] The lab depends on the OpenSSL build: no RC4, no zlib and no tiny DH groups here."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["The local servers: Server", "The planted truth: Weakness", "Our own probes: Audit, Probe", "testssl.sh and its JSON: TestSsl", "The network that breaks handshakes: Tap"]
+narration = "Here is who does what in the code. [[slnc 400]] The local servers is in Server. [[slnc 500]] The planted truth is in Weakness. [[slnc 500]] Our own probes is in Audit, Probe. [[slnc 500]] testssl.sh and its JSON is in TestSsl. [[slnc 500]] The network that breaks handshakes is in Tap."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["A grade of A with a static RSA suite in the table", "A client that retries with a lower version", "A 1024-bit DH file in a web server configuration", "A partner endpoint that still lists TLS 1.0"]
+narration = "You have probably met this already. [[slnc 400]] A grade of A with a static RSA suite in the table. [[slnc 500]] A client that retries with a lower version. [[slnc 500]] A 1024-bit DH file in a web server configuration. [[slnc 500]] A partner endpoint that still lists TLS 1.0."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Read a testssl.sh report and count it against a known truth", "Explain a protocol downgrade and what stops it", "Tell why static RSA loses forward secrecy and ECDHE does not", "List what TLS 1.3 removed and why"]
+narration = "So, how do you use it? [[slnc 400]] Allow TLS 1.2 and 1.3 only, with ephemeral key exchange and AEAD, let the clients send the fallback signal or never retry, scan with testssl.sh on every release, and read its cipher table and not only its grade."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's tls attacks and downgrades. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Offering an old thing is the weakness, even if no client uses it today, so count what a server accepts against what it should. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a seventh planted weakness, a certificate that is signed with SHA-1, and see who finds it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLS Attacks and Downgrades</title><style>
+:root{--bg:#ffffff;--fg:#1f2430;--muted:#5b6475;--line:#d9dde6;--code:#f3f5f9;--accent:#5b3fd1;--link:#1d5fd1}
+:root[data-theme=dim]{--bg:#1e2433;--fg:#e3e8f2;--muted:#a3adc2;--line:#374057;--code:#161b27;--accent:#b8a4ff;--link:#8ec2ff}
+:root[data-theme=dark]{--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0b0f19;--fg:#e2e8f0;--muted:#94a3b8;--line:#263044;--code:#05070d;--accent:#a78bfa;--link:#7cc4ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h1,h2,h3{line-height:1.25}h1{font-size:1.9rem}h2{margin-top:2.2rem;border-bottom:1px solid var(--line);padding-bottom:.3rem}
+a{color:var(--link)}img{max-width:100%;height:auto}
+code{background:var(--code);padding:.1em .35em;border-radius:5px;font-size:.92em}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);color:var(--muted)}
+.themes{position:fixed;top:10px;right:10px;display:flex;gap:4px;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:3px}
+.themes button{background:none;border:0;color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer;font:inherit;font-size:.85rem}
+.themes button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+</style></head>
+<body><div class="themes" role="group" aria-label="Theme">
+<button data-t="" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button>
+<button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
+<main><h1>TLS Attacks and Downgrades</h1>
+<pre><code>src/main/java/com/jk/explore/security/tlsattacks/
+├── Audit.java           Finds the planted weaknesses of a server by connecting to it with openssl s_client (our own probes)
+├── Decryptor.java       What an attacker with a recording and the server's private key can read
+├── Lab.java             The server key, its certificate and a 1024-bit DH group, in a temporary folder that is deleted at the end
+├── Openssl.java         Finds an OpenSSL 3 or 4 command line program (not LibreSSL: it cannot run the weak settings of this lab)
+├── Probe.java           What one openssl s_client connection did
+├── Server.java          One local TLS server, openssl s_server, listening on 127.0.0.1 only
+├── Sh.java              Runs a program and returns what it printed, whether it worked or not
+├── Tap.java             A man in the middle on 127.0.0.1: it forwards TCP to a target and records both directions
+├── TestSsl.java         testssl.sh, pinned to a release tag and cloned into build/, run for real against a local server; its JSON is read here
+├── TlsAttacksDemo.java  Deliberately weak local TLS servers, probed and scanned, and what TLS 1.3 removed
+├── TlsRecords.java      Reads the bytes of a recorded TLS connection: records, handshake messages and the few fields this lab needs
+└── Weakness.java        The weaknesses planted in the weak server: the truth the probes and testssl.sh are scored against
+</code></pre>
+<p><strong>A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC.</strong></p>
+<p>A TLS server is as strong as the oldest thing it still accepts. This project starts <strong>three local servers</strong> with <code>openssl s_server</code> on 127.0.0.1: a weak one with <strong>6 planted weaknesses</strong>, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with <code>openssl s_client</code>, runs <strong>testssl.sh v3.2.4</strong> (cloned into <code>build/</code> and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3 or 4, git and network access once; it is tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
+<p>What it shows:
+- <strong>Truth and measurement.</strong> Our own probes find <strong>6 of 6</strong> planted weaknesses; testssl.sh finds <strong>6 of 6</strong>, <strong>4</strong> by a finding that names the problem and <strong>2</strong> (static RSA, the 1024-bit group) only by reading the key exchange column of its cipher table. The strong server raises <strong>0</strong>.
+- <strong>The downgrade dance.</strong> A network that breaks every handshake above TLS 1.0 pushes a retrying client to <strong>TLS 1.0 with AES128-SHA after 4 attempts</strong>; with <code>TLS_FALLBACK_SCSV</code> the server refuses; a client with a minimum of TLS 1.2 stops after 2.
+- <strong>Forward secrecy.</strong> A recorded session is opened later with the leaked server key: the static RSA one is (<strong>1 of 3</strong>), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption.
+- <strong>What TLS 1.3 removed.</strong> A TLS 1.3 only server refuses <strong>3 of 3</strong> older versions, static RSA and CBC; compression and renegotiation have no place in the protocol.
+- <strong>Honest limits.</strong> This OpenSSL build has no RC4 and no zlib, and refuses DH groups below 1024 bits, so those could not be planted.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 A02 Cryptographic Failures · NIST SP 800-52 Rev. 2 · RFC 7507 (fallback SCSV), RFC 8446 (TLS 1.3), RFC 8996 (TLS 1.0 and 1.1 deprecated) · PCI DSS 4.0 requirement 4.2.1 · CWE-326, CWE-327.</p>
+<h2>The idea in everyday terms</h2>
+<p>A bank branch that still has its old side door. The main door has a good lock, but if a customer who finds it stuck is told to try the old door, and nobody checks who sent him there, the old door is the one that counts. Forward secrecy is the shredder: the key of the night safe may leak next year, and the receipts of last year are already gone.</p>
+<h2>The scenario</h2>
+<p>A bank's online banking front end must serve a few old devices. The demo starts a server that accepts everything it ever did, scans it, makes a client fall back to the oldest version, opens a recording with a leaked key, and checks that TLS 1.3 does not allow any of it.</p>
+<h2>Run</h2>
+<pre><code class="language-bash">./gradlew run
+</code></pre>
+<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. The weak server</td>
+<td>A local server has 6 planted weaknesses; a strong and a TLS 1.3 only server are the controls.</td>
+</tr>
+<tr>
+<td>2. Probes and testssl.sh</td>
+<td>Our probes and testssl.sh each find 6 of 6; testssl.sh names 4 and shows 2 only in its cipher table.</td>
+</tr>
+<tr>
+<td>3. The downgrade dance</td>
+<td>A client that retries ends on TLS 1.0 with AES128-SHA; the fallback signal and a minimum version stop it.</td>
+</tr>
+<tr>
+<td>4. The leaked key</td>
+<td>A recording is opened with the leaked server key for static RSA and not for DHE or ECDHE.</td>
+</tr>
+<tr>
+<td>5. What TLS 1.3 removed</td>
+<td>A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC; compression and renegotiation have no place.</td>
+</tr>
+</tbody>
+</table>
+<h2>Test</h2>
+<pre><code class="language-bash">./gradlew test
+</code></pre>
+<p>18 tests in <code>DecryptorTest</code>, <code>DemoRunsTest</code>, <code>ReportAndProbeTest</code>, <code>TapTest</code>, <code>TlsRecordsTest</code>. The record parser, the key derivation, the middlebox and the report parsing are tested with no tools. The demo runs OpenSSL and testssl.sh (./gradlew integrationTest).</p>
+<h2>What the simulation got right, and what it left out</h2>
+<p>OpenSSL and testssl.sh are real; the servers are local, on 127.0.0.1, with a throw-away key and certificate in a temporary folder. The demo never prints ports, keys or serials, and it never scans anything that is not its own.</p>
+<h2>Technologies and versions</h2>
+<p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Version</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java</td>
+<td>25</td>
+<td>the language and runtime; a Gradle toolchain finds or downloads the JDK</td>
+</tr>
+<tr>
+<td>Gradle</td>
+<td>9.8.1 (wrapper)</td>
+<td>build and run; nothing to install, the wrapper downloads it</td>
+</tr>
+<tr>
+<td>tools.jackson.core:jackson-databind</td>
+<td>3.1.5</td>
+<td>library the code uses</td>
+</tr>
+<tr>
+<td>org.junit.jupiter:junit-jupiter</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit 5: the tests (tests only)</td>
+</tr>
+<tr>
+<td>org.junit.platform:junit-platform-launcher</td>
+<td>6.1.3, set by junit-bom</td>
+<td>JUnit platform launcher, which Gradle needs to run the tests (tests only)</td>
+</tr>
+<tr>
+<td>videokit</td>
+<td>repository tool (<code>tools/videokit</code>)</td>
+<td>the narrated video and animation: Piper <code>en_US-amy-medium</code>, speed 0.8, longer pauses (the amy-slow voice)</td>
+</tr>
+</tbody>
+</table>
+<h2>Learning Material</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/problem-statement.html">Problem statement</a></td>
+<td>the situation and what the project must show</td>
+</tr>
+<tr>
+<td><a href="docs/prerequisites.html">Prerequisites</a></td>
+<td>what you need to know first</td>
+</tr>
+<tr>
+<td><a href="docs/tls-attacks-and-downgrades-explained.html">TLS Attacks and Downgrades, explained</a></td>
+<td>the acts in prose</td>
+</tr>
+<tr>
+<td><a href="docs/session.html">Session guide</a></td>
+<td>a one-hour lesson with exercises</td>
+</tr>
+<tr>
+<td><a href="docs/animation.html">Animated walkthrough</a></td>
+<td>the acts step by step, narrated</td>
+</tr>
+<tr>
+<td><a href="docs/threat-model.html">Threat model</a></td>
+<td>what is protected, who could harm it, and how, using STRIDE</td>
+</tr>
+<tr>
+<td><a href="docs/spec.html">Spec</a></td>
+<td>what this project must be true of</td>
+</tr>
+<tr>
+<td><a href="docs/expected-output.txt">Expected output</a></td>
+<td>the golden demo output every test and every port checks against</td>
+</tr>
+</tbody>
+</table>
+<h3>The idea in one picture</h3>
+<p>The tools probe local servers; a tap sits between a client and a server.</p>
+<p><img alt="The parts" src="docs/images/architecture-diagram.png" /></p>
+<h3>Where each piece sits</h3>
+<p>The servers, the two ways to find a weakness and the leaked-key reader.</p>
+<p><img alt="The classes and what they hold" src="docs/images/class-diagram.png" /></p>
+<h3>How the data moves</h3>
+<p>The testssl.sh JSON is compared with the planted weaknesses.</p>
+<p><img alt="From a scan to a count" src="docs/images/data-flow-diagram.png" /></p>
+<h3>Who calls whom, in order</h3>
+<p><img alt="The downgrade dance" src="docs/images/sequence-diagram.png" /></p>
+<h3>Video</h3>
+<p><code>video/tls-attacks-and-downgrades-explained.mp4</code> (with <code>.m4a</code> audio and <code>.srt</code> subtitles) is built by <code>video/build_video.sh</code>. Rendered media is not committed.</p>
+<h2>What it costs</h2>
+<ul>
+<li><strong>The old settings are kept for a few old clients,</strong> and every one of them is open to all the callers.</li>
+<li><strong>A scanner reports what is offered,</strong> and a person reads the table for what it does not name.</li>
+<li><strong>Forward secrecy needs ephemeral keys,</strong> one more computation per connection.</li>
+<li><strong>TLS 1.3 has no way back,</strong> so the old clients must be updated or kept on a separate endpoint.</li>
+<li><strong>The lab depends on the OpenSSL build:</strong> no RC4, no zlib and no tiny DH groups here.</li>
+</ul>
+<h2>When this is too much</h2>
+<p>An internal tool that only talks to servers you control needs no scan of its own. Use this when a service is reachable by clients you do not control, or when you must show that old settings are really off.</p>
+<h2>Where you have already met this</h2>
+<ul>
+<li>A load balancer that still lists TLS 1.0 for one partner.</li>
+<li>A scan report with a green grade and a static RSA suite in the middle of it.</li>
+<li>A client library that retries with a lower version on any error.</li>
+<li>A configuration with a 1024-bit DH file nobody has opened since 2015.</li>
+</ul>
+<h2>Where this sits</h2>
+<p>This is a project of the <a href="..">applied-cryptography-and-pki</a> module, with <a href="../post-quantum-cryptography">post-quantum-cryptography</a>. The earlier <a href="../../service-identity-and-zero-trust/mutual-tls-between-services">mutual-tls-between-services</a> project builds the strong side of TLS; this one attacks the weak side.</p></main><script>
+(function(){var r=document.documentElement,k="security-theme";
+function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}
+var s="";try{s=localStorage.getItem(k)||""}catch(e){}
+set(s);
+document.querySelectorAll(".themes button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;set(t);try{localStorage.setItem(k,t)}catch(e){}})});})();
+</script></body></html>
