@@ -1,0 +1,47 @@
+--- before: one shared secret in three services
+the same secret is copied into the configuration of payments, reporting and fraud-engine: 3 of 3 hold it
+payments (says payments), POST /transfers: 200
+reporting (says reporting), GET /statements: 200
+reporting (says reporting), POST /transfers: 403
+reporting (says payments), POST /transfers: 200 (the ledger takes the caller's word)
+the fraud-engine's configuration leaks; an attacker outside the bank who says payments, POST /transfers: 200
+the same attacker saying reporting, GET /statements: 200
+the attacker is every service: it holds the one thing each service holds
+a wrong key: 401
+--- SPIRE decides who a workload is
+SPIRE server and agent 1.15.5 run in one Docker container (linux arm64; SPIRE publishes no macOS build), trust domain bank.example
+registration entries: 3, each chosen by the operating system user the process runs as, none by anything it says
+the Java program run as user 2001 (ledger): spiffe://bank.example/ledger
+the Java program run as user 2002 (payments): spiffe://bank.example/payments
+the Java program run as user 2003 (reporting): spiffe://bank.example/reporting
+the same program run as the reporting user, with the claim "I am spiffe://bank.example/payments" in its environment: spiffe://bank.example/reporting
+an SVID that was just issued has at most 20 seconds left: yes (the certificate's own dates span 30 seconds: SPIRE starts them 10 seconds early to forgive clock skew)
+--- two Java services, each checking the other's SPIFFE ID
+payments, POST /transfers: 200
+payments, GET /statements: 403
+reporting, GET /statements: 200
+reporting, POST /transfers: 403
+the ledger's audit names 4 requests by the identity in the certificate: spiffe://bank.example/payments, spiffe://bank.example/reporting
+a server run by the reporting workload, called by payments as if it were the ledger: refused (payments expects spiffe://bank.example/ledger)
+a certificate made by the attacker that names itself spiffe://bank.example/payments: refused, requests that reached the ledger's code: 0
+--- rotation: an SVID that lives 20 seconds
+payments called the ledger on new connections for 50 seconds: at least 100 calls yes, failed 0
+payments' own SVID was replaced at least 3 times yes; the ledger's, as seen by payments, at least 3 times yes
+the services contain no renewal code: the Workload API client swaps the SVID and the TLS context reads it at each handshake
+--- a stolen SVID
+the files an SVID helper leaves on payments' disk (certificate, private key, bundle) are copied by an attacker running as another user
+the attacker, POST /transfers: 200
+the ledger's audit names that call: spiffe://bank.example/payments (a copy is as good as the original while it lives)
+after the SVID's lifetime (20 seconds), the attacker's call: refused
+payments itself, at the same moment: 200
+the leaked shared secret, at the same moment: 200
+--- a workload that matches no entry
+a process run as the attacker's user, saying it is spiffe://bank.example/payments: no SVID issued
+the same process calling the ledger: no SVID issued, requests that reached the ledger's code: 0
+the payments entry is deleted; a new payments process, within 40 seconds: no SVID issued
+reporting, unaffected, GET /statements: 200
+--- the bill
+evicting the attacker by changing the shared secret: the leaked copy 401, and 3 of 3 services fail until each is given the new secret
+evicting a stolen SVID changed nothing in any service: it expired by itself (the leaked secret was still 200 until it was changed)
+the identity is only as strong as the selector: any process that runs as the payments user on that node is payments
+a short lifetime is the revocation that always works, and it costs a SPIRE server and agent that must stay up to renew

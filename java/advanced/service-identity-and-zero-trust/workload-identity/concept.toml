@@ -1,0 +1,469 @@
+# concept.toml: everything about this project that is not Java code.
+# The numbers are the ones the demo prints (docs/expected-output.txt).
+
+[project]
+slug = "workload-identity"
+level = "advanced"
+module = "service-identity-and-zero-trust"
+title = "Workload Identity"
+short_title = "Workload ID"
+package = "workloadid"
+main_class = "WorkloadIdentityDemo"
+tagline = "Replace a shared secret with SPIFFE IDs and short-lived SVIDs from a real SPIRE server and agent, between two Java services at a bank"
+bold = "One static secret copied into 3 services lets a leak from any one of them act as every service; with SPIRE each workload gets a SPIFFE ID chosen by a registration entry and its operating system user, not by what it claims, and an X.509-SVID that lives 20 seconds; two Java services verify each other's SPIFFE ID against the trust bundle, the ledger authorizes by that ID (200 and 403 as the rules say), the SVID is renewed on its own at least 3 times in 50 seconds with 0 calls failed, a stolen copy works while it lives and is refused after 20 seconds, and a process that matches no entry gets no SVID."
+domain = "a bank"
+domain_note = ""
+youtube_description = "Workload identity for a bank's services with SPIFFE and SPIRE: a shared secret that leaks, SPIFFE IDs chosen by registration entries, 20 second X.509 SVIDs, mutual verification between two Java services, automatic rotation and a stolen SVID."
+thumb_lines = ["WORKLOAD", "IDENTITY"]
+thumb_code = "spiffe://bank.example/payments"
+youtube_title = "Workload Identity with SPIFFE and SPIRE: Short-Lived SVIDs Instead of Shared Secrets"
+youtube_tags = ["spiffe", "spire", "workload identity", "svid", "mtls", "zero trust", "service identity", "x509", "secret rotation", "java"]
+
+[readme]
+intro = """
+A shared secret says "someone who holds this key is calling", never which service. This project first shows that **before**: one static key copied into the configuration of payments, reporting and fraud-engine; when the fraud-engine's copy leaks, the attacker is every service. It then runs a real **SPIRE** server and agent (SPIFFE's reference implementation) and gives each workload a **SPIFFE ID** such as `spiffe://bank.example/payments`, chosen by a registration entry and the operating system user the process runs as, plus an **X.509-SVID** that lives 20 seconds. SPIRE has no macOS build, so the official linux arm64 release runs in one Docker container (`eclipse-temurin:25-jre`, the release downloaded once into `build/spire`); the Java workloads run in that container as different users and use the `java-spiffe` Workload API client. The demo is tagged `integration`: `./gradlew integrationTest` (about 3 minutes).
+
+What it shows:
+- **The shared secret.** Held by **3** services, it lets a copy from one service call as any of them; the ledger takes the caller's word for who it is.
+- **Identity by registration.** The same Java program gets `ledger`, `payments` or `reporting` depending on the user it runs as; a claim in its environment changes nothing.
+- **Mutual verification.** Two Java services check each other's SPIFFE ID against the trust bundle; the ledger answers 200 and 403 by the rules; a server with the wrong ID and a certificate made by an attacker are refused (0 requests reach the ledger).
+- **Rotation.** SVIDs are replaced at least **3** times in 50 seconds with **0** failed calls and no renewal code in the services.
+- **A stolen SVID.** It works while it lives and is refused after 20 seconds; a shared secret still works.
+- **No entry, no identity.** A process that matches nothing gets no SVID, and deleting an entry ends a workload's identity.
+
+**Maps to:** NIST SP 800-207 (zero trust) · SPIFFE and SPIRE · OWASP ASVS V9 · CWE-798 (hard-coded credentials).
+"""
+analogy = """
+A shared secret is a master key cut three times: whoever finds one lost copy can open every door and nobody can tell which copy it was. A SPIFFE ID is a name badge printed at the door by a guard who looks at who is standing there, and the badge stops working after 20 seconds.
+"""
+scenario = """
+A bank's ledger is called by payments (which moves money) and reporting (which reads statements). The demo first lets one shared key leak, then replaces it with SPIRE identities, rotates them, steals one and starts a process that matches no entry.
+"""
+costs = [
+    "**SPIRE is more to run:** a server, an agent on each node and registration entries to keep.",
+    "**The agent and the server must stay up,** because a short lifetime depends on renewal.",
+    "**The identity is only as strong as the selector,** here the operating system user.",
+    "**A stolen SVID works until it expires,** so the lifetime is the revocation.",
+    "**Services need a Workload API client** and a TLS context that reads the SVID at each handshake.",
+]
+too_much = """
+One service calling one other service inside a closed network may be fine with a managed secret that is rotated. Use workload identity when many services call each other and a leak from any one of them must not be worth everything.
+"""
+met_before = [
+    "An API key in an environment variable copied into every service.",
+    "A service account password nobody has changed since it was created.",
+    "A client certificate that lives for a year.",
+    "A header that says which service is calling.",
+]
+where = """
+This is a project of the [service-identity-and-zero-trust](..) module, with [mutual-tls-between-services](../mutual-tls-between-services) and [service-mesh-mtls](../service-mesh-mtls). The first runs its own CA; this one lets SPIRE decide who a workload is and renew its certificate.
+"""
+twin = """
+SPIRE (server and agent 1.15.5), Docker and the java-spiffe client are real, and every number is measured. The "bank" is a ledger and three callers on one node; a real deployment has many nodes and a node attestor stronger than a join token. The demo never prints ports, serial numbers, tokens or times.
+"""
+test_note = "The policy, the rotation count and the shared-secret ledger are tested with no tools. The demo runs SPIRE in Docker (./gradlew integrationTest)."
+
+[[act]]
+title = "One shared secret"
+summary = "One key in 3 services lets a leak from any of them act as every service."
+detail = """
+The ledger accepts one static key and a header that says which service is calling. Payments, reporting and fraud-engine hold the same key. When the fraud-engine's configuration leaks, an attacker who says payments moves money (200) and one who says reporting reads statements (200). Even a service that is not allowed to transfer says payments and gets 200.
+"""
+speech = """
+First demo: one shared secret. [[slnc 400]] Three services hold the same key. [[slnc 600]] When one copy leaks, the attacker is every service.
+"""
+rows = { secret = "active wrong" }
+console = [
+    ["secret held by: 3 of 3", "bad"],
+    ["leaked copy, POST /transfers: 200", "bad"],
+    ["the ledger takes the caller's word", "bad"],
+]
+
+[[act]]
+title = "Identity by registration"
+summary = "SPIRE gives the same Java program a different SPIFFE ID for each user it runs as."
+detail = """
+A SPIRE server and agent run in a Docker container with 3 registration entries, each chosen by a selector, the operating system user id. The Java program run as the ledger, payments and reporting users gets spiffe://bank.example/ledger, /payments and /reporting. A process that puts a claim to be payments in its environment still gets the identity of the user it runs as.
+"""
+speech = """
+Second demo: identity by registration. [[slnc 400]] The same program gets a different name for each user. [[slnc 600]] A claim in its environment changes nothing.
+"""
+rows = { entries = "active ok" }
+console = [
+    ["entries: 3, selector unix user id", "ok"],
+    ["reporting user claims payments: reporting", "ok"],
+    ["SVID lifetime: 20 seconds", "ok"],
+]
+
+[[act]]
+title = "Two services check each other"
+summary = "Each side verifies the other's SPIFFE ID against the trust bundle, and the ledger authorizes by it."
+detail = """
+Payments posts a transfer and gets 200, asks for statements and gets 403; reporting is the other way round. The ledger's audit names each caller by the SPIFFE ID in the certificate. Payments refuses a server that presents another workload's SVID, and the ledger refuses a certificate that names itself payments but was made by the attacker: 0 requests reach the ledger's code.
+"""
+speech = """
+Third demo: two services check each other. [[slnc 400]] Payments may transfer, reporting may read. [[slnc 600]] A wrong server and a forged certificate are refused.
+"""
+rows = { mutual = "active ok" }
+console = [
+    ["payments POST /transfers: 200", "ok"],
+    ["reporting POST /transfers: 403", "ok"],
+    ["forged certificate: refused, 0 reached the ledger", "ok"],
+]
+
+[[act]]
+title = "Rotation without a restart"
+summary = "SVIDs are replaced at least 3 times in 50 seconds and no call fails."
+detail = """
+Payments calls the ledger on new connections for 50 seconds. Its own SVID is replaced at least 3 times and the ledger's, as payments sees it, at least 3 times. At least 100 calls are made and 0 fail. The services have no renewal code: the Workload API client swaps the SVID and the TLS context reads it at each handshake.
+"""
+speech = """
+Fourth demo: rotation. [[slnc 400]] Twenty seconds is short. [[slnc 600]] The certificates are replaced three times and no call fails.
+"""
+rows = { rotation = "active ok" }
+console = [
+    ["SVID replaced: at least 3 times", "ok"],
+    ["calls at least 100, failed 0", "ok"],
+    ["no renewal code in the services", "ok"],
+]
+
+[[act]]
+title = "A stolen SVID"
+summary = "A copy works while the SVID lives and is refused after 20 seconds; a shared secret still works."
+detail = """
+The certificate, key and bundle on payments' disk are copied by an attacker running as another user and POST /transfers gets 200, and the ledger's audit names the call as payments. After the SVID's lifetime the same copy is refused while payments itself still gets 200. The leaked shared secret still gets 200 at that moment.
+"""
+speech = """
+Fifth demo: a stolen SVID. [[slnc 400]] A copy works while it lives. [[slnc 600]] After twenty seconds it is refused. The shared secret never expires.
+"""
+rows = { stolen = "active ok" }
+console = [
+    ["stolen SVID, POST /transfers: 200", "bad"],
+    ["after 20 seconds: refused", "ok"],
+    ["leaked shared secret then: 200", "bad"],
+]
+
+[[act]]
+title = "No entry, no identity"
+summary = "A process that matches no entry gets no SVID, and deleting an entry ends an identity."
+detail = """
+A process run as the attacker's user, saying it is payments, gets no SVID and 0 of its requests reach the ledger. When the payments entry is deleted, a new payments process gets no SVID within 40 seconds while reporting still gets 200. Changing the shared secret to evict an attacker would have broken 3 of 3 services.
+"""
+speech = """
+Sixth demo: no entry, no identity. [[slnc 400]] A claim gets nothing. [[slnc 600]] Delete the entry and the identity ends, and no other service is touched.
+"""
+rows = { noentry = "active ok" }
+console = [
+    ["attacker saying payments: no SVID issued", "ok"],
+    ["entry deleted: payments gets nothing", "ok"],
+    ["new shared secret: 3 of 3 services fail", "bad"],
+]
+
+[animation]
+subtitle = "A ledger that knows who calls it."
+boxes = [
+    ["secret", "One shared secret", "3 hold it"],
+    ["entries", "Identity by registration", "3 entries"],
+    ["mutual", "Two services check each other", "200 / 403"],
+    ["rotation", "Rotation without a restart", "3+ rotations"],
+    ["stolen", "A stolen SVID", "20 seconds"],
+    ["noentry", "No entry, no identity", "no SVID"],
+]
+
+[docs.problem]
+scenario = """
+A bank's services call each other, and a leaked key from any one of them must not be worth the whole bank.
+"""
+naive = """
+Copy one static secret into every service and trust the caller's header for its name.
+"""
+deliver = [
+    "A shared secret that leaks, measured.",
+    "SPIFFE IDs chosen by registration entries and the user a process runs as.",
+    "Two Java services that verify each other against the trust bundle.",
+    "Automatic rotation of 20 second SVIDs, counted.",
+    "A stolen SVID and a process with no entry.",
+]
+
+[docs.prerequisites]
+required = [
+    "Java basics",
+    "Docker running",
+    "The images eclipse-temurin:25-jre (pulled on the first run) and the SPIRE 1.15.5 release (downloaded once into build/spire, about 55 MB)",
+    "Understanding of TLS and client certificates (see mutual-tls-between-services)",
+]
+not_required = [
+    "A cloud account",
+    "Kubernetes",
+    "A macOS SPIRE build (there is none)",
+]
+install = ["docker"]
+
+[docs.session]
+objectives = [
+    "explain why a shared secret makes a leak worth every service",
+    "tell a SPIFFE ID, a registration entry and an SVID apart",
+    "check a peer's SPIFFE ID against a trust bundle in Java",
+    "explain what a stolen SVID is worth and why a short lifetime is the revocation",
+]
+walkthrough = """
+Run the demo and compare the leaked shared secret with the stolen SVID: what can each do, and for how long? Then change the entry's selector and see who gets the identity.
+"""
+exercises = [
+    "Add a fraud-engine entry that may only GET /statements and call the ledger as it.",
+    "Change the SVID lifetime to 60 seconds and count the rotations in 50 seconds.",
+    "Add a second selector (the path of the program) to the payments entry and see what stops matching.",
+    "Make the ledger refuse an SVID with less than 5 seconds left.",
+]
+
+[docs.explained]
+sentence = """
+Give each workload a name it cannot choose and a certificate that expires in seconds, so a leak is worth a few seconds of one service.
+"""
+verdict = """
+Register each workload with a selector the platform decides, let the SPIRE agent renew its SVID, verify the peer's SPIFFE ID on both sides, authorize by that ID, and keep the lifetime shorter than you can detect a theft.
+"""
+recognise = [
+    "An API key in an environment variable.",
+    "A shared service account.",
+    "A header such as X-Service that names the caller.",
+    "A client certificate that lasts a year.",
+]
+
+[spec]
+purpose = """
+Teach workload identity by measuring a shared secret and SPIRE SVIDs against the same ledger, with a real SPIRE server and agent.
+"""
+nongoals = [
+    "Running SPIRE in production (high availability, a stronger node attestor, federation).",
+    "Kubernetes attestation.",
+    "JWT-SVIDs.",
+]
+problem = """
+Services prove who they are with a secret that every copy shares and that never expires.
+"""
+roles = [["Authorization by SPIFFE ID", "`Policy`"], ["The shared-secret ledger", "`LegacyLedger`"], ["SPIRE in Docker", "`Lab`"], ["The Java workloads", "`Workload`"], ["Counting rotations", "`Rotations`"], ["Entry point", "`WorkloadIdentityDemo`"]]
+requirements = [
+    "A shared secret is measured as the before: 3 holders, a leak, an eviction.",
+    "SPIFFE IDs come from registration entries, not claims.",
+    "Two Java services verify each other's SPIFFE ID and the ledger authorizes by it.",
+    "SVIDs rotate on their own and the rotations are counted.",
+    "A stolen SVID and a process with no entry are measured.",
+    "The demo prints the same output on every run.",
+]
+
+[[diagram]]
+name = "architecture-diagram"
+kind = "flow"
+title = "The parts"
+caption = "A SPIRE server and agent give each Java workload an identity."
+nodes = [
+    { id = "server", label = "SPIRE server", sub = "entries, CA", col = 0, row = 0, colour = "amber" },
+    { id = "agent", label = "SPIRE agent", sub = "attests by user", col = 1, row = 0, colour = "amber" },
+    { id = "pay", label = "payments", sub = "Java, SVID", col = 2, row = 0, colour = "accent" },
+    { id = "ledger", label = "ledger", sub = "Java, SVID", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "agent", to = "server", label = "node and entries" },
+    { from = "pay", to = "agent", label = "asks for its SVID" },
+    { from = "pay", to = "ledger", label = "mutual TLS by SPIFFE ID" },
+]
+
+[[diagram]]
+name = "class-diagram"
+kind = "class"
+title = "The classes and what they hold"
+caption = "The rules, the lab, the workloads and the shared-secret ledger."
+nodes = [
+    { id = "policy", label = "Policy", sub = ["allows(id, method, path)"], col = 0, row = 0, colour = "accent" },
+    { id = "lab", label = "Lab", sub = ["start()", "createEntry()", "workload()"], col = 1, row = 0, colour = "amber" },
+    { id = "workload", label = "Workload", sub = ["ledger", "call", "loop", "stolen"], col = 2, row = 0, colour = "green" },
+    { id = "legacy", label = "LegacyLedger", sub = ["decide()", "rotateSecret()"], col = 3, row = 0, colour = "red" },
+]
+edges = [
+    { from = "workload", to = "policy", label = "asks" },
+    { from = "lab", to = "workload", label = "runs as a user" },
+    { from = "legacy", to = "policy", label = "reuses" },
+]
+
+[[diagram]]
+name = "data-flow-diagram"
+kind = "flow"
+title = "From a process to an identity"
+caption = "The agent looks at who is asking, not at what it says."
+nodes = [
+    { id = "proc", label = "Process", sub = "runs as user 2002", col = 0, row = 0, colour = "client" },
+    { id = "agent", label = "Agent", sub = "unix attestor", col = 1, row = 0, colour = "amber" },
+    { id = "entry", label = "Entry", sub = "unix:uid:2002", col = 2, row = 0, colour = "amber" },
+    { id = "svid", label = "SVID", sub = "spiffe://bank.example/payments", col = 3, row = 0, colour = "green" },
+]
+edges = [
+    { from = "proc", to = "agent", label = "Workload API" },
+    { from = "agent", to = "entry", label = "match selector" },
+    { from = "entry", to = "svid", label = "issue, 20 s" },
+]
+
+[[diagram]]
+name = "sequence-diagram"
+kind = "sequence"
+title = "A call between two services"
+participants = ["payments", "ledger"]
+steps = [
+    ["payments", "ledger", "TLS hello with its SVID"],
+    ["ledger", "payments", "its SVID, ID checked by payments", "reply"],
+    ["payments", "ledger", "ID checked by the ledger, POST /transfers"],
+    ["ledger", "payments", "200 for payments, 403 for others", "reply"],
+]
+
+[[diagram]]
+name = "uml-diagram"
+kind = "sequence"
+title = "Getting and renewing an SVID"
+participants = ["Java service", "SPIRE agent", "SPIRE server"]
+steps = [
+    ["Java service", "SPIRE agent", "open the Workload API stream"],
+    ["SPIRE agent", "SPIRE server", "entries for this node"],
+    ["SPIRE agent", "Java service", "SVID and bundle", "reply"],
+    ["SPIRE agent", "Java service", "a new SVID before the old one expires", "reply"],
+]
+
+[[diagram]]
+name = "threat-model-diagram"
+kind = "flow"
+title = "Threat model: trust boundaries and threats"
+caption = "Dashed boxes are trust boundaries. Rose tags show where each threat in the table applies."
+zones = [
+    { label = "Node", nodes = ["attacker", "pay", "agent"], colour = "red" },
+    { label = "SPIRE", nodes = ["server"], colour = "green" },
+]
+nodes = [
+    { id = "attacker", label = "Attacker", sub = "holds a copy", col = 0, row = 0, colour = "red", threats = ["T1", "T3"] },
+    { id = "pay", label = "payments", sub = "Java", col = 1, row = 0, colour = "accent", threats = ["T1", "T2"] },
+    { id = "agent", label = "Agent", sub = "attests", col = 2, row = 0, colour = "amber", threats = ["T2"] },
+    { id = "server", label = "Server", sub = "entries", col = 3, row = 0, colour = "green", threats = ["T2", "T3"] },
+]
+edges = [
+    { from = "attacker", to = "pay", label = "reads files", colour = "red", dashed = true, threats = ["T1"] },
+    { from = "pay", to = "agent", label = "Workload API", threats = ["T2"] },
+    { from = "agent", to = "server", label = "sync entries", threats = ["T3"] },
+]
+
+[threatmodel]
+scope = """
+Service-to-service calls at a bank on one node, authenticated by SPIFFE IDs from a real SPIRE server and agent. It does not cover the node's own security, the SPIRE server's key storage, or the people who write entries.
+"""
+assets = [
+    "The ledger's transfers.",
+    "The SVIDs and their private keys.",
+    "The registration entries.",
+]
+actors = [
+    "An attacker with a copy of a service's files.",
+    "A process that claims to be another service.",
+    "A service that is not allowed to move money.",
+]
+boundaries = [
+    "The operating system user a process runs as.",
+    "The agent's Workload API socket.",
+]
+assumptions = [
+    "The node is not fully compromised: root there is every identity.",
+    "The registration entries are written by someone trusted.",
+]
+out_of_scope = [
+    "A stronger node attestor than a join token.",
+    "Federation between trust domains.",
+    "Denial of service on the SPIRE server.",
+]
+tests = [
+    "`PolicyTest`, `RotationsTest` and `LegacyLedgerTest` check the rules, the rotation count and the shared-secret ledger with no tools.",
+    "`DemoRunsTest` runs SPIRE in Docker and compares the whole demo with the golden output (integrationTest).",
+]
+next = """
+The next project in the module is service-mesh-mtls.
+"""
+
+[[threat]]
+id = "T1"
+stride = "S"
+threat = "A leaked secret or SVID is used to act as a service"
+where = "the ledger"
+control = "Short-lived SVIDs; no shared secret"
+residual = "A copy works until it expires"
+
+[[threat]]
+id = "T2"
+stride = "S"
+threat = "A process claims to be another workload"
+where = "the Workload API"
+control = "Identity from registration entries and the user, never from claims"
+residual = "Anyone who runs as that user on the node"
+
+[[threat]]
+id = "T3"
+stride = "E"
+threat = "An identity that should end keeps working"
+where = "SVIDs and entries"
+control = "Delete the entry; the SVID expires in 20 seconds"
+residual = "Up to one lifetime of use"
+
+[poster]
+headline = [["WORKLOAD", "text"], ["IDENTITY", "accent"]]
+taglines = [["Replace a shared secret with SPIFFE IDs and short-lived SVIDs from a real SPIRE server and", "gold"]]
+before = { code = "X-Api-Key: <one key, 3 holders>", note = "A leak is every service", tag = "BEFORE" }
+after = { code = "spiffe://bank.example/payments", note = "20 seconds, by registration", tag = "AFTER" }
+
+[[scene]]
+key = "01-poster"
+kind = "poster"
+title = "Workload Identity"
+narration = "Hello, and welcome. [[slnc 400]] This video explains workload identity, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] One static secret copied into 3 services lets a leak from any one of them act as every service; with SPIRE each workload gets a SPIFFE ID chosen by a registration entry and its operating system user, not by what it claims, and an X.509-SVID that lives 20 seconds; two Java services verify each other's SPIFFE ID against the trust bundle, the ledger authorizes by that ID (200 and 403 as the rules say), the SVID is renewed on its own at least 3 times in 50 seconds with 0 calls failed, a stolen copy works while it lives and is refused after 20 seconds, and a process that matches no entry gets no SVID. [[slnc 600]] Think of it this way. [[slnc 300]] A shared secret is a master key cut three times: whoever finds one lost copy can open every door and nobody can tell which copy it was. A SPIFFE ID is a name badge printed at the door by a guard who looks at who is standing there, and the badge stops working after 20 seconds. [[slnc 700]] In this video, the domain is a bank. [[slnc 500]] By the end, you will be able to: [[slnc 300]] Explain why a shared secret makes a leak worth every service. [[slnc 300]] Tell a SPIFFE ID, a registration entry and an SVID apart. [[slnc 300]] Check a peer's SPIFFE ID against a trust bundle in Java."
+
+[[scene]]
+key = "02-scenario"
+kind = "bullets"
+title = "The Scenario"
+body = ["A bank's ledger is called by payments (which", "moves money) and reporting (which reads", "statements). The demo first lets one shared key", "leak, then replaces it with SPIRE identities,", "rotates them, steals one and starts a process", "that matches no entry."]
+narration = "Here is the scenario. [[slnc 400]] A bank's ledger is called by payments (which moves money) and reporting (which reads statements). The demo first lets one shared key leak, then replaces it with SPIRE identities, rotates them, steals one and starts a process that matches no entry."
+
+[[scene]]
+key = "03-acts"
+kind = "acts"
+title = "Acts"
+narration = "unused"
+
+[[scene]]
+key = "04-costs"
+kind = "bullets"
+title = "What It Costs"
+body = ["SPIRE is more to run: a server", "The agent and the server must stay up", "The identity is only as strong as the selector", "A stolen SVID works until it expires", "Services need a Workload API client and a TLS context that reads the SVID at each handshake"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] SPIRE is more to run: a server, an agent on each node and registration entries to keep. [[slnc 500]] The agent and the server must stay up, because a short lifetime depends on renewal. [[slnc 500]] The identity is only as strong as the selector, here the operating system user. [[slnc 500]] A stolen SVID works until it expires, so the lifetime is the revocation. [[slnc 500]] Services need a Workload API client and a TLS context that reads the SVID at each handshake."
+
+[[scene]]
+key = "05-roles"
+kind = "bullets"
+title = "Who Does What"
+body = ["Authorization by SPIFFE ID: Policy", "The shared-secret ledger: LegacyLedger", "SPIRE in Docker: Lab", "The Java workloads: Workload", "Counting rotations: Rotations"]
+narration = "Here is who does what in the code. [[slnc 400]] Authorization by SPIFFE ID is in Policy. [[slnc 500]] The shared-secret ledger is in LegacyLedger. [[slnc 500]] SPIRE in Docker is in Lab. [[slnc 500]] The Java workloads is in Workload. [[slnc 500]] Counting rotations is in Rotations."
+
+[[scene]]
+key = "06-recognise"
+kind = "bullets"
+title = "Where You Have Seen It"
+body = ["An API key in an environment variable", "A shared service account", "A header such as X-Service that names the caller", "A client certificate that lasts a year"]
+narration = "You have probably met this already. [[slnc 400]] An API key in an environment variable. [[slnc 500]] A shared service account. [[slnc 500]] A header such as X-Service that names the caller. [[slnc 500]] A client certificate that lasts a year."
+
+[[scene]]
+key = "07-verdict"
+kind = "bullets"
+title = "How To Use It"
+body = ["Explain why a shared secret makes a leak worth every service", "Tell a SPIFFE ID, a registration entry and an SVID apart", "Check a peer's SPIFFE ID against a trust bundle in Java", "Explain what a stolen SVID is worth and why a short lifetime is the revocation"]
+narration = "So, how do you use it? [[slnc 400]] Register each workload with a selector the platform decides, let the SPIRE agent renew its SVID, verify the peer's SPIFFE ID on both sides, authorize by that ID, and keep the lifetime shorter than you can detect a theft."
+
+[[scene]]
+key = "08-outro"
+kind = "outro"
+title = "Thanks for Watching"
+body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Try the first exercise", "in docs/session.md."]
+narration = "That's workload identity. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Give each workload a name it cannot choose and a certificate that expires in seconds, so a leak is worth a few seconds of one service. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a fraud-engine entry that may only GET /statements and call the ledger as it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
