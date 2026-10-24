@@ -20,6 +20,12 @@ public final class Lab {
     static final String OLD = "2.14.1";
     static final String NEW = "2.25.5";
     static final String REPOSITORY = "https://repo1.maven.org/maven2/org/apache/logging/log4j/";
+    // SHA-256 of each jar fetched from Maven Central, so the scanned input cannot change under the golden output.
+    private static final java.util.Map<String, String> JAR_SHA256 = java.util.Map.of(
+            "log4j-core-2.14.1", "ade7402a70667a727635d5c4c29495f4ff96f061f12539763f6f123973b465b0",
+            "log4j-api-2.14.1", "8caf58db006c609949a0068110395a33067a2bad707c3da35e959c0473f9a916",
+            "log4j-core-2.25.5", "050c4f85deb48b055e9c041ac39043fbb79ce477841a11a1eb2969c86c6a0072",
+            "log4j-api-2.25.5", "64777f73ea0b3104c04eb82befbdccc30a425a19e83ad06cb2f93aa303511863");
 
     private final Path jars;
     private final Path work;
@@ -60,8 +66,23 @@ public final class Lab {
                 Files.deleteIfExists(target);
                 throw new IllegalStateException("could not download " + target.getFileName() + ": " + r.statusCode());
             }
+            verifySha256(target, JAR_SHA256.get(artifact + "-" + version));
         }
         return target;
+    }
+
+    /** Fails, and removes the file, unless its SHA-256 is the pinned one. */
+    private static void verifySha256(Path file, String expected) throws IOException {
+        String actual;
+        try {
+            actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+        if (!actual.equals(expected)) {
+            Files.deleteIfExists(file);
+            throw new IOException(file.getFileName() + " does not match its pinned SHA-256 (got " + actual + ", expected " + expected + ")");
+        }
     }
 
     /** The image id, which changes whenever the image does. */

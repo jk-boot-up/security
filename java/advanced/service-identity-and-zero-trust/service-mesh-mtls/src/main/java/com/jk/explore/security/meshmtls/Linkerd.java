@@ -18,6 +18,13 @@ final class Linkerd {
     static final String RELEASE = "edge-26.10.1";
     static final String GATEWAY_API = "v1.5.1";
 
+    // SHA-256 of the standard-install.yaml for GATEWAY_API, and of each CLI release asset, so a changed or substituted download is caught.
+    private static final String GATEWAY_API_SHA256 = "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8";
+    private static final java.util.Map<String, String> CLI_SHA256 = java.util.Map.of(
+            "linkerd2-cli-" + RELEASE + "-darwin-arm64", "abaaaeba9334feae7c1f16dd43a6f85b6051eadf49425f0ae30cbf16eba29f70",
+            "linkerd2-cli-" + RELEASE + "-linux-amd64", "66d634f5318c8016f0b5face246a688964b6e2c86d6c3be34be68ab9fcd2a8cc",
+            "linkerd2-cli-" + RELEASE + "-linux-arm64", "431989b15b48acfd6e344ff16a0d3505574c0cce551a2d4aeae82246ce65a5cc");
+
     private static final Path HOME = Path.of("build", "linkerd");
 
     private Linkerd() {
@@ -33,8 +40,9 @@ final class Linkerd {
     static Path cli() throws IOException, InterruptedException {
         Path file = HOME.resolve("linkerd-" + RELEASE);
         if (!Files.isExecutable(file)) {
-            download("https://github.com/linkerd/linkerd2/releases/download/" + RELEASE + "/"
-                    + assetName(System.getProperty("os.name"), System.getProperty("os.arch")), file);
+            String asset = assetName(System.getProperty("os.name"), System.getProperty("os.arch"));
+            download("https://github.com/linkerd/linkerd2/releases/download/" + RELEASE + "/" + asset, file);
+            verifySha256(file, CLI_SHA256.get(asset));
             if (!file.toFile().setExecutable(true)) {
                 throw new IOException("cannot make " + file + " executable");
             }
@@ -47,8 +55,23 @@ final class Linkerd {
         Path file = HOME.resolve("gateway-api-" + GATEWAY_API + ".yaml");
         if (!Files.exists(file)) {
             download("https://github.com/kubernetes-sigs/gateway-api/releases/download/" + GATEWAY_API + "/standard-install.yaml", file);
+            verifySha256(file, GATEWAY_API_SHA256);
         }
         return file.toAbsolutePath();
+    }
+
+    /** Fails, and removes the file, unless its SHA-256 is the pinned one. */
+    private static void verifySha256(Path file, String expected) throws IOException {
+        String actual;
+        try {
+            actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+        if (!actual.equals(expected)) {
+            Files.deleteIfExists(file);
+            throw new IOException(file.getFileName() + " does not match its pinned SHA-256 (got " + actual + ", expected " + expected + ")");
+        }
     }
 
     /** Linkerd's own default for how long a workload certificate lives, read from the CLI's help text. */

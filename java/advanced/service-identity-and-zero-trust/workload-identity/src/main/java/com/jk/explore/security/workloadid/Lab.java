@@ -20,6 +20,8 @@ import java.util.stream.Stream;
 final class Lab implements AutoCloseable {
 
     static final String SPIRE_VERSION = "1.15.5";
+    // SHA-256 of the official spire-1.15.5-linux-arm64-musl.tar.gz release (from its published sha256sum), checked before it is unpacked and run.
+    static final String SPIRE_SHA256 = "451baba77cba6a0b2cdd3ca8b589589418b88673867d2da7f8dac9099252b372";
     static final String IMAGE = "eclipse-temurin:25-jre";
     static final String DOMAIN = "bank.example";
     static final String NODE = "spiffe://" + DOMAIN + "/node/lab";
@@ -251,6 +253,20 @@ final class Lab implements AutoCloseable {
         Sh.must(command);
     }
 
+    /** Fails, and removes the file, unless its SHA-256 is the pinned one. */
+    private static void verifySha256(Path file, String expected) throws IOException {
+        String actual;
+        try {
+            actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+        if (!actual.equals(expected)) {
+            Files.deleteIfExists(file);
+            throw new IOException(file.getFileName() + " does not match its pinned SHA-256 (got " + actual + ", expected " + expected + ")");
+        }
+    }
+
     /** The official release for this machine's Linux architecture, downloaded once into build/spire. */
     private static Path ensureSpire(Path build) throws IOException, InterruptedException {
         Path spire = build.resolve("spire");
@@ -263,6 +279,7 @@ final class Lab implements AutoCloseable {
         String archive = "spire-" + SPIRE_VERSION + "-linux-arm64-musl.tar.gz";
         Sh.must(List.of("curl", "-sSL", "-o", download.resolve(archive).toString(),
                 "https://github.com/spiffe/spire/releases/download/v" + SPIRE_VERSION + "/" + archive));
+        verifySha256(download.resolve(archive), SPIRE_SHA256);
         Sh.must(List.of("tar", "-xzf", download.resolve(archive).toString(), "-C", download.toString()));
         Files.move(download.resolve("spire-" + SPIRE_VERSION), spire);
         deleteTree(download);

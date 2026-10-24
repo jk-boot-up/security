@@ -17,6 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 public final class Kyverno {
 
     static final String VERSION = "v1.19.2";
+    // SHA-256 of the v1.19.2 install.yaml release asset, so a changed or substituted manifest is caught before it is applied.
+    static final String INSTALL_SHA256 = "4f785937dc7fe49a0731108b15def1538923c73d9236255bc69d94d498037969";
     static final Path POLICIES = Path.of("policies");
 
     private final Cluster cluster;
@@ -29,6 +31,7 @@ public final class Kyverno {
             HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build();
             http.send(HttpRequest.newBuilder(URI.create("https://github.com/kyverno/kyverno/releases/download/" + VERSION + "/install.yaml")).timeout(Duration.ofMinutes(5)).build(),
                     HttpResponse.BodyHandlers.ofFile(manifest));
+            verifySha256(manifest, INSTALL_SHA256);
         }
         cluster.must("apply", "--server-side", "-f", manifest.toAbsolutePath().toString());
         waitForControllers();
@@ -37,6 +40,20 @@ public final class Kyverno {
                 "[{\"op\":\"add\",\"path\":\"/spec/template/spec/containers/0/args/-\",\"value\":\"--enablePolicyException=true\"},"
                         + "{\"op\":\"add\",\"path\":\"/spec/template/spec/containers/0/args/-\",\"value\":\"--exceptionNamespace=kyverno\"}]");
         waitForControllers();
+    }
+
+    /** Fails, and removes the file, unless its SHA-256 is the pinned one. */
+    private static void verifySha256(Path file, String expected) throws IOException {
+        String actual;
+        try {
+            actual = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+        if (!actual.equals(expected)) {
+            Files.deleteIfExists(file);
+            throw new IOException(file.getFileName() + " does not match its pinned SHA-256 (got " + actual + ", expected " + expected + ")");
+        }
     }
 
     void waitForControllers() throws IOException, InterruptedException {
