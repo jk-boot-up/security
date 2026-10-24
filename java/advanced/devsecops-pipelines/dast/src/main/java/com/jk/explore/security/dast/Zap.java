@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** OWASP ZAP in Docker, driven by an automation plan: spider, passive rules, and optionally an active scan limited to chosen rules. */
 final class Zap {
 
-    static final String IMAGE = "ghcr.io/zaproxy/zaproxy:stable";
+    static final String IMAGE = "ghcr.io/zaproxy/zaproxy@sha256:5ccfff9a411743ab2615136a2edd7416bec9ce41572fa94e935df38c14adb2b6";  // was :stable; pinned so the scan is reproducible (the golden output depends on ZAP's rules)
 
     /** The plan as YAML. {@code session} is a cookie to send with every request, or null; {@code activeRules} are ZAP rule ids, empty for no active scan. */
     static String plan(String target, String session, List<Integer> activeRules) {

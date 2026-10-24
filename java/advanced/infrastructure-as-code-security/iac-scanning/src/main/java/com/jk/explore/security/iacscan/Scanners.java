@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class Scanners {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    static final String KICS_IMAGE = "checkmarx/kics:latest";
+    static final String KICS_IMAGE = "checkmarx/kics@sha256:ef29dbac14b046b1ef65f3280646112e927a61781c5f01bca1aeb723e0b96003";  // was :latest; pinned so the golden findings depend on a fixed KICS ruleset
 
     private Scanners() {
     }

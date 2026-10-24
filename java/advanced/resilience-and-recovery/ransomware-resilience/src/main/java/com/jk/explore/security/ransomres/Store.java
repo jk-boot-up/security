@@ -27,7 +27,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 /** An S3-compatible object store (RustFS) in a Docker container, started for the demo and removed at the end. */
 public final class Store implements AutoCloseable {
 
-    static final String IMAGE = "rustfs/rustfs:latest";
+    static final String IMAGE = "rustfs/rustfs:1.0.3";  // was :latest; pinned to a released version so the object store cannot change under the demo
     static final Region REGION = Region.US_EAST_1;
     private static final HexFormat HEX = HexFormat.of();
 
