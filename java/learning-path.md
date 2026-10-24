@@ -56,10 +56,10 @@ Legend: **Plain** means written with the JDK only. **With tools** means the same
 | Beginner | With tools | 21 | 0 | 21 |
 | Intermediate | Plain | 40 | 0 | 40 |
 | Intermediate | With tools | 36 | 0 | 36 |
-| Advanced | Unclassified | 34 | 0 | 34 |
-| **All** | **Plain** | **60** | **0** | **60** |
-| **All** | **With tools** | **57** | **0** | **57** |
-| **All** | **Unclassified** | **34** | **0** | **34** |
+| Advanced | Plain | 5 | 0 | 5 |
+| Advanced | With tools | 29 | 0 | 29 |
+| **All** | **Plain** | **65** | **0** | **65** |
+| **All** | **With tools** | **86** | **0** | **86** |
 <!-- status:end -->
 
 ## Beginner: foundations and core concepts
@@ -278,87 +278,87 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 
 ### 1. cloud-security-without-a-cloud
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 118 | [cloud-iam-models](advanced/cloud-security-without-a-cloud/cloud-iam-models) | Evaluate cloud permission policies the way the provider does: deny wins, accounts must agree, roles narrow, and a deputy can be confused | Java only (an emulator comes with cloud-misconfigurations) |
-| 119 | [network-isolation](advanced/cloud-security-without-a-cloud/network-isolation) | Measure what a taken-over service can reach on a flat network, on coarse networks and on a layout built from the design, and compare the measurement with the intent | Docker networks, kind with network policies |
-| 120 | [cloud-misconfigurations](advanced/cloud-security-without-a-cloud/cloud-misconfigurations) | Deploy a bank's first cloud setup to an AWS emulator, find 13 misconfigurations, fix them, and find the same problems in the code before deploy with Checkov and Trivy | Moto (LocalStack now needs an account token), Checkov, Trivy |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 118 | [cloud-iam-models](advanced/cloud-security-without-a-cloud/cloud-iam-models) | Plain | Evaluate cloud permission policies the way the provider does: deny wins, accounts must agree, roles narrow, and a deputy can be confused | Java only (an emulator comes with cloud-misconfigurations) |
+| 119 | [network-isolation](advanced/cloud-security-without-a-cloud/network-isolation) | With tools | Measure what a taken-over service can reach on a flat network, on coarse networks and on a layout built from the design, and compare the measurement with the intent | Docker networks, kind with network policies |
+| 120 | [cloud-misconfigurations](advanced/cloud-security-without-a-cloud/cloud-misconfigurations) | With tools | Deploy a bank's first cloud setup to an AWS emulator, find 13 misconfigurations, fix them, and find the same problems in the code before deploy with Checkov and Trivy | Moto (LocalStack now needs an account token), Checkov, Trivy |
 
 ### 2. infrastructure-as-code-security
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 121 | [iac-scanning](advanced/infrastructure-as-code-security/iac-scanning) | Write eight rules for Kubernetes manifests with tests of their own, run Checkov, Trivy and KICS on the same files, and handle exceptions and a baseline in the build | Checkov, Trivy, KICS |
-| 122 | [policy-as-code](advanced/infrastructure-as-code-security/policy-as-code) | Write a bank's deny-by-default deployment policy in Rego, test the policy and test its tests, and run it as an admission review and in the build with Conftest | OPA and Rego, Conftest |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 121 | [iac-scanning](advanced/infrastructure-as-code-security/iac-scanning) | With tools | Write eight rules for Kubernetes manifests with tests of their own, run Checkov, Trivy and KICS on the same files, and handle exceptions and a baseline in the build | Checkov, Trivy, KICS |
+| 122 | [policy-as-code](advanced/infrastructure-as-code-security/policy-as-code) | With tools | Write a bank's deny-by-default deployment policy in Rego, test the policy and test its tests, and run it as an admission review and in the build with Conftest | OPA and Rego, Conftest |
 
 ### 3. kubernetes-and-container-security
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 123 | [kubernetes-admission-control](advanced/kubernetes-and-container-security/kubernetes-admission-control) | Stop a bank's unsafe workloads at the door of a real Kubernetes cluster with Kyverno policies that validate, mutate, verify signed images and take exceptions | kind, Kyverno, cosign |
-| 124 | [kubernetes-network-policies](advanced/kubernetes-and-container-security/kubernetes-network-policies) | Default-deny a bank's pods on a real Kubernetes cluster, allow only what the design lists, and measure every pair of pods against the design | kind, kindnet |
-| 125 | [runtime-security](advanced/kubernetes-and-container-security/runtime-security) | Detect a shell, an unexpected write and an unexpected outbound connection in a bank's payments pod on a real Kubernetes cluster, with Falco's rules and the Linux audit trail | kind, Falco rules, Linux audit |
-| 126 | [kubernetes-secrets](advanced/kubernetes-and-container-security/kubernetes-secrets) | Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after encryption at rest, and how OpenBao and a bound token replace a long-lived secret | kind, OpenBao |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 123 | [kubernetes-admission-control](advanced/kubernetes-and-container-security/kubernetes-admission-control) | With tools | Stop a bank's unsafe workloads at the door of a real Kubernetes cluster with Kyverno policies that validate, mutate, verify signed images and take exceptions | kind, Kyverno, cosign |
+| 124 | [kubernetes-network-policies](advanced/kubernetes-and-container-security/kubernetes-network-policies) | With tools | Default-deny a bank's pods on a real Kubernetes cluster, allow only what the design lists, and measure every pair of pods against the design | kind, kindnet |
+| 125 | [runtime-security](advanced/kubernetes-and-container-security/runtime-security) | With tools | Detect a shell, an unexpected write and an unexpected outbound connection in a bank's payments pod on a real Kubernetes cluster, with Falco's rules and the Linux audit trail | kind, Falco rules, Linux audit |
+| 126 | [kubernetes-secrets](advanced/kubernetes-and-container-security/kubernetes-secrets) | With tools | Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after encryption at rest, and how OpenBao and a bound token replace a long-lived secret | kind, OpenBao |
 
 ### 4. devsecops-pipelines
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 127 | [sast](advanced/devsecops-pipelines/sast) | Write static analysis rules for a bank's Java code, compare a pattern rule with a taint rule, test the rules, and triage the findings with Semgrep | Semgrep |
-| 128 | [dast](advanced/devsecops-pipelines/dast) | Scan a running bank web application with OWASP ZAP, compare a passive, an anonymous and a logged-in scan with the flaws that were planted, and rescan the fixed version | OWASP ZAP |
-| 129 | [secret-scanning](advanced/devsecops-pipelines/secret-scanning) | Find a bank's secrets in the files and in the whole git history, compare a scanner you write with gitleaks, and block the next secret before it leaves the laptop | gitleaks, git hooks |
-| 130 | [secure-pipeline](advanced/devsecops-pipelines/secure-pipeline) | A release pipeline for a bank's Gradle library with reproducible builds, cosign signatures, SLSA-style provenance and gates that fail closed, and a deploy step that refuses forged releases | Gradle, cosign, trivy, gitleaks |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 127 | [sast](advanced/devsecops-pipelines/sast) | With tools | Write static analysis rules for a bank's Java code, compare a pattern rule with a taint rule, test the rules, and triage the findings with Semgrep | Semgrep |
+| 128 | [dast](advanced/devsecops-pipelines/dast) | With tools | Scan a running bank web application with OWASP ZAP, compare a passive, an anonymous and a logged-in scan with the flaws that were planted, and rescan the fixed version | OWASP ZAP |
+| 129 | [secret-scanning](advanced/devsecops-pipelines/secret-scanning) | With tools | Find a bank's secrets in the files and in the whole git history, compare a scanner you write with gitleaks, and block the next secret before it leaves the laptop | gitleaks, git hooks |
+| 130 | [secure-pipeline](advanced/devsecops-pipelines/secure-pipeline) | With tools | A release pipeline for a bank's Gradle library with reproducible builds, cosign signatures, SLSA-style provenance and gates that fail closed, and a deploy step that refuses forged releases | Gradle, cosign, trivy, gitleaks |
 
 ### 5. service-identity-and-zero-trust
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 131 | [mutual-tls-between-services](advanced/service-identity-and-zero-trust/mutual-tls-between-services) | Make a bank's services prove who they are with client certificates from a private CA, authorize by that identity and not by the network, and rotate short-lived certificates without downtime | JDK TLS, step-ca |
-| 132 | [service-mesh-mtls](advanced/service-identity-and-zero-trust/service-mesh-mtls) | Let a mesh give a bank's pods identities from their ServiceAccounts and encrypt every call, measure it on a real Linkerd cluster, and see what the mesh does not protect | kind, Linkerd |
-| 133 | [workload-identity](advanced/service-identity-and-zero-trust/workload-identity) | Replace a shared secret with SPIFFE IDs and short-lived SVIDs from a real SPIRE server and agent, between two Java services at a bank | SPIRE, java-spiffe |
-| 134 | [zero-trust-access](advanced/service-identity-and-zero-trust/zero-trust-access) | Put an identity-aware proxy in front of a bank's ledger API: every request is authenticated with a Keycloak token, authorized by OPA and written to an audit log, close to the resource | Keycloak, OPA |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 131 | [mutual-tls-between-services](advanced/service-identity-and-zero-trust/mutual-tls-between-services) | With tools | Make a bank's services prove who they are with client certificates from a private CA, authorize by that identity and not by the network, and rotate short-lived certificates without downtime | JDK TLS, step-ca |
+| 132 | [service-mesh-mtls](advanced/service-identity-and-zero-trust/service-mesh-mtls) | With tools | Let a mesh give a bank's pods identities from their ServiceAccounts and encrypt every call, measure it on a real Linkerd cluster, and see what the mesh does not protect | kind, Linkerd |
+| 133 | [workload-identity](advanced/service-identity-and-zero-trust/workload-identity) | With tools | Replace a shared secret with SPIFFE IDs and short-lived SVIDs from a real SPIRE server and agent, between two Java services at a bank | SPIRE, java-spiffe |
+| 134 | [zero-trust-access](advanced/service-identity-and-zero-trust/zero-trust-access) | With tools | Put an identity-aware proxy in front of a bank's ledger API: every request is authenticated with a Keycloak token, authorized by OPA and written to an audit log, close to the resource | Keycloak, OPA |
 
 ### 6. applied-cryptography-and-pki
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 135 | [certificate-lifecycle](advanced/applied-cryptography-and-pki/certificate-lifecycle) | Issue certificates from a private root and intermediate, revoke them with a CRL, an OCSP responder and a stapled response, replace them with short-lived certificates that step-ca renews, and watch what a missed renewal does | step-ca, OpenSSL |
-| 136 | [tls-attacks-and-downgrades](advanced/applied-cryptography-and-pki/tls-attacks-and-downgrades) | Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the weaknesses that were planted, watch a client fall back to TLS 1.0, read a recorded session with a leaked key, and check what TLS 1.3 removed | OpenSSL, testssl.sh |
-| 137 | [post-quantum-cryptography](advanced/applied-cryptography-and-pki/post-quantum-cryptography) | Use ML-KEM and ML-DSA from the JDK, combine X25519 with ML-KEM in a hybrid exchange, measure what the new sizes cost, and count where a bank's code still depends on RSA and elliptic curves | JDK 25, Bouncy Castle |
-| 138 | [crypto-agility](advanced/applied-cryptography-and-pki/crypto-agility) | Inventory the algorithms in a bank's code, store data in a versioned envelope, and rotate the algorithm and the key under 10,100 records without losing one | JDK 25 |
-| 139 | [hardware-backed-keys](advanced/applied-cryptography-and-pki/hardware-backed-keys) | Generate a bank's payment-signing key on a PKCS#11 token, sign with it from Java, try 5 ways to get the key out, and measure what the token does not protect against | SoftHSM, SunPKCS11 |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 135 | [certificate-lifecycle](advanced/applied-cryptography-and-pki/certificate-lifecycle) | With tools | Issue certificates from a private root and intermediate, revoke them with a CRL, an OCSP responder and a stapled response, replace them with short-lived certificates that step-ca renews, and watch what a missed renewal does | step-ca, OpenSSL |
+| 136 | [tls-attacks-and-downgrades](advanced/applied-cryptography-and-pki/tls-attacks-and-downgrades) | With tools | Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the weaknesses that were planted, watch a client fall back to TLS 1.0, read a recorded session with a leaked key, and check what TLS 1.3 removed | OpenSSL, testssl.sh |
+| 137 | [post-quantum-cryptography](advanced/applied-cryptography-and-pki/post-quantum-cryptography) | With tools | Use ML-KEM and ML-DSA from the JDK, combine X25519 with ML-KEM in a hybrid exchange, measure what the new sizes cost, and count where a bank's code still depends on RSA and elliptic curves | JDK 25, Bouncy Castle |
+| 138 | [crypto-agility](advanced/applied-cryptography-and-pki/crypto-agility) | Plain | Inventory the algorithms in a bank's code, store data in a versioned envelope, and rotate the algorithm and the key under 10,100 records without losing one | JDK 25 |
+| 139 | [hardware-backed-keys](advanced/applied-cryptography-and-pki/hardware-backed-keys) | With tools | Generate a bank's payment-signing key on a PKCS#11 token, sign with it from Java, try 5 ways to get the key out, and measure what the token does not protect against | SoftHSM, SunPKCS11 |
 
 ### 7. detection-engineering
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 140 | [detection-as-code](advanced/detection-engineering/detection-as-code) | Write a bank's detections as Sigma rules tagged with MITRE ATT&CK, test them against a week of labelled logs, hold each to a false-positive budget, and run the pySigma-converted queries in OpenSearch | Sigma, pySigma, OpenSearch |
-| 141 | [siem-basics](advanced/detection-engineering/siem-basics) | Collect a bank's web, database and host logs in three formats, normalize them into one shape and one clock, and correlate across sources to see an attack that no single source shows | Java |
-| 142 | [threat-hunting](advanced/detection-engineering/threat-hunting) | Hunt through a simulated week of a bank's logs with four hypotheses, judge the leads against what really happened, and turn the hunt that worked into a rule | Java |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 140 | [detection-as-code](advanced/detection-engineering/detection-as-code) | With tools | Write a bank's detections as Sigma rules tagged with MITRE ATT&CK, test them against a week of labelled logs, hold each to a false-positive budget, and run the pySigma-converted queries in OpenSearch | Sigma, pySigma, OpenSearch |
+| 141 | [siem-basics](advanced/detection-engineering/siem-basics) | Plain | Collect a bank's web, database and host logs in three formats, normalize them into one shape and one clock, and correlate across sources to see an attack that no single source shows | Java |
+| 142 | [threat-hunting](advanced/detection-engineering/threat-hunting) | Plain | Hunt through a simulated week of a bank's logs with four hypotheses, judge the leads against what really happened, and turn the hunt that worked into a rule | Java |
 
 ### 8. offensive-security-methodology
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 143 | [vulnerability-research](advanced/offensive-security-methodology/vulnerability-research) | Fuzz a bank's statement reader with Jazzer, take the crashes to their root causes, fix them, prove the fix, and write the advisory with a coordinated disclosure timeline | Jazzer, CVSS 3.1 |
-| 144 | [reverse-engineering-fundamentals](advanced/offensive-security-methodology/reverse-engineering-fundamentals) | Read a bank client's class files with the JDK's class file API, javap and the CFR decompiler, find a hard-coded key, patch a licence check, and see what obfuscation does and does not stop | javap, CFR, the JDK class file API |
-| 145 | [malware-analysis-fundamentals](advanced/offensive-security-methodology/malware-analysis-fundamentals) | Triage harmless, purpose-built samples with hashes, strings, entropy and YARA rules, and run one in a disposable container to see what a sandbox stops | YARA, a disposable container |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 143 | [vulnerability-research](advanced/offensive-security-methodology/vulnerability-research) | With tools | Fuzz a bank's statement reader with Jazzer, take the crashes to their root causes, fix them, prove the fix, and write the advisory with a coordinated disclosure timeline | Jazzer, CVSS 3.1 |
+| 144 | [reverse-engineering-fundamentals](advanced/offensive-security-methodology/reverse-engineering-fundamentals) | With tools | Read a bank client's class files with the JDK's class file API, javap and the CFR decompiler, find a hard-coded key, patch a licence check, and see what obfuscation does and does not stop | javap, CFR, the JDK class file API |
+| 145 | [malware-analysis-fundamentals](advanced/offensive-security-methodology/malware-analysis-fundamentals) | With tools | Triage harmless, purpose-built samples with hashes, strings, entropy and YARA rules, and run one in a disposable container to see what a sandbox stops | YARA, a disposable container |
 
 ### 9. resilience-and-recovery
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 146 | [ransomware-resilience](advanced/resilience-and-recovery/ransomware-resilience) | Keep a bank's ledger backups where an attacker with the backup credentials cannot destroy them: object lock, separate credentials, a second store, a guard against poisoned backups, and a restore exercise with a recovery time and point | RustFS object lock, AWS SDK |
-| 147 | [security-chaos-engineering](advanced/resilience-and-recovery/security-chaos-engineering) | Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told | Toxiproxy |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 146 | [ransomware-resilience](advanced/resilience-and-recovery/ransomware-resilience) | With tools | Keep a bank's ledger backups where an attacker with the backup credentials cannot destroy them: object lock, separate credentials, a second store, a guard against poisoned backups, and a restore exercise with a recovery time and point | RustFS object lock, AWS SDK |
+| 147 | [security-chaos-engineering](advanced/resilience-and-recovery/security-chaos-engineering) | With tools | Inject failures into the security controls of a bank payments service with Toxiproxy and check that they fail closed and that somebody is told | Toxiproxy |
 
 ### 10. governance-risk-and-compliance
 
-| # | Project | You learn | Tools |
-| ---: | --- | --- | --- |
-| 148 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation |
-| 149 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports |
-| 150 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs |
-| 151 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL |
+| # | Project | Kind | You learn | Tools |
+| ---: | --- | --- | --- | --- |
+| 148 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Plain | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation |
+| 149 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | With tools | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports |
+| 150 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | With tools | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs |
+| 151 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | With tools | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL |
 
 ## Other pages
 

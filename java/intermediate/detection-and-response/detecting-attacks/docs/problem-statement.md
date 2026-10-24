@@ -2,7 +2,7 @@
 
 ## The scenario
 
-A company logs every sign-in and admin change, and has no one who reads the logs. It wants alerts for the attacks that matter and few enough that they will be read.
+A bank logs every sign-in and admin change, and has no one who reads the logs. It wants alerts for the attacks that matter and few enough that they will be read.
 
 ## The naive version
 

@@ -27,7 +27,7 @@ public class PrivacyEngineeringDemo {
             out.append("rows alone in their group on postcode, birth date and gender: " + pct(Anonymity.shareBelow(pg, "customers", Anonymity.FULL, 2)) + ", in a group of fewer than 5: " + pct(Anonymity.shareBelow(pg, "customers", Anonymity.FULL, 5)) + "\n");
             out.append("with the postcode cut to 3 digits and the birth date to its decade: alone " + pct(Anonymity.shareBelow(pg, "customers", Anonymity.COARSE, 2)) + ", in a group of fewer than 5: " + pct(Anonymity.shareBelow(pg, "customers", Anonymity.COARSE, 5)) + "\n");
             out.append("smallest group: " + Anonymity.smallest(pg, "customers", Anonymity.FULL) + " before, " + Anonymity.smallest(pg, "customers", Anonymity.COARSE) + " after\n");
-            out.append("an outside list names 70% of the customers with those three values: named from the published rows: " + Anonymity.namedFromOutside(pg, Anonymity.FULL, 7) + " with the full values, " + Anonymity.namedFromOutsideCoarse(pg, 7) + " with the coarse ones\n");
+            out.append("an outside list names 70% of the customers with those three values: named from the published rows: " + Anonymity.namedFromOutside(pg, 7) + " with the full values, " + Anonymity.namedFromOutsideCoarse(pg, 7) + " with the coarse ones\n");
 
             out.append("--- pseudonyms for analytics\n");
             Pseudonyms pseudonyms = new Pseudonyms("analytics-key-one");

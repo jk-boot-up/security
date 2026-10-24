@@ -1,10 +1,10 @@
 # Threat Model — Linux Hardening Checker
 
-A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: a Linux server image.
+A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: the online store's Linux server image.
 
 ## Scope
 
-The configuration of a Linux server image: file permissions, accounts, the SSH daemon, kernel parameters and listening ports.
+The configuration of the online store's Linux server image: file permissions, accounts, the SSH daemon, kernel parameters and listening ports.
 It does not cover software vulnerabilities, application code, or the hypervisor and network around the host.
 
 ## What we protect (assets)

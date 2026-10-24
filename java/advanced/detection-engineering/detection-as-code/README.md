@@ -146,4 +146,4 @@ A very small team with one log source can start with a few rules in the SIEM. Us
 
 ## Where this sits
 
-This is a project of the [detection-engineering](..) module. It uses the ideas of [privacy-engineering](../../privacy-and-data-protection/privacy-engineering) only in that it measures against a labelled truth, as [sast](../../devsecops-pipelines/sast) does.
+This is a project of the [detection-engineering](..) module. It uses the ideas of [privacy-engineering](../../governance-risk-and-compliance/privacy-engineering) only in that it measures against a labelled truth, as [sast](../../devsecops-pipelines/sast) does.

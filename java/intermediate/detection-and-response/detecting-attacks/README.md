@@ -10,7 +10,7 @@ src/main/java/com/jk/explore/security/detect/
 ├── ImpossibleTravelRule.java  Two successful logins by one account from places an aeroplane could not connect in the time between them
 ├── PrivilegeChangeRule.java   Granting the admin role is rare and always approved: alert when the actor is not an approver, or when the grant has no change ticket
 ├── Rule.java                  A detection rule: reads the whole log, in time order, and returns alerts
-├── Scenario.java              One synthetic Monday for a company with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
+├── Scenario.java              One synthetic Monday for a bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
 ├── Score.java                 How a rule did against the ground truth: alerts, true and false positives, and which attacks it noticed at all
 ├── SprayingRule.java          Password spraying tries one or two common passwords against <em>many</em> accounts, staying under the per-account limit that the brute-force rule watches
 └── TakeoverRule.java          A success right after a run of failures, from an address that has never succeeded for this account before: the guesses worked
@@ -18,7 +18,7 @@ src/main/java/com/jk/explore/security/detect/
 
 **Logs only help if rules turn them into alerts: brute force, password spraying, impossible travel, takeover and privilege changes each need a rule, and each rule must be measured against a normal day of the same logs, because a threshold that catches the attack and buries the analyst in false alarms is not detection.**
 
-Logging records what happened. **Detection** decides which of it is an attack. The two are different jobs: a log with every event and no rules is a library no one reads. This project writes five **detection rules** over the sign-in and admin events of a company with 200 accounts, runs them on one
+Logging records what happened. **Detection** decides which of it is an attack. The two are different jobs: a log with every event and no rules is a library no one reads. This project writes five **detection rules** over the sign-in and admin events of a bank with 200 accounts, runs them on one
 synthetic Monday that contains both ordinary behaviour and four real attacks, and *measures* them, because a rule is only as good as the alerts it produces on a normal day.
 
 The rules, each a hypothesis about an attacker:
@@ -39,7 +39,7 @@ The guard's value is the alarms people act on, not the doors watched.
 
 ## The scenario
 
-One Monday of logs for a company with 200 accounts: 768 logins and 4 role grants, 113 events of which belong to four attacks (spraying, brute force, impossible travel, privilege change). The data is synthetic and generated with a fixed random seed, so every run is the same and the ground truth is known.
+One Monday of logs for a bank with 200 accounts: 768 logins and 4 role grants, 113 events of which belong to four attacks (spraying, brute force, impossible travel, privilege change). The data is synthetic and generated with a fixed random seed, so every run is the same and the ground truth is known.
 
 ## Run
 

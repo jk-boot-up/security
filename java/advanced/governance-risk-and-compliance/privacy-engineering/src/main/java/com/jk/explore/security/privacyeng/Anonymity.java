@@ -28,7 +28,7 @@ public final class Anonymity {
      * How many of the people on an outside list (a name with the three values) are found in the published rows as the only row with their values:
      * the people who can be named from data that has no names.
      */
-    public static long namedFromOutside(Pg pg, String columns, int outsideShare) throws SQLException {
+    public static long namedFromOutside(Pg pg, int outsideShare) throws SQLException {
         return pg.count("SELECT count(*) FROM customers c WHERE c.id % 10 < ? AND (SELECT count(*) FROM customers o WHERE (o.postcode, o.birth_date, o.gender) = (c.postcode, c.birth_date, c.gender)) = 1", outsideShare);
     }
 

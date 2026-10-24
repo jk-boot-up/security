@@ -1,11 +1,11 @@
 # Threat Model — Detecting Attacks in Logs
 
-A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: a company's sign-in and admin logs.
+A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: a bank's sign-in and admin logs.
 
 ## Scope
 
 Rules that read sign-in and admin events. It covers detecting credential attacks and privilege changes and the cost of false alarms.
-It does not cover how logs are collected and protected, or what the company does after an alert.
+It does not cover how logs are collected and protected, or what the bank does after an alert.
 
 ## What we protect (assets)
 

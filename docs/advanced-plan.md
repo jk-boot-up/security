@@ -40,25 +40,25 @@ The conventions are the same as in the other tracks:
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
 | 6 | `kubernetes-admission-control` | Blocking privileged pods, unsigned images and missing limits at admission | kind, Kyverno |
-| 7 | `kubernetes-network-policies` | Default-deny traffic between namespaces and pods, and testing it | kind, Calico or Cilium |
-| 8 | `runtime-security` | Detecting a shell in a container, unexpected writes and outbound connections | kind, Falco |
+| 7 | `kubernetes-network-policies` | Default-deny traffic between namespaces and pods, and testing it | kind, kindnet (its built-in NetworkPolicy enforcement; Calico/Cilium not needed) |
+| 8 | `runtime-security` | Detecting a shell in a container, unexpected writes and outbound connections | kind, Falco rules (validated), and the Linux audit trail for detection (Docker Desktop's kernel has no BTF, so Falco's eBPF driver cannot start) |
 | 9 | `kubernetes-secrets` | Why base64 is not encryption; encryption at rest, external secrets and short-lived tokens | kind, OpenBao |
 
 ### 4. devsecops-pipelines
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 10 | `sast` | Static analysis: how taint tracking finds injection, writing a custom rule, triage | Semgrep, CodeQL CLI |
+| 10 | `sast` | Static analysis: how taint tracking finds injection, writing a custom rule, triage | Semgrep (CodeQL CLI not used) |
 | 11 | `dast` | Scanning the running intermediate store, authenticated scans, and reading a report | OWASP ZAP |
 | 12 | `secret-scanning` | Finding secrets in history and blocking them before push | gitleaks, pre-commit hooks |
-| 13 | `secure-pipeline` | A local pipeline with signed, reproducible builds, provenance and gates that fail closed | Gradle, cosign, SLSA provenance, a local Gitea and Woodpecker CI |
+| 13 | `secure-pipeline` | A local pipeline with signed, reproducible builds, provenance and gates that fail closed | Gradle, cosign, trivy, gitleaks and SLSA-style provenance, run as Java stages over real git (no Gitea or Woodpecker) |
 
 ### 5. service-identity-and-zero-trust
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 14 | `mutual-tls-between-services` | Client certificates for service-to-service calls, authorization by identity, and rotation | Spring Boot, step-ca |
+| 14 | `mutual-tls-between-services` | Client certificates for service-to-service calls, authorization by identity, and rotation | JDK TLS and step-ca (plain JDK sockets rather than Spring Boot) |
 | 15 | `service-mesh-mtls` | Mesh-issued identities and automatic mTLS, and what the mesh does not protect | kind, Linkerd |
 | 16 | `workload-identity` | SPIFFE IDs and short-lived SVIDs instead of shared secrets | SPIRE |
-| 17 | `zero-trust-access` | Every request authenticated, authorized and logged, close to the resource; an identity-aware proxy | Keycloak, OPA, Envoy or oauth2-proxy |
+| 17 | `zero-trust-access` | Every request authenticated, authorized and logged, close to the resource; an identity-aware proxy | Keycloak, OPA and a small Java identity-aware proxy (rather than Envoy or oauth2-proxy) |
 
 ### 6. applied-cryptography-and-pki
 | # | Project | What it teaches | Tools |
@@ -66,34 +66,34 @@ The conventions are the same as in the other tracks:
 | 18 | `certificate-lifecycle` | Issuance, OCSP and CRLs, stapling, short-lived certificates and automated rotation, and the outages that missed renewals cause | step-ca, OpenSSL |
 | 19 | `tls-attacks-and-downgrades` | Downgrades, weak key exchange, and why TLS 1.3 removed what it removed, shown on deliberately weak local servers | OpenSSL, testssl.sh |
 | 20 | `post-quantum-cryptography` | ML-KEM and ML-DSA in the JDK, hybrid key exchange, and planning a migration | JDK 25, Bouncy Castle |
-| 21 | `crypto-agility` | Inventorying algorithms, versioned formats and rotating an algorithm without losing data | JDK 25, Tink |
+| 21 | `crypto-agility` | Inventorying algorithms, versioned formats and rotating an algorithm without losing data | JDK 25 (Tink not needed) |
 | 22 | `hardware-backed-keys` | Keys that never leave a token; signing with PKCS#11 | SoftHSM, the JDK PKCS#11 provider |
 
 ### 7. detection-engineering
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
 | 23 | `detection-as-code` | Sigma rules mapped to ATT&CK, tested against recorded logs, with false-positive budgets | Sigma, pySigma, OpenSearch |
-| 24 | `siem-basics` | Collecting, normalizing and correlating events from the store, the database and the hosts | Wazuh or OpenSearch Security Analytics |
-| 25 | `threat-hunting` | Hypothesis-driven hunts over a week of simulated activity | OpenSearch, Jupyter |
+| 24 | `siem-basics` | Collecting, normalizing and correlating events from the store, the database and the hosts | Java: a self-contained parser and correlator (rather than Wazuh or OpenSearch) |
+| 25 | `threat-hunting` | Hypothesis-driven hunts over a week of simulated activity | Java: a self-contained hunt (rather than OpenSearch or Jupyter) |
 
 ### 8. offensive-security-methodology
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
 | 26 | `vulnerability-research` | From a crash found by fuzzing to a root cause, a patch and an advisory, with coordinated disclosure | Jazzer, a debugger |
-| 27 | `reverse-engineering-fundamentals` | Reading Java bytecode and a decompiled jar, finding a hard-coded key, and obfuscation's limits | javap, CFR, Ghidra |
+| 27 | `reverse-engineering-fundamentals` | Reading Java bytecode and a decompiled jar, finding a hard-coded key, and obfuscation's limits | javap, CFR and the JDK class file API (rather than Ghidra) |
 | 28 | `malware-analysis-fundamentals` | Static triage of a harmless, purpose-built sample: strings, hashes, YARA rules and sandbox safety | YARA, a disposable container |
 
 ### 9. resilience-and-recovery
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
-| 29 | `ransomware-resilience` | Immutable backups, isolated recovery, and a timed restore exercise | RustFS object lock, OpenTofu |
-| 30 | `security-chaos-engineering` | Injecting failures into security controls and checking that they fail closed and alert | Toxiproxy, the intermediate store |
+| 29 | `ransomware-resilience` | Immutable backups, isolated recovery, and a timed restore exercise | RustFS object lock and the AWS SDK (rather than OpenTofu) |
+| 30 | `security-chaos-engineering` | Injecting failures into security controls and checking that they fail closed and alert | Toxiproxy and a payments service of its own (rather than the intermediate store) |
 
 ### 10. governance-risk-and-compliance
 | # | Project | What it teaches | Tools |
 | ---: | --- | --- | --- |
 | 31 | `risk-management` | A risk register with quantified risk (FAIR-style ranges), treatment decisions and residual risk | Java, Monte Carlo simulation |
-| 32 | `controls-and-evidence` | Mapping controls to NIST CSF 2.0 and ISO 27001, and collecting evidence automatically from tests | Java, the earlier projects' tests |
+| 32 | `controls-and-evidence` | Mapping controls to NIST CSF 2.0 and ISO 27001, and collecting evidence automatically from tests | Java and JUnit report fixtures (rather than the earlier projects' live tests) |
 | 33 | `security-architecture-review` | Reviewing a design: trust boundaries, data flows, and decision records | Structurizr (C4), ADRs |
 | 34 | `privacy-engineering` | Data minimization, pseudonymization, retention and subject access in a bank's data model | Java, PostgreSQL |
 

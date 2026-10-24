@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Two successful logins by one account from places an aeroplane could not connect in the time between them. Addresses on the {@code knownEgress} list (the company VPN)
+ * Two successful logins by one account from places an aeroplane could not connect in the time between them. Addresses on the {@code knownEgress} list (the bank VPN)
  * are skipped, because they show the VPN's city and not the person's.
  */
 public final class ImpossibleTravelRule implements Rule {

@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.SplittableRandom;
 
 /**
- * One synthetic Monday for a company with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a
+ * One synthetic Monday for a bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a
  * holiday, ticketed admin grants and one break-glass grant, and four real attacks. The random generator is seeded, so every run is the same.
  */
 public final class Scenario {
@@ -72,7 +72,7 @@ public final class Scenario {
             }
             log.add(Event.login(at(9, 13, 0), user(i), homeIp(i), home(i), true, null));
         }
-        // five New York staff work through the company VPN, which shows as Frankfurt
+        // five New York staff work through the bank VPN, which shows as Frankfurt
         for (int i = 20; i <= 24; i++) {
             log.add(Event.login(at(8, 0, i), user(i), homeIp(i), City.NEW_YORK, true, null));
             log.add(Event.login(at(8, 30, i), user(i), VPN_EGRESS, City.FRANKFURT, true, null));
