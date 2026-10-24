@@ -18,7 +18,7 @@ Chapters:
 00:00 Introduction
 01:35 The Scenario
 02:02 Act One — A build that works
-02:18 Act Two — Somebody registers the company's package name in the public registry
+02:18 Act Two — Somebody registers the online store's package name in the public registry
 02:41 Act Three — Repository order helps only until a name is missing
 03:11 Act Four — Names decide where a package may come from
 03:37 Act Five — Locked digests, and watching the names

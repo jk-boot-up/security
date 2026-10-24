@@ -46,9 +46,9 @@ public class DepConfusionDemo {
         good.installed().forEach(lock::record);
         out.append("the lockfile records ").append(lock.size()).append(" dependencies with their digests\n");
 
-        out.append("\n== 2. Somebody registers the company's package name in the public registry ==\n");
+        out.append("\n== 2. Somebody registers the online store's package name in the public registry ==\n");
         open.publish(Artifact.of("shop-pricing", "99.0.0", "looks like a pricing library").withInstallScript(ATTACK));
-        open.publish(Artifact.of("shop-newlib", "1.0.0", "a name the company has not published yet").withInstallScript(ATTACK));
+        open.publish(Artifact.of("shop-newlib", "1.0.0", "a name the online store has not published yet").withInstallScript(ATTACK));
         out.append("the highest version in any repository wins:\n");
         show(out, new Build(new HighestVersionResolver(), repos).run(dependencies()));
 

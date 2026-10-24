@@ -19,12 +19,12 @@ src/main/java/com/jk/explore/security/depconf/
 └── VersionRange.java              An allowed range of versions: {@code [from, below)}
 ```
 
-**A build that asks several repositories for a package, takes the highest version, or falls through to a public repository when the private one lacks a name, will run an attacker's package registered under the company's internal name; let names decide which repository may supply them, lock exact digests, and watch for your names in public.**
+**A build that asks several repositories for a package, takes the highest version, or falls through to a public repository when the private one lacks a name, will run an attacker's package registered under the online store's internal name; let names decide which repository may supply them, lock exact digests, and watch for your names in public.**
 
-A company writes internal libraries (`shop-pricing`, `shop-audit`) and publishes them to its **private repository**. Its builds also fetch open-source libraries from a **public registry**. Both are configured as sources. Now somebody who has never seen the company's code, only the *names* (in a leaked
+An online store writes internal libraries (`shop-pricing`, `shop-audit`) and publishes them to its **private repository**. Its builds also fetch open-source libraries from a **public registry**. Both are configured as sources. Now somebody who has never seen the online store's code, only the *names* (in a leaked
 `package.json`, a public repository, a job posting), registers `shop-pricing` version 99.0.0 in the public registry, with an **install script** that sends the build machine's environment, including its secrets, to the attacker's server.
 
-Whether the company's next build installs it depends on how its tool chooses between repositories. That is **dependency confusion** (or *namespace confusion*, a supply chain attack disclosed in 2021 that hit dozens of large companies). This project simulates the tools' rules and the fixes:
+Whether the online store's next build installs it depends on how its tool chooses between repositories. That is **dependency confusion** (or *namespace confusion*, a supply chain attack disclosed in 2021 that hit dozens of large companies). This project simulates the tools' rules and the fixes:
 
 - **Highest version wins** across all repositories: the attacker's 99.0.0 beats the real 1.4.2. (Several tools behave like this; pip with an extra index is the famous one.)
 - **Repository order:** the private repository first protects names it has, but a **new internal library** that has not been published yet, or a misconfigured order, falls through to the public registry. And an attacker can copy an **exact version number**.
@@ -36,12 +36,12 @@ Whether the company's next build installs it depends on how its tool chooses bet
 
 ## The idea in everyday terms
 
-A company mailroom is told "get the pricing binder" and asks every supplier in town; the supplier with the highest edition number wins. A prankster prints a binder titled Pricing with edition 99, and the mailroom puts it on the CEO's desk. The fix is a rule that names starting with the company's name
-are only ever fetched from the company's own shelves, and a record of the exact binder that was approved.
+An online store mailroom is told "get the pricing binder" and asks every supplier in town; the supplier with the highest edition number wins. A prankster prints a binder titled Pricing with edition 99, and the mailroom puts it on the CEO's desk. The fix is a rule that names starting with the online store's name
+are only ever fetched from the online store's own shelves, and a record of the exact binder that was approved.
 
 ## The scenario
 
-A company's build needs `json-lib` (public), `shop-pricing` and `shop-audit` (internal). The demo has a private and a public repository, five resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.
+An online store's build needs `json-lib` (public), `shop-pricing` and `shop-audit` (internal). The demo has a private and a public repository, five resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.
 
 ## Run
 
@@ -54,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 | Act | What it shows |
 | --- | --- |
 | 1. A build that works | The build gets json-lib from the public registry and the two internal libraries from the private repository, and records their digests in a lockfile. |
-| 2. Somebody registers the company's package name in the public registry | With highest-version-wins across repositories, shop-pricing 99.0.0 from the public registry is installed and its install script runs on the build machine. |
+| 2. Somebody registers the online store's package name in the public registry | With highest-version-wins across repositories, shop-pricing 99.0.0 from the public registry is installed and its install script runs on the build machine. |
 | 3. Repository order helps only until a name is missing | With the private repository first, existing names are safe; but a new internal library falls through to the public registry, and with the public registry first an attacker's copy of an exact version number wins. |
 | 4. Names decide where a package may come from | With content filtering, internal names come only from the private repository and the missing library is a build error, not an install; public names never go to the private repository. |
 | 5. Locked digests, and watching the names | The lockfile rejects the squatted shop-pricing even under highest-version-wins, and rejects a changed artifact with the same version number; a name watch lists the shadowed internal names. |

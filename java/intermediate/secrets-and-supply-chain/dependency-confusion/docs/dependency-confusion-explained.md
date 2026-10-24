@@ -10,15 +10,15 @@ A build must decide by name which repository may supply a package, fail closed w
 
 json-lib 2.0.1 comes from the public registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from the private repository. A lockfile records the three versions with their SHA-256 digests. Everything is as intended, and nothing yet shows the danger.
 
-### 2. Somebody registers the company's package name in the public registry
+### 2. Somebody registers the online store's package name in the public registry
 
-The attacker registers shop-pricing 99.0.0 (and shop-newlib 1.0.0, a name the company has not published yet) in the public registry, each with an install script. A build that asks every repository and takes the highest version in range, for a requirement written as "at least 1.0", installs
+The attacker registers shop-pricing 99.0.0 (and shop-newlib 1.0.0, a name the online store has not published yet) in the public registry, each with an install script. A build that asks every repository and takes the highest version in range, for a requirement written as "at least 1.0", installs
 the attacker's package: "INSTALL SCRIPT RAN" on the build machine, which holds the CI secrets, signing keys and deployment credentials.
 
 ### 3. Repository order helps only until a name is missing
 
 Asking the repositories in order and taking the first that has the package fixes the version race: shop-pricing 1.4.2 comes from the private repository. But shop-newlib, an internal library that is not in the private repository yet, falls through to the public registry and the attacker's script runs.
-And in a configuration with the public registry first, the attacker copies the exact version number the company pinned (shop-audit 3.1.0), and the pin does not help: the attacker's copy comes first.
+And in a configuration with the public registry first, the attacker copies the exact version number the online store pinned (shop-audit 3.1.0), and the pin does not help: the attacker's copy comes first.
 
 ### 4. Names decide where a package may come from
 

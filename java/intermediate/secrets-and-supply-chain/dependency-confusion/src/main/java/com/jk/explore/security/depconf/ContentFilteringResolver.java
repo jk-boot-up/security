@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * The fix for the names: each repository declares which package names it may supply. Names that belong to the company are looked up in the company's
+ * The fix for the names: each repository declares which package names it may supply. Names that belong to the online store are looked up in the online store's
  * repository <em>only</em>, and never fall through to the public one; everything else is looked up in the public one. (Gradle calls this exclusive content.)
  */
 public final class ContentFilteringResolver implements Resolver {

@@ -1,6 +1,6 @@
 # Threat Model — Dependency Confusion
 
-A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: a company's build pipeline.
+A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store's build pipeline.
 
 ## Scope
 
@@ -14,7 +14,7 @@ It does not cover typosquatting of public names, or a compromised maintainer of 
 
 ## Who and what acts on the system
 
-- The company's developers and CI.
+- The online store's developers and CI.
 - An attacker who can publish to the public registry and knows the names of internal packages.
 
 ## Trust boundaries

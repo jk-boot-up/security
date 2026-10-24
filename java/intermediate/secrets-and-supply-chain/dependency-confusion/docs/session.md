@@ -15,7 +15,7 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A build that works | 7 min |
-| 0:17 | Act 2: Somebody registers the company's package name in the public registry | 7 min |
+| 0:17 | Act 2: Somebody registers the online store's package name in the public registry | 7 min |
 | 0:24 | Act 3: Repository order helps only until a name is missing | 7 min |
 | 0:31 | Act 4: Names decide where a package may come from | 7 min |
 | 0:38 | Act 5: Locked digests, and watching the names | 7 min |

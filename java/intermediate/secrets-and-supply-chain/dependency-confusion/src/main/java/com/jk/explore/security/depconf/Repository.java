@@ -3,7 +3,7 @@ package com.jk.explore.security.depconf;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A place packages are published to. Anyone can publish to a public repository; only the company can publish to its private one. */
+/** A place packages are published to. Anyone can publish to a public repository; only the online store can publish to its private one. */
 public final class Repository {
 
     private final String name;

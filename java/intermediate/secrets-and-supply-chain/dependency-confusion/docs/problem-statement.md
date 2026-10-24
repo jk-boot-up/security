@@ -2,7 +2,7 @@
 
 ## The scenario
 
-A company's CI build pulls internal libraries from a private repository and open-source libraries from a public registry, and runs install scripts.
+An online store's CI build pulls internal libraries from a private repository and open-source libraries from a public registry, and runs install scripts.
 
 ## The naive version
 
