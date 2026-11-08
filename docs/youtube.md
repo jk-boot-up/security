@@ -1,6 +1,6 @@
 # Security in Java — YouTube Uploads
 
-**41 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
+**44 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
 
 Every video is reviewed for technical accuracy before it is uploaded; a correction is made in the project's `concept.toml` (and code, if the demo printed it), the video is rebuilt, and the fix is checked in the captions. Videos go up in the order of the [learning path](../java/learning-path.md), so each playlist lists them in learning order.
 
@@ -19,9 +19,9 @@ Every video is checked as YouTube serves it before it goes public: each slide's 
 | Level | On YouTube | Reviewed | Projects |
 | --- | ---: | ---: | ---: |
 | Beginner | 41 | 41 | 41 |
-| Intermediate | 0 | 15 | 76 |
+| Intermediate | 3 | 15 | 76 |
 | Advanced | 0 | 0 | 34 |
-| **All** | **41** | **56** | **151** |
+| **All** | **44** | **56** | **151** |
 
 ## Playlists
 
@@ -42,8 +42,8 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | TLS and Certificates in Java - With Tools | 4 | 4 |
 | Safe Habits in Java - Without Tools | 3 | 3 |
 | Safe Habits in Java - With Tools | 5 | 5 |
-| Web Security in Java - Without Tools | 0 | 8 |
-| Web Security in Java - With Tools | 0 | 7 |
+| Web Security in Java - Without Tools | 2 | 8 |
+| Web Security in Java - With Tools | 1 | 7 |
 | Secure Configuration in Java - Without Tools | 0 | 2 |
 | Secure Configuration in Java - With Tools | 0 | 2 |
 | API Security in Java - Without Tools | 0 | 4 |
@@ -183,7 +183,7 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | Module | Without tools | With tools | On YouTube | Projects |
 | --- | ---: | ---: | ---: | ---: |
-| [Web security](#web-security) | 8 | 7 | 0 | 15 |
+| [Web security](#web-security) | 8 | 7 | 3 | 15 |
 | [Secure configuration](#secure-configuration) | 2 | 2 | 0 | 4 |
 | [Api security](#api-security) | 4 | 3 | 0 | 7 |
 | [Identity and access](#identity-and-access) | 6 | 6 | 0 | 12 |
@@ -200,9 +200,9 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 42 | [Broken Access Control in Java (IDOR, BOLA, Deny by Default) - OWASP A01](../java/intermediate/web-security/broken-access-control/README.md) | Without tools | ok | — | to upload |
-| 43 | [Broken Access Control with Spring Security (Deny by Default, BOLA, Route Inventory) - OWASP A01](../java/intermediate/web-security/broken-access-control-with-spring-security/README.md) | With tools | ok | — | to upload |
-| 44 | [SQL Injection and Its Defences in Java](../java/intermediate/web-security/sql-injection/README.md) | Without tools | ok | — | to upload |
+| 42 | [Broken Access Control in Java (IDOR, BOLA, Deny by Default) - OWASP A01](../java/intermediate/web-security/broken-access-control/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/7tARXr10wdU) |
+| 43 | [Broken Access Control with Spring Security (Deny by Default, BOLA, Route Inventory) - OWASP A01](../java/intermediate/web-security/broken-access-control-with-spring-security/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/UvxR-mH6g-s) |
+| 44 | [SQL Injection and Its Defences in Java](../java/intermediate/web-security/sql-injection/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/98SbOdoLFyE) |
 | 45 | [SQL Injection in Hibernate: JPQL, Native Queries and PostgreSQL Least Privilege](../java/intermediate/web-security/sql-injection-with-hibernate-and-postgres/README.md) | With tools | ok | — | to upload |
 | 46 | [Cross-Site Scripting (XSS) in Java: Output Encoding and a Strict CSP](../java/intermediate/web-security/cross-site-scripting/README.md) | Without tools | ok | — | to upload |
 | 47 | [XSS Defences in Spring Boot: Thymeleaf Escaping and a Nonce-Based CSP](../java/intermediate/web-security/cross-site-scripting-with-spring-boot/README.md) | With tools | ok | — | to upload |
