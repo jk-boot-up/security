@@ -56,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Walking order numbers | Signed in as ana, the numbers 1000 to 1010 return 4 orders, 2 of them other customers'; ben's gift order with an unguessable id opens too, because it was shared. |
-| 2. Routes that nobody checks | The page hides the admin links, but ana's hand-made refund succeeds; a report nobody links to opens signed out; GET /admin/users is checked and DELETE is not. |
-| 3. Sideways and upwards | Ana redirects ben's order to her address (sideways) and issues a refund (upwards); of nine attacks, 7 succeed through 5 of 9 routes; the one careful route refuses her. |
-| 4. One choke point, deny by default | The same handlers behind one policy: 0 of 9 attacks succeed, 6 of 6 honest requests still work, someone else's order answers 404, and 9 refusals are logged with no token. |
-| 5. Keeping it right, and the bill | A new route without a rule is caught by the route inventory test and refused even to the admin; the rules hold over real HTTP; the bill is one table to keep complete and an ownership lookup per request. |
+| 1. Walking order numbers | Signed in as ana, the numbers 1000 to 1010 return 4 orders, 2 of them other customers' (1002 ben, 1004 cara); ben's gift order with an unguessable id opens too. |
+| 2. Routes that nobody checks | The page hides the admin links, but ana's hand-made refund succeeds; a report nobody links to opens signed out; GET /admin/users is refused and DELETE /admin/users/ben is not. |
+| 3. Sideways and upwards | Ana redirects ben's order to 12 Palm Street (sideways) and issues a refund (upwards); of nine attacks, 7 succeed through 5 of 9 routes, and only the careful DELETE /orders/{id} refuses her. |
+| 4. One choke point, deny by default | The same handlers behind one policy: 0 of 9 attacks succeed, 6 of 6 honest requests still work, someone else's order answers 404 like a missing one, and 9 refusals are logged with no token. |
+| 5. Keeping it right, and the bill | A new route without a rule is listed by the route inventory test and fails the build; even the admin is refused until it has one; the same rules hold over real HTTP; the bill is one table to keep complete. |
 
 ## Test
 

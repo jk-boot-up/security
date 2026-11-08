@@ -38,7 +38,7 @@ def stage_video(project, settings, opts):
         wav = b / ("%s.wav" % key)
         frames = audio.prepare_scene(tts_dir / (key + ".wav"), wav, settings.tail_pad, settings.fps)
         clip = b / ("scene-%s.mp4" % key)
-        video.slide_clip(b / (key + ".png"), frames, settings.fps, clip)
+        video.slide_clip(b / (key + ".png"), frames, settings.fps, clip, settings.crf)
         clips.append(clip.name), wavs.append(wav.name)
         durations[key] = frames / settings.fps
 

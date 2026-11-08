@@ -16,15 +16,15 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A standard signed message: CMS SignedData | 7 min |
-| 0:17 | Act 2: ECDSA: the nonce that must never repeat | 7 min |
-| 0:24 | Act 3: EdDSA: Ed25519 and Ed448 | 7 min |
+| 0:17 | Act 2: How an ECDSA signature is made, step by step | 7 min |
+| 0:24 | Act 3: The nonce that must never repeat | 7 min |
 | 0:31 | Act 4: A compact signed token: JWS | 7 min |
 | 0:38 | Act 5: Text armor, and the bill | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Start with the notary's stamp. Run the demo one act at a time. After act one, ask what the certificate in the message proves and what it cannot. After act two, ask why Ed25519 has no such risk. After act four, ask what the attacker gains from alg none. Finish with the bill: how would the bank prove who owns the key?
+Start with the notary's stamp. Run the demo one act at a time. After act one, ask what the certificate in the message proves and what it cannot. After act two, ask why the public key is enough to check. After act three, ask why Ed25519 has no nonce risk. After act four, ask what the attacker gains from alg none. Finish with the bill: how would the bank prove who owns the key?
 
 ## Exercises
 

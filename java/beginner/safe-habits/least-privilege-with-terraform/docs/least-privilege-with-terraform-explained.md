@@ -8,28 +8,35 @@ Permissions written as code can be reviewed, counted and linted: a scoped policy
 
 ### 1. Policies written as code
 
-The store's account offers 25 things to do: an action on a resource, such as reading one report or querying one table. The wildcard policy, with one statement, lets an identity do all 25. The exporter policy, with three statements, lets it do 3, which is all the nightly export needs.
-The deployer policy allows 3 too. The number of things an identity can do if its key is stolen is its blast radius.
+The store's account offers 25 things to do, each an action on a resource: 8 in S3 (the file store), 10 in DynamoDB (the tables), 3 in IAM, 1 in STS, 1 in KMS and 2 in Lambda. One example is s3:GetObject on shop-reports/q3.csv: read one report file.
+Before the fix, the nightly export wears the wildcard policy: one statement, Allow * on *. A stolen key reaches 25 of 25.
+After the fix, it wears the exporter policy: three statements, list the reports bucket, read the files in it, and query the orders table. A stolen key reaches 3 of 25, which is exactly what the nightly export needs.
 
 ### 2. How a request is matched
 
-The exporter reads a report file: allowed. It reads a secret file: denied by default. It lists the reports bucket: allowed. Listing with a file's name instead of the bucket's is denied, and reading the bucket itself as if it were a file is denied too, because the slash-star
-in the policy means the contents and not the bucket. Action names ignore case. The pattern s3:Get* matches s3:GetObject and not s3:PutObject. Anything not allowed is denied by default.
+The exporter's S3 part has two statements: Allow s3:ListBucket on shop-reports, and Allow s3:GetObject on shop-reports/*.
+Reading shop-reports/q3.csv matches the second statement: ALLOW. Reading shop-secrets/keys.pem matches nothing: IMPLICIT_DENY. Listing shop-reports matches the first: ALLOW.
+Listing with a file's name, shop-reports/q3.csv, is IMPLICIT_DENY, and reading the bucket shop-reports as if it were a file is IMPLICIT_DENY too, because /* means the files in the bucket, not the bucket itself. The action s3:getobject in small letters is still ALLOW: action names ignore case.
+In a pattern, a star matches any letters, so s3:Get* matches s3:GetObject and not s3:PutObject. When no statement matches, the answer is denied by default.
 
 ### 3. A deny beats every allow
 
-An admin policy with an explicit deny on the secrets can do 20 of 25 things, against 25 without the deny. Reading the secret file is an explicit deny, while writing a report is allowed. With the statements in the opposite order the answer is the same.
-The deny is a safety net, and it still leaves 20 things open.
+The admin_with_deny policy has two statements: Allow * on *, and Deny s3:* and kms:* on shop-secrets, shop-secrets/* and key/*.
+Reading shop-secrets/keys.pem matches both statements, and the deny wins: EXPLICIT_DENY. Decrypting with key/shop is EXPLICIT_DENY too. Writing shop-reports/q3.csv matches only the allow: ALLOW.
+With the two statements in the opposite order, all 25 answers are the same: order never matters. The count falls from 25 of 25 to 20 of 25. The deny is a safety net, and 20 things are still open.
 
 ### 4. A permissions boundary
 
-The wildcard policy alone allows 25 of 25. The same policy under the boundary allows 8 of 25. The boundary alone, with nothing attached to the identity, allows 0: a boundary grants nothing. Admin with a deny, under the boundary, is also 8 of 25.
-An identity gets only what both its policies and its boundary allow.
+The boundary allows s3:List*, s3:Get*, dynamodb:Scan, dynamodb:Query and dynamodb:GetItem on everything, and denies all of S3 on the secrets bucket.
+The wildcard policy alone reaches 25 of 25. The same policy under the boundary reaches 8 of 25. The boundary alone, with no policy attached, reaches 0 of 25: a boundary grants nothing. Admin with a deny, under the boundary, is also 8 of 25.
+The 8 things left are listing the reports bucket, reading the report file, and GetItem, Query and Scan on the orders and customers tables. A request is allowed only when a policy allows it AND the boundary allows it, and nothing denies it.
 
 ### 5. A linter, and the way to more power
 
-A linter reads the text of each policy. It finds the star action and star resource in the wildcard and admin policies, nothing in the exporter, and in the deployer policy iam:PassRole on every resource. The deployer can do only 3 of 25 things and is still dangerous:
-passing any role to a new function runs code as any role in the account. The count hides escalation, so read the policy as well as counting it. This evaluator ignores conditions, resource policies and organisation rules, and refuses a statement with a condition.
+The linter reads the text of each policy, not its effect. The wildcard and admin_with_deny policies each have ACTION_STAR and RESOURCE_STAR. The exporter has none. The boundary has RESOURCE_STAR. The deployer has RESOURCE_STAR and ESCALATION.
+The deployer allows lambda:InvokeFunction and lambda:CreateFunction on function:checkout, and iam:PassRole on *. A stolen key reaches only 3 of 25, so it looks small.
+But three steps lead to more power: iam:PassRole on * hands any role to a function, lambda:CreateFunction makes checkout with that role, and lambda:InvokeFunction runs code as that role. So read the policy as well as counting it.
+This evaluator ignores resource policies and organisation rules, and it refuses a statement with a condition rather than guess.
 
 ## The verdict
 

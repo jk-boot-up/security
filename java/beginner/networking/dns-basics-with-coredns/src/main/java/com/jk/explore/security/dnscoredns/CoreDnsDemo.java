@@ -48,6 +48,7 @@ public class CoreDnsDemo {
         DnsMessage reply = Client.udp(server.udpPort(), DnsMessage.query(0x1002, WWW)).message();
         line(out, "  the answer repeats the question's id: " + (reply.id() == 0x1002) + ", and says it is a response: " + reply.response());
         line(out, "  the client trusts it because the id and the question match, and nothing else");
+        out.append(WireSteps.text());
     }
 
     private static void act2UdpAndTcp(StringBuilder out, CoreDns server) throws IOException, BadMessageException {
@@ -98,6 +99,6 @@ public class CoreDnsDemo {
         }
         line(out, "  fixing the file fixes the server, but every resolver that cached the wrong answer keeps it until its time runs out");
         line(out, "  the defences are around the file: who may change it, review of changes, a short time to live for important names");
-        line(out, "  DNSSEC signs the records, so a resolver can see that a record was not made by the zone's owner (described here, not run)");
+        line(out, "  DNSSEC lets a resolver see a record forged on the way, but it signs whatever is in the zone, wrong records too (described, not run)");
     }
 }

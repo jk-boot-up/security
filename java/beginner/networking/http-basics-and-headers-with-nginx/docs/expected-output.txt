@@ -1,25 +1,80 @@
 ONE. nginx in front of the shop, as it comes.
-  GET / answers 200 and scores 0 of 5 on the security headers
-  the Server header shows the exact nginx version: yes  <- A FREE HINT FOR AN ATTACKER
+  THE REQUEST (to nginx with its default settings):
+    GET / HTTP/1.1
+  THE RESPONSE (status 200):
+    Server                     nginx/1.31.7   <- THE EXACT VERSION
+    Strict-Transport-Security  missing
+    Content-Security-Policy    missing
+    X-Content-Type-Options     missing
+    X-Frame-Options            missing
+    Referrer-Policy            missing
+  THE AUDIT (one point per security header):
+    0 + 0 + 0 + 0 + 0 = 0 of 5
+  the version number is a free hint: an attacker looks up
+  the known holes of exactly that release
 TWO. add_header, and the word always.
-  headers added without always: GET / scores 5 of 5, but the 404 page scores 0 of 5  <- ERROR PAGES ARE LEFT BARE
-  headers added with always: GET / scores 5 of 5 and the 404 page scores 5 of 5
+  THE FIVE HEADERS (each is one add_header line):
+    Strict-Transport-Security  max-age=31536000;
+                               includeSubDomains
+    Content-Security-Policy    default-src 'self'
+    X-Content-Type-Options     nosniff
+    X-Frame-Options            DENY
+    Referrer-Policy            no-referrer
+  THE CONFIGURATION (two versions of each of the five lines):
+    without  add_header X-Frame-Options "DENY";
+    with     add_header X-Frame-Options "DENY" always;
+  THE RESPONSES (a page, and a page that does not exist):
+    without  GET /         200  1 + 1 + 1 + 1 + 1 = 5 of 5
+    without  GET /missing  404  0 + 0 + 0 + 0 + 0 = 0 of 5
+    with     GET /         200  1 + 1 + 1 + 1 + 1 = 5 of 5
+    with     GET /missing  404  1 + 1 + 1 + 1 + 1 = 5 of 5
+  without always, only 200, 201, 204, 206, 301, 302,
+  303, 304, 307 and 308 answers get the headers
   with server_tokens off the Server header is just: nginx
 THREE. The inheritance trap.
-  headers set once for the whole server: GET / scores 5 of 5
-  /account adds its own Cache-Control header, and now scores 0 of 5  <- ITS OWN add_header DROPPED THE REST
-  Cache-Control is there: yes
-  with the five headers repeated inside /account it scores 5 of 5
-  the habit: audit every location, not just the top of the page
+  THE CONFIGURATION (the five headers set once, for the server):
+    server {
+      add_header Strict-Transport-Security ... always;
+      ... and the other four, the same way
+      location = /account {
+        add_header Cache-Control "no-store" always;
+  THE RESPONSES:
+    GET /          1 + 1 + 1 + 1 + 1 = 5 of 5
+    GET /account   0 + 0 + 0 + 0 + 0 = 0 of 5  <- DROPPED
+                   Cache-Control: no-store
+  its own add_header replaces every add_header of the server
+  AFTER THE FIX (the five repeated inside /account):
+    GET /account   1 + 1 + 1 + 1 + 1 = 5 of 5
+  the habit: audit every location, not just the top page
 FOUR. Limits, and requests that are ambiguous.
-  client_max_body_size 1k: a 100 byte order gets 200, a 2000 byte order gets 413
-  large_client_header_buffers 2 1k: a header line of 4000 characters gets 400
-  Content-Length and Transfer-Encoding together, the smuggling pattern: 400
-  two different Content-Length headers: 400
-  nginx refuses both, so it cannot disagree with the application behind it about where a request ends
+  THE CONFIGURATION:
+    client_max_body_size 1k;           1k = 1024 bytes
+    large_client_header_buffers 2 1k;  per header line
+  THE REQUESTS (sent as raw bytes):
+    a  an order with a body of 100 bytes
+    b  an order with a body of 2000 bytes
+    c  one header line of 4007 characters
+    d  Content-Length: 4 and Transfer-Encoding: chunked
+    e  Content-Length: 4 and Content-Length: 5
+  THE RESPONSES:
+    a  200  100 <= 1024 bytes: accepted
+    b  413  2000 > 1024 bytes: the body is too large
+    c  400  4007 > 1024: the line fits no buffer
+    d  400  two ways to say where the body ends
+    e  400  two different lengths
+  nginx refuses d and e, so it cannot disagree with the
+  application behind it about where a request ends
 FIVE. Hiding what the application gives away, and the bill.
-  the application behind the proxy sends X-Powered-By and X-AspNet-Version: yes  <- OLD VERSIONS HAVE KNOWN HOLES
-  with proxy_hide_header and server_tokens off, extra headers left: 0, Server says: nginx
-  hiding is a speed bump, not a lock: the real fix is to keep the software up to date
-  the bill: the configuration is easy to get subtly wrong, so test it, as these demos do
-  and the headers describe the page, so a Content-Security-Policy still has to match the real site
+  THE RESPONSE (the application's headers, passed on by nginx):
+    Server            nginx/1.31.7
+    X-Powered-By      PHP/5.6.40
+    X-AspNet-Version  4.0.30319
+  AFTER THE FIX (proxy_hide_header, server_tokens off):
+    Server            nginx
+    X-Powered-By      hidden
+    X-AspNet-Version  hidden
+  hiding is a speed bump, not a lock: the real fix is to keep
+  the software up to date
+  THE BILL:
+    the configuration is easy to get subtly wrong: test it
+    a Content-Security-Policy still has to match the real site

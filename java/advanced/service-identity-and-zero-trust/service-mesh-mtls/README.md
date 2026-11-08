@@ -27,7 +27,7 @@ What it shows:
 - **What the mesh does not protect.** An allowed caller can send any request; root on the node reads the plaintext between the proxy and the app; a pod outside the mesh talks in clear; whoever may create pods may take a ServiceAccount's identity.
 - **Lifetime.** A certificate issued for 5 minutes (default 24 hours) is renewed with the same name and no restart.
 
-**Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204A/B (service mesh) · OWASP ASVS V9 · CIS Kubernetes Benchmark 5.
+**Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204A/B (service mesh) · OWASP ASVS 5.0 V12 Secure Communication · CIS Kubernetes Benchmark 5.
 
 ## The idea in everyday terms
 

@@ -38,10 +38,10 @@ Learners know the headers by name but have never seen a framework's real respons
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 76 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:00, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:30, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

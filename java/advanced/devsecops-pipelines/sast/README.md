@@ -23,7 +23,7 @@ What it shows:
 - **Triage.** A false alarm is suppressed with a comment that says why and who owns it; a build check fails a suppression without both.
 - **The bill.** A rule is code: it needs tests, owners and an honest list of what it cannot see.
 
-**Maps to:** OWASP Top 10 A03 Injection · OWASP ASVS V5 · NIST SSDF PW.7 · CWE-89, CWE-78, CWE-22, CWE-328.
+**Maps to:** OWASP Top 10 (2025) A05 Injection · OWASP ASVS 5.0 V1 Encoding and Sanitization · NIST SSDF PW.7 · CWE-89, CWE-78, CWE-22, CWE-328.
 
 ## The idea in everyday terms
 

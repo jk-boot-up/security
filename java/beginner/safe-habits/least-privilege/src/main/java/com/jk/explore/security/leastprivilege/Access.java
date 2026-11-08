@@ -53,7 +53,8 @@ final class Access {
             return true;
         }
         for (Grant grant : grants.getOrDefault(user, List.of())) {
-            if (Policy.matches(grant.permission(), permission) && tick >= grant.from() && tick < grant.until()) {
+            boolean inside = tick >= grant.from() && tick < grant.until();
+            if (inside && Policy.matches(grant.permission(), permission)) {
                 return true;
             }
         }

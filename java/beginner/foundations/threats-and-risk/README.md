@@ -55,11 +55,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The attack surface: every way in | The store has 6 ways in; shipping reviews and leaving a debug page behind makes it 8, with a third one open to everyone. |
-| 2. Threat, vulnerability, asset, and risk | One risk named in full: customer orders, stolen, through an order page that does not check the owner, scored 4 times 4 is 16, high. |
-| 3. Ranking the risks | Seven risks ranked by score: the order page 16, the debug page 15, the login 12, down to the price scraping at 4; the total is 73. |
-| 4. Spending a budget where it removes the most | With a budget of 10, four treatments are paid for, the total score falls from 73 to 35, and the card risk is left waiting. |
-| 5. The bill: a score is a judgment | Engineering and finance score two risks differently, and their top three differ; accepted risks need an owner and a review date. |
+| 1. The attack surface: every way in | Before the release the store has 6 ways in; after it ships reviews and leaves a debug page behind it has 8, and one more is open to everyone. |
+| 2. Threat, vulnerability, asset, and risk | One risk named in its four words, customer orders stolen through an order page that does not check the owner, and its score worked out: 4 times 4 is 16, which is in the band 13 to 25, so high. |
+| 3. Ranking the risks | Seven risks, written in any order, sorted by score: the order page 16, the debug page 15, the login 12, down to the price scraping at 4; a tie goes to the higher impact, then the lower id; the total is 73. |
+| 4. Spending a budget where it removes the most | Each treatment's value is the score it removes divided by its cost; with a budget of 10, four treatments are bought best value first, the total score falls from 73 to 35, and the card risk is left waiting. |
+| 5. The bill: a score is a judgment | Engineering and finance score two risks differently with the same rules, and their top three differ; accepted risks need an owner and a review date. |
 
 ## Test
 
@@ -67,7 +67,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `DemoRunsTest`, `JudgmentTest`, `PlannerTest`, `RiskTest`, `SurfaceTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and ranking and planning use no clock and no randomness, so every run gives the same result.
+19 tests in `DemoRunsTest`, `JudgmentTest`, `PlannerTest`, `RiskTest`, `SurfaceTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and ranking and planning use no clock and no randomness, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

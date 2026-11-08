@@ -18,7 +18,7 @@ By the end of the session you can:
 | 0:17 | Act 2: Lock an account after 5 wrong passwords, for 10 ticks | 7 min |
 | 0:24 | Act 3: Allow each address 5 attempts in every 10 ticks | 7 min |
 | 0:31 | Act 4: Credential stuffing: passwords leaked from another site | 7 min |
-| 0:38 | Act 5: The bill: a lock can be used against the customer, and messages can leak | 7 min |
+| 0:38 | Act 5: The bill: what the defences cost | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

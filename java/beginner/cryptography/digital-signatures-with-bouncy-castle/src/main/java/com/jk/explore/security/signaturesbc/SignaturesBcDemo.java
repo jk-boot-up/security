@@ -10,6 +10,7 @@ import java.util.Arrays;
 public class SignaturesBcDemo {
 
     static final byte[] STATEMENT = Hex.bytes("Statement ANA-1: balance 1200");
+    static final byte[] CHANGED = Hex.bytes("Statement ANA-1: balance 9200");
     static final Instant SIGNING_TIME = Instant.parse("2026-03-01T09:30:00Z");
 
     // RFC 8032 section 7.1, test 1 (Ed25519, empty message) and section 7.4 (Ed448, empty message).
@@ -36,8 +37,8 @@ public class SignaturesBcDemo {
     public static String run() {
         StringBuilder out = new StringBuilder();
         act1Cms(out);
-        act2Ecdsa(out);
-        act3EdDsa(out);
+        act2Steps(out);
+        act3Nonce(out);
         act4Jws(out);
         act5PemAndBill(out);
         return out.toString();
@@ -54,60 +55,100 @@ public class SignaturesBcDemo {
         X509Certificate other = Certificates.selfSigned("Somebody else", Certificates.newEcKeyPair());
         byte[] attached = Cms.sign(cert, bank.getPrivate(), STATEMENT, true, SIGNING_TIME);
         byte[] detached = Cms.sign(cert, bank.getPrivate(), STATEMENT, false, SIGNING_TIME);
-        line(out, "  the bank signs a statement with its ECDSA key and puts its certificate in the message");
-        line(out, "  attached (the statement travels inside) verifies with the certificate: " + Cms.verify(attached, null, cert));
-        line(out, "  detached (the statement travels separately) verifies when the statement is supplied: " + Cms.verify(detached, STATEMENT, cert));
-        byte[] changed = Hex.bytes("Statement ANA-1: balance 9200");
-        line(out, "  the detached signature with a changed statement: " + verdict(Cms.verify(detached, changed, cert)));
+        byte[] digest = Ecdsa.sha256(STATEMENT);
+        line(out, "  BEFORE SIGNING (what the bank has):");
+        value(out, "statement", Hex.text(STATEMENT));
+        value(out, "SHA-256", new BigInteger(1, digest));
+        value(out, "time", SIGNING_TIME.toString());
+        line(out, "  AFTER SIGNING (inside the CMS message):");
+        value(out, "signer", cert.getSubjectX500Principal().getName());
+        value(out, "digest", new BigInteger(1, Cms.signedDigest(attached)));
+        line(out, "    same as the statement's SHA-256: " + Arrays.equals(digest, Cms.signedDigest(attached)));
+        value(out, "signature", "ECDSA over the digest and the time");
+        line(out, "  THE CHECKS (with the bank's certificate):");
+        line(out, "    attached, statement inside: " + result(Cms.verify(attached, null, cert)));
+        line(out, "    detached, statement supplied: " + result(Cms.verify(detached, STATEMENT, cert)));
+        line(out, "    detached, balance changed to 9200: " + result(Cms.verify(detached, CHANGED, cert)));
         byte[] tampered = attached.clone();
         int at = indexOf(tampered, STATEMENT);
         tampered[at + STATEMENT.length - 1] ^= 1;
-        line(out, "  the attached message with one bit changed inside it: " + verdict(Cms.verify(tampered, null, cert)));
-        line(out, "  checked against somebody else's certificate: " + verdict(Cms.verify(attached, null, other)));
-        line(out, "  the signing time inside is " + Cms.claimedSigningTime(attached) + ": covered by the signature, but it is the signer's word");
+        line(out, "    attached, one bit changed inside: " + result(Cms.verify(tampered, null, cert)));
+        line(out, "    somebody else's certificate: " + result(Cms.verify(attached, null, other)));
+        line(out, "  signed time " + Cms.claimedSigningTime(attached) + ": the signer's word");
     }
 
-    private static void act2Ecdsa(StringBuilder out) {
-        line(out, "TWO. ECDSA: the nonce that must never repeat.");
+    private static void act2Steps(StringBuilder out) {
+        line(out, "TWO. How an ECDSA signature is made, step by step.");
         BigInteger d = new BigInteger(P256_KEY, 16);
         var key = Ecdsa.publicFor(d);
-        byte[] sample = Hex.bytes("sample");
-        Ecdsa.Signature first = Ecdsa.signDeterministic(d, sample);
-        Ecdsa.Signature second = Ecdsa.signDeterministic(d, sample);
-        boolean rfc = first.r().equals(new BigInteger(P256_R, 16)) && first.s().equals(new BigInteger(P256_S, 16));
-        line(out, "  deterministic signing (RFC 6979) of the same message twice gives the same signature: " + first.equals(second));
-        line(out, "  and it matches the value published in RFC 6979 appendix A.2.5: " + rfc);
-        Ecdsa.Signature random1 = Ecdsa.signRandomized(d, sample);
-        Ecdsa.Signature random2 = Ecdsa.signRandomized(d, sample);
-        line(out, "  randomized signing of the same message twice gives different signatures: " + !random1.equals(random2)
-                + ", and both verify: " + (Ecdsa.verify(key, sample, random1) && Ecdsa.verify(key, sample, random2)));
+        SignatureSteps.Steps steps = SignatureSteps.sign(d, STATEMENT);
+        line(out, "  BEFORE SIGNING (the inputs):");
+        value(out, "message", Hex.text(STATEMENT));
+        value(out, "private key", d);
+        line(out, "  STEP 1. HASH THE MESSAGE: h = SHA-256(message)");
+        value(out, "h", steps.h());
+        line(out, "  STEP 2. A ONE-TIME NUMBER k, FROM KEY AND h (RFC 6979)");
+        value(out, "k", steps.k());
+        line(out, "  STEP 3. r = THE x OF THE CURVE POINT k TIMES G");
+        value(out, "r", steps.r());
+        line(out, "  STEP 4. s = (h + r TIMES KEY) / k, MODULO n");
+        value(out, "s", steps.s());
+        line(out, "  AFTER SIGNING: the signature is r and s, 64 bytes");
+        line(out, "  THE CHECK, WITH THE PUBLIC KEY Q: x of (h/s) G + (r/s) Q");
+        BigInteger x = SignatureSteps.check(key.getQ(), STATEMENT, steps.r(), steps.s());
+        value(out, "x", x);
+        BigInteger changed = SignatureSteps.check(key.getQ(), CHANGED, steps.r(), steps.s());
+        line(out, "    x = r: " + result(x.equals(steps.r())) + "; balance 9200: " + result(changed.equals(steps.r())));
+        Ecdsa.Signature library = Ecdsa.signDeterministic(d, STATEMENT);
+        SignatureSteps.Steps sample = SignatureSteps.sign(d, Hex.bytes("sample"));
+        boolean rfc = sample.r().equals(new BigInteger(P256_R, 16)) && sample.s().equals(new BigInteger(P256_S, 16));
+        line(out, "    same as Bouncy Castle: " + library.equals(new Ecdsa.Signature(steps.r(), steps.s()))
+                + "; RFC 6979 \"sample\": " + rfc);
+    }
+
+    private static void act3Nonce(StringBuilder out) {
+        line(out, "THREE. The nonce that must never repeat.");
+        BigInteger d = new BigInteger(P256_KEY, 16);
+        var key = Ecdsa.publicFor(d);
         BigInteger k = new BigInteger("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", 16);
         byte[] m1 = Hex.bytes("pay 10 to Bob");
         byte[] m2 = Hex.bytes("pay 99 to Eve");
         Ecdsa.Signature s1 = Ecdsa.signWithNonce(d, m1, k);
         Ecdsa.Signature s2 = Ecdsa.signWithNonce(d, m2, k);
-        boolean recovered = Ecdsa.recoverKeyFromReusedNonce(m1, s1, m2, s2).equals(d);
-        line(out, "  two signatures made with the same nonce let anyone compute the private key: " + recovered + "  <- NEVER REUSE A NONCE");
-        line(out, "  deterministic signing removes the risk, and so does Ed25519, which is the next demo");
-    }
-
-    private static void act3EdDsa(StringBuilder out) {
-        line(out, "THREE. EdDSA: Ed25519 and Ed448.");
+        line(out, "  THE MISTAKE: one k for two payments");
+        value(out, "message 1", Hex.text(m1));
+        value(out, "message 2", Hex.text(m2));
+        line(out, "    the same r in both signatures: " + s1.r().equals(s2.r()) + "  <- THE REUSE SHOWS");
+        line(out, "  THE ATTACK, WITHOUT THE KEY:");
+        line(out, "    k = (h1 - h2) / (s1 - s2)");
+        value(out, "k", Ecdsa.recoverNonce(m1, s1, m2, s2));
+        line(out, "    key = (s1 times k - h1) / r");
+        BigInteger recovered = Ecdsa.recoverKeyFromReusedNonce(m1, s1, m2, s2);
+        value(out, "key", recovered);
+        line(out, "    the bank's private key: " + recovered.equals(d) + "  <- NEVER REUSE A NONCE");
+        line(out, "  THE FIX, ONE: a deterministic k (RFC 6979)");
+        line(out, "    the statement signed twice, same r and s: "
+                + Ecdsa.signDeterministic(d, STATEMENT).equals(Ecdsa.signDeterministic(d, STATEMENT)));
+        Ecdsa.Signature random1 = Ecdsa.signRandomized(d, STATEMENT);
+        Ecdsa.Signature random2 = Ecdsa.signRandomized(d, STATEMENT);
+        line(out, "    random k: they differ: " + !random1.equals(random2)
+                + ", both verify: " + (Ecdsa.verify(key, STATEMENT, random1) && Ecdsa.verify(key, STATEMENT, random2)));
+        line(out, "  THE FIX, TWO: Ed25519 and Ed448 need no random number");
         byte[] seed25519 = Hex.parse(ED25519_SEED);
         byte[] pub25519 = EdDsa.public25519(seed25519);
         byte[] empty = new byte[0];
         byte[] sig25519 = EdDsa.sign25519(seed25519, empty);
-        line(out, "  an Ed25519 signature is " + sig25519.length + " bytes and matches RFC 8032: " + Hex.of(sig25519).equals(ED25519_SIGNATURE));
+        line(out, "    Ed25519: " + sig25519.length + " bytes, matches RFC 8032: " + Hex.of(sig25519).equals(ED25519_SIGNATURE));
         byte[] seed448 = Hex.parse(ED448_SEED);
         byte[] pub448 = EdDsa.public448(seed448);
         byte[] sig448 = EdDsa.sign448(seed448, empty);
-        line(out, "  an Ed448 signature is " + sig448.length + " bytes and matches RFC 8032: " + Hex.of(sig448).equals(ED448_SIGNATURE));
-        line(out, "  signing again gives the same bytes, with no random number involved: "
+        line(out, "    Ed448: " + sig448.length + " bytes, matches RFC 8032: " + Hex.of(sig448).equals(ED448_SIGNATURE));
+        line(out, "    signed again, the same bytes: "
                 + Arrays.equals(sig25519, EdDsa.sign25519(seed25519, empty)) + " and " + Arrays.equals(sig448, EdDsa.sign448(seed448, empty)));
         byte[] flipped = sig25519.clone();
         flipped[10] ^= 1;
-        line(out, "  both verify: " + (EdDsa.verify25519(pub25519, empty, sig25519) && EdDsa.verify448(pub448, empty, sig448))
-                + "; one flipped bit in an Ed25519 signature: " + verdict(EdDsa.verify25519(pub25519, empty, flipped)));
+        line(out, "    both verify: " + (EdDsa.verify25519(pub25519, empty, sig25519) && EdDsa.verify448(pub448, empty, sig448))
+                + "; one flipped bit: " + result(EdDsa.verify25519(pub25519, empty, flipped)));
     }
 
     private static void act4Jws(StringBuilder out) {
@@ -116,16 +157,25 @@ public class SignaturesBcDemo {
         byte[] pub = EdDsa.public25519(seed);
         byte[] payload = Hex.bytes(RFC8037_PAYLOAD);
         String token = Jws.sign(seed, payload);
-        line(out, "  signing the RFC 8037 example gives exactly the token in the RFC: " + token.equals(RFC8037_TOKEN));
-        line(out, "  it verifies: " + Jws.verify(pub, token, null));
-        String detached = Jws.signDetached(seed, payload);
-        line(out, "  detached form has an empty middle part (" + detached.split("\\.", -1)[1].isEmpty() + ") and verifies when the payload is supplied: " + Jws.verify(pub, detached, payload));
         String[] parts = token.split("\\.");
-        String none = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(Hex.bytes("{\"alg\":\"none\"}")) + "." + parts[1] + ".";
-        line(out, "  a token that claims alg none and has no signature: " + verdict(Jws.verify(pub, none, null)));
-        String changed = parts[0] + "." + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(Hex.bytes("Example of Ed25519 forging")) + "." + parts[2];
-        line(out, "  the same signature with a different payload: " + verdict(Jws.verify(pub, changed, null)));
-        line(out, "  the verifier decides the algorithm, not the token: that is what stops alg none and key confusion");
+        line(out, "  BEFORE SIGNING (the RFC 8037 example):");
+        value(out, "header", Jws.HEADER);
+        value(out, "payload", RFC8037_PAYLOAD);
+        line(out, "  AFTER SIGNING (each part base64url, joined by dots):");
+        value(out, "header", parts[0]);
+        value(out, "payload", parts[1]);
+        value(out, "signature", parts[2].substring(0, 43));
+        value(out, "", parts[2].substring(43));
+        line(out, "    the token in RFC 8037: " + token.equals(RFC8037_TOKEN) + "; it verifies: " + Jws.verify(pub, token, null));
+        line(out, "  THE CHECKS (the verifier expects EdDSA, always):");
+        String detached = Jws.signDetached(seed, payload);
+        boolean emptyMiddle = detached.split("\\.", -1)[1].isEmpty();
+        line(out, "    detached (empty middle), payload given: " + result(emptyMiddle && Jws.verify(pub, detached, payload)));
+        String none = Jws.b64(Hex.bytes("{\"alg\":\"none\"}")) + "." + parts[1] + ".";
+        line(out, "    header says alg none, no signature: " + result(Jws.verify(pub, none, null)));
+        String changed = parts[0] + "." + Jws.b64(Hex.bytes("Example of Ed25519 forging")) + "." + parts[2];
+        line(out, "    the same signature, another payload: " + result(Jws.verify(pub, changed, null)));
+        line(out, "  the verifier decides the algorithm, not the token");
     }
 
     private static void act5PemAndBill(StringBuilder out) {
@@ -134,16 +184,34 @@ public class SignaturesBcDemo {
         X509Certificate cert = Certificates.selfSigned("Statements", bank);
         byte[] signed = Cms.sign(cert, bank.getPrivate(), STATEMENT, false, SIGNING_TIME);
         String pem = PemSignatures.write("CMS", signed);
-        line(out, "  a signed message as PEM text begins with -----BEGIN CMS-----: " + pem.startsWith("-----BEGIN CMS-----"));
-        line(out, "  and reads back to the same bytes: " + Arrays.equals(signed, PemSignatures.read("CMS", pem)));
-        line(out, "  a valid signature proves that the key signed, not who owns the key: that needs a chain of certificates");
-        line(out, "  the signing time is the signer's claim: a trusted time needs a timestamp authority (RFC 3161), described here and not run");
-        line(out, "  the private key still needs a home: see keystore-basics");
-        line(out, "  openssl checks these same files in the integration tests: cms -verify, pkeyutl -verify and dgst -verify");
+        String[] pemLines = pem.split("\\R");
+        line(out, "  BEFORE ARMOR: the signed CMS message, as binary bytes");
+        line(out, "  AFTER ARMOR (PEM: Base64 text between two lines):");
+        value(out, "first line", pemLines[0]);
+        value(out, "last line", pemLines[pemLines.length - 1]);
+        line(out, "    no line over 64 characters: " + Arrays.stream(pemLines).allMatch(l -> l.length() <= 64));
+        line(out, "    reads back to the same bytes: " + Arrays.equals(signed, PemSignatures.read("CMS", pem)));
+        line(out, "  THE BILL (what a valid signature does not tell you):");
+        line(out, "    who owns the key: that needs a chain of certificates");
+        line(out, "    when it was signed: that needs a timestamp authority");
+        line(out, "    where the private key lives: see keystore-basics");
+        line(out, "  openssl checks these files in the integration tests");
     }
 
-    private static String verdict(boolean accepted) {
-        return accepted ? "accepted  <- WRONG" : "refused";
+    /** A labelled value: the label in a 13-character column, the value after it. */
+    private static void value(StringBuilder out, String label, String text) {
+        line(out, "    " + String.format("%-13s", label) + text);
+    }
+
+    /** A labelled 32-byte number, over two lines. */
+    private static void value(StringBuilder out, String label, BigInteger number) {
+        String[] two = Hex.lines(number);
+        value(out, label, two[0]);
+        value(out, "", two[1]);
+    }
+
+    private static String result(boolean accepted) {
+        return accepted ? "verifies" : "refused";
     }
 
     private static int indexOf(byte[] data, byte[] pattern) {

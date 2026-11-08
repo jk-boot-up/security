@@ -13,6 +13,7 @@ Invent a format: the key and the encrypted data in a custom file layout. It work
 - Keys written and read as PEM, with a password-protected private key.
 - A self-signed X.509 certificate with fixed dates.
 - A CMS envelope that uses AES-256 for the data and RSA-OAEP for the key.
+- The envelope opened by hand with the JDK's own ciphers, step by step, giving the same statement.
 - An independent check: the openssl command-line tool opens the envelope.
 - A demonstration that the easy call picks the older padding.
 - Unit tests that need nothing installed, and interop tests that call openssl.

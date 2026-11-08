@@ -65,6 +65,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `PriceListTest` checks the fixed encoding.
 - `CheckoutTest` checks forgery, other purposes, a swapped key, replay and expiry.
 - `HmacContrastTest` shows a shared-key tag can be forged by a checker.
+- `SignatureStepsTest` checks that the five steps by hand give RFC 8032's and Java's exact signatures, and that the by-hand check refuses a changed message.
 
 ## Where this model goes next
 

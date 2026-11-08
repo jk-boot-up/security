@@ -12,6 +12,18 @@ from pathlib import Path
 from PIL import Image
 
 REPO_PATH = "github.com/jk-boot-up/security/tree/main/java"
+AUTHOR = "Jayasekhar Konduru"         # tagged on every video, so a search for the name finds them all
+REPO_TAG = "github.com/jk-boot-up/security/"
+
+
+def playlist_of(p):
+    """The project's YouTube playlist, as the uploader names it."""
+    import sys
+    tools = str(Path(__file__).resolve().parents[2] / "ytupload")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    import ytupload
+    return ytupload.playlist(p["module"], p["slug"])
 
 
 def clean(text):
@@ -25,7 +37,10 @@ def thumbnail(pdir):
     src = pdir / "video" / "build" / "01-poster.png"
     if not src.exists():
         return None
-    Image.open(src).convert("RGB").resize((1280, 720), Image.LANCZOS).save(pdir / "docs" / "thumbnail.png", optimize=True)
+    small = Image.open(src).convert("RGB").resize((1280, 720), Image.LANCZOS)
+    small.save(pdir / "docs" / "thumbnail.png", optimize=True)
+    # the file the YouTube uploader sends: the same design as the video's opening frame
+    small.save(pdir / "docs" / "thumbnail-security-photo-cyan-theme.png", optimize=True)
     return pdir / "docs" / "thumbnail.png"
 
 
@@ -69,17 +84,21 @@ def youtube_doc(d, pdir, scenes):
         lines += ["Chapters:", "", "```", *chapters(scenes, durations), "```", ""]
     else:
         lines += ["Chapters are added after the video is built.", ""]
-    tags = p["youtube_tags"]
+    tags = list(p["youtube_tags"])
+    for extra in (AUTHOR, REPO_TAG):                # on every video
+        if extra.lower() not in (t.lower() for t in tags):
+            tags.append(extra)
     lines += ["## Tags", "", ", ".join(tags), "",
               "## Files", "",
               "| What | File |", "| --- | --- |",
               "| Video | `video/%s-explained.mp4` |" % p["slug"],
               "| Captions | `video/%s-explained.srt` |" % p["slug"],
-              "| Thumbnail | `docs/thumbnail.png` (1280×720) |", "",
+              "| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |", "",
               "## Settings", "",
-              "Public with instant Premiere; not made for kids; no paid promotion; altered content: No; "
-              "category Science & Technology; language English; playlist: Security Foundations in Java - "
-              "Without Tools. Never announce a next video.", "",
+              "Uploaded Unlisted and made Public once the quality check passes "
+              "(`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; "
+              "category Science & Technology; language English; playlist: %s. Never announce a next video."
+              % playlist_of(p), "",
               "## Checks before saving", "",
               "- [ ] description has no `http://`, `https://`, `<` or `>` — %s" % (
                   "ok" if not re.search(r"https?://|[<>]", desc) else "FIX"),

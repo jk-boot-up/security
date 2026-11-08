@@ -3,9 +3,10 @@
 ```
 src/main/java/com/jk/explore/security/totpotp/
 ├── OtpAuthUri.java      The text that a QR code carries when you turn on two-step sign-in: an {@code otpauth://} link holding the issuer, the account, the secret as Base32 and the settings
-├── OtpLibraryDemo.java  Runs the online bank story in five numbered acts, with the java-otp library, and prints exact, repeatable results
+├── OtpLibraryDemo.java  Runs the online bank story in six numbered acts, with the java-otp library, and prints exact, repeatable results
 ├── OtpService.java      The bank's check of a one-time code, built on the java-otp library
-└── Secrets.java         The keys of the published test vectors of RFC 4226 and RFC 6238, one for each hash
+├── Secrets.java         The keys of the published test vectors of RFC 4226 and RFC 6238, one for each hash
+└── TotpSteps.java       Works out a six-digit TOTP code by hand, step by step, so every value the library hides can be shown
 ```
 
 **A library makes the same one-time codes as the hand-written version and checks one time step, but the window, the replay memory, the secrets and the attempt limits are still the bank's to write.**
@@ -17,7 +18,7 @@ is right for one time step. And that is all. The rest of what a bank needs is st
 a little out, a memory so a code cannot be used twice, secure storage for secrets, and limits on wrong guesses.
 
 The demo checks the library against the published test values, shows exactly where its check stops and the bank's code starts,
-tries the other hashes and digit counts, builds the `otpauth://` link that a QR code carries to the phone, and ends with the list of things it does
+works out one code by hand, step by step, tries the other hashes and digit counts, builds the `otpauth://` link that a QR code carries to the phone, and ends with the list of things it does
 not do.
 
 ## The idea in everyday terms
@@ -29,7 +30,7 @@ someone who keeps guessing. Buying the stamp does not change who has to do those
 ## The scenario
 
 The online bank and its customer Dana from the plain version. The bank now lets java-otp make the codes and does the rest
-itself. The demo follows the library through five questions: does it match the standard, what does it check, what else can it make, how does the secret get to
+itself. The demo follows the library through six questions: does it match the standard, how is a code made, what does it check, what else can it make, how does the secret get to
 the phone, and what is left for the bank to write.
 
 ## Run
@@ -38,15 +39,16 @@ the phone, and what is left for the bank to write.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. The library makes the same codes as the hand-written version | The library gives 755224, 287082, 359152 and 969429 for steps 0 to 3, and 287082 at time 59: the values in the RFCs. |
-| 2. What the library checks, and what it leaves to the bank | The library validates a code for one step only; the bank's own window of 1 accepts it one step later and refuses it two steps on. |
-| 3. Other hashes and longer codes | SHA-1, SHA-256 and SHA-512 with 8 digits give 94287082, 46119246 and 90693936 at time 59, the RFC 6238 values. |
-| 4. Giving the secret to the phone | The QR code carries an otpauth link with the issuer, the account, the Base32 secret and the settings; the app reads it once and keeps the secret. |
-| 5. The bill: what the library does not do | The library alone accepts the same code twice; the bank's own memory of the last step refuses the second use; secrets, wrong-code counts and limits are all the bank's. |
+| 1. The library's codes, checked against the standard | With the RFC test key, the library gives 755224, 287082, 359152 and 969429 for steps 0 to 3, and 287082 at time 59: the published values. |
+| 2. How the code at time 59 is made, step by step | 59 / 30 = step 1; HMAC-SHA1 of the 8-byte counter gives 20 bytes; the last half-byte b = 11 picks 4 bytes; without the top bit that is 1094287082, and its last 6 digits are 287082. |
+| 3. What the library checks, and what the bank adds | The library accepts a code in its own step only; the bank's window of one step either side accepts it at time 65 and refuses it at time 95. |
+| 4. Other hashes and longer codes | SHA-1, SHA-256 and SHA-512 with 8 digits give 94287082, 46119246 and 90693936 at time 59, the RFC 6238 values. |
+| 5. Giving the secret to the phone | The bank puts its name, the account, the secret and the settings into one otpauth link; the QR code carries it, with the secret in Base32. |
+| 6. The bill: what the library does not do | With the library alone the same code logs in twice; with the bank's memory of the last step the second use is REPLAYED; secrets, wrong-code counts and limits are all the bank's. |
 
 ## Test
 
@@ -54,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `LibraryCodesTest`, `OtpAuthUriTest`, `OtpServiceTest`. The library's codes are tested against the published values of RFC 4226 (SHA-1, 10 values) and RFC 6238 (SHA-1, SHA-256 and SHA-512). Every line the demo prints is checked against `docs/expected-output.txt`.
+17 tests in `DemoRunsTest`, `LibraryCodesTest`, `OtpAuthUriTest`, `OtpServiceTest`, `TotpStepsTest`. The library's codes are tested against the published values of RFC 4226 (SHA-1, 10 values) and RFC 6238 (SHA-1, SHA-256 and SHA-512). Every line the demo prints is checked against `docs/expected-output.txt`.
 
 ## What the simulation got right, and what it left out
 
@@ -99,7 +101,7 @@ The library sits at the bottom, making codes and checking one step; the window, 
 
 ### Where each piece sits
 
-OtpService wraps the library's generator; OtpAuthUri builds the link; Secrets holds the RFC keys.
+OtpService wraps the library's generator; TotpSteps redoes its code by hand; OtpAuthUri builds the link; Secrets holds the RFC keys.
 
 ![The classes and what they hold](docs/images/class-diagram.png)
 

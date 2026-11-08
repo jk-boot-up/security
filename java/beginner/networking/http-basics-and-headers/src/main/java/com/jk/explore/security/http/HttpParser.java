@@ -44,7 +44,7 @@ final class HttpParser {
             }
             String name = line.substring(0, colon);
             if (!name.matches("[A-Za-z0-9-]+")) {
-                throw new BadMessageException("a header name with a space or odd character: '" + name + "'");
+                throw new BadMessageException("a space or odd character in a header name");
             }
             String value = line.substring(colon + 1).strip();
             // header names are ASCII: lower-case them without the machine's locale, or TRANSFER-ENCODING slips past in Turkish

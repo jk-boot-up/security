@@ -23,7 +23,7 @@ What it shows:
 - **Parameters fix it in all three styles.** Named parameters in JPQL, named parameters in native SQL and the Criteria API keep every payload as plain text. A sort key is the one thing a parameter cannot carry, so it comes from a fixed list.
 - **A database user with few rights limits a mistake.** The search page connects as `shop_search`, who may only read the product table: the same injection is refused by PostgreSQL with `permission denied for table users`.
 
-**Maps to:** OWASP Top 10 (2025) A05 Injection · CWE-89 · OWASP ASVS 5.0 V1 (Encoding and Sanitization) · OWASP API Security API8.
+**Maps to:** OWASP Top 10 (2025) A05 Injection · CWE-89 · OWASP ASVS 5.0 V1 (Encoding and Sanitization) · OWASP API Security Top 10 (2019) API8 Injection (the 2023 list folds injection into its other categories).
 
 ## The idea in everyday terms
 

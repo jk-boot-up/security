@@ -20,6 +20,7 @@ Learners can sign with the JDK but not in a format that anyone else can check, a
 | --- | --- |
 | CMS SignedData | `Cms` |
 | ECDSA with both nonce styles | `Ecdsa` |
+| An ECDSA signature step by step | `SignatureSteps` |
 | Ed25519 and Ed448 | `EdDsa` |
 | JWS tokens | `Jws` |
 | PEM armor | `PemSignatures` |
@@ -41,10 +42,10 @@ Learners can sign with the JDK but not in a format that anyone else can check, a
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 25, all passing |
-| Demo output | 33 lines, identical on every run |
+| Tests | 29, all passing |
+| Demo output | 90 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 13:15, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

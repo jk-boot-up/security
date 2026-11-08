@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Insecure deserialization and its defences, in Java.
+> Insecure deserialization and its defences, in Java. Keeping a shopping cart in a cookie as a serialized Java object looks easy, but the bytes decide which classes the server builds, and some classes run code while they are being read: a customer who edits the cookie can lower a price, or make the server delete a file before it even sees that the cookie is not a cart. Explained with an online store, like a flat-pack kit whose instructions you must follow while you unpack it, written by whoever packed the box. We add an allow-list ObjectInputFilter that refuses unknown classes before they are built, see that it still accepts a forged price, then replace the object with plain, signed data: product codes and quantities, an HMAC checked first, and prices looked up on the server. We finish with the cost: an allow-list needs upkeep, and signing needs a key.

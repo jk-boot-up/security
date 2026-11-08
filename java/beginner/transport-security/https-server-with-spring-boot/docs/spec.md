@@ -39,9 +39,9 @@ Learners can switch TLS on with a few properties without knowing what they have 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 22, all passing |
-| Demo output | 30 lines, identical on every run |
+| Demo output | 71 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:06, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:53, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -38,7 +38,9 @@ class ShopApp {
         http.portMapper(ports -> ports.http(httpPort).mapsTo(httpsPort))
                 .redirectToHttps(Customizer.withDefaults())
                 .headers(headers -> headers
-                        .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000))
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
                         .contentTypeOptions(Customizer.withDefaults())
                         .frameOptions(frame -> frame.deny()))
                 .csrf(csrf -> csrf.disable())

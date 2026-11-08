@@ -37,9 +37,9 @@ Header configuration is copied without being understood, and its failures are si
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 29, all passing |
-| Demo output | 25 lines, identical on every run |
+| Demo output | 80 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:51, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:42, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

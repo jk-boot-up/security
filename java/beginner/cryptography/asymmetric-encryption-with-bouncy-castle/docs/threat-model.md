@@ -64,6 +64,8 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `PemTest` checks the headers, round trips, the password protection and the salt.
 - `CertificateTest` checks the subject, the self-signature, the fixed dates and key usage.
 - `CmsEnvelopeTest` checks opening, refusal for another key or certificate, the key transport algorithm, and that a changed envelope never opens to the original.
+- `Base64StepsTest` checks the Base64 steps against the library's PEM text and the golden output.
+- `EnvelopeStepsTest` checks that opening by hand gives what Bouncy Castle gives, and that another key cannot.
 - `OpenSslInteropTest` (tagged `openssl`) has openssl open the envelope, and checks the golden output.
 
 ## Where this model goes next

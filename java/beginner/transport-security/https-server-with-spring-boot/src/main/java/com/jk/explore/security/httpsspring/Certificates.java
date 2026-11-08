@@ -37,7 +37,17 @@ final class Certificates {
     }
 
     static String fingerprint(Certificate certificate) throws GeneralSecurityException {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded()));
+        byte[] hash = MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());
+        return HexFormat.of().formatHex(hash);
+    }
+
+    /** The certificate under the alias in a PKCS12 file. */
+    static java.security.cert.X509Certificate certificateOf(Path keystore, String alias) throws GeneralSecurityException, IOException {
+        KeyStore store = KeyStore.getInstance("PKCS12");
+        try (InputStream in = Files.newInputStream(keystore)) {
+            store.load(in, PASSWORD.toCharArray());
+        }
+        return (java.security.cert.X509Certificate) store.getCertificate(alias);
     }
 
     /** The fingerprint of the certificate under the alias in a PKCS12 file. */

@@ -4,6 +4,7 @@
 src/main/java/com/jk/explore/security/certs/
 ├── CertBuilder.java     Builds X.509 version 3 certificates by writing their DER encoding directly and signing it with the JDK
 ├── CertsDemo.java       Runs the online store story in five numbered acts and prints exact, repeatable results
+├── ChainSteps.java      The chain check worked out by hand, one certificate at a time, so the demo can show each step that the JDK's PKIX validator hides
 ├── ChainValidator.java  Validates a certificate chain with the JDK's PKIX implementation, on a date the caller chooses, against the roots the caller trusts
 ├── Der.java             The small part of DER (the binary encoding behind X.509) that a certificate needs: tag, length, value
 ├── HostName.java        Does the certificate vouch for this host name?
@@ -42,11 +43,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A chain of three certificates | A root signs itself, an intermediate is signed by the root and may issue certificates, and the server certificate for shop.example is signed by the intermediate and may not. |
-| 2. The browser's check | The server sends its certificate and the intermediate; the browser trusts the root, so the chain is accepted, and the name shop.example matches but evil.example does not. |
-| 3. Three reasons to refuse | An expired certificate is refused with reason EXPIRED, a certificate from an unknown authority with the same name is refused because its signature does not match, and a valid chain still needs a separate name check. |
-| 4. Changed certificates, and certificates that overstep | One changed letter in the name still parses but fails the signature, and a server certificate that signs another certificate is refused because it is not allowed to. |
-| 5. Revocation, and the bill | A stolen intermediate key forges a certificate that is accepted until the intermediate is revoked; revocation only works if clients have the latest list. |
+| 1. A chain of three certificates | The shop asks for CN=shop.example with its own 256-bit EC key, valid 2025-06-01 to 2026-06-01; signing adds the issuer CN=Example Issuing CA and a SHA256withECDSA signature that anyone checks with the issuer's public key; the root is self-signed, the intermediate is a CA, the server's certificate is not. |
+| 2. The browser's check, step by step | The server sends shop.example and Example Issuing CA; the browser trusts Example Root CA and checks, step by step, issuer names, signatures, dates and the CA flag up the chain, then the root and the name: by hand accepted true, the JDK accepted true. |
+| 3. Three reasons to refuse | Three chains: one valid 2024-01-01 to 2024-12-31 fails at the dates (EXPIRED); one from a rogue root also named Example Root CA fails at the signature (INVALID_SIGNATURE) although the issuer's name matched; the good chain is accepted but does not match evil.example. |
+| 4. Changed certificates, and certificates that overstep | Changing CN=shop.example to CN=shop.examplE still parses but fails at the signature (INVALID_SIGNATURE); the shop's server certificate is not a CA, so a certificate it signs for other.example fails at the CA flag (INVALID_KEY_USAGE); the intermediate allows 0 more CAs below it. |
+| 5. Revocation, and the bill | A thief with the intermediate's private key issues shop.example, serial 77, and the forged chain is accepted; with serial 3 on the list the shop's chain is refused (REVOKED); with serial 2, the intermediate, both the shop's and the forged chain are refused. |
 
 ## Test
 
@@ -54,7 +55,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `ChainTest`, `DemoRunsTest`, `DerTest`, `HostNameTest`. The keys are random, so the demo prints only facts that do not depend on them, and every check runs on a fixed date rather than the real clock. The DER encodings are checked against published values, and the JDK parses and validates every certificate the builder makes.
+28 tests in `ChainStepsTest`, `ChainTest`, `DemoRunsTest`, `DerTest`, `HostNameTest`. The keys are random, so the demo prints only facts that do not depend on them, and every check runs on a fixed date rather than the real clock. The DER encodings are checked against published values, and the JDK parses and validates every certificate the builder makes.
 
 ## What the simulation got right, and what it left out
 

@@ -1,28 +1,85 @@
 ONE. The first version, with no checks.
-  nobody refunds O-1: 200 OK  <- NOBODY ASKED WHO
-  nobody views O-1: 200 OK
+  THE REQUESTS (no login, no token):
+    1  refund O-1  (ana's laptop, 1200 dollars)
+    2  view O-1
+  THE RESPONSES:
+    1  200 OK  <- NOBODY ASKED WHO
+    2  200 OK
 TWO. Authentication: finding out who is asking.
-  ben logs in with a wrong password: rejected
-  ben logs in with his password: session tok-1
-  request with no token: 401 UNAUTHENTICATED
-  request with a made-up token tok-99: 401 UNAUTHENTICATED
-  request with ben's token: 200 OK
-THREE. Authenticated is not the same as authorized.
-  ben, a customer, refunds O-1: 200 OK  <- LOGGED IN, SO ALLOWED
-  ben views ana's order O-1: 200 OK  <- NOT HIS ORDER
-FOUR. Authorization: what may this person do?
-  no token refunds O-1: 401 UNAUTHENTICATED
-  ben refunds O-1: 403 FORBIDDEN
-  ben views ana's order O-1: 403 FORBIDDEN
-  ben views his own order O-2: 200 OK
-  sam, from support, views O-1: 200 OK
-  sam refunds O-1: 200 OK
-  ana cancels ben's order O-2: 403 FORBIDDEN
-  alex, an admin, cancels O-2: 200 OK
-FIVE. The bill: sessions expire, and roles go stale.
-  sam logs in at tick 0: tok-1, good for 3 ticks
-  at tick 4 sam refunds O-1: 401 UNAUTHENTICATED (expired)
-  sam logs in, then alex demotes sam to CUSTOMER
-  sam refunds with the role copied at login: 200 OK  <- STALE ROLE
-  sam refunds with the role looked up each time: 403 FORBIDDEN
-  role lookups for that one request: 1
+  THE REQUESTS:
+    1  log in: ben, password guess
+    2  log in: ben, password ben-pass
+    3  view O-2 with no token
+    4  view O-2 with a made-up token tok-99
+    5  view O-2 with ben's token tok-1
+  THE RESPONSES:
+    1  rejected  <- WRONG PASSWORD
+    2  session tok-1: ben, CUSTOMER, issued at tick 0
+    3  401 UNAUTHENTICATED  <- WHO ARE YOU?
+    4  401 UNAUTHENTICATED  <- NEVER ISSUED
+    5  200 OK  <- IT IS BEN
+THREE. How a password is checked, step by step.
+  BEFORE HASHING (when ben signed up):
+    password     ben-pass
+    salt         demo-salt:ben
+    rounds       10000 of PBKDF2 with HMAC-SHA256
+  AFTER HASHING (all the shop keeps, 32 bytes):
+    bytes 1-16   0f455f22 5cf85332 acbcc068 d2a5d78f
+    bytes 17-32  d56a8816 5588d012 179fad0b 15430300
+  AT LOGIN, THE TYPED PASSWORD IS HASHED THE SAME WAY:
+    guess        6be4814d de2bcf7c ...  <- DIFFERENT: REJECTED
+    ben-pass     0f455f22 5cf85332 ...  <- THE SAME: ACCEPTED
+  the password itself is stored nowhere
+FOUR. Authenticated is not the same as authorized.
+  THE REQUESTS (ben, a customer, token tok-1):
+    1  refund O-1  (ana's order)
+    2  view O-1    (ana's order)
+  THE RESPONSES (the gate asks only: logged in?):
+    1  200 OK  <- LOGGED IN, SO ALLOWED
+    2  200 OK  <- NOT HIS ORDER
+FIVE. Authorization: what may this person do?
+  THE REQUESTS:
+    1  no token        refund O-1
+    2  ben, customer   refund O-1
+    3  ben, customer   view O-1  (ana's)
+    4  ben, customer   view O-2  (his own)
+    5  sam, support    view O-1
+    6  sam, support    refund O-1
+    7  ana, customer   cancel O-2  (ben's)
+    8  alex, admin     cancel O-2
+  THE RESPONSES:
+    1  401 UNAUTHENTICATED  <- NOBODY KNOWN
+    2  403 FORBIDDEN  <- KNOWN, NOT ALLOWED
+    3  403 FORBIDDEN
+    4  200 OK
+    5  200 OK
+    6  200 OK
+    7  403 FORBIDDEN
+    8  200 OK
+SIX. How the gate decides, step by step.
+  THE RULES (from PolicyGate.allowed):
+    role        VIEW        CANCEL      REFUND
+    CUSTOMER    own only    own only    no
+    SUPPORT     any         no          any
+    ADMIN       any         any         any
+  THE REQUEST:
+    token tok-1, view O-1
+  STEP 1. AUTHENTICATION: WHO IS THIS?
+    session tok-1  ben, CUSTOMER, issued at tick 0
+    age 0 ticks, under 3: live, so it is ben
+  STEP 2. AUTHORIZATION: MAY BEN DO THIS?
+    rule for CUSTOMER, VIEW: own only
+    owner of O-1: ana, not ben
+  THE RESPONSE:
+    403 FORBIDDEN  <- KNOWN, NOT ALLOWED
+SEVEN. The bill: sessions expire, and roles go stale.
+  SESSIONS EXPIRE:
+    sam logs in at tick 0: tok-1, lifetime 3 ticks
+    at tick 4 the age is 4, not under 3: expired
+    sam refunds O-1: 401 UNAUTHENTICATED
+  BEFORE THE DEMOTION:
+    sam logs in: session tok-1 holds role SUPPORT
+  AFTER THE DEMOTION (alex makes sam a CUSTOMER):
+    refund, role copied at login: 200 OK  <- STALE
+    refund, role looked up now:   403 FORBIDDEN
+    directory lookups: 0 for the first, 1 for the second

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.cms.Attribute;
 import org.bouncycastle.asn1.cms.AttributeTable;
@@ -69,6 +70,17 @@ final class Cms {
             return true;
         } catch (CMSException | org.bouncycastle.operator.OperatorCreationException e) {
             return false;
+        }
+    }
+
+    /** The message digest attribute: the SHA-256 of the content, which the signature covers instead of the content itself. */
+    static byte[] signedDigest(byte[] signedData) {
+        try {
+            SignerInformation signer = new CMSSignedData(signedData).getSignerInfos().getSigners().iterator().next();
+            Attribute attribute = signer.getSignedAttributes().get(CMSAttributes.messageDigest);
+            return ASN1OctetString.getInstance(attribute.getAttrValues().getObjectAt(0)).getOctets();
+        } catch (CMSException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 

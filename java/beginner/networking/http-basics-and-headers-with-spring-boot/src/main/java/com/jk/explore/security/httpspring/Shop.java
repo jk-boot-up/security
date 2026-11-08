@@ -40,9 +40,13 @@ final class Shop {
             http.headers(headers -> headers
                             .contentTypeOptions(Customizer.withDefaults())
                             .frameOptions(frame -> frame.deny())
-                            .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000))
-                            .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; frame-ancestors 'none'"))
-                            .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
+                            .httpStrictTransportSecurity(hsts -> hsts
+                                    .includeSubDomains(true)
+                                    .maxAgeInSeconds(31_536_000))
+                            .contentSecurityPolicy(csp -> csp
+                                    .policyDirectives("default-src 'self'; frame-ancestors 'none'"))
+                            .referrerPolicy(referrer -> referrer
+                                    .policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
                     .csrf(csrf -> csrf.disable())
                     .authorizeHttpRequests(requests -> requests.anyRequest().permitAll());
             return http.build();

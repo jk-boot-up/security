@@ -6,7 +6,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Runs the online store story in five numbered acts and prints exact, repeatable results. */
+/**
+ * Runs the online store story in five numbered acts and prints exact, repeatable results. Each act prints the requests sent,
+ * then what came back, in separate labelled sections.
+ */
 public class AccessControlDemo {
 
     public static void main(String[] args) throws Exception {
@@ -28,69 +31,104 @@ public class AccessControlDemo {
         out.append(text).append('\n');
     }
 
+    /** One request as a table row: who, method, path, status, and an optional marker. */
+    private static void row(StringBuilder out, String who, String method, String path, int status, String mark) {
+        line(out, String.format("    %-7s%-7s%-19s%d%s", who, method, path, status, mark.isEmpty() ? "" : "  <- " + mark));
+    }
+
+    private static void attempt(StringBuilder out, Attempts.Attempt attempt, Reply reply) {
+        line(out, String.format("    %-38s%d", attempt.label(), reply.status()));
+    }
+
     private static void act1WalkingOrderNumbers(StringBuilder out) {
         line(out, "ONE. Walking order numbers.");
         ShopData data = ShopData.sample();
         NaiveStore store = new NaiveStore(data);
-        line(out, "  ana reads her own order 1001: " + store.handle(Request.of("GET", "/orders/1001", Attempts.ANA)).status());
+        line(out, "  THE WALK (ana is signed in, and changes the number):");
         List<String> others = new ArrayList<>();
         int found = 0;
         for (int n = 1000; n <= 1010; n++) {
             Reply reply = store.handle(Request.of("GET", "/orders/" + n, Attempts.ANA));
+            String owner = "";
             if (reply.succeeded()) {
                 found++;
-                String owner = data.order(String.valueOf(n)).orElseThrow().owner();
+                owner = data.order(String.valueOf(n)).orElseThrow().owner();
                 if (!owner.equals("ana")) {
                     others.add(n + " (" + owner + ")");
                 }
             }
+            String mark = owner.isEmpty() ? "" : owner.equals("ana") ? "  hers" : "  " + owner + "'s  <- NOT HERS";
+            line(out, "    GET /orders/" + n + "  " + reply.status() + mark);
         }
-        line(out, "  ana tries the numbers 1000 to 1010: " + found + " orders answer, " + others.size()
-                + " of them other customers': " + String.join(", ", others) + "  <- EVERY ORDER IS ONE NUMBER AWAY");
-        line(out, "  ben's gift order has an id nobody could guess, but ben shared the link; ana opens it: "
-                + store.handle(Request.of("GET", "/orders/" + ShopData.GIFT_ORDER, Attempts.ANA)).status()
-                + "  <- A HARD-TO-GUESS ID IS NOT A PERMISSION");
-        line(out, "  signing in proved who ana is; nothing asked whether the order is hers");
+        line(out, "  THE RESULT:");
+        line(out, "    " + found + " orders answer, " + others.size() + " of them other customers'");
+        line(out, "    " + String.join(", ", others) + ": each one number away");
+        line(out, "  THE GIFT ORDER (an id nobody could guess; ben shared the link):");
+        line(out, "    GET /orders/" + ShopData.GIFT_ORDER + "  "
+                + store.handle(Request.of("GET", "/orders/" + ShopData.GIFT_ORDER, Attempts.ANA)).status());
+        line(out, "    <- A HARD-TO-GUESS ID IS NOT A PERMISSION");
+        line(out, "  signing in proved who ana is; nothing asked if the order is hers");
     }
 
     private static void act2RoutesNobodyChecks(StringBuilder out) {
         line(out, "TWO. Routes that nobody checks.");
         ShopData data = ShopData.sample();
         NaiveStore store = new NaiveStore(data);
-        line(out, "  the page ana sees: " + store.handle(Request.of("GET", "/menu", Attempts.ANA)).body() + " (the admin links are hidden)");
-        line(out, "  ana sends the refund request by hand: " + store.handle(Request.of("POST", "/admin/refunds", Attempts.ANA, "1002")).status()
-                + "  <- THE ROLE WAS CHECKED ONLY IN THE PAGE");
-        line(out, "  someone signed out asks for /admin/reports: " + store.handle(Request.of("GET", "/admin/reports", null)).status()
-                + "  <- NOBODY LINKS TO IT, BUT IT IS STILL A ROUTE");
-        line(out, "  ana: GET /admin/users " + store.handle(Request.of("GET", "/admin/users", Attempts.ANA)).status()
-                + ", DELETE /admin/users/ben " + store.handle(Request.of("DELETE", "/admin/users/ben", Attempts.ANA)).status()
-                + "  <- ONE METHOD CHECKED, THE OTHER FORGOTTEN");
-        line(out, "  ben's account still exists: " + data.userFor(Attempts.BEN).isPresent());
+        line(out, "  THE PAGE ANA SEES:");
+        line(out, "    " + store.handle(Request.of("GET", "/menu", Attempts.ANA)).body());
+        line(out, "    the admin links are hidden");
+        line(out, "  THE REQUESTS SENT BY HAND (who, method, path, status):");
+        row(out, "ana", "POST", "/admin/refunds", store.handle(Request.of("POST", "/admin/refunds", Attempts.ANA, "1002")).status(),
+                "CHECKED ONLY IN THE PAGE");
+        row(out, "nobody", "GET", "/admin/reports", store.handle(Request.of("GET", "/admin/reports", null)).status(), "NOT LINKED, STILL A ROUTE");
+        row(out, "ana", "GET", "/admin/users", store.handle(Request.of("GET", "/admin/users", Attempts.ANA)).status(), "");
+        row(out, "ana", "DELETE", "/admin/users/ben", store.handle(Request.of("DELETE", "/admin/users/ben", Attempts.ANA)).status(),
+                "THIS METHOD FORGOTTEN");
+        line(out, "  THE RESULT:");
+        line(out, "    ben's account still exists: " + data.userFor(Attempts.BEN).isPresent());
     }
 
     private static void act3HorizontalAndVertical(StringBuilder out) {
         line(out, "THREE. Sideways and upwards.");
         ShopData data = ShopData.sample();
         NaiveStore store = new NaiveStore(data);
+        line(out, "  SIDEWAYS (the same role, someone else's data):");
         store.handle(Request.of("POST", "/orders/1002/address", Attempts.ANA, "12 Palm Street"));
-        line(out, "  sideways, the same role and someone else's data: ana redirects ben's order: "
-                + store.handle(Request.of("GET", "/orders/1002", Attempts.BEN)).body());
+        line(out, "    ana  POST /orders/1002/address  \"12 Palm Street\"");
+        line(out, "    ben's order now: " + store.handle(Request.of("GET", "/orders/1002", Attempts.BEN)).body());
+        line(out, "  UPWARDS (a higher role's function):");
         store.handle(Request.of("POST", "/admin/refunds", Attempts.ANA, "1002"));
-        line(out, "  upwards, a higher role's function: ana's refund of 1002 is recorded: " + data.refunds().contains("1002"));
-        ShopData fresh = ShopData.sample();
-        NaiveStore naive = new NaiveStore(fresh);
+        line(out, "    ana  POST /admin/refunds  \"1002\"");
+        line(out, "    the refund of 1002 is recorded: " + data.refunds().contains("1002"));
+        NaiveStore naive = new NaiveStore(ShopData.sample());
         int succeeded = 0;
         Set<String> routes = new LinkedHashSet<>();
+        line(out, "  BEFORE THE FIX (the naive store, nine attacks):");
         for (Attempts.Attempt attempt : Attempts.attacks()) {
-            if (naive.handle(attempt.request()).succeeded()) {
+            Reply reply = naive.handle(attempt.request());
+            attempt(out, attempt, reply);
+            if (reply.succeeded()) {
                 succeeded++;
                 routes.add(routeOf(attempt.request()));
             }
         }
-        line(out, "  the naive store, nine attacks: " + succeeded + " succeed, through " + routes.size() + " of its "
-                + naive.routeCount() + " routes");
-        line(out, "  the one route written carefully, DELETE /orders/{id}, refused ana: "
-                + new NaiveStore(ShopData.sample()).handle(Request.of("DELETE", "/orders/1002", Attempts.ANA)).status());
+        line(out, "    " + succeeded + " succeed, through " + routes.size() + " of its " + naive.routeCount() + " routes");
+        line(out, "  the 403 is DELETE /orders/{id}, the one route written carefully");
+    }
+
+    private static String describe(Policy.Rule rule) {
+        if (!rule.signInNeeded()) {
+            return "anyone";
+        }
+        if (!rule.ownerAllowed() && rule.roles().size() == Role.values().length) {
+            return "anyone signed in";
+        }
+        List<String> who = new ArrayList<>();
+        if (rule.ownerAllowed()) {
+            who.add("the owner");
+        }
+        rule.roles().forEach(r -> who.add(r.name()));
+        return String.join(", ", who);
     }
 
     private static String routeOf(Request request) {
@@ -101,43 +139,58 @@ public class AccessControlDemo {
         line(out, "FOUR. One choke point, deny by default.");
         GuardedStore store = new GuardedStore(ShopData.sample());
         int succeeded = 0;
+        line(out, "  AFTER THE FIX (one policy before every handler):");
         for (Attempts.Attempt attempt : Attempts.attacks()) {
             Reply reply = store.handle(attempt.request());
             if (reply.succeeded()) {
                 succeeded++;
             }
-            line(out, "  " + attempt.label() + ": " + reply.status());
+            attempt(out, attempt, reply);
         }
-        line(out, "  attacks that succeed: " + succeeded + " of " + Attempts.attacks().size());
+        line(out, "    attacks that succeed: " + succeeded + " of " + Attempts.attacks().size());
         GuardedStore honest = new GuardedStore(ShopData.sample());
-        long ok = Attempts.honest().stream().filter(a -> honest.handle(a.request()).succeeded()).count();
-        line(out, "  honest requests that still work: " + ok + " of " + Attempts.honest().size());
-        line(out, "  someone else's order answers 404, like a missing one, so the reply does not confirm the order exists");
+        line(out, "  THE HONEST REQUESTS (they must still work):");
+        long ok = 0;
+        for (Attempts.Attempt attempt : Attempts.honest()) {
+            Reply reply = honest.handle(attempt.request());
+            ok += reply.succeeded() ? 1 : 0;
+            attempt(out, attempt, reply);
+        }
+        line(out, "    still work: " + ok + " of " + Attempts.honest().size());
+        line(out, "  WHY 404 AND NOT 403:");
+        line(out, "    someone else's order answers like a missing one,");
+        line(out, "    so the reply does not confirm that the order exists");
         List<String> log = store.denials();
-        line(out, "  refusals logged: " + log.size() + ", for example:");
+        line(out, "  THE LOG (" + log.size() + " refusals, two of them):");
         line(out, "    " + log.get(0));
         line(out, "    " + log.get(log.size() - 1));
         boolean leaks = log.stream().anyMatch(l -> l.contains("token-"));
-        line(out, "  a token appears in the log: " + leaks);
+        line(out, "    a token appears in the log: " + leaks);
     }
 
     private static void act5KeepingItRight(StringBuilder out) throws IOException, InterruptedException {
         line(out, "FIVE. Keeping it right, and the bill.");
         GuardedStore store = new GuardedStore(ShopData.sample());
-        line(out, "  routes without a rule today: " + store.routesWithoutRules().size());
+        line(out, "  THE RULE TABLE (one rule per route):");
+        store.rules().forEach((route, rule) -> line(out, String.format("    %-7s%-22s%s", route.method(), route.pattern(), describe(rule))));
+        line(out, "  THE ROUTE INVENTORY (a test that reads every route):");
+        line(out, "    routes without a rule today: " + store.routesWithoutRules().size());
         store.addRouteWithoutRule("GET", "/admin/export", Handlers::exportCustomers);
-        line(out, "  a developer adds GET /admin/export and forgets its rule; routes without a rule: " + store.routesWithoutRules()
-                + "  <- THE ROUTE INVENTORY TEST FAILS THE BUILD");
-        line(out, "  until it has one, even dave the admin is refused: " + store.handle(Request.of("GET", "/admin/export", Attempts.DAVE)).status()
+        line(out, "    a developer adds GET /admin/export, and forgets its rule");
+        line(out, "    routes without a rule: " + store.routesWithoutRules() + "  <- BUILD FAILS");
+        line(out, "    dave the admin asks for it: " + store.handle(Request.of("GET", "/admin/export", Attempts.DAVE)).status()
                 + ", denied by default");
+        line(out, "  OVER REAL HTTP ON THIS MACHINE (who, method, path, status):");
         try (HttpFront front = new HttpFront(new GuardedStore(ShopData.sample()))) {
-            line(out, "  the same rules over real HTTP on this machine: ana's order " + front.send(Request.of("GET", "/orders/1001", Attempts.ANA))
-                    + ", ben's order " + front.send(Request.of("GET", "/orders/1002", Attempts.ANA))
-                    + ", DELETE /admin/users/ben " + front.send(Request.of("DELETE", "/admin/users/ben", Attempts.ANA))
-                    + ", the report signed out " + front.send(Request.of("GET", "/admin/reports", null)));
+            row(out, "ana", "GET", "/orders/1001", front.send(Request.of("GET", "/orders/1001", Attempts.ANA)), "");
+            row(out, "ana", "GET", "/orders/1002", front.send(Request.of("GET", "/orders/1002", Attempts.ANA)), "");
+            row(out, "ana", "DELETE", "/admin/users/ben", front.send(Request.of("DELETE", "/admin/users/ben", Attempts.ANA)), "");
+            row(out, "nobody", "GET", "/admin/reports", front.send(Request.of("GET", "/admin/reports", null)), "");
         }
-        line(out, "  the bill: the naive store keeps its checks in " + new NaiveStore(ShopData.sample()).routeCount()
-                + " handlers, nine places to forget one; the guarded store keeps them in one table that a test can read");
-        line(out, "  every object-level check needs a lookup of who owns the object, and every refusal is a log line to keep and watch");
+        line(out, "  THE BILL:");
+        line(out, "    naive: checks in " + new NaiveStore(ShopData.sample()).routeCount() + " handlers, nine places to forget one");
+        line(out, "    guarded: one table of rules that a test can read");
+        line(out, "    every object check needs a lookup of who owns the object");
+        line(out, "    every refusal is a log line to keep and watch");
     }
 }

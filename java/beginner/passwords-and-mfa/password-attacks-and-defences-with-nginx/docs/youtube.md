@@ -16,23 +16,34 @@ Chapters:
 
 ```
 00:00 Introduction
-01:26 The Scenario
-01:56 The Words
-02:25 Act One — nginx in front of the login, with no limit
-02:58 Act Two — limit_req on the client's address: 1r/m, burst 5
-03:37 Act Three — The same limit, but counted on the X-Forwarded-For header
-04:12 Act Four — The same limit, counted on the real connection address
-04:46 Act Five — The bill: a limit per username
-05:32 Choosing the Key
-06:06 Who Does What
-06:37 Where You Have Seen It
-07:07 How To Use It
-07:31 Thanks for Watching
+01:23 The Scenario
+01:53 The Words
+02:23 What the Letters Stand For
+03:19 One request, three possible keys
+04:28 No limit: every guess reaches the login
+05:21 Act One — nginx in front of the login, with no limit
+05:39 How the limit decides, guess by guess
+06:50 Act Two — limit_req on the client's address: 1r/m, burst 5
+07:07 Keyed on a header: the attacker picks the key
+08:02 Act Three — The same limit, but counted on the X-Forwarded-For header
+08:17 Keyed on the real address: the header is ignored
+09:10 Act Four — The same limit, counted on the real connection address
+09:23 Keyed on the username: the owner pays
+10:22 Act Five — The bill: a limit per username
+10:43 Where You Have Seen It
+11:10 How To Use It
+11:44 The Java Classes
+11:52 NginxAttacksDemo — one act: start nginx, then attack
+12:09 NginxConfig — the key, and the two limit lines
+12:31 Nginx — start a pinned image with that file
+12:46 Attacker — one guess, and the count
+13:05 LeakyBucket — the excess for one key
+13:28 Thanks for Watching
 ```
 
 ## Tags
 
-nginx, rate limiting, limit_req, brute force, x-forwarded-for, password attacks, docker, java, cybersecurity for beginners
+nginx, rate limiting, limit_req, brute force, x-forwarded-for, password attacks, docker, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +51,16 @@ nginx, rate limiting, limit_req, brute force, x-forwarded-for, password attacks,
 | --- | --- |
 | Video | `video/password-attacks-and-defences-with-nginx-explained.mp4` |
 | Captions | `video/password-attacks-and-defences-with-nginx-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Passwords and MFA in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (32)
-- [ ] tags are at most 500 characters in total — ok (114)
+- [ ] tags are at most 500 characters in total — ok (165)
 - [ ] description is at most 5,000 characters — ok (606)
 - [ ] chapters start at 00:00 and there are at least three

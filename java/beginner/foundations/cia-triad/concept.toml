@@ -30,8 +30,9 @@ question to ask about any system: which of the three can fail, and who is hurt
 when it does?
 
 This project builds one small system, an online store's order records, and
-breaks each promise on purpose. Then it adds the simplest control that restores
-each one, and shows what those controls cost.
+breaks each promise on purpose. Then, in seven acts, it adds the simplest control
+that restores each one, works out the integrity seal step by step, and shows what
+those controls cost.
 """
 analogy = """
 Think of a bank vault. The thick door keeps strangers out: that is
@@ -81,136 +82,270 @@ test_note = "Every line the demo prints is checked against `docs/expected-output
 
 [[act]]
 title = "The first version, with no controls"
-summary = "A support agent reads a shipping address, an amount is changed in silence, and a bot floods the checkout so a customer is refused."
+summary = "Support reads an address, an amount is changed in silence, and a bot's flood refuses a real customer."
 detail = """
-The first version of the order system trusts everyone. Raj, from support, reads
-order O-101 and gets the whole record, including the shipping address, 12 Palm
-Street, which he never needed: a leak. Mallory changes the amount from $1200 to
-$12 and nothing records it, so when Ana reads the order she sees $12 and nobody
-knows it was changed: a silent change. Then 101 checkout requests arrive in one
-tick, 100 from a bot and one from a customer, Maya. The server can do 10 per
-tick and serves them in order, so it serves 10 of the bot's and refuses Maya's:
-an outage for the person who wanted to buy.
+The first version of the order system trusts everyone. Three requests go in: Raj, from support, reads order O-101; Mallory,
+also from support, changes its amount to $12; and in a flash sale 100 checkouts from a bot arrive, then 1 from Maya.
+Nothing is checked, so the results are three failures. Raj gets the shipping address, 12 Palm Street, which he never needed:
+a leak. Ana sees amount=$12 and nobody knows it was changed: a silent change. The server can do 10 requests per tick and
+serves them in order, so all 10 go to the bot and Maya's checkout is refused: an outage.
+"""
+figure = "no_controls"
+figure_title = "No controls: three requests, three failures"
+figure_speech = """
+First demo: the first version of the order system, with no controls. [[slnc 400]] On the left, in green, the requests. [[slnc 300]] On the right, in red, what comes back. [[slnc 600]]
+The first request. [[slnc 300]] Raj, from support, reads order one oh one. [[slnc 300]] He gets the whole order, including the address, twelve Palm Street. [[slnc 300]] Support did not need it. [[slnc 300]] Confidentiality fails. [[slnc 600]]
+The second request. [[slnc 300]] Mallory changes the amount, from twelve hundred dollars to twelve. [[slnc 300]] When Ana reads the order, she sees twelve dollars, and nothing says it was changed. [[slnc 300]] Integrity fails. [[slnc 600]]
+The third. [[slnc 300]] A flash sale starts. [[slnc 300]] A bot sends one hundred checkouts, and then Maya sends one. [[slnc 300]] The server can do ten in one tick, and serves them in order. [[slnc 300]] All ten go to the bot, and Maya is refused. [[slnc 300]] Availability fails.
 """
 speech = """
-First demo: the first version of the store's order system, with no controls. [[slnc 400]]
-Ana works in finance. [[slnc 300]] Raj works in support. [[slnc 300]] Mallory also works in support, but is careless with what should not be touched. [[slnc 600]]
-Raj reads order one oh one, for the customer Maya Rao. [[slnc 300]] The whole order comes back, including the shipping address, twelve Palm Street. [[slnc 300]] Support did not need that. [[slnc 300]] This is a leak. [[slnc 600]]
-Mallory changes the amount from twelve hundred dollars to twelve. [[slnc 300]] Nothing records it. [[slnc 300]] When Ana reads the order, she sees twelve dollars, and nobody knows it was changed. [[slnc 300]] This is a silent change. [[slnc 600]]
-Then a flash sale begins, and a flood of checkout requests arrives. [[slnc 300]] One hundred from a bot, and one from a real customer, Maya. [[slnc 300]] The server can only do ten at a time. [[slnc 300]] It serves ten, all of them the bot's. [[slnc 300]] Maya's request is refused. [[slnc 300]] This is an outage, for the person who wanted to buy.
+Here is the real output of the program. [[slnc 400]] First, the section with the requests. [[slnc 300]] Raj reads, Mallory changes the amount, and the flash sale arrives. [[slnc 500]]
+Then the section with the results. [[slnc 300]] A leak. [[slnc 300]] A silent change. [[slnc 300]] And an outage. [[slnc 500]] One system, three broken promises.
 """
 rows = { conf = "active wrong", integ = "active wrong", avail = "active wrong" }
 console = [
-    ["raj reads O-101: address=12 Palm Street  <- LEAK", "bad"],
-    ["mallory changes the amount of O-101 from $1200 to $12, silently", "muted"],
-    ["ana reads O-101: amount=$12  <- SILENT CHANGE", "bad"],
-    ["101 checkout requests arrive in one tick; the server can do 10", "muted"],
-    ["served 10 of 101; maya's request was refused  <- OUTAGE", "bad"],
+    ["THE REQUESTS:", "ok"],
+    ["  raj (support) reads order O-101", "muted"],
+    ["  mallory (support) changes the amount of O-101 to $12", "muted"],
+    ["  flash sale: 100 checkouts from a bot, 1 from maya", "muted"],
+    ["THE RESULTS (nothing is checked):", "bad"],
+    ["  raj gets the address: 12 Palm Street  <- LEAK", "bad"],
+    ["  ana sees amount=$12, no one knows  <- SILENT CHANGE", "bad"],
+    ["  the server can do 10: all 10 went to the bot", "muted"],
+    ["  maya's checkout: refused  <- OUTAGE", "bad"],
 ]
 
 [[act]]
-title = "Confidentiality: each role sees what it needs"
-summary = "Support sees the customer and the item only, finance sees everything, and only finance may change an amount."
+title = "Confidentiality: each role sees only what it needs"
+summary = "The system looks at the asker's role: support gets the customer and the item, finance gets everything, and only finance may change an amount."
 detail = """
-The fix for the leak is to decide what each role may see. The order system now
-looks at the asker's role before it answers. Raj, from support, gets the
-customer and the item, and the address and the amount come back hidden. Ana,
-from finance, gets everything. Mallory tries to change an amount and is denied,
-because only finance may. The principle is called least privilege: give each
-person only what the job needs, and nothing more.
+The fix for the leak is to decide what each role may see. The same three requests go in: Raj (support) and Ana (finance)
+read O-101, and Mallory (support) tries to change its amount. The responses are filtered by role. Raj gets customer=Maya Rao
+and item=Laptop, with the address and the amount hidden. Ana gets everything: 12 Palm Street and $1200. Mallory is denied,
+because only finance may change an amount. The principle is called least privilege: give each person only what the job needs.
+"""
+figure = "role_filter"
+figure_title = "Each role sees only what it needs"
+figure_speech = """
+Second demo: confidentiality. [[slnc 400]] The order system now looks at who is asking, before it answers. [[slnc 600]]
+In green, the requests. [[slnc 300]] Raj, from support, reads order one oh one. [[slnc 300]] Ana, from finance, reads the same order. [[slnc 300]] And Mallory, from support, tries to change the amount. [[slnc 600]]
+In red, the responses, as a table. [[slnc 300]] Raj gets the customer, Maya Rao, and the item, a laptop. [[slnc 300]] The address and the amount come back hidden. [[slnc 500]] Ana gets every field, including twelve Palm Street, and twelve hundred dollars. [[slnc 500]] Mallory is denied. [[slnc 300]] Only finance may change an amount. [[slnc 600]]
+The idea has a name: least privilege. [[slnc 300]] Give each person only what the job needs, and nothing more.
 """
 speech = """
-Second demo: confidentiality. [[slnc 400]] The order system now looks at who is asking, before it answers. [[slnc 600]]
-Raj, from support, reads order one oh one. [[slnc 300]] He gets the customer and the item. [[slnc 300]] The address and the amount come back hidden. [[slnc 600]]
-Ana, from finance, reads the same order. [[slnc 300]] She gets everything, including the address, and the amount of twelve hundred dollars. [[slnc 600]]
-Mallory tries to change an amount. [[slnc 300]] Denied. [[slnc 300]] Only finance may change one. [[slnc 600]]
-The idea has a name. [[slnc 300]] It is called least privilege. [[slnc 300]] Give each person only what the job needs, and nothing more.
+The program's output. [[slnc 300]] The requests: two reads, and one change. [[slnc 500]]
+Then the responses, filtered by role. [[slnc 300]] The row for Raj shows hidden, twice. [[slnc 300]] The row for Ana shows everything. [[slnc 300]] And Mallory's change is denied.
 """
 rows = { conf = "active ok" }
 console = [
-    ["raj reads O-101: customer=Maya Rao, item=Laptop,", "ok"],
-    ["  address=[hidden], amount=[hidden]", "ok"],
-    ["ana reads O-101: ... address=12 Palm Street, amount=$1200", "ok"],
-    ["mallory tries to change an amount: denied", "ok"],
+    ["THE REQUESTS:", "ok"],
+    ["  raj (support) reads O-101", "muted"],
+    ["  ana (finance) reads O-101", "muted"],
+    ["  mallory (support) changes the amount of O-101 to $12", "muted"],
+    ["THE RESPONSES (filtered by role):", "bad"],
+    ["           customer  item    address         amount", "muted"],
+    ["  to raj   Maya Rao  Laptop  [hidden]        [hidden]", "muted"],
+    ["  to ana   Maya Rao  Laptop  12 Palm Street  $1200", "muted"],
+    ["  to mallory denied, mallory may not change an amount", "muted"],
 ]
 
 [[act]]
-title = "Integrity: a change behind the application is caught"
-summary = "Each order carries a seal worked out from its contents and a secret key; an edit made directly in storage no longer matches its seal."
+title = "Integrity: every order is saved with a seal"
+summary = "Each order is saved with a seal, an HMAC-SHA256 code worked out from the order's text and a secret key: 32 bytes, 64 hex characters."
 detail = """
-Role checks protect the front door, but someone may reach the stored data some
-other way. So every order is saved together with a seal: a short code worked
-out from the order and a secret key. On every read, the system works the code
-out again and compares. Mallory edits the amount directly in storage, from
-$1200 to $12, and leaves the seal as it was. When Ana reads the order, the
-codes do not match, and the system refuses to show it instead of showing a
-wrong amount. Other orders, such as O-102, are unaffected. The seal does not
-stop the edit; it makes sure the edit cannot go unnoticed.
+Role checks guard the front door, but someone may reach the stored data another way. So every order is saved with a seal.
+Two inputs go in: the order as one line of text, O-101|Maya Rao|Laptop|12 Palm Street|1200, and a secret key. HMAC-SHA256
+mixes them into the seal, 701017e4 0f4b5c72 ... a10f3d55: 32 bytes, written as 64 hex characters. Storage keeps the order
+and its seal side by side. Change one character of the text and the seal comes out completely different; without the key,
+nobody can work out the new one.
+"""
+figure = "seal_made"
+figure_title = "Sealing one order"
+figure_speech = """
+Third demo: integrity. [[slnc 400]] Role checks guard the front door. [[slnc 300]] But someone may reach the stored data another way. [[slnc 300]] So every order gets a seal. [[slnc 600]]
+In green, the section before sealing: the two inputs. [[slnc 300]] The order, written as one line of text, with a bar between the fields. [[slnc 300]] And a secret key, which only the order system knows. [[slnc 600]]
+In the middle, H M A C S H A two five six mixes the two together. [[slnc 500]]
+In red, the section after sealing: the seal. [[slnc 300]] Thirty two bytes, shown as sixty four hex characters, starting seven zero one zero. [[slnc 600]]
+Storage keeps the order and its seal side by side. [[slnc 300]] Change one character of the order, and the seal comes out completely different. [[slnc 300]] And without the key, nobody can make the new one.
 """
 speech = """
-Third demo: integrity. [[slnc 400]] Role checks guard the front door. [[slnc 300]] But someone may reach the stored data another way. [[slnc 600]]
-So every order is saved with a seal. [[slnc 300]] A seal is a short code, worked out from the order and a secret key. [[slnc 300]] Change one letter of the order, and the code no longer fits. [[slnc 600]]
-Mallory edits the amount directly in storage, from twelve hundred dollars to twelve. [[slnc 300]] The seal is left as it was. [[slnc 600]]
-Ana reads the order. [[slnc 300]] The system works the code out again, and it does not match. [[slnc 300]] The order is refused, instead of showing a wrong amount. [[slnc 600]]
-Order one oh two is untouched, and still reads normally. [[slnc 300]] The seal does not stop the edit. [[slnc 300]] It makes sure the edit cannot go unnoticed.
+Here is the same thing, printed by the program. [[slnc 400]] Before sealing: the order text, and the key. [[slnc 500]]
+After sealing: the seal, over two lines. [[slnc 300]] Then its size: thirty two bytes, or sixty four hex characters. [[slnc 400]] The seal is stored next to the order.
+"""
+rows = { integ = "active ok", store = "active ok" }
+console = [
+    ["BEFORE SEALING (the inputs):", "ok"],
+    ["  order text  O-101|Maya Rao|Laptop|12 Palm Street|1200", "muted"],
+    ["  key         demo-only-secret-not-for-real-use", "muted"],
+    ["AFTER SEALING (HMAC-SHA256 of the text, with the key):", "bad"],
+    ["  seal        701017e4 0f4b5c72 35d9a6a2 72a14cb4", "muted"],
+    ["              34ef287b b2ca343b acee4afa a10f3d55", "muted"],
+    ["the seal is 32 bytes, written as 64 hex characters", "muted"],
+    ["storage keeps the order and its seal side by side", "muted"],
+]
+
+[[act]]
+title = "How the seal is made, step by step"
+summary = "The seal is made in three steps: pad the key to 64 bytes, hash the key xor 36 with the text, then hash the key xor 5c with that first hash."
+detail = """
+HMAC-SHA256 makes the seal in three steps, and `SealSteps` redoes them by hand. First, the 33-byte key is padded with 31 zero
+bytes to 64 bytes, the block size of SHA-256. Second, every byte of the padded key is XORed with 36, and SHA-256 hashes that
+followed by the order text: the inner hash 3854d249 8b389b27 .... Third, every byte of the padded key is XORed with 5c, and
+SHA-256 hashes that followed by the inner hash: 701017e4 0f4b5c72 ... a10f3d55, exactly the seal Java's Mac gave in act three.
+SHA-256 on its own needs no key, so anyone could recompute a plain hash; mixing the key in twice means only someone with the
+key can make a matching seal.
+"""
+figure = "seal_steps"
+figure_title = "How the seal is made"
+figure_speech = """
+So where does the seal come from? [[slnc 400]] H M A C makes it in three steps. [[slnc 600]]
+Step one. [[slnc 300]] The key is thirty three bytes long. [[slnc 300]] Thirty one zero bytes are added, to make sixty four. [[slnc 300]] That is the block size of S H A two five six. [[slnc 600]]
+Step two. [[slnc 300]] Every byte of the key is X O R ed with three six. [[slnc 300]] The letter d, six four, becomes five two. [[slnc 300]] The zero bytes become three six. [[slnc 300]] Then S H A two five six hashes this, followed by the order text. [[slnc 300]] Out comes the inner hash, thirty two bytes, starting three eight five four. [[slnc 600]]
+Step three. [[slnc 300]] The key is X O R ed again, this time with five c. [[slnc 300]] S H A two five six hashes that, followed by the inner hash. [[slnc 300]] Out comes seven zero one zero, and so on. [[slnc 300]] Exactly the seal from act three. [[slnc 600]]
+A plain hash needs no key, so anyone could make one. [[slnc 300]] Here the key is mixed in twice, so only the order system can make a matching seal.
+"""
+speech = """
+The program works out the seal by hand. [[slnc 400]] Step one: thirty three bytes of key, plus thirty one zero bytes. [[slnc 300]] As hex, it ends in zeros. [[slnc 500]]
+Step two: the key X O R three six, which ends in three six, and the inner hash.
+[[page]]
+Step three: the key X O R five c, and the seal. [[slnc 400]] The last line compares it with the seal Java made in act three. [[slnc 300]] True. [[slnc 300]] The same.
 """
 rows = { integ = "active ok" }
 console = [
-    ["mallory edits O-101 in storage: amount $1200 -> $12", "muted"],
-    ["ana reads O-101: refused, O-101 does not match its seal", "ok"],
-    ["  <- DETECTED", "ok"],
-    ["ana reads O-102: ... address=7 Lake Road, amount=$80", "ok"],
+    ["STEP 1. PAD THE KEY WITH ZERO BYTES TO 64 BYTES:", "amber"],
+    ["  key         33 bytes + 31 zero bytes = 64 bytes", "muted"],
+    ["  as hex      64656d6f 2d6f6e6c ... 00000000", "muted"],
+    ["STEP 2. INNER HASH = SHA-256(key xor 36 + the text):", "amber"],
+    ["  key xor 36  52535b59 1b59585a ... 36363636", "muted"],
+    ["  inner       3854d249 8b389b27 4d465bbb ce170a34", "muted"],
+    ["              3c9fd86e 23d72511 2fc3ed2b 4bd1ca0b", "muted"],
+    ["---", ""],
+    ["STEP 3. SEAL = SHA-256(key xor 5c + inner hash):", "amber"],
+    ["  key xor 5c  38393133 71333230 ... 5c5c5c5c", "muted"],
+    ["  seal        701017e4 0f4b5c72 35d9a6a2 72a14cb4", "muted"],
+    ["              34ef287b b2ca343b acee4afa a10f3d55", "muted"],
+    ["  the same seal Java's Mac gave in act three: true", "muted"],
 ]
 
 [[act]]
-title = "Availability: one client cannot use up the server"
-summary = "Each client may make 3 requests per tick, so the bot gets 3 and Maya's request is served."
+title = "A change behind the application is caught"
+summary = "Mallory edits the amount directly in storage and leaves the seal; on the next read the seal is worked out again, does not match, and the order is refused."
 detail = """
-The same flash-sale flood arrives again: 100 requests from the bot and one from
-Maya. This time the server first asks a rate limiter, which allows each client 3
-requests per tick. The bot is served 3 times and refused 97. Maya's single
-request is served. Availability is protected by sharing the capacity fairly, so
-one client, careless or hostile, cannot use all of it.
+Before the edit, storage holds O-101|Maya Rao|Laptop|12 Palm Street|1200 with the seal 701017e4 0f4b5c72 .... Mallory edits
+the amount directly in storage, to 12, and leaves the seal as it was, because without the key a new one cannot be made. When
+Ana reads O-101, the system works the seal out again from the text it finds, 3513c4ae 562fdd03 ..., which does not match the
+stored seal, so the order is refused instead of showing a wrong amount. O-102 is untouched and still reads normally. The seal
+does not stop the edit; it makes sure the edit cannot go unnoticed.
+"""
+figure = "edit_caught"
+figure_title = "An edit in storage breaks the seal"
+figure_speech = """
+Now Mallory goes around the front door. [[slnc 400]] She edits the order directly in storage. [[slnc 600]]
+In green, before the edit. [[slnc 300]] The amount is twelve hundred, and the stored seal starts seven zero one zero. [[slnc 600]]
+In red, after the edit. [[slnc 300]] The amount is now twelve. [[slnc 300]] But the seal is left as it was, because Mallory does not have the key to make a new one. [[slnc 600]]
+Then Ana reads the order. [[slnc 300]] The system works the seal out again, from the text it finds. [[slnc 300]] The new seal starts three five one three. [[slnc 300]] It does not match the stored seal. [[slnc 300]] So the order is refused, instead of showing a wrong amount. [[slnc 600]]
+The seal does not stop the edit. [[slnc 300]] It makes sure the edit cannot go unnoticed.
 """
 speech = """
-Fourth demo: availability. [[slnc 400]] The same flood arrives again. [[slnc 300]] One hundred requests from the bot, and one from Maya. [[slnc 600]]
-This time the server asks a rate limiter first. [[slnc 300]] A rate limiter allows each client only a few requests in each moment. [[slnc 300]] Here, three. [[slnc 600]]
-The bot is served three times, and refused ninety seven times. [[slnc 300]] Maya's single request is served. [[slnc 600]]
-Availability is protected by sharing the capacity fairly. [[slnc 300]] So no single client, careless or hostile, can use all of it.
+The program's output. [[slnc 300]] Before the edit: the order text, and the stored seal. [[slnc 400]] After the edit: the amount is twelve, and the seal is the same as before.
+[[page]]
+Ana reads the order. [[slnc 300]] The new seal is different. [[slnc 300]] Matches: false. [[slnc 300]] Refused, detected. [[slnc 500]] And order one oh two, which nobody touched, still reads normally.
+"""
+rows = { integ = "active ok", store = "active wrong" }
+console = [
+    ["BEFORE THE EDIT (in storage):", "ok"],
+    ["  order  O-101|Maya Rao|Laptop|12 Palm Street|1200", "muted"],
+    ["  seal   701017e4 0f4b5c72 ...", "muted"],
+    ["AFTER THE EDIT (mallory, directly in storage):", "bad"],
+    ["  order  O-101|Maya Rao|Laptop|12 Palm Street|12", "muted"],
+    ["  seal   701017e4 0f4b5c72 ...  (left as it was)", "muted"],
+    ["---", ""],
+    ["ANA READS O-101 (the seal is worked out again):", "amber"],
+    ["  new seal  3513c4ae 562fdd03 ...", "muted"],
+    ["  matches the stored seal: false", "muted"],
+    ["  refused, O-101 does not match its seal  <- DETECTED", "ok"],
+    ["ana reads O-102 (untouched): Tom Lee, Headphones, $80", "muted"],
+]
+
+[[act]]
+title = "Availability: one client cannot use up the whole server"
+summary = "A rate limiter counts each client's requests in a tick and allows 3, so the bot gets 3, is refused 97 times, and Maya is served."
+detail = """
+The same flash-sale flood arrives again: 100 checkouts from the bot, then 1 from Maya, at a server that can do 10 per tick.
+This time each request first goes to a rate limiter, which counts the client's requests in this tick and allows at most 3.
+The bot's requests 1, 2 and 3 get counts 1, 2 and 3 and are allowed; request 4 gets count 4, over 3, and is refused, and so
+are requests 5 to 100. Maya's request is her first, count 1, and is allowed. Without the limit the bot got all 10 and Maya
+was refused; with it the bot gets 3, is refused 97 times, and Maya is served. Availability is protected by sharing the
+capacity fairly.
+"""
+figure = "rate_limit"
+figure_title = "The rate limiter counts each client"
+figure_speech = """
+Fourth demo: availability. [[slnc 400]] The same flood arrives again. [[slnc 300]] One hundred checkouts from the bot, and then one from Maya. [[slnc 300]] The server can still do only ten. [[slnc 600]]
+This time, each request first goes to a rate limiter. [[slnc 300]] It keeps a count for each client, and allows at most three in each tick. [[slnc 600]]
+Look at the counts. [[slnc 300]] The bot's first request, count one, allowed. [[slnc 300]] Two, allowed. [[slnc 300]] Three, allowed. [[slnc 300]] The fourth, count four, is over three, so it is refused. [[slnc 300]] And so are all the rest. [[slnc 500]] Maya's request is her first, count one, so it is allowed. [[slnc 600]]
+At the bottom, the results. [[slnc 300]] Without the limit, the bot took all ten places, and Maya was refused. [[slnc 300]] With the limit, the bot gets three, and Maya is served. [[slnc 300]] No single client can use up the server.
+"""
+speech = """
+The program's output. [[slnc 300]] The requests: one hundred and one, at a server that can do ten. [[slnc 500]] Then the limiter at work: counts one to three allowed, count four refused, and Maya allowed.
+[[page]]
+The results. [[slnc 300]] Without the limit, Maya is refused. [[slnc 300]] With the limit, the bot gets three and is refused ninety seven times. [[slnc 300]] And Maya is served.
 """
 rows = { avail = "active ok" }
 console = [
-    ["each client may make 3 requests per tick", "muted"],
-    ["bot: 3 served, 97 refused", "ok"],
-    ["maya: 1 served", "ok"],
+    ["THE REQUESTS (one tick):", "ok"],
+    ["  100 checkouts from the bot, then 1 from maya", "muted"],
+    ["  the server can do 10 requests in one tick", "muted"],
+    ["HOW THE LIMIT DECIDES (3 per client per tick):", "amber"],
+    ["  bot   request 1   count 1, at most 3: allowed", "muted"],
+    ["  bot   request 2   count 2, at most 3: allowed", "muted"],
+    ["  bot   request 3   count 3, at most 3: allowed", "muted"],
+    ["  bot   request 4   count 4, over 3: refused", "muted"],
+    ["  bot   requests 5 to 100: refused the same way", "muted"],
+    ["  maya  request 1   count 1, at most 3: allowed", "muted"],
+    ["---", ""],
+    ["THE RESULTS:", "bad"],
+    ["  without the limit: bot 10 served, maya refused", "muted"],
+    ["  with the limit:    bot 3 served, 97 refused", "muted"],
+    ["                     maya 1 served  <- SERVED", "ok"],
 ]
 
 [[act]]
 title = "The bill: strict controls get in the way of emergencies"
-summary = "Support cannot see a shipping address when a courier is at the wrong door; an emergency exception shows it, but only with a reason, and logs the use."
+summary = "Support cannot see an address when a courier is at the wrong door; emergency access without a reason is denied, and with a reason it shows the address and logs the use."
 detail = """
-Strict confidentiality has a cost. A courier is standing at the wrong door, the
-customer is on the phone, finance is not available, and Raj cannot see the
-shipping address that would let him fix it. The system offers an emergency
-exception, usually called break-glass access: any employee may read the
-address, but must give a reason, and the use is written to an audit log. Raj
-gets the address, 12 Palm Street, and the log now has one entry saying who used
-the exception, on which order, and why. The three promises pull against each
-other, so the exception must exist, and the exception must be watched.
+Strict confidentiality has a cost. A courier is at the wrong door, the customer is on the phone, finance is not available,
+and Raj, from support, gets address=[hidden]. The system offers an emergency exception, often called break-glass access.
+Asked with no reason, it is denied. Asked with a reason, it shows the address, 12 Palm Street, and writes an entry to the
+audit log: raj used emergency access on O-101, with the reason. The three promises pull against each other, so the
+exception must exist, and it must be watched.
+"""
+figure = "break_glass"
+figure_title = "Emergency access: a reason, and a log"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] Strict controls have a cost. [[slnc 600]]
+A courier is at the wrong door. [[slnc 300]] The customer is on the phone. [[slnc 300]] Finance is not available. [[slnc 300]] And Raj, from support, cannot see the address. [[slnc 600]]
+So the system has an emergency exception, often called break glass access, like the glass on a fire alarm. [[slnc 600]]
+In green, Raj's three requests. [[slnc 300]] In red, the responses. [[slnc 300]] As usual, the address is hidden. [[slnc 300]] Emergency access with no reason: denied. [[slnc 300]] Emergency access with a reason: twelve Palm Street. [[slnc 600]]
+And at the bottom, the audit log, with one entry. [[slnc 300]] Who used it, on which order, and why. [[slnc 600]]
+The promises pull against each other. [[slnc 300]] So the exception must exist, and it must be watched.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Strict controls have a cost. [[slnc 600]]
-A courier is standing at the wrong door. [[slnc 300]] The customer is on the phone. [[slnc 300]] Finance is not available. [[slnc 300]] Raj is from support, so the address is hidden from him. [[slnc 300]] And the address is exactly what he needs. [[slnc 600]]
-So the system has an emergency exception. [[slnc 300]] It is often called break glass access, like the glass on a fire alarm. [[slnc 300]] Any employee may read the address, but must give a reason. [[slnc 300]] And every use is written to an audit log. [[slnc 600]]
-Raj uses it, and gets the address. [[slnc 300]] The log now has one entry. [[slnc 300]] Who used it, on which order, and why. [[slnc 600]]
-The three promises pull against each other. [[slnc 300]] So the exception must exist. [[slnc 300]] And the exception must be watched.
+The program's output. [[slnc 300]] The requests, then the responses. [[slnc 300]] Hidden, denied, and shown. [[slnc 500]] Then the audit log: one entry, with Raj's name, the order, and his reason.
 """
 rows = { conf = "active amber", avail = "active amber" }
 console = [
-    ["raj, from support, reads O-101: address=[hidden], amount=[hidden]", "muted"],
-    ["raj uses emergency access: address=12 Palm Street", "amber"],
-    ["audit log entries: 1", "amber"],
-    ["raj used emergency access on O-101: courier at the wrong door, customer on the phone", "amber"],
+    ["THE REQUESTS (a courier is at the wrong door):", "ok"],
+    ["  raj (support) reads O-101 as usual", "muted"],
+    ["  raj asks for emergency access, with no reason", "muted"],
+    ["  raj asks for emergency access, with a reason", "muted"],
+    ["THE RESPONSES:", "bad"],
+    ["  as usual: address=[hidden]", "muted"],
+    ["  no reason: denied, emergency access needs a reason", "muted"],
+    ["  with a reason: address=12 Palm Street  <- LOGGED", "ok"],
+    ["THE AUDIT LOG (1 entry):", "amber"],
+    ["  raj used emergency access on O-101:", "muted"],
+    ["    courier at the wrong door, customer on the phone", "muted"],
 ]
 
 [animation]
@@ -250,7 +385,7 @@ required = [
 ]
 not_required = [
     "Any security knowledge: this is the first project in the track",
-    "Cryptography: the seal is used as a black box and explained properly in a later project",
+    "Cryptography: the seal is worked out step by step, and SHA-256 itself is used as a black box (the hashing project explains it)",
     "Networking, web frameworks or databases",
 ]
 install = []
@@ -266,7 +401,7 @@ walkthrough = """
 Start with the vault analogy and ask the group to name one thing that could go
 wrong with a vault for each of the three promises. Then run the demo one act at
 a time. After each act, pause and ask which promise just failed or was restored,
-before reading the label. In act five, ask the group whether they would allow
+before reading the label. In act seven, ask the group whether they would allow
 the emergency exception, and what they would want to know about each use.
 """
 exercises = [
@@ -305,9 +440,9 @@ nongoals = [
 problem = """
 Learners meet security as a list of unrelated tools. The triad gives them one way to ask what a control is for.
 """
-roles = [["The insecure system", "`NaiveStore`"], ["The controlled system", "`SecureStore`"], ["Integrity seal", "`Seal`"], ["Availability control", "`RateLimiter` with `TickServer`"], ["Entry point", "`CiaDemo`"]]
+roles = [["The insecure system", "`NaiveStore`"], ["The controlled system", "`SecureStore`"], ["Integrity seal", "`Seal`, worked out by hand in `SealSteps`"], ["Availability control", "`RateLimiter` with `TickServer`"], ["Entry point", "`CiaDemo`"]]
 requirements = [
-    "The demo prints five numbered acts and the output equals `docs/expected-output.txt`.",
+    "The demo prints seven numbered acts and the output equals `docs/expected-output.txt`.",
     "Support never receives the address or the amount through `SecureStore.read`.",
     "A stored order that no longer matches its seal is never returned.",
     "One client cannot take more than its share of the server in one tick.",
@@ -431,7 +566,7 @@ after = { code = "read(role, id)", note = "each role sees what it needs", tag = 
 key = "01-poster"
 kind = "poster"
 title = "The CIA Triad"
-narration = """Hello, and welcome. [[slnc 400]] This video explains the C I A triad, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] The C I A triad is three promises that a system makes about its information. [[slnc 300]] Confidentiality: only the right people can see it. [[slnc 300]] Integrity: nobody can change it without being noticed. [[slnc 300]] Availability: it is there when it is needed. [[slnc 600]] Think of a bank vault. [[slnc 300]] The thick door keeps strangers out. [[slnc 300]] The seals on the money bags show if anything was touched. [[slnc 300]] And the vault opens every morning, so customers can reach their money. [[slnc 700]] In this video, the domain is an online store and its orders. [[slnc 300]] An order must stay private, must be exactly right, and must be there when a customer wants to buy. [[slnc 500]] By the end, you will hear how a system fails each promise. [[slnc 300]] The simple control that restores each one. [[slnc 300]] And why the controls can pull against each other."""
+narration = """Hello, and welcome. [[slnc 400]] This video explains the C I A triad, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] C I A stands for confidentiality, integrity and availability. [[slnc 300]] They are three promises that a system makes about its information. [[slnc 300]] Confidentiality: only the right people can see it. [[slnc 300]] Integrity: nobody can change it without being noticed. [[slnc 300]] Availability: it is there when it is needed. [[slnc 600]] Think of a bank vault. [[slnc 300]] The thick door keeps strangers out. [[slnc 300]] The seals on the money bags show if anything was touched. [[slnc 300]] And the vault opens every morning, so customers can reach their money. [[slnc 700]] In this video, the domain is an online store and its orders. [[slnc 300]] An order must stay private, must be exactly right, and must be there when a customer wants to buy. [[slnc 500]] By the end, you will hear how a system fails each promise. [[slnc 300]] The simple control that restores each one. [[slnc 300]] And why the controls can pull against each other."""
 
 [[scene]]
 key = "02-scenario"
@@ -448,6 +583,19 @@ body = ["Confidentiality", "  only the right people can see it", "", "Integrity"
 narration = """Before the demos, the three words. [[slnc 500]] Confidentiality. [[slnc 300]] Only the right people can see the information. [[slnc 500]] Integrity. [[slnc 300]] Nobody can change the information without being noticed. [[slnc 500]] Availability. [[slnc 300]] The information is there when it is needed. [[slnc 600]] A good way to remember them is as three questions. [[slnc 300]] Who must not see it? [[slnc 300]] Who must not change it? [[slnc 300]] And who must always be able to reach it?"""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "04-order"
+kind = "figure"
+title = "One order, three promises"
+body = "one_order"
+narration = """Let's start with one real order. [[slnc 400]] Order one oh one belongs to Maya Rao. [[slnc 300]] She bought a laptop, for twelve hundred dollars, to be sent to twelve Palm Street. [[slnc 600]] Each promise asks one question about this order. [[slnc 500]] Confidentiality asks who must not see it. [[slnc 300]] Support staff need the customer and the item, but not the address or the amount. [[slnc 500]] Integrity asks who must not change it. [[slnc 300]] The amount must stay twelve hundred, unless finance changes it, and any other change must be noticed. [[slnc 500]] Availability asks who must always reach it. [[slnc 300]] Maya must be able to check out, even when a bot floods the shop. [[slnc 600]] In the demos, we break each promise on this order, and then restore it."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -459,13 +607,6 @@ kind = "bullets"
 title = "Which Control Protects Which Promise"
 body = ["Role check  ->  confidentiality", "Seal on each order  ->  integrity", "Rate limit  ->  availability", "", "Emergency exception:", "  a logged reason, for when they pull apart"]
 narration = """Let's put the demos side by side. [[slnc 400]] The role check protects confidentiality. [[slnc 500]] The seal on each order protects integrity. [[slnc 500]] The rate limit protects availability. [[slnc 600]] And the emergency exception exists because the promises can pull against each other. [[slnc 300]] The stricter one promise is, the more it can cost another. [[slnc 300]] So the exception needs a reason, and a log."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["NaiveStore: trusts everyone", "SecureStore: roles, seals, emergency access", "Seal: a code from the order and a key", "RateLimiter: a few requests per client", "TickServer: serves until the capacity runs out"]
-narration = """Here is who does what in the code. [[slnc 400]] The naive store trusts everyone. [[slnc 500]] The secure store checks roles, checks seals, and offers logged emergency access. [[slnc 500]] The seal is a short code, worked out from the order and a secret key. [[slnc 500]] The rate limiter allows each client a few requests at a time. [[slnc 300]] And the tick server serves requests in order, until its capacity runs out."""
 
 [[scene]]
 key = "11-recognise"
@@ -480,6 +621,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["Ask three questions about any system:", "", "Who must not see it?", "Who must not change it?", "Who must always reach it?", "", "Then ask what each control costs the others."]
 narration = """So, how do you use the triad? [[slnc 400]] Ask three questions about any system that holds something that matters. [[slnc 300]] Who must not see it? [[slnc 300]] Who must not change it? [[slnc 300]] And who must always be able to reach it? [[slnc 600]] Then pick a control for each answer. [[slnc 300]] And ask what each control costs the other two promises."""
+
+[[scene]]
+key = "13-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -518,7 +665,7 @@ boundaries = [
 assumptions = [
     "Users are who they say they are. Proving it is the job of the identity module, starting with authentication-vs-authorization.",
     "The seal key is kept secret. In the demo it is a fixed value; a real system keeps it in a secrets store.",
-    "An attacker may reach the stored data without going through the application (that is what act three simulates).",
+    "An attacker may reach the stored data without going through the application (that is what act five simulates).",
 ]
 out_of_scope = [
     "Network attacks such as eavesdropping: the transport-security module covers them.",
@@ -529,6 +676,7 @@ out_of_scope = [
 tests = [
     "`ConfidentialityTest` shows support never receives the address or the amount, and only finance may change an amount.",
     "`IntegrityTest` shows that a change made behind the application is refused on read.",
+    "`SealStepsTest` shows the seal worked out by hand equals Java's HMAC-SHA256.",
     "`AvailabilityTest` shows one client cannot take more than its share of the server in one tick.",
     "`BreakGlassTest` shows emergency access needs a reason and leaves an audit entry.",
 ]
@@ -622,3 +770,170 @@ edges = [
     { from = "glass", to = "store", label = "logged read", colour = "amber" },
     { from = "insider", to = "store", label = "edit", colour = "red", dashed = true, threats = ["T3"] },
 ]
+
+[highlight]
+console_green = ["THE REQUEST", "BEFORE SEALING", "BEFORE THE EDIT"]
+console_rose = ["THE RESULTS", "THE RESPONSE", "AFTER SEALING", "AFTER THE EDIT"]
+console_amber = ["STEP ", "HOW THE LIMIT", "THE AUDIT LOG", "ANA READS"]
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Seven small classes do the work. [[slnc 300]] Here is what each one does."""
+
+[[class]]
+name = "CiaDemo"
+what = "runs the seven acts"
+[[class.part]]
+title = "the seven acts"
+code = """
+act1Naive(out);
+act2Confidentiality(out);
+act3Seal(out);
+act4SealSteps(out);
+act5Tamper(out);
+act6Availability(out);
+act7Bill(out);
+"""
+speech = """C I A demo runs the seven acts, one method each. [[slnc 300]] Every act builds a fresh store with the same two orders, so every run prints the same text."""
+
+[[class]]
+name = "NaiveStore"
+what = "the first version: trusts everyone"
+[[class.part]]
+title = "no checks at all"
+code = """
+public OrderRecord read(User asker, String id) {
+    return orders.get(id);
+}
+...
+public void setAmount(User asker, String id, int amountDollars) {
+    orders.put(id, orders.get(id).withAmount(amountDollars));
+"""
+speech = """The naive store is the first version. [[slnc 300]] Read takes the asker, but never looks at it, and returns the whole order. [[slnc 300]] Set amount changes the order for anyone, and tells nobody. [[slnc 300]] That is act one."""
+
+[[class]]
+name = "SecureStore"
+what = "role check, seal check, emergency access"
+[[class.part]]
+title = "read: the seal first, then the role"
+code = """
+public OrderView read(User asker, String id) {
+    OrderRecord order = verified(id);
+    if (asker.role() == Role.FINANCE) {
+        return new OrderView(id, order.customer(), order.item(),
+                order.address(), order.amountDollars());
+    }
+    return new OrderView(id, order.customer(), order.item(),
+            null, null);
+"""
+speech = """The secure store protects confidentiality and integrity. [[slnc 300]] Read first gets the verified order. [[slnc 300]] Then finance gets every field, and everyone else gets the customer and the item, with null for the address and the amount. [[slnc 300]] Null is what the demo prints as hidden."""
+[[class.part]]
+title = "verified: work the seal out again"
+code = """
+private OrderRecord verified(String id) {
+    Stored stored = storage.get(id);
+    if (!sealer.matches(stored.order(), stored.seal())) {
+        throw new TamperedOrderException(
+                id + " does not match its seal");
+    }
+    return stored.order();
+"""
+speech = """Verified is the integrity check, on every read. [[slnc 300]] It takes the order and the seal from storage, and asks the sealer whether they still match. [[slnc 300]] If not, it throws, and no order comes out. [[slnc 300]] That is the refusal in act five."""
+[[class.part]]
+title = "breakGlass: a reason, and a log"
+code = """
+if (reason == null || reason.isBlank()) {
+    throw new AccessDeniedException("emergency access needs a reason");
+}
+OrderRecord order = verified(id);
+auditLog.add(asker.name() + " used emergency access on "
+        + id + ": " + reason);
+"""
+speech = """Break glass is the emergency exception from act seven. [[slnc 300]] With no reason, it is denied. [[slnc 300]] With a reason, it still checks the seal, and writes who, which order, and why to the audit log, before it returns the address."""
+
+[[class]]
+name = "Seal"
+what = "an HMAC-SHA256 code from the order and a key"
+[[class.part]]
+title = "of and matches"
+code = """
+Mac mac = Mac.getInstance("HmacSHA256");
+mac.init(key);
+byte[] code = mac.doFinal(
+        order.sealedText().getBytes(StandardCharsets.UTF_8));
+return HexFormat.of().formatHex(code);
+...
+public boolean matches(OrderRecord order, String seal) {
+    return of(order).equals(seal);
+"""
+speech = """Seal asks Java for H M A C S H A two five six, with the secret key. [[slnc 300]] It runs over the order's text, and the thirty two bytes come back as sixty four hex characters. [[slnc 300]] Matches simply makes the seal again, and compares."""
+
+[[class]]
+name = "SealSteps"
+what = "works out the seal by hand"
+[[class.part]]
+title = "the three steps"
+code = """
+byte[] padded = new byte[BLOCK];                  // step 1: 64 bytes
+System.arraycopy(key, 0, padded, 0, key.length);
+byte[] innerKey = xor(padded, (byte) 0x36);       // step 2
+byte[] outerKey = xor(padded, (byte) 0x5c);       // step 3
+byte[] inner = sha256(innerKey,
+        text.getBytes(StandardCharsets.UTF_8));
+byte[] seal = sha256(outerKey, inner);
+"""
+speech = """Seal steps does the same thing by hand, for act four. [[slnc 300]] Pad the key to sixty four bytes. [[slnc 200]] Hash the key X O R three six with the text. [[slnc 200]] Then hash the key X O R five c with that. [[slnc 300]] A test checks that it gives exactly Java's seal."""
+
+[[class]]
+name = "RateLimiter"
+what = "a few requests per client per tick"
+[[class.part]]
+title = "count, then compare"
+code = """
+public boolean allow(String client) {
+    int count = seen.merge(client, 1, Integer::sum);
+    return count <= perClientPerTick;
+}
+"""
+speech = """The rate limiter protects availability. [[slnc 300]] Allow adds one to the client's count, and says yes while the count is at most the limit, three in the demo. [[slnc 300]] These are the counts you saw in act six."""
+
+[[class]]
+name = "TickServer"
+what = "serves in order until the capacity runs out"
+[[class.part]]
+title = "serve one tick"
+code = """
+for (Request request : arrivals) {
+    boolean allowed = limiter == null
+            || limiter.allow(request.client());
+    if (allowed && used < capacity) {
+        used++;
+        served.merge(request.client(), 1, Integer::sum);
+"""
+speech = """The tick server serves requests in the order they arrive, until its ten places are used. [[slnc 300]] With no limiter, every request is allowed, so the bot takes all ten. [[slnc 300]] With one, the bot is stopped at three, and Maya gets her place."""
+
+[[acronym]]
+short = "CIA"
+long = "Confidentiality, Integrity, Availability"
+say = "C I A stands for confidentiality, integrity and availability. [[slnc 300]] Nothing to do with the agency."
+[[acronym]]
+short = "HMAC"
+long = "Hash-based Message Authentication Code (Java's class: Mac)"
+say = "H M A C is Hash based Message Authentication Code: a short code made from a message and a secret key. [[slnc 300]] In this video, the seal. [[slnc 300]] Java's class for a message authentication code is called Mac."
+[[acronym]]
+short = "SHA-256"
+long = "Secure Hash Algorithm, 256-bit output"
+say = "S H A two five six is the Secure Hash Algorithm with a two hundred and fifty six bit result: thirty two bytes, a fingerprint of any input."
+[[acronym]]
+short = "XOR"
+long = "exclusive or"
+say = "X O R is exclusive or: compare two bits, one if they differ, zero if they match."
+[[acronym]]
+short = "hex"
+long = "hexadecimal: each byte as two characters, 00 to ff"
+say = "Hex is short for hexadecimal: every byte is written as two characters, from zero zero to f f."
+[[acronym]]
+short = "UTF-8"
+long = "Unicode Transformation Format, 8-bit: text to bytes"
+say = "U T F eight is Unicode Transformation Format, eight bit: the usual way to turn text into bytes."
+

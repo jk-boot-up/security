@@ -19,6 +19,14 @@ class PlannerTest {
     }
 
     @Test
+    void optionsAreOrderedByScoreRemovedPerUnitOfCost() {
+        List<Treatment> byValue = Planner.byValue(ThreatsDemo.storeRisks(), ThreatsDemo.storeTreatments());
+        assertEquals(List.of("R4", "R1", "R3", "R2", "R6"), byValue.stream().map(Treatment::riskId).toList());
+        assertEquals(15.0, Planner.value(ThreatsDemo.storeRisks(), byValue.get(0)));
+        assertEquals(6.0, Planner.value(ThreatsDemo.storeRisks(), byValue.get(1)));
+    }
+
+    @Test
     void totalRiskFallsFromSeventyThreeToThirtyFive() {
         Plan plan = planner.plan(ThreatsDemo.storeRisks(), ThreatsDemo.storeTreatments(), ThreatsDemo.BUDGET);
         assertEquals(73, ThreatsDemo.storeRisks().totalScore());

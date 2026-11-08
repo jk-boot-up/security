@@ -17,7 +17,8 @@ final class GradleLockfile {
                 continue;
             }
             int equals = trimmed.indexOf('=');
-            String[] parts = (equals < 0 ? trimmed : trimmed.substring(0, equals)).split(":");
+            String key = equals < 0 ? trimmed : trimmed.substring(0, equals);
+            String[] parts = key.split(":");
             if (parts.length != 3) {
                 throw new IllegalArgumentException("not a lock file line: " + line);
             }

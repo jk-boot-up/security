@@ -43,7 +43,7 @@ final class Capture {
         return text.append(", win ").append(segment.window()).append(", length ").append(length).toString();
     }
 
-    private static String flags(TcpSegment segment) {
+    static String flags(TcpSegment segment) {
         StringBuilder text = new StringBuilder();
         if (segment.has(TcpSegment.FIN)) {
             text.append('F');
@@ -79,23 +79,28 @@ final class Capture {
         return damaged;
     }
 
-    /** Sources that sent a SYN to a server and never sent the final ACK of the handshake. */
-    static Set<String> unfinishedHandshakes(byte[] file) throws BadPacketException {
+    /** For each source that sent a SYN to start a connection: did it send the final ACK of the handshake? */
+    static Map<String, Boolean> handshakes(byte[] file) throws BadPacketException {
         Map<String, Boolean> finished = new LinkedHashMap<>();
         for (byte[] raw : PcapFile.read(file)) {
             Ipv4Packet packet = Ipv4Packet.parseUnchecked(raw);
             TcpSegment segment = TcpSegment.parse(packet.payload());
-            String key = Address.text(packet.source()) + ":" + segment.sourcePort();
+            String source = Address.text(packet.source());
             if (segment.has(TcpSegment.SYN) && !segment.has(TcpSegment.ACK)) {
-                finished.putIfAbsent(key, false);
-            } else if (segment.has(TcpSegment.ACK) && !segment.has(TcpSegment.SYN) && finished.containsKey(key)) {
-                finished.put(key, true);
+                finished.putIfAbsent(source, false);
+            } else if (segment.has(TcpSegment.ACK) && !segment.has(TcpSegment.SYN) && finished.containsKey(source)) {
+                finished.put(source, true);
             }
         }
+        return finished;
+    }
+
+    /** Sources that sent a SYN to a server and never sent the final ACK of the handshake. */
+    static Set<String> unfinishedHandshakes(byte[] file) throws BadPacketException {
         Set<String> unfinished = new TreeSet<>();
-        finished.forEach((key, done) -> {
+        handshakes(file).forEach((source, done) -> {
             if (!done) {
-                unfinished.add(key.substring(0, key.indexOf(':')));
+                unfinished.add(source);
             }
         });
         return unfinished;

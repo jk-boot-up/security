@@ -2,6 +2,7 @@
 
 ```
 src/main/java/com/jk/explore/security/tlsopenssl/
+├── Base64Steps.java       Base64 worked out by hand for one group of three bytes, so the demo can show how PEM text is made: three bytes are 24 bits, cut into four groups of 6 bits, and each group (0 to 63) is a letter of the alphabet below
 ├── Connection.java        Two real TLS engines wired together in memory
 ├── Pem.java               PEM text, the format every other TLS program reads: a label line, the DER bytes in Base64 with 64 characters per line, a closing label line
 ├── TestCertificates.java  Two PKCS12 keystores made once with keytool: the shop's, and an impostor's that claims the same name but is not trusted
@@ -39,11 +40,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A real TLS server and client on this machine | A Java client connects to a Java server by the name shop.example.test over TLS 1.3 with TLS_AES_256_GCM_SHA384 and gets its answer; anything that speaks TLS can take the client's place. |
-| 2. Giving the certificate and key to other programs | The certificate and private key are written as PEM files, which openssl reads, and the key file is owner-only and holds the key in the clear. |
-| 3. Who is on the other end | The client accepts the shop's own certificate, refuses an impostor with the same name, and refuses the real certificate when it asked for a different name. |
-| 4. Versions: what each side offers | TLS 1.2 works with a server that allows the defaults, fails against a server that allows only TLS 1.3, and TLS 1.1 fails everywhere. |
-| 5. Checking from the outside, and the bill | Two openssl commands check a server or serve a certificate, but a second implementation catches only the settings you pass, and openssl without -verify_return_error carries on after a problem. |
+| 1. A real TLS server and client on this machine | A Java client connects to shop.example.test at 127.0.0.1 and sends order=A-1001; the Java server's response: handshake true, TLSv1.3, TLS_AES_256_GCM_SHA384, and the reply received: order=A-1001. |
+| 2. Giving the certificate and key to other programs | The 371-byte DER certificate becomes PEM: Base64 turns 30 82 01 into 24 bits, groups 12 8 8 1, letters MIIB; 496 letters in lines of 64 between two labels give a 10-line file; the key file is owner-only but holds the private key in the clear. |
+| 3. Who is on the other end | The client asks for shop.example.test and trusts one certificate, fingerprint 0ded3842d38b01a7; over real sockets the shop works, an impostor with the same name but fingerprint b72122451fcf2531 is refused, and the shop is refused when the client asked for another name. |
+| 4. Versions: what each side offers | Against a server with the JDK's defaults, a client offering only TLSv1.1 is refused and TLSv1.2 agrees TLSv1.2; against a server that allows only TLS 1.3, TLSv1.2 is refused and TLSv1.3 works; openssl's -tls1_1, -tls1_2 and -tls1_3 make the same offers. |
+| 5. Checking from the outside, and the bill | The request is openssl s_client -connect HOST:PORT -servername NAME -CAfile cert.pem -verify_hostname NAME -verify_return_error -brief; the response the tests check is Protocol version: TLSv1.3, Ciphersuite: TLS_AES_256_GCM_SHA384, Verification: OK and the reply; the bill is that only the settings you pass are checked. |
 
 ## Test
 
@@ -51,7 +52,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `DemoRunsTest`, `OpenSsl`, `OpenSslInteropTest`, `SocketsTest`. The ordinary tests and the demo need only a JDK. The integration tests (tagged openssl) run a real openssl as the other end of the connection. They look for OpenSSL 3, skip cleanly without it, and always stop the processes they start.
+19 tests in `Base64StepsTest`, `DemoRunsTest`, `OpenSsl`, `OpenSslInteropTest`, `SocketsTest`. The ordinary tests and the demo need only a JDK. The integration tests (tagged openssl) run a real openssl as the other end of the connection. They look for OpenSSL 3, skip cleanly without it, and always stop the processes they start.
 
 ## What the simulation got right, and what it left out
 

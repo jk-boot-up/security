@@ -14,7 +14,8 @@ final class OwnerOnly {
     }
 
     static String lockFile(Path file) throws IOException {
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        Set<PosixFilePermission> ownerOnly = PosixFilePermissions.fromString("rw-------");
+        Files.setPosixFilePermissions(file, ownerOnly);
         return PosixFilePermissions.toString(Files.getPosixFilePermissions(file));
     }
 

@@ -16,23 +16,46 @@ Chapters:
 
 ```
 00:00 Introduction
-01:17 The Scenario
-01:48 The Three Promises
-02:22 Act One — The first version, with no controls
-03:39 Act Two — Confidentiality: each role sees what it needs
-04:30 Act Three — Integrity: a change behind the application is caught
-05:29 Act Four — Availability: one client cannot use up the server
-06:13 Act Five — The bill: strict controls get in the way of emergencies
-07:17 Which Control Protects Which Promise
-07:47 Who Does What
-08:19 Where You Have Seen It
-08:55 How To Use It
-09:22 Thanks for Watching
+01:21 The Scenario
+01:52 The Three Promises
+02:27 What the Letters Stand For
+03:34 One order, three promises
+04:31 No controls: three requests, three failures
+05:40 Act One — The first version, with no controls
+06:05 Each role sees only what it needs
+07:06 Act Two — Confidentiality: each role sees only what it needs
+07:26 Sealing one order
+08:29 Act Three — Integrity: every order is saved with a seal
+08:51 How the seal is made
+10:15 Act Four — How the seal is made, step by step
+10:36 Act Four — How the seal is made, step by step
+10:49 An edit in storage breaks the seal
+11:47 Act Five — A change behind the application is caught
+12:00 Act Five — A change behind the application is caught
+12:16 The rate limiter counts each client
+13:23 Act Six — Availability: one client cannot use up the whole server
+13:39 Act Six — Availability: one client cannot use up the whole server
+13:53 Emergency access: a reason, and a log
+14:57 Act Seven — The bill: strict controls get in the way of emergencies
+15:12 Which Control Protects Which Promise
+15:43 Where You Have Seen It
+16:19 How To Use It
+16:46 The Java Classes
+16:55 CiaDemo — the seven acts
+17:08 NaiveStore — no checks at all
+17:25 SecureStore — read: the seal first, then the role
+17:46 SecureStore — verified: work the seal out again
+18:06 SecureStore — breakGlass: a reason, and a log
+18:24 Seal — of and matches
+18:44 SealSteps — the three steps
+19:05 RateLimiter — count, then compare
+19:21 TickServer — serve one tick
+19:40 Thanks for Watching
 ```
 
 ## Tags
 
-cia triad, confidentiality, integrity, availability, security basics, java, cybersecurity for beginners
+cia triad, confidentiality, integrity, availability, security basics, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +63,16 @@ cia triad, confidentiality, integrity, availability, security basics, java, cybe
 | --- | --- |
 | Video | `video/cia-triad-explained.mp4` |
 | Captions | `video/cia-triad-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (31)
-- [ ] tags are at most 500 characters in total — ok (97)
+- [ ] tags are at most 500 characters in total — ok (148)
 - [ ] description is at most 5,000 characters — ok (601)
 - [ ] chapters start at 00:00 and there are at least three

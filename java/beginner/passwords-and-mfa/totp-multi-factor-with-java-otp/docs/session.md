@@ -14,17 +14,18 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The library makes the same codes as the hand-written version | 7 min |
-| 0:17 | Act 2: What the library checks, and what it leaves to the bank | 7 min |
-| 0:24 | Act 3: Other hashes and longer codes | 7 min |
-| 0:31 | Act 4: Giving the secret to the phone | 7 min |
-| 0:38 | Act 5: The bill: what the library does not do | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: The library's codes, checked against the standard | 5 min |
+| 0:15 | Act 2: How the code at time 59 is made, step by step | 5 min |
+| 0:20 | Act 3: What the library checks, and what the bank adds | 5 min |
+| 0:25 | Act 4: Other hashes and longer codes | 5 min |
+| 0:30 | Act 5: Giving the secret to the phone | 5 min |
+| 0:35 | Act 6: The bill: what the library does not do | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
 Run the plain project first, then this one, and compare the first act: the same codes. Then read `OtpService` and find the single line
-that calls the library, and the lines around it that the bank wrote. In act five, ask the group to list everything the bank must still do, and compare with
+that calls the library, and the lines around it that the bank wrote. In act six, ask the group to list everything the bank must still do, and compare with
 the library's documentation.
 
 ## Exercises

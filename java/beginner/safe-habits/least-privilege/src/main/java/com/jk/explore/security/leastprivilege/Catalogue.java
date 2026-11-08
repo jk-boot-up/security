@@ -20,7 +20,8 @@ final class Catalogue {
             "support", Policy.of("allow orders:read", "allow customers:read", "allow refunds:create"),
             "warehouse", Policy.of("allow inventory:read", "allow inventory:write", "allow orders:read"),
             "finance", Policy.of("allow payments:read", "allow refunds:approve", "allow reports:read"),
-            "exporter", Policy.of("allow orders:read", "allow reports:read"));
+            "exporter", Policy.of("allow orders:read",
+                    "allow reports:read"));
 
     private Catalogue() {
     }

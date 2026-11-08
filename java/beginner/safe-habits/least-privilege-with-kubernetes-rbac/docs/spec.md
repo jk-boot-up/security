@@ -39,9 +39,9 @@ Learners see RBAC as YAML to copy. They need to see what the rules add up to, an
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 17, all passing |
-| Demo output | 39 lines, identical on every run |
+| Demo output | 67 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:20, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:40, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

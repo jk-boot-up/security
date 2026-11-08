@@ -84,7 +84,8 @@ final class BackupVault {
         byte[] nonce = new byte[12];
         new SecureRandom().nextBytes(nonce);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"),
+                new GCMParameterSpec(128, nonce));
         cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
         byte[] sealed = cipher.doFinal(pack(files));
         byte[] out = Arrays.copyOf(nonce, 12 + sealed.length);

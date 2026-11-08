@@ -1,33 +1,74 @@
 ONE. A key written in the source code.
-  the bank compiles a program with its key inside it
-  the key's text is found inside the compiled class file: true  <- ANYONE WITH THE PROGRAM HAS THE KEY
-  it is also in the source repository, every copy of the program and every build, for good
-  changing the key means building and shipping the program again
+  BEFORE COMPILING (the source code):
+    KEY_TEXT = "hard-coded-statement-key-32by!"
+  AFTER COMPILING (HardCodedKey.class, the program):
+    key bytes  68617264 2d636f64 65642d73 74617465 ...
+    in the class file: true  <- EVERYONE HAS THE KEY
+  also in the repository and every build, for good
+  a new key means building and shipping the program again
 TWO. A key in a file outside the program.
-  the key is no longer in the program, and is in a file with permissions rw-r--r--
-  readable by others on the machine: true  <- ANYONE WITH A LOGIN CAN READ IT
-  with permissions rw-------, readable by others: false
-  but the file holds the key in the clear, so anyone who can read it, or its backup, has the key
+  BEFORE THE FIX (a new file, default permissions):
+    open.key  rw-r--r--
+    owner rw-   group r--   others r--
+    readable by others: true  <- ANYONE WITH A LOGIN
+  AFTER THE FIX (owner only):
+    locked.key  rw-------
+    owner rw-   group ---   others ---
+    readable by others: false
+  WHAT THE FILE HOLDS (in the clear):
+    file-based-statement-key-32bytes
+  whoever reads the file, or its backup, has the key
 THREE. A PKCS12 keystore: an encrypted file of keys.
-  the key is saved in bank.p12 under the name statements-v1
-  the key's own bytes appear in the file: false
-  the name of the key appears in the file: false
-  opened with the password, the key comes back: true
-  opened with a wrong password: refused
-  the password makes the key that protects the file, and the file records the rounds: [10000]
-  saved again with the setting raised to 600000, the file records: [10000, 600000]
-  the raised setting reached one place and not another: check what the file records, not only the settings
+  BEFORE SAVING (what goes in):
+    name      statements-v1
+    key       6b657973 746f7265 2d737461 74656d65 ...
+    password  correct horse battery staple
+  AFTER SAVING (bank.p12):
+    the key's bytes are in the file: false  <- HIDDEN
+    the name, as UTF-16, is in the file: true  <- A LABEL
+  OPENING IT:
+    with the password, the key comes back: true
+    with a wrong password: refused
+  BEFORE THE FIX (rounds in the file: key lock, check):
+    default          [10000, 10000]
+    raised at save   [10000, 600000]  <- LOCK UNCHANGED
+  AFTER THE FIX (rounds set when the key is put, too):
+    put and save     [600000, 600000]
+    still opens with the password: true
 FOUR. Making keys from other secrets.
-  a key made from a password and a salt with PBKDF2, 600000 rounds: 32 bytes
-  the same password and salt give the same key: true
-  another salt gives another key: true
-  from one master key, HKDF makes a separate key for each purpose: true
-  asking again for the same purpose gives the same key: true
-  a key made from a weak password is only as strong as the password
+  BEFORE DERIVING (the inputs of PBKDF2):
+    password  correct horse battery staple
+    salt      per-user-salt-1
+    rounds    600000
+  STEP 1. U1 = HMAC-SHA-256(password, salt + 00000001)
+    U1        560d7b6f e549f1d3 456b88d0 0acc5365 ...
+  STEP 2. EACH ROUND: U(n) = HMAC-SHA-256(password, U(n-1))
+    U2        29bb6e9e 621437eb 4f2af552 5c716d43 ...
+  STEP 3. KEY = U1 xor U2 xor ... xor U600000
+  AFTER DERIVING (the key, 32 bytes):
+    key       29f87e05 138358d9 9f75be90 325e6e8d ...
+    the same key the JDK's PBKDF2 gave: true
+  ANOTHER SALT (per-user-salt-2): ANOTHER KEY
+    key       5f7e877f 47771aa6 baa67b4d c13911cb ...
+  HKDF: ONE MASTER KEY, A KEY FOR EACH PURPOSE:
+    statements    4201551f 3adc2c9e 9ffdb03a 2ba69abf ...
+    login tokens  e096269a 455770ed dc683805 702ed92c ...
+    asked again for statements, the same key: true
+  a weak password makes a weak key, whatever the rounds
 FIVE. Replacing a key, and the bill.
-  a new key, statements-v2, is added; the old message names statements-v1 and the new one statements-v2
-  both still open: ANA-1: balance 1200 and ANA-1: balance 1200
-  after statements-v1 is removed, the old message: refused, its key is gone
-  so old messages must be sealed again with the new key before the old key goes
-  the keystore's password has to be kept somewhere too, and a lost keystore file is lost data
-  the default rounds of the file are far below the 600000 now recommended, so raise them and choose a strong password
+  A STORED MESSAGE (61 bytes), PART BY PART:
+    1 byte    0d             the name's length, 13
+    13 bytes  statements-v1  the key's name
+    12 bytes  nonce          new for every message
+    35 bytes  cipher text    19, and a 16-byte tag
+  BEFORE REMOVING statements-v1 (statements-v2 added):
+    old, names statements-v1: ANA-1: balance 1200
+    new, names statements-v2: ANA-1: balance 1200
+  AFTER REMOVING statements-v1:
+    old, names statements-v1: refused  <- LOST
+    new, names statements-v2: ANA-1: balance 1200
+  so re-seal old messages before the old key goes
+  THE BILL:
+    the keystore's password needs a home too
+    a lost keystore file is lost data: back it up
+    default rounds 10000, far below 600000: raise them

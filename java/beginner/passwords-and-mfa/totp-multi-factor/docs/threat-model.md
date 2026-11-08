@@ -65,6 +65,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `HotpTest`, `TotpTest` and `Base32Test` check the code, in the standard library, against the published values of RFC 4226, 6238 and 4648.
 - `MfaServerTest` checks the window, replay protection, recovery codes, and the server's holding of the secret.
+- `CodeStepsTest` checks that the step-by-step code equals `Totp` and the RFC 4226 intermediate values.
 - `AuthenticatorTest` checks that a fast phone shows a later step's code.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

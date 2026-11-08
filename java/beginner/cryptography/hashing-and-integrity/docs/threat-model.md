@@ -65,6 +65,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `HashesTest` checks CRC-32, SHA-256 and HMAC against published values, and the avalanche counts.
 - `InvoiceStoreTest` shows a hash beside the data is replaceable, and a hash from another channel is not.
+- `HmacStepsTest` checks that the four steps by hand give the JDK's exact tag, and RFC 4231 test case one.
 - `SignedInvoicesTest` checks tags, forged tags, the boundary trick in both encodings, replay and the shared key.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

@@ -43,7 +43,7 @@ Learners use connections every day but do not know what is trusted in them, and 
 | Tests | 19, all passing |
 | Demo output | 25 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:20, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:28, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -1,23 +1,81 @@
 ONE. The first version, with no controls.
-  raj reads O-101: address=12 Palm Street  <- LEAK
-  mallory changes the amount of O-101 from $1200 to $12, silently
-  ana reads O-101: amount=$12  <- SILENT CHANGE
-  101 checkout requests arrive in one tick; the server can do 10
-  served 10 of 101; maya's request was refused  <- OUTAGE
+  THE REQUESTS:
+    raj (support) reads order O-101
+    mallory (support) changes the amount of O-101 to $12
+    flash sale: 100 checkouts from a bot, 1 from maya
+  THE RESULTS (nothing is checked):
+    raj gets the address: 12 Palm Street  <- LEAK
+    ana sees amount=$12, no one knows  <- SILENT CHANGE
+    the server can do 10: all 10 went to the bot
+    maya's checkout: refused  <- OUTAGE
 TWO. Confidentiality: each role sees only what it needs.
-  raj reads O-101: customer=Maya Rao, item=Laptop, address=[hidden], amount=[hidden]
-  ana reads O-101: customer=Maya Rao, item=Laptop, address=12 Palm Street, amount=$1200
-  mallory tries to change an amount: denied, mallory may not change an amount
-THREE. Integrity: a change that bypasses the application is caught.
-  mallory edits O-101 in storage: amount $1200 -> $12, seal left as it was
-  ana reads O-101: refused, O-101 does not match its seal  <- DETECTED
-  ana reads O-102: customer=Tom Lee, item=Headphones, address=7 Lake Road, amount=$80
-FOUR. Availability: one client cannot use up the whole server.
-  each client may make 3 requests per tick
-  bot: 3 served, 97 refused
-  maya: 1 served
-FIVE. The bill: strict controls get in the way of emergencies.
-  raj, from support, reads O-101: customer=Maya Rao, item=Laptop, address=[hidden], amount=[hidden]
-  raj uses emergency access: address=12 Palm Street
-  audit log entries: 1
-  raj used emergency access on O-101: courier at the wrong door, customer on the phone
+  THE REQUESTS:
+    raj (support) reads O-101
+    ana (finance) reads O-101
+    mallory (support) changes the amount of O-101 to $12
+  THE RESPONSES (filtered by role):
+             customer  item    address         amount
+    to raj   Maya Rao  Laptop  [hidden]        [hidden]
+    to ana   Maya Rao  Laptop  12 Palm Street  $1200
+    to mallory denied, mallory may not change an amount
+THREE. Integrity: every order is saved with a seal.
+  BEFORE SEALING (the inputs):
+    order text  O-101|Maya Rao|Laptop|12 Palm Street|1200
+    key         demo-only-secret-not-for-real-use
+  AFTER SEALING (HMAC-SHA256 of the text, with the key):
+    seal        701017e4 0f4b5c72 35d9a6a2 72a14cb4
+                34ef287b b2ca343b acee4afa a10f3d55
+  the seal is 32 bytes, written as 64 hex characters
+  storage keeps the order and its seal side by side
+FOUR. How the seal is made, step by step.
+  STEP 1. PAD THE KEY WITH ZERO BYTES TO 64 BYTES:
+    key         33 bytes + 31 zero bytes = 64 bytes
+    as hex      64656d6f 2d6f6e6c ... 00000000
+  STEP 2. INNER HASH = SHA-256(key xor 36 + the text):
+    key xor 36  52535b59 1b59585a ... 36363636
+    inner       3854d249 8b389b27 4d465bbb ce170a34
+                3c9fd86e 23d72511 2fc3ed2b 4bd1ca0b
+  STEP 3. SEAL = SHA-256(key xor 5c + inner hash):
+    key xor 5c  38393133 71333230 ... 5c5c5c5c
+    seal        701017e4 0f4b5c72 35d9a6a2 72a14cb4
+                34ef287b b2ca343b acee4afa a10f3d55
+    the same seal Java's Mac gave in act three: true
+FIVE. A change behind the application is caught.
+  BEFORE THE EDIT (in storage):
+    order  O-101|Maya Rao|Laptop|12 Palm Street|1200
+    seal   701017e4 0f4b5c72 ...
+  AFTER THE EDIT (mallory, directly in storage):
+    order  O-101|Maya Rao|Laptop|12 Palm Street|12
+    seal   701017e4 0f4b5c72 ...  (left as it was)
+  ANA READS O-101 (the seal is worked out again):
+    new seal  3513c4ae 562fdd03 ...
+    matches the stored seal: false
+    refused, O-101 does not match its seal  <- DETECTED
+  ana reads O-102 (untouched): Tom Lee, Headphones, $80
+SIX. Availability: one client cannot use up the whole server.
+  THE REQUESTS (one tick):
+    100 checkouts from the bot, then 1 from maya
+    the server can do 10 requests in one tick
+  HOW THE LIMIT DECIDES (3 per client per tick):
+    bot   request 1   count 1, at most 3: allowed
+    bot   request 2   count 2, at most 3: allowed
+    bot   request 3   count 3, at most 3: allowed
+    bot   request 4   count 4, over 3: refused
+    bot   requests 5 to 100: refused the same way
+    maya  request 1   count 1, at most 3: allowed
+  THE RESULTS:
+    without the limit: bot 10 served, maya refused
+    with the limit:    bot 3 served, 97 refused
+                       maya 1 served  <- SERVED
+SEVEN. The bill: strict controls get in the way of emergencies.
+  THE REQUESTS (a courier is at the wrong door):
+    raj (support) reads O-101 as usual
+    raj asks for emergency access, with no reason
+    raj asks for emergency access, with a reason
+  THE RESPONSES:
+    as usual: address=[hidden]
+    no reason: denied, emergency access needs a reason
+    with a reason: address=12 Palm Street  <- LOGGED
+  THE AUDIT LOG (1 entry):
+    raj used emergency access on O-101:
+      courier at the wrong door, customer on the phone

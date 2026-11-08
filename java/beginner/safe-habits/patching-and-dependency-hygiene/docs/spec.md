@@ -42,9 +42,9 @@ Teams know they should patch, but cannot say what they ship, which flaws matter,
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 37, all passing |
-| Demo output | 49 lines, identical on every run |
+| Demo output | 83 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:43, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

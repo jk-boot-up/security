@@ -38,7 +38,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 | Id | Kind | Threat | Where it shows up | Control in this project | What is left |
 | --- | --- | --- | --- | --- | --- |
 | T1 | Spoofing | A packet claims a source address that is not the sender's | `Ipv4Packet` | None in the protocol; never use a source address as identity, and filter at the edge | Identity needs keys: TLS and authentication |
-| T2 | Denial of service | A SYN flood fills the table of half-open connections | `Listener.onSyn` | SYN cookies keep no state for a SYN | Cookies drop options and cost work, and a flood can still use up bandwidth |
+| T2 | Denial of service | A SYN flood fills the table of half-open connections | `Listener.onSyn` | SYN cookies keep no state for a SYN | Cookies carry only a few options and cost work, and a flood can still use up bandwidth |
 | T3 | Spoofing | A connection is forged by guessing the server's sequence number | `SequenceNumbers` | A keyed hash of the connection and a counter, as in RFC 6528 | The secret must be unpredictable and replaced from time to time |
 | T4 | Tampering | A packet is changed on the path and its checksum recomputed | `Checksum` | None: the checksum has no key | Integrity needs a keyed code or a signature, as in TLS |
 | T5 | Information disclosure | An observer reads the stream | `PlaintextTap` | None in TCP | Encrypt the stream with TLS |

@@ -30,6 +30,11 @@ public class InvoiceStore {
         return hashes.get(number).equals(Sha256.hex(invoices.get(number).text()));
     }
 
+    /** The hash kept beside an invoice. */
+    public String storedHash(String number) {
+        return hashes.get(number);
+    }
+
     public Invoice get(String number) {
         return invoices.get(number);
     }

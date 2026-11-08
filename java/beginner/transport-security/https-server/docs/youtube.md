@@ -16,23 +16,36 @@ Chapters:
 
 ```
 00:00 Introduction
-01:01 The Scenario
-01:29 The Words
-02:02 Act One — An HTTPS request that is checked
-02:32 Act Two — Plain HTTP only redirects
-03:04 Act Three — A cookie that stays on HTTPS
-03:34 Act Four — What the client refuses
-04:05 Act Five — Scoring a shop from outside
-04:41 The Five-Point Checklist
-05:21 Who Does What
-05:54 Where You Have Seen It
-06:20 How To Use It
-06:51 Thanks for Watching
+01:06 The Scenario
+01:34 The Words
+02:07 What the Letters Stand For
+03:11 One shop, two doors
+04:07 Three checks before a single byte of the cart
+05:17 Act One — An HTTPS request that is checked
+05:39 The first visit is redirected, the next ones go straight to HTTPS
+06:50 Act Two — Plain HTTP only redirects
+07:13 Which requests carry the session cookie
+08:05 Act Three — A cookie that stays on HTTPS
+08:25 Four attempts, and why three are refused
+09:30 Act Four — What the client refuses
+09:50 Same certificate, five points, two scores
+10:49 Act Five — Scoring a shop from outside
+11:03 The Five-Point Checklist
+11:42 Where You Have Seen It
+12:10 How To Use It
+12:41 The Java Classes
+12:54 ShopServer — the plain door only redirects
+13:08 ShopServer — the HTTPS door adds HSTS and a Secure cookie
+13:28 TestCertificates — the client trusts exactly one certificate
+13:46 ShopClient — verify, and never follow a redirect blindly
+14:03 HttpsDemo — the three checks, with the real certificate
+14:16 HttpsChecklist — one check: plain HTTP must redirect
+14:35 Thanks for Watching
 ```
 
 ## Tags
 
-https, tls, hsts, secure cookie, redirect, certificate, java httpserver, java, cybersecurity for beginners
+https, tls, hsts, secure cookie, redirect, certificate, java httpserver, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +53,16 @@ https, tls, hsts, secure cookie, redirect, certificate, java httpserver, java, c
 | --- | --- |
 | Video | `video/https-server-explained.mp4` |
 | Captions | `video/https-server-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: TLS and Certificates in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (61)
-- [ ] tags are at most 500 characters in total — ok (98)
+- [ ] tags are at most 500 characters in total — ok (149)
 - [ ] description is at most 5,000 characters — ok (600)
 - [ ] chapters start at 00:00 and there are at least three

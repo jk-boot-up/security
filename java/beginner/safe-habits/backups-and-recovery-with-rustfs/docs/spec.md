@@ -36,9 +36,9 @@ Backups on the same account as the application are destroyed with it; learners n
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 14, all passing |
-| Demo output | 40 lines, identical on every run |
+| Demo output | 77 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:35, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:48, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

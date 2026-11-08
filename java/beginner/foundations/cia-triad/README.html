@@ -24,7 +24,7 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>The CIA Triad</h1>
 <pre><code>src/main/java/com/jk/explore/security/cia/
 ├── AccessDeniedException.java   Thrown when a user asks for something their role does not allow
-├── CiaDemo.java                 Runs the online store story in five numbered acts and prints exact, repeatable results
+├── CiaDemo.java                 Runs the online store story in seven numbered acts and prints exact, repeatable results
 ├── NaiveStore.java              The first version of the store's order system: anyone who can reach it can read anything and change anything, and nothing notices
 ├── OrderRecord.java             Everything the store keeps about one order: customer, item, shipping address and amount paid
 ├── OrderView.java               What one user is allowed to see of an order; a field they may not see is null
@@ -32,9 +32,10 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── Request.java                 One request arriving at the order server, from a named client
 ├── Role.java                    The job a store employee does, which decides what they may see and change
 ├── Seal.java                    Makes and checks the seal on an order: a short code worked out from the order and a secret key
+├── SealSteps.java               Works out an order's seal by hand, the way HMAC-SHA256 does it, so each step can be shown: pad the key to 64 bytes, hash (key xor 36) followed by the order text, then hash (key xor 5c) followed by that first hash
 ├── SecureStore.java             The store's order system with a control for confidentiality (what each role may see), integrity (a seal checked on every read), and a logged emergency exception
 ├── TamperedOrderException.java  Thrown when a stored order no longer matches the seal made when it was saved
-├── TickServer.java              A order server that can do a fixed amount of work in one tick (a slice of simulated time, so every run is identical)
+├── TickServer.java              An order server that can do a fixed amount of work in one tick (a slice of simulated time, so every run is identical)
 └── User.java                    A person using the store's order system, with the role they were given
 </code></pre>
 <p><strong>Confidentiality, integrity and availability are the three promises a system makes about its information, and every security control protects one of them.</strong></p>
@@ -45,8 +46,9 @@ is needed. Together they are called the CIA triad, and they are the first
 question to ask about any system: which of the three can fail, and who is hurt
 when it does?</p>
 <p>This project builds one small system, an online store's order records, and
-breaks each promise on purpose. Then it adds the simplest control that restores
-each one, and shows what those controls cost.</p>
+breaks each promise on purpose. Then, in seven acts, it adds the simplest control
+that restores each one, works out the integrity seal step by step, and shows what
+those controls cost.</p>
 <h2>The idea in everyday terms</h2>
 <p>Think of a bank vault. The thick door keeps strangers out: that is
 confidentiality. The seals on the money bags show if anything was touched: that
@@ -64,7 +66,7 @@ checkout so that a real customer cannot buy anything.</p>
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
 </code></pre>
-<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<p>The demo tells the story in 7 acts, each printing exact numbers that the tests check:</p>
 <table>
 <thead>
 <tr>
@@ -75,30 +77,38 @@ checkout so that a real customer cannot buy anything.</p>
 <tbody>
 <tr>
 <td>1. The first version, with no controls</td>
-<td>A support agent reads a shipping address, an amount is changed in silence, and a bot floods the checkout so a customer is refused.</td>
+<td>Support reads an address, an amount is changed in silence, and a bot's flood refuses a real customer.</td>
 </tr>
 <tr>
-<td>2. Confidentiality: each role sees what it needs</td>
-<td>Support sees the customer and the item only, finance sees everything, and only finance may change an amount.</td>
+<td>2. Confidentiality: each role sees only what it needs</td>
+<td>The system looks at the asker's role: support gets the customer and the item, finance gets everything, and only finance may change an amount.</td>
 </tr>
 <tr>
-<td>3. Integrity: a change behind the application is caught</td>
-<td>Each order carries a seal worked out from its contents and a secret key; an edit made directly in storage no longer matches its seal.</td>
+<td>3. Integrity: every order is saved with a seal</td>
+<td>Each order is saved with a seal, an HMAC-SHA256 code worked out from the order's text and a secret key: 32 bytes, 64 hex characters.</td>
 </tr>
 <tr>
-<td>4. Availability: one client cannot use up the server</td>
-<td>Each client may make 3 requests per tick, so the bot gets 3 and Maya's request is served.</td>
+<td>4. How the seal is made, step by step</td>
+<td>The seal is made in three steps: pad the key to 64 bytes, hash the key xor 36 with the text, then hash the key xor 5c with that first hash.</td>
 </tr>
 <tr>
-<td>5. The bill: strict controls get in the way of emergencies</td>
-<td>Support cannot see a shipping address when a courier is at the wrong door; an emergency exception shows it, but only with a reason, and logs the use.</td>
+<td>5. A change behind the application is caught</td>
+<td>Mallory edits the amount directly in storage and leaves the seal; on the next read the seal is worked out again, does not match, and the order is refused.</td>
+</tr>
+<tr>
+<td>6. Availability: one client cannot use up the whole server</td>
+<td>A rate limiter counts each client's requests in a tick and allows 3, so the bot gets 3, is refused 97 times, and Maya is served.</td>
+</tr>
+<tr>
+<td>7. The bill: strict controls get in the way of emergencies</td>
+<td>Support cannot see an address when a courier is at the wrong door; emergency access without a reason is denied, and with a reason it shows the address and logs the use.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>17 tests in <code>AvailabilityTest</code>, <code>BreakGlassTest</code>, <code>ConfidentialityTest</code>, <code>DemoRunsTest</code>, <code>IntegrityTest</code>, <code>NaiveStoreTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>, and nothing depends on the real clock, so every run gives the same result.</p>
+<p>20 tests in <code>AvailabilityTest</code>, <code>BreakGlassTest</code>, <code>ConfidentialityTest</code>, <code>DemoRunsTest</code>, <code>IntegrityTest</code>, <code>NaiveStoreTest</code>, <code>SealStepsTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>, and nothing depends on the real clock, so every run gives the same result.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>The simulation uses a clock made of ticks, one slice of simulated time, instead of real time,
 so every run prints the same numbers. The storage is an in-memory map that stands in for a

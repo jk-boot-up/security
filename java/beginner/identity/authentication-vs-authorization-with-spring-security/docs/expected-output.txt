@@ -1,25 +1,76 @@
-ONE. Spring Security present, but every request permitted.
-  nobody refunds O-1: 200 OK  <- NOBODY ASKED WHO
-  nobody views O-1: 200 OK
-TWO. Authentication: HTTP Basic, passwords stored as BCrypt.
-  a stored password starts with $2a$04$ (BCrypt, cost 4)
-  request with no credentials: 401 UNAUTHENTICATED
-  ben with a wrong password: 401 UNAUTHENTICATED
-  ben with his password: 200 OK
-THREE. Authenticated is not the same as authorized.
-  ben, a customer, refunds O-1: 200 OK  <- LOGGED IN, SO ALLOWED
-  ben views ana's order O-1: 200 OK  <- NOT HIS ORDER
-FOUR. Authorization: @PreAuthorize rules on the endpoints.
-  no credentials refunds O-1: 401 UNAUTHENTICATED
-  ben refunds O-1: 403 FORBIDDEN
-  ben views ana's order O-1: 403 FORBIDDEN
-  ben views his own order O-2: 200 OK
-  sam, from support, views O-1: 200 OK
-  sam refunds O-1: 200 OK
-  ana cancels ben's order O-2: 403 FORBIDDEN
-  alex, an admin, cancels O-2: 200 OK
-FIVE. The bill: a forgotten rule, and a password check on every request.
-  sam makes 3 requests with HTTP Basic: 3 password checks
-  ben exports every order, the endpoint has no @PreAuthorize: 200 OK  <- FORGOTTEN RULE
-  with a rule on the address too, ben exports: 403 FORBIDDEN
-  alex exports: 200 OK
+ONE. Spring Security present, everything permitted.
+  THE REQUESTS (no Authorization header):
+    1  nobody POST /orders/O-1/refund
+    2  nobody GET  /orders/O-1
+  THE RESPONSES:
+    1  200 OK  <- NOBODY ASKED WHO
+    2  200 OK
+TWO. Authentication: HTTP Basic and BCrypt.
+  THE REQUESTS (ben's own order O-2):
+    1  nobody GET  /orders/O-2         no login
+    2  ben    GET  /orders/O-2         password guess
+    3  ben    GET  /orders/O-2         password ben-pass
+  THE RESPONSES:
+    1  401 UNAUTHENTICATED  0 password checks
+    2  401 UNAUTHENTICATED  1 password check
+    3  200 OK               1 password check
+THREE. The login on the wire: the HTTP Basic header.
+  BEFORE ENCODING (what ben types):
+    username ben, password ben-pass
+    joined   ben:ben-pass   (12 bytes)
+  STEP BY STEP (every 3 bytes become 4 letters):
+    ben  ->  YmVu
+    :be  ->  OmJl
+    n-p  ->  bi1w
+    ass  ->  YXNz
+  AFTER ENCODING (what every request carries):
+    Authorization: Basic YmVuOmJlbi1wYXNz
+  anyone can decode it: ben:ben-pass  <- NOT ENCRYPTED
+FOUR. The password check, step by step: BCrypt.
+  BEFORE HASHING (when ben signs up):
+    password   ben-pass
+    salt       ShopSaltForBenAccount.
+    cost       4, so 2^4 = 16 rounds
+  AFTER HASHING (the stored line, in four parts):
+    version    $2a$
+    cost       04
+    salt       ShopSaltForBenAccount.
+    hash       Wz1TULMouKL9lQ/.NmDs1YmiNyGmOb6
+  CHECKING A LOGIN (hash again, same salt):
+    ben-pass  Wz1TULMouKL9lQ/.NmDs1YmiNyGmOb6  same
+    guess     t56XmVfz7dgNW5z2vW3Vm4JaetzqNUe  different
+  Spring's encoder agrees: true, false
+FIVE. Authenticated is not the same as authorized.
+  THE REQUESTS (ben, a customer, logged in):
+    1  ben    POST /orders/O-1/refund
+    2  ben    GET  /orders/O-1         ana's order
+  THE RESPONSES:
+    1  200 OK  <- LOGGED IN, SO ALLOWED
+    2  200 OK  <- NOT HIS ORDER
+SIX. Authorization: @PreAuthorize rules on the endpoints.
+  THE REQUESTS (the same shop, now with rules):
+    1  nobody POST /orders/O-1/refund
+    2  ben    POST /orders/O-1/refund  customer
+    3  ben    GET  /orders/O-1         ana's order
+    4  ben    GET  /orders/O-2         his own
+    5  sam    GET  /orders/O-1         support
+    6  sam    POST /orders/O-1/refund  support
+    7  ana    POST /orders/O-2/cancel  ben's order
+    8  alex   POST /orders/O-2/cancel  admin
+  THE RESPONSES:
+    1  401 UNAUTHENTICATED
+    2  403 FORBIDDEN
+    3  403 FORBIDDEN
+    4  200 OK
+    5  200 OK
+    6  200 OK
+    7  403 FORBIDDEN
+    8  200 OK
+SEVEN. The bill: a forgotten rule, a check every time.
+  EVERY REQUEST PAYS (the password goes every time):
+    sam sends 3 requests: 3 password checks
+  BEFORE THE FIX (export has no @PreAuthorize):
+    ben   GET /orders/export: 200 OK  <- FORGOTTEN RULE
+  AFTER THE FIX (/orders/export needs ADMIN):
+    ben   GET /orders/export: 403 FORBIDDEN
+    alex  GET /orders/export: 200 OK

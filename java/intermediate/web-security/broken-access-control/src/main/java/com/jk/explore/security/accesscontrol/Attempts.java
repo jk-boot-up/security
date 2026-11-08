@@ -20,25 +20,25 @@ final class Attempts {
     /** Things nobody should be able to do: each is one way access control breaks. */
     static List<Attempt> attacks() {
         return List.of(
-                new Attempt("ana reads ben's order 1002 (object level, horizontal)", Request.of("GET", "/orders/1002", ANA)),
-                new Attempt("ana reads ben's gift order from a leaked link", Request.of("GET", "/orders/" + ShopData.GIFT_ORDER, ANA)),
-                new Attempt("ana sends ben's order 1002 to her address (horizontal)", Request.of("POST", "/orders/1002/address", ANA, "12 Palm Street")),
+                new Attempt("ana reads ben's order 1002", Request.of("GET", "/orders/1002", ANA)),
+                new Attempt("ana opens ben's leaked gift link", Request.of("GET", "/orders/" + ShopData.GIFT_ORDER, ANA)),
+                new Attempt("ana sends ben's order to her address", Request.of("POST", "/orders/1002/address", ANA, "12 Palm Street")),
                 new Attempt("ana cancels ben's order 1002", Request.of("DELETE", "/orders/1002", ANA)),
-                new Attempt("someone signed out reads the sales report (forgotten route)", Request.of("GET", "/admin/reports", null)),
-                new Attempt("ana reads the sales report (vertical)", Request.of("GET", "/admin/reports", ANA)),
-                new Attempt("ana refunds order 1002 (button hidden, route open)", Request.of("POST", "/admin/refunds", ANA, "1002")),
+                new Attempt("signed out, reads the sales report", Request.of("GET", "/admin/reports", null)),
+                new Attempt("ana reads the sales report", Request.of("GET", "/admin/reports", ANA)),
+                new Attempt("ana refunds order 1002", Request.of("POST", "/admin/refunds", ANA, "1002")),
                 new Attempt("ana lists the users", Request.of("GET", "/admin/users", ANA)),
-                new Attempt("ana deletes ben's account (DELETE has no check)", Request.of("DELETE", "/admin/users/ben", ANA)));
+                new Attempt("ana deletes ben's account", Request.of("DELETE", "/admin/users/ben", ANA)));
     }
 
     /** Things honest users must still be able to do after the fix. */
     static List<Attempt> honest() {
         return List.of(
-                new Attempt("ana reads her own order 1001", Request.of("GET", "/orders/1001", ANA)),
-                new Attempt("ana changes the address of her own order 1003", Request.of("POST", "/orders/1003/address", ANA, "4 New Street")),
-                new Attempt("sam from support reads ben's order 1002", Request.of("GET", "/orders/1002", SAM)),
-                new Attempt("ben cancels his own order 1002", Request.of("DELETE", "/orders/1002", BEN)),
-                new Attempt("dave the admin reads the sales report", Request.of("GET", "/admin/reports", DAVE)),
-                new Attempt("dave the admin refunds order 1001", Request.of("POST", "/admin/refunds", DAVE, "1001")));
+                new Attempt("ana reads her order 1001", Request.of("GET", "/orders/1001", ANA)),
+                new Attempt("ana moves her order 1003", Request.of("POST", "/orders/1003/address", ANA, "4 New Street")),
+                new Attempt("sam (support) reads order 1002", Request.of("GET", "/orders/1002", SAM)),
+                new Attempt("ben cancels his order 1002", Request.of("DELETE", "/orders/1002", BEN)),
+                new Attempt("dave (admin) reads the report", Request.of("GET", "/admin/reports", DAVE)),
+                new Attempt("dave (admin) refunds order 1001", Request.of("POST", "/admin/refunds", DAVE, "1001")));
     }
 }

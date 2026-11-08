@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-security architecture review, threat modeling, stride, structurizr, c4 model, architecture decision records, trust boundaries, data flow, design review, java
+security architecture review, threat modeling, stride, structurizr, c4 model, architecture decision records, trust boundaries, data flow, design review, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ security architecture review, threat modeling, stride, structurizr, c4 model, ar
 | --- | --- |
 | Video | `video/security-architecture-review-explained.mp4` |
 | Captions | `video/security-architecture-review-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Governance, Risk and Compliance in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (99)
-- [ ] tags are at most 500 characters in total — ok (148)
+- [ ] tags are at most 500 characters in total — ok (199)
 - [ ] description is at most 5,000 characters — ok (293)
 - [ ] chapters start at 00:00 and there are at least three

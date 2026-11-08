@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-hsm, pkcs11, softhsm, sunpkcs11, key management, code signing, payment signing, key wrapping, non-extractable keys, java
+hsm, pkcs11, softhsm, sunpkcs11, key management, code signing, payment signing, key wrapping, non-extractable keys, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ hsm, pkcs11, softhsm, sunpkcs11, key management, code signing, payment signing, 
 | --- | --- |
 | Video | `video/hardware-backed-keys-explained.mp4` |
 | Captions | `video/hardware-backed-keys-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Applied Cryptography and PKI in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (72)
-- [ ] tags are at most 500 characters in total — ok (111)
+- [ ] tags are at most 500 characters in total — ok (162)
 - [ ] description is at most 5,000 characters — ok (244)
 - [ ] chapters start at 00:00 and there are at least three

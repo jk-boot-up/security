@@ -52,12 +52,14 @@ final class ShopServer implements AutoCloseable {
     private void handle(HttpExchange exchange, boolean secure) throws IOException {
         String path = exchange.getRequestURI().getPath();
         if (!secure && strong) {
-            exchange.getResponseHeaders().add("Location", "https://" + TestCertificates.HOST + ":" + httpsPort() + path);
+            exchange.getResponseHeaders().add("Location",
+                    "https://" + TestCertificates.HOST + ":" + httpsPort() + path);
             respond(exchange, 301, "");
             return;
         }
         if (secure && strong) {
-            exchange.getResponseHeaders().add("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+            exchange.getResponseHeaders().add("Strict-Transport-Security",
+                    "max-age=31536000; includeSubDomains");
             exchange.getResponseHeaders().add("Content-Security-Policy", "default-src 'self'");
             exchange.getResponseHeaders().add("X-Content-Type-Options", "nosniff");
             exchange.getResponseHeaders().add("X-Frame-Options", "DENY");
@@ -65,7 +67,9 @@ final class ShopServer implements AutoCloseable {
         }
         switch (path) {
             case "/login" -> {
-                exchange.getResponseHeaders().add("Set-Cookie", strong ? "session=abc123; Secure; HttpOnly; SameSite=Lax; Path=/" : "session=abc123; Path=/");
+                exchange.getResponseHeaders().add("Set-Cookie", strong
+                        ? "session=abc123; Secure; HttpOnly; SameSite=Lax; Path=/"
+                        : "session=abc123; Path=/");
                 respond(exchange, 200, "logged in");
             }
             case "/whoami" -> respond(exchange, 200, exchange.getRequestHeaders().containsKey("Cookie") ? "cookie received" : "no cookie");

@@ -25,6 +25,7 @@ Learners see the padlock but not what stands behind it, so certificate errors an
 | Host names | `HostName` |
 | Revocation | `RevocationList` |
 | Entry point | `CertsDemo` |
+| The chain check by hand | `ChainSteps` |
 
 ## Requirements
 
@@ -39,10 +40,10 @@ Learners see the padlock but not what stands behind it, so certificate errors an
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 28, all passing |
+| Demo output | 68 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:13, 1920×1080, narrated in the amy-slow voice |
+| Video | 13:05, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -43,9 +43,9 @@ Teams know they should keep dependencies up to date, but not how to find out wha
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 20, all passing |
-| Demo output | 42 lines, identical on every run |
+| Demo output | 70 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:06, 1920×1080, narrated in the amy-slow voice |
+| Video | 13:53, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -37,10 +37,10 @@ Learners use names every day and trust the address they get, without knowing tha
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 26 lines, identical on every run |
+| Tests | 23, all passing |
+| Demo output | 57 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:46, 1920×1080, narrated in the amy-slow voice |
+| Video | 11:40, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

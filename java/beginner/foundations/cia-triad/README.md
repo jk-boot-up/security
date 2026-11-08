@@ -3,7 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/cia/
 ├── AccessDeniedException.java   Thrown when a user asks for something their role does not allow
-├── CiaDemo.java                 Runs the online store story in five numbered acts and prints exact, repeatable results
+├── CiaDemo.java                 Runs the online store story in seven numbered acts and prints exact, repeatable results
 ├── NaiveStore.java              The first version of the store's order system: anyone who can reach it can read anything and change anything, and nothing notices
 ├── OrderRecord.java             Everything the store keeps about one order: customer, item, shipping address and amount paid
 ├── OrderView.java               What one user is allowed to see of an order; a field they may not see is null
@@ -11,9 +11,10 @@ src/main/java/com/jk/explore/security/cia/
 ├── Request.java                 One request arriving at the order server, from a named client
 ├── Role.java                    The job a store employee does, which decides what they may see and change
 ├── Seal.java                    Makes and checks the seal on an order: a short code worked out from the order and a secret key
+├── SealSteps.java               Works out an order's seal by hand, the way HMAC-SHA256 does it, so each step can be shown: pad the key to 64 bytes, hash (key xor 36) followed by the order text, then hash (key xor 5c) followed by that first hash
 ├── SecureStore.java             The store's order system with a control for confidentiality (what each role may see), integrity (a seal checked on every read), and a logged emergency exception
 ├── TamperedOrderException.java  Thrown when a stored order no longer matches the seal made when it was saved
-├── TickServer.java              A order server that can do a fixed amount of work in one tick (a slice of simulated time, so every run is identical)
+├── TickServer.java              An order server that can do a fixed amount of work in one tick (a slice of simulated time, so every run is identical)
 └── User.java                    A person using the store's order system, with the role they were given
 ```
 
@@ -27,8 +28,9 @@ question to ask about any system: which of the three can fail, and who is hurt
 when it does?
 
 This project builds one small system, an online store's order records, and
-breaks each promise on purpose. Then it adds the simplest control that restores
-each one, and shows what those controls cost.
+breaks each promise on purpose. Then, in seven acts, it adds the simplest control
+that restores each one, works out the integrity seal step by step, and shows what
+those controls cost.
 
 ## The idea in everyday terms
 
@@ -54,15 +56,17 @@ checkout so that a real customer cannot buy anything.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. The first version, with no controls | A support agent reads a shipping address, an amount is changed in silence, and a bot floods the checkout so a customer is refused. |
-| 2. Confidentiality: each role sees what it needs | Support sees the customer and the item only, finance sees everything, and only finance may change an amount. |
-| 3. Integrity: a change behind the application is caught | Each order carries a seal worked out from its contents and a secret key; an edit made directly in storage no longer matches its seal. |
-| 4. Availability: one client cannot use up the server | Each client may make 3 requests per tick, so the bot gets 3 and Maya's request is served. |
-| 5. The bill: strict controls get in the way of emergencies | Support cannot see a shipping address when a courier is at the wrong door; an emergency exception shows it, but only with a reason, and logs the use. |
+| 1. The first version, with no controls | Support reads an address, an amount is changed in silence, and a bot's flood refuses a real customer. |
+| 2. Confidentiality: each role sees only what it needs | The system looks at the asker's role: support gets the customer and the item, finance gets everything, and only finance may change an amount. |
+| 3. Integrity: every order is saved with a seal | Each order is saved with a seal, an HMAC-SHA256 code worked out from the order's text and a secret key: 32 bytes, 64 hex characters. |
+| 4. How the seal is made, step by step | The seal is made in three steps: pad the key to 64 bytes, hash the key xor 36 with the text, then hash the key xor 5c with that first hash. |
+| 5. A change behind the application is caught | Mallory edits the amount directly in storage and leaves the seal; on the next read the seal is worked out again, does not match, and the order is refused. |
+| 6. Availability: one client cannot use up the whole server | A rate limiter counts each client's requests in a tick and allows 3, so the bot gets 3, is refused 97 times, and Maya is served. |
+| 7. The bill: strict controls get in the way of emergencies | Support cannot see an address when a courier is at the wrong door; emergency access without a reason is denied, and with a reason it shows the address and logs the use. |
 
 ## Test
 
@@ -70,7 +74,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `AvailabilityTest`, `BreakGlassTest`, `ConfidentialityTest`, `DemoRunsTest`, `IntegrityTest`, `NaiveStoreTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and nothing depends on the real clock, so every run gives the same result.
+20 tests in `AvailabilityTest`, `BreakGlassTest`, `ConfidentialityTest`, `DemoRunsTest`, `IntegrityTest`, `NaiveStoreTest`, `SealStepsTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and nothing depends on the real clock, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

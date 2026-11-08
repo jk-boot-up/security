@@ -3,6 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/asymmetric/
 ├── AsymmetricDemo.java   Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── ByHand.java           RSA and Diffie-Hellman key agreement worked out by hand, with numbers small enough to follow
 ├── Envelope.java         A hybrid-encrypted message: the data key locked with RSA, the AES-GCM nonce, and the cipher text with its tag
 ├── Hex.java              Small helpers for text and bytes
 ├── HybridBox.java        Hybrid encryption: the data is encrypted with a fresh AES-256-GCM key made for this one message, and only that small key is locked with the recipient's RSA public key
@@ -45,10 +46,10 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 | Act | What it shows |
 | --- | --- |
 | 1. The problem: sharing a key | If the bank sends the key in the clear, Eve, who sees every message on the wire, has it, and can open anything. |
-| 2. A key pair: lock with the public key, open with the private key | The bank locks a 32-byte key with Ana's 294-byte public key into 256 bytes; only Ana's private key opens it, Eve's does not, and OAEP makes every lock different; at most 190 bytes fit. |
-| 3. Hybrid encryption: RSA for the key, AES for the data | A 10,000-byte statement is sealed with a fresh AES key, only that key is locked with RSA: 256 + 12 + 10,016 = 10,284 bytes; Eve's key and a flipped bit are refused. |
-| 4. Key agreement: no key is sent at all | The bank and Ana swap 44-byte X25519 public keys and each derives the same 32-byte key; Eve, with both public keys, does not; a new session gives a new key. |
-| 5. The bill: whose key is it? | Mallory swaps Ana's public key for her own, reads the message, locks it again for Ana, and nobody notices; RSA keys are 294 bytes and X25519 44; a stolen private key opens everything. |
+| 2. A key pair: the public key locks, the private key opens | By hand, the PIN 4821 locks to 4485 with the public key (8633, 17) and opens with the private key 497; real RSA-2048 with OAEP locks a 32-byte key into 256 bytes that only Ana's private key opens, differently every time, and at most 190 bytes fit. |
+| 3. Hybrid encryption: RSA for the key, AES for the data | A 10,000-byte statement is sealed with a fresh AES key, and only that key is locked with RSA: 256 + 12 + 10,016 = 10,284 bytes; Eve's key and a flipped bit are refused. |
+| 4. Key agreement: no key is sent at all | By hand, the bank (secret 6) and Ana (secret 15) send 8 and 19 and both get 2; with the real X25519 keys of RFC 7748 both get 4a5d9d5b..., HKDF makes the 32-byte key, Eve does not get it, and a new session gives a new key. |
+| 5. The bill: whose key is it? | Mallory swaps Ana's public key for her own, reads PIN is 4821, locks it again for Ana, and nobody notices; RSA public keys are 294 bytes and X25519 44; a stolen private key opens everything. |
 
 ## Test
 
@@ -56,11 +57,13 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-24 tests in `DemoRunsTest`, `HybridTest`, `KeyAgreementTest`, `RsaTest`, `StandardVectorsTest`. X25519 is checked against the test values of RFC 7748 and HKDF against RFC 5869. Keys are random, so the demo and its test check only sizes, equalities and refusals, and the golden output is the same on every run.
+30 tests in `ByHandTest`, `DemoRunsTest`, `HybridTest`, `KeyAgreementTest`, `RsaTest`, `StandardVectorsTest`. X25519 is checked against the test values of RFC 7748 and HKDF against RFC 5869. `ByHandTest` proves the by-hand power is exactly what Java's RSA (without padding) and DH key agreement compute on real keys. RSA keys are random, so for them the demo prints only sizes, equalities and refusals, and the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 
-Keys are generated fresh and at random on every run, so the demo prints only facts that do not depend on them: sizes, whether two things are equal, whether an operation is refused.
+RSA keys are generated fresh and at random on every run, so for them the demo prints only facts that do not depend on them: sizes, whether two things are equal, whether an operation is refused.
+The by-hand examples use tiny fixed numbers (primes 89 and 97 for RSA, g = 5 and p = 23 for key agreement), which are far too small for real use, and the X25519 keys of the bank and Ana are the published test keys of RFC 7748, so
+their values are the same on every run.
 RSA key size 2048 and OAEP with SHA-256 are used because they are widely supported, and X25519 and HKDF-SHA-256 because they are modern and small. The man in the middle is a few lines that stand
 for anyone who can alter the network. The tests check X25519 and HKDF against the published test values of RFC 7748 and RFC 5869.
 
@@ -132,7 +135,7 @@ most of the internet. In practice, nobody writes this by hand for a network conn
 
 ## Where you have already met this
 
-- Every HTTPS connection, which begins with a key agreement like the fourth act.
+- A modern HTTPS connection, which begins with a key agreement like the fourth act.
 - PGP and S/MIME email encryption, which use hybrid encryption with the recipient's public key.
 - SSH keys: `id_rsa.pub` is a public key, and `id_rsa` is the private one.
 - The padlock in the browser, which is the result of keys being checked by a certificate.

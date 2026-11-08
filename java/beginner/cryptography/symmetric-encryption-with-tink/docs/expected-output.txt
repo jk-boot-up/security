@@ -1,28 +1,72 @@
 ONE. One call, and no nonce to look after.
-  the same line sealed twice gives the same bytes: false  <- TINK PICKS A NEW NONCE
-  the stored message starts with 01000003e9: version 1, then key id 1001
-  16 bytes seal to 49 bytes: 5 for the key id, 12 for the nonce, 16 for the tag
-  opened with the right key and account: RENT      -1200
-TWO. Any change is refused.
-  one bit of the message is flipped: refused  <- DETECTED
-  the message is moved to another account: refused  <- DETECTED
-  opened with a different key of the same id: refused
-THREE. Replacing the key without losing the data.
-  a new key is added and made primary: the keyset now holds 2 keys
-  a message sealed before the change still opens: RENT      -1200
-  a new message starts with a different key id: true
-  the old key is removed from the keyset: refused for old messages, RENT      -1200 for new ones
-FOUR. Keys that stay at home: envelope encryption.
-  each message is sealed with its own fresh data key, and only that small key goes to the master key to be wrapped
-  16 bytes become 113: a length, the wrapped data key, then the cipher text
-  two messages carry different wrapped keys: true
-  the master key was used 3 times for 2 short lines and a 100000-byte statement: once each, whatever the size
-  opened with the master key: RENT      -1200, and 100000 bytes
-  opened with a different master key: refused
-  the master key's own bytes appear in a stored message: false
-FIVE. The bill: what Tink decides for you, and what it does not.
-  the AEAD templates offered include: AES128_GCM, AES256_GCM, AES128_EAX, AES256_CTR_HMAC_SHA256, CHACHA20_POLY1305, XCHACHA20_POLY1305, AES256_GCM_SIV
-  an ECB template: not offered  <- THE UNSAFE CHOICE IS NOT ON THE MENU
-  the stored format is Tink's own: other libraries need Tink to read it
-  Tink adds a library and its protocol buffer dependency, and the master key still has to live somewhere
-  and message lengths still show: 33 bytes more than the message, every time
+  BEFORE ENCRYPTION (what the bank gives Tink):
+    plain text   RENT      -1200   (16 bytes)
+    account      account=ANA-1   (checked, not hidden)
+    keyset       one AES256_GCM key, key id 1001
+  AFTER ENCRYPTION (the same line, sealed twice):
+    message 1    49 bytes, starts 01000003e9
+    message 2    49 bytes, starts 01000003e9
+    the two are the same: false  <- A NEW NONCE EACH TIME
+  OPENING message 1 (right key, right account):
+    RENT      -1200  <- OPENED
+TWO. Inside one Tink message, worked out by hand.
+  BEFORE ENCRYPTION (a fixed nonce, only for this demo):
+    key id       1001
+    nonce        00000000 00000000 00000001
+    account      account=ANA-1
+    plain text   RENT      -1200
+  AFTER ENCRYPTION (49 bytes, part by part):
+    version      01
+    key id       000003e9   (1001 = 3 x 256 + 233, e9 = 233)
+    nonce        00000000 00000000 00000001
+    cipher text  9399a5a1 79f6597f b269750e 0efeb9b6
+    tag          fd69a8c7 c828ec0f c5f79504 11a6da99
+  1 + 4 + 12 + 16 + 16 = 49 bytes
+  Tink opens the hand-built message: RENT      -1200  <- SAME LAYOUT
+THREE. Any change is refused.
+  THE SEALED MESSAGE (from act two):
+    tag          fd69a8c7 c828ec0f c5f79504 11a6da99
+  OPENING IT (Tink checks the tag first):
+    right key, right account: RENT      -1200  <- OPENED
+  THREE CHANGES:
+    last byte 99 -> 98: refused  <- DETECTED
+    moved to account=MAL-2: refused  <- DETECTED
+    another key, same id 1001: refused  <- DETECTED
+FOUR. Replacing the key without losing the data.
+  BEFORE ROTATION:
+    keyset       key 1001 (primary)
+    old message  starts 01000003e9
+  AFTER ROTATION (key 1002 added and made primary):
+    keyset       key 1001, key 1002 (primary)
+    new message  starts 01000003ea
+    old message opens: RENT      -1200
+    new message opens: RENT      -1200
+  AFTER REMOVING KEY 1001:
+    keyset       key 1002 (primary)
+    old message opens: refused  <- RE-ENCRYPT FIRST
+    new message opens: RENT      -1200
+FIVE. Keys that stay at home: envelope encryption.
+  BEFORE ENCRYPTION:
+    plain text   RENT      -1200   (16 bytes)
+    data key     32 random bytes, new for every message
+    master key   key id 2001, standing in for a KMS
+  AFTER ENCRYPTION (16 bytes become 113):
+    length       00000041 = 65, the wrapped key's size
+    wrapped key  65 = 5 + 12 + 32 + 16, starts 01000007d1
+    cipher text  44 = 12 + 16 + 16, no key id
+  4 + 65 + 44 = 113 bytes
+  two messages, different wrapped keys: true
+  master key calls: 3, one per message, any size
+  opened: RENT      -1200, and 100000 bytes
+  another master key: refused
+  master key's bytes in a message: false
+SIX. The bill: what Tink decides, and what it does not.
+  THE MENU (AEAD templates Tink offers, among others):
+    AES128_GCM, AES256_GCM,
+    CHACHA20_POLY1305, XCHACHA20_POLY1305
+    an ECB template: not offered  <- NOT ON THE MENU
+  WHAT IT LEAVES TO YOU:
+    16 -> 49 bytes, 100000 -> 100033: always 33 more
+    the format is Tink's own: other libraries need Tink
+    a library to add, with its protocol buffer dependency
+    the master key still has to live somewhere

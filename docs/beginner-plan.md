@@ -226,6 +226,10 @@ thumbnails and playlists. They are written once and shared by every language.
 
 ## 6. Audio and video
 
+Every video and animation follows the [video and animation teaching standard](video-teaching-standard.md):
+pictures with real examples, input and result in separate sections, derived values worked out step by step,
+every acronym spelled out, and a short tour of the Java classes.
+
 - **Voice:** Piper `en_US-amy-medium`, speed 0.8, `sentence_gap = 0.7`, `pause_scale = 1.5`,
   −16 LUFS, peaks limited to −1.5 dBFS. Written to each project's `video/videokit.toml`.
 - **Credit** is always third person: "This video is presented by Jayasekhar Konduru." No
@@ -238,9 +242,22 @@ thumbnails and playlists. They are written once and shared by every language.
   4. the same idea taught in the topic's domain, the online store or the bank.
 - **Closing:** one-sentence lesson, the repository, a like and a subscribe, thanks. Never name
   the next video.
-- **Length:** about 14 scenes per video.
+- **Length:** as short as the teaching standard allows; about 30 to 36 scenes with the pictures and the class tour.
 - **Quality gates:** continuous audio, no first-person credit, captions timed from the recorded
   phrases. A build fails rather than ship a bad video.
+- **Picture:** slides are laid out in 1920×1080 units but drawn and encoded at 3840×2160 (H.264,
+  CRF 18, BT.709 colour written into the file). YouTube gives 4K uploads its high-bitrate encodes,
+  so slide text stays sharp even when watched at 1080p.
+- **Readable text:** body text 40 to 52 px and console text 34 to 48 px (in 1920×1080 units);
+  long console lines wrap rather than shrink, long titles take two lines, and secondary lines are
+  light grey, never dim.
+- **Title frame:** the project's cover, the same design as its thumbnail (cyan theme, the author's
+  photo, the topic's key cards) with "Presented by Jayasekhar Konduru" and the line
+  "GitHub: https://github.com/jk-boot-up/security/". Drawn by
+  `tools/videokit/videokit/slides/cover.py` from `cover_cards.py`.
+- **End frame:** the same cyan theme, the author's photo, Like / Subscribe / Share, "GitHub Repo:
+  github.com/jk-boot-up/security/" (taken from `docs/youtube.md`, without `https://`) and "Authored by Jayasekhar
+  Konduru".
 - **Security-specific wording:** an attack is always described as "the attacker" acting on the
   project's own demo code. No instructions aimed at real systems.
 
@@ -259,7 +276,8 @@ thumbnails and playlists. They are written once and shared by every language.
 ## 8. YouTube
 
 **Files uploaded:** the `.mp4` (which already contains the narration), the matching `.srt`, and
-the project's own `docs/thumbnail.png` (1280×720). The `.m4a` is never uploaded.
+the project's `docs/thumbnail-security-photo-cyan-theme.png` (1280×720). The `.m4a` is never
+uploaded.
 
 **Text rules:**
 
@@ -269,8 +287,10 @@ the project's own `docs/thumbnail.png` (1280×720). The `.m4a` is never uploaded
 - The first sentence is the name and plain definition: "X in Java: ...".
 - Chapters are timed from the uploaded video's own `.srt`: start at `00:00`, at least three.
 - Title at most 100 characters (aim for 60), description at most 5,000, tags at most 500.
+- Every video's tags include the author's name, "Jayasekhar Konduru", and the repository,
+  "github.com/jk-boot-up/security/", so a search for either finds all of them. The playlist named in each sheet is the project's own module playlist.
 
-**Settings:** Public with instant Premiere; not made for kids; no paid promotion; altered
+**Settings:** uploaded Unlisted, made Public once the quality check passes; not made for kids; no paid promotion; altered
 content **No**; category Science & Technology; language English set before subtitles; captions
 from the `.srt`; thumbnail uploaded; end screen to an already published video; never announce
 a next video.
@@ -297,6 +317,35 @@ Videos sit in learning order. Playlist names are placeholders until the first up
 signed in to by hand. It never types a password and runs only when the owner asks. Uploads happen
 one video at a time, a failure never causes a duplicate, and every link is recorded in
 `docs/youtube-links.json`, which feeds the index.
+
+**Quality check:** every upload goes through `tools/ytupload/ytquality.sh run <targets>`, one
+video at a time, in learning order. For each video:
+
+1. **Local check** of the `.mp4` before anything is sent: 3840×2160; every slide's text matches
+   the slide (brightness SSIM ≥ 0.985 at 1080p, sharpness ≥ 93 % of the slide's); loudness −18 to
+   −14 LUFS; peaks below 0 dBTP; no silence longer than 4 s.
+2. **Upload Unlisted**, with every field filled and the custom thumbnail (no thumbnail, no upload).
+3. **Check YouTube's copy:** wait until YouTube serves 1080p and 4K, download the 1080p stream
+   browsers play and its audio, and check them: slide text (SSIM ≥ 0.95, sharpness ≥ 80 %),
+   loudness, peaks, silences, length within 1 s of the video, a 4K version exists, and the
+   thumbnail shown is the custom one.
+4. **Pass:** the video is made Public. **Fail:** the copy is deleted from YouTube, the video is
+   rebuilt with stronger settings (try 2: CRF 14, 256 kbit/s audio; try 3: CRF 10, 320 kbit/s)
+   and steps 1 to 3 run again.
+
+At most **three tries** per video. After the third failure the copy is deleted, the video is
+marked **failed**, and the run stops: the next video is not started until the current one passes.
+Every try (settings, measurements, problems, video ID) is recorded in `docs/youtube-quality.json`
+and summarised in [youtube.md](youtube.md). The script only ever deletes a copy it uploaded itself.
+
+A Studio or network hiccup is not a failed try: the video is retried after 10 minutes (an unchecked
+copy left behind is deleted first), and the run stops after three hiccups on the same video.
+For a long unattended run, keep the Mac awake (`caffeinate -i -s`): idle sleep pauses the run and
+makes Studio time out. A video built ahead of time with the try 1 settings (CRF 18, 192 kbit/s)
+and marked in `video/build/quality-settings.json` is not built again, so videos can be built in
+the background while others upload. Pause those builds while the script talks to Studio.
+Keep 1-pixel decoration (grids, hairlines) off full-frame slides: YouTube's encoding erases it,
+so its copy no longer matches the slide even when the text is perfectly readable.
 
 **Never committed:** `.mp4`, `.m4a`, `.srt`, `.wav`, audio clips, build output.
 
@@ -353,7 +402,8 @@ nothing (for example Spring Security has no Go twin; the Go project would use `x
 1. `./gradlew test` passes and `./gradlew run` prints the acts.
 2. All files in section 3 exist. HTML pages inline styles and link images; no base64 images; no
    Mermaid.
-3. Video and animation are rendered in the amy-slow voice with no failed gate.
+3. Video and animation are rendered in the amy-slow voice with no failed gate, and meet the
+   [teaching standard](video-teaching-standard.md).
 4. The project appears in the beginner README and the index.
 5. Nothing rendered is committed.
 6. The demo attacks only its own code and containers, on the learner's machine.

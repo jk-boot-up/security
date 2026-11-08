@@ -26,7 +26,7 @@ What it shows:
 - **Rotation.** A certificate that lives **8 seconds** is renewed halfway; the server reloads its certificate and trust file without a restart, and **0** of at least 20 calls on new connections fail; the old certificate is refused after its expiry and the renewed one gets 200.
 - **A compromised certificate.** Revoked at the CA, it still gets **200** at the ledger until the ledger reads the CA's revocation list; then **403**.
 
-**Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204B · OWASP ASVS V9 · PCI DSS 4.0 req. 4.2 and 8.6 · RFC 8446, RFC 5280.
+**Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204B · OWASP ASVS 5.0 V12 Secure Communication · PCI DSS 4.0 req. 4.2 and 8.6 · RFC 8446, RFC 5280.
 
 ## The idea in everyday terms
 

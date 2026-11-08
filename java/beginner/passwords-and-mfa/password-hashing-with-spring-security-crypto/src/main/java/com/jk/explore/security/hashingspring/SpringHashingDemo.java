@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder.BCryptVersion;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -62,45 +63,92 @@ public class SpringHashingDemo {
 
     private static void act1WeakEncoders(StringBuilder out) {
         line(out, "ONE. Two weak encoders, written out here.");
+        line(out, "  BEFORE HASHING");
+        line(out, "    ana's password  welcome1");
         PasswordEncoder plain = new PlainTextEncoder();
-        line(out, "  a plain-text encoder stores ana's password as: " + plain.encode("welcome1") + "  <- THE PASSWORD ITSELF");
-        PasswordEncoder fast = new FastSaltedSha256Encoder();
+        line(out, "  AFTER HASHING: PLAIN TEXT");
+        line(out, "    stored          " + plain.encode("welcome1") + "  <- THE PASSWORD ITSELF");
+        PasswordEncoder fast = new FastSaltedSha256Encoder(new RepeatableSalts());
         String ana = fast.encode("welcome1");
         String ben = fast.encode("welcome1");
-        line(out, "  a fast SHA-256 encoder with a salt gives ana and ben the same value: " + ana.equals(ben));
-        line(out, "  but it is one cheap step per guess: " + new Attacker(Customers.WORDLIST).crack(encodeAll(fast), fast).guesses()
-                + " guesses crack " + new Attacker(Customers.WORDLIST).crack(encodeAll(fast), fast).found().size() + " of "
-                + Customers.PASSWORDS.size() + "  <- FAST");
-        line(out, "  the library keeps encoders like these only for old systems, and marks them deprecated");
+        line(out, "  AFTER HASHING: FAST SHA-256 WITH A SALT");
+        line(out, "    salt            " + ana.substring(0, ana.indexOf('$')));
+        line(out, "    hash            " + ana.substring(ana.indexOf('$') + 1, ana.indexOf('$') + 33) + "...");
+        line(out, "    ana and ben the same: " + ana.equals(ben));
+        Attacker.Cracked cracked = new Attacker(Customers.WORDLIST).crack(encodeAll(fast), fast);
+        line(out, "  THE ATTACK");
+        line(out, "    " + cracked.guesses() + " guesses crack " + cracked.found().size() + " of " + Customers.PASSWORDS.size()
+                + ", one cheap step each  <- FAST");
+        line(out, "  the library keeps these only for old systems: deprecated");
     }
 
     private static void act2OneCall(StringBuilder out) {
         line(out, "TWO. One call: the delegating encoder.");
-        PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+        PasswordEncoder factory = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+        // The factory's default, bcrypt at cost 10, with repeatable salts so the values shown never change.
+        PasswordEncoder encoder = new DelegatingPasswordEncoder("bcrypt",
+                Map.of("bcrypt", new BCryptPasswordEncoder(BCryptVersion.$2A, 10, new RepeatableSalts())));
         String ana = encoder.encode("welcome1");
+        line(out, "  BEFORE HASHING");
+        line(out, "    ana's password  welcome1");
+        line(out, "  AFTER HASHING: ANA'S STORED TEXT, " + ana.length() + " CHARACTERS");
+        BcryptSteps.Parts parts = BcryptSteps.parts(ana);
+        line(out, "    " + parts.id() + parts.version() + parts.cost() + "$");
+        line(out, "    " + parts.salt() + parts.hash());
+        line(out, "  THE PARTS");
+        line(out, "    id       " + parts.id() + "  picks the algorithm");
+        line(out, "    version  " + parts.version() + "      bcrypt's version");
+        line(out, "    cost     " + parts.cost() + "        2^" + parts.cost() + " = " + parts.rounds() + " rounds");
+        line(out, "    salt     " + parts.salt());
+        line(out, "    hash     " + parts.hash());
         String ben = encoder.encode("welcome1");
-        line(out, "  ana's stored text begins " + prefix(ana) + " and is " + ana.length() + " characters long");
-        line(out, "  same password, same stored text: " + ana.equals(ben) + "  <- A SALT IS ADDED FOR YOU");
-        line(out, "  ana logs in with the right password: " + encoder.matches("welcome1", ana));
-        line(out, "  ana logs in with a wrong one: " + encoder.matches("guess", ana));
+        line(out, "  BEN, THE SAME PASSWORD");
+        line(out, "    salt     " + BcryptSteps.parts(ben).salt());
+        line(out, "    same stored text as ana: " + ana.equals(ben) + "  <- A SALT IS ADDED FOR YOU");
+        for (String typed : new String[] {"welcome1", "guess"}) {
+            line(out, "  LOGIN: ANA TYPES " + typed);
+            if (typed.equals("welcome1")) {
+                line(out, "    STEP 1. read cost " + parts.cost() + " and the salt from the stored text");
+            }
+            String again = BcryptSteps.hashAgain(typed, parts);
+            line(out, "    STEP 2. hash it again  " + again);
+            line(out, "    STEP 3. same as the stored hash: " + BcryptSteps.sameHash(again, parts));
+        }
+        line(out, "  the library's matches says the same: " + factory.matches("welcome1", ana) + ", "
+                + factory.matches("guess", ana));
     }
 
     private static void act3FourAlgorithms(StringBuilder out) {
         line(out, "THREE. Four algorithms, one interface.");
-        BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
-        Pbkdf2PasswordEncoder pbkdf2 = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8();
-        SCryptPasswordEncoder scrypt = SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8();
-        Argon2PasswordEncoder argon2 = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
-        String b = bcrypt.encode("welcome1");
-        line(out, "  bcrypt:  cost " + b.substring(4, 6) + " (" + (1 << Integer.parseInt(b.substring(4, 6)))
-                + " rounds), text begins " + b.substring(0, 7));
-        line(out, "  pbkdf2:  " + pbkdf2.encode("welcome1").length() + " characters, matches: "
-                + pbkdf2.matches("welcome1", pbkdf2.encode("welcome1")));
-        line(out, "  scrypt:  " + scrypt.encode("welcome1").length() + " characters, matches: "
-                + scrypt.matches("welcome1", scrypt.encode("welcome1")));
-        String a = argon2.encode("welcome1");
-        String settings = a.split("\\$")[3];
-        line(out, "  argon2:  settings " + settings + ", matches: " + argon2.matches("welcome1", a));
+        PasswordEncoder[] encoders = {
+            new BCryptPasswordEncoder(),
+            Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8(),
+            SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8(),
+            Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()
+        };
+        String[] names = {"bcrypt", "pbkdf2", "scrypt", "argon2"};
+        line(out, "  BEFORE HASHING");
+        line(out, "    the password  welcome1");
+        line(out, "  AFTER HASHING");
+        StringBuilder checks = new StringBuilder();
+        for (int i = 0; i < encoders.length; i++) {
+            String stored = encoders[i].encode("welcome1");
+            line(out, "    " + names[i] + "  " + stored.length() + " characters  " + settings(stored));
+            checks.append(i == 0 ? "" : ", ").append(encoders[i].matches("welcome1", stored));
+        }
+        line(out, "  THE LOGIN CHECK");
+        line(out, "    each one matches welcome1: " + checks);
+    }
+
+    /** The settings an algorithm writes at the front of its stored text: everything before the salt. */
+    static String settings(String stored) {
+        if (stored.startsWith("$2")) {
+            return stored.substring(0, 7);                  // bcrypt: $2a$10$, then salt and hash
+        }
+        if (!stored.startsWith("$")) {
+            return "salt + hash in hex";                                // pbkdf2 writes no settings
+        }
+        return stored.substring(0, stored.lastIndexOf('$', stored.lastIndexOf('$') - 1) + 1);
     }
 
     private static void act4SameAttack(StringBuilder out) {
@@ -110,12 +158,18 @@ public class SpringHashingDemo {
         BCryptPasswordEncoder strong = new BCryptPasswordEncoder(10);
         Attacker.Cracked low = attacker.crack(encodeAll(cheap), cheap);
         Attacker.Cracked high = attacker.crack(encodeAll(strong), strong);
-        line(out, "  bcrypt cost 4:  cracked " + low.found().size() + " of " + Customers.PASSWORDS.size() + " in "
-                + low.guesses() + " guesses");
-        line(out, "  bcrypt cost 10: cracked " + high.found().size() + " of " + Customers.PASSWORDS.size() + " in "
-                + high.guesses() + " guesses");
-        line(out, "  each guess at cost 10 is " + (1 << (10 - 4)) + " times the work of cost 4");
-        line(out, "  cracked: " + names(high.found()) + "  <- COST HELPS, WEAK PASSWORDS STILL FALL");
+        line(out, "  THE ATTACK");
+        line(out, "    " + Customers.WORDLIST.size() + " common passwords, tried in turn on each of "
+                + Customers.PASSWORDS.size() + " accounts");
+        line(out, "    guesses: " + high.perAccount().entrySet().stream()
+                .map(e -> e.getKey() + " " + e.getValue()).collect(Collectors.joining(", ")));
+        line(out, "  THE RESULT");
+        line(out, "    cost 4:  cracked " + low.found().size() + " of " + Customers.PASSWORDS.size() + " in "
+                + low.guesses() + " guesses, " + (1 << 4) + " rounds each");
+        line(out, "    cost 10: cracked " + high.found().size() + " of " + Customers.PASSWORDS.size() + " in "
+                + high.guesses() + " guesses, " + (1 << 10) + " rounds each");
+        line(out, "    each guess at cost 10 is " + (1 << (10 - 4)) + " times the work of cost 4");
+        line(out, "    cracked: " + names(high.found()) + "  <- WEAK ONES STILL FALL");
     }
 
     private static void act5Migration(StringBuilder out) {
@@ -123,30 +177,40 @@ public class SpringHashingDemo {
         DelegatingPasswordEncoder old = allowList("bcrypt");
         DelegatingPasswordEncoder current = allowList(ARGON2_ID);
         String erin = old.encode("letmein");
-        line(out, "  erin's stored text begins " + prefix(erin));
-        line(out, "  the shop switches its default to argon2; erin logs in: " + current.matches("letmein", erin));
-        line(out, "  the encoder says the stored text should be upgraded: " + current.upgradeEncoding(erin));
+        line(out, "  BEFORE THE LOGIN");
+        line(out, "    erin's stored text  " + erin.substring(0, 15) + "...");
+        line(out, "    the shop's default  now argon2");
+        line(out, "  THE LOGIN: ERIN TYPES letmein");
+        line(out, "    the id " + prefix(erin) + " picks bcrypt; matches: " + current.matches("letmein", erin));
+        line(out, "    upgradeEncoding: " + current.upgradeEncoding(erin) + ", " + prefix(erin) + " is not the default");
         String upgraded = current.encode("letmein");
-        line(out, "  after login it is stored again, beginning " + prefix(upgraded));
-        line(out, "  upgrade needed now: " + current.upgradeEncoding(upgraded));
+        String rest = upgraded.substring(prefix(upgraded).length());
+        line(out, "  AFTER THE LOGIN: STORED AGAIN");
+        line(out, "    " + prefix(upgraded));
+        line(out, "    " + rest.substring(0, rest.lastIndexOf('$', rest.lastIndexOf('$') - 1) + 1) + "...");
+        line(out, "    upgradeEncoding now: " + current.upgradeEncoding(upgraded));
     }
 
     private static void act6Bill(StringBuilder out) {
         line(out, "SIX. The bill: an open list, and memory.");
         PasswordEncoder open = PasswordEncoderFactories.createDelegatingPasswordEncoder();
-        line(out, "  the default delegating encoder accepts {noop}letmein for letmein: "
-                + open.matches("letmein", "{noop}letmein") + "  <- A WRITER TO THE TABLE CAN PLANT IT");
+        line(out, "  THE ATTACK: A VALUE WRITTEN INTO THE TABLE");
+        line(out, "    erin's stored text  {noop}letmein");
+        line(out, "  THE DEFAULT ENCODER");
+        line(out, "    letmein matches: " + open.matches("letmein", "{noop}letmein") + "  <- NO HASHING AT ALL");
         DelegatingPasswordEncoder strict = allowList(ARGON2_ID);
+        line(out, "  THE ALLOW-LIST ENCODER: bcrypt and argon2 only");
         try {
             strict.matches("letmein", "{noop}letmein");
-            line(out, "  an allow-list encoder accepts it");
+            line(out, "    accepted");
         } catch (IllegalArgumentException e) {
-            line(out, "  an allow-list encoder refuses {noop}: no encoder mapped for that id");
+            line(out, "    refused: no encoder mapped for the id noop");
         }
         String stored = strict.encode("welcome1");
         String settings = stored.substring(stored.indexOf('$')).split("\\$")[3];
         int memoryKiB = Integer.parseInt(settings.split(",")[0].substring(2));
-        line(out, "  one argon2 hash uses " + memoryKiB + " KiB, " + (memoryKiB / 1024) + " MiB, of memory");
-        line(out, "  100 logins at once need " + (100 * memoryKiB / 1024) + " MiB  <- MEMORY IS THE PRICE");
+        line(out, "  THE MEMORY");
+        line(out, "    one argon2 hash     " + memoryKiB + " KiB = " + (memoryKiB / 1024) + " MiB");
+        line(out, "    100 logins at once  " + (100 * memoryKiB / 1024) + " MiB  <- MEMORY IS THE PRICE");
     }
 }

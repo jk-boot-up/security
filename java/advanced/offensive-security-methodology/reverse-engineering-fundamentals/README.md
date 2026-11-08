@@ -21,7 +21,7 @@ What it shows:
 - **Obfuscation.** One-letter names and encoded strings leave **0** of the 3 strings, but the decompiled logic is readable, the program's own decoder gives back all **3**, and the check is found by its shape and patched the same way.
 - **The bill.** Keep the decision on the server; obfuscation raises the cost of reading and does not prevent it.
 
-**Maps to:** OWASP MASVS-RESILIENCE · OWASP Top 10 A04 Insecure Design · CWE-798 hard-coded credentials, CWE-602 client-side enforcement of server-side security · MITRE ATT&CK T1027 obfuscated files.
+**Maps to:** OWASP MASVS-RESILIENCE · OWASP Top 10 (2025) A06 Insecure Design · CWE-798 hard-coded credentials, CWE-602 client-side enforcement of server-side security · MITRE ATT&CK T1027 obfuscated files.
 
 ## The idea in everyday terms
 

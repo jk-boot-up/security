@@ -42,7 +42,7 @@ Teams trust the ORM and build queries as strings, and run the application as a d
 | Tests | 11, all passing |
 | Demo output | 20 lines, identical on every run |
 | Acts | 4 |
-| Video | 06:01, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:13, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -22,6 +22,7 @@ Learners see DNS as a lookup that just works, and need to see that a server serv
 | Corefile and zone text | `ShopZone` |
 | UDP and TCP client | `Client` |
 | DNS messages | `DnsMessage` |
+| The bytes, field by field | `WireSteps` |
 | Entry point | `CoreDnsDemo` |
 
 ## Requirements
@@ -38,10 +39,10 @@ Learners see DNS as a lookup that just works, and need to see that a server serv
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 24, all passing |
-| Demo output | 27 lines, identical on every run |
+| Tests | 27, all passing |
+| Demo output | 46 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:09, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:49, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

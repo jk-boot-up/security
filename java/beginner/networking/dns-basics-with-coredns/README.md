@@ -8,7 +8,8 @@ src/main/java/com/jk/explore/security/dnscoredns/
 ├── CoreDns.java              One CoreDNS container with a given zone, started for a demo and stopped afterwards
 ├── CoreDnsDemo.java          Runs the online store story in five numbered acts against a real CoreDNS container and prints repeatable results
 ├── DnsMessage.java           A DNS message as in RFC 1035: a 12-byte header, questions, and answers
-└── ShopZone.java             The text of the files CoreDNS is started with: a Corefile (its configuration) and a zone file for shop.example
+├── ShopZone.java             The text of the files CoreDNS is started with: a Corefile (its configuration) and a zone file for shop.example
+└── WireSteps.java            The question of act one and its answer, field by field, as bytes on the wire
 ```
 
 **A real DNS server answers exactly what its zone file says, over UDP or TCP, with no signature, so whoever controls the file controls the answer, and every cache repeats it.**
@@ -38,7 +39,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A real DNS server, in a container | CoreDNS serves the zone file's record for www.shop.example over UDP, repeats the question's id, and is believed because the id and question match. |
+| 1. A real DNS server, in a container | CoreDNS serves the zone file's record for www.shop.example over UDP and repeats the question's id; the question (34 bytes) and the answer (50 bytes) are shown field by field. |
 | 2. The same question over UDP and over TCP | Both give the same address; over TCP each message starts with a two-byte length, so the answer is 2 bytes longer; neither signs or encrypts. |
 | 3. Names that do not exist, names it will not answer, and a rewrite | A missing name gives NXDOMAIN with no answers, a name outside the zone is REFUSED, and legacy.shop.example is rewritten to www and answered under the name asked. |
 | 4. The cache and the countdown of the time to live | The cache plugin cuts the zone's 300 seconds to 60, and each answer from the cache has a smaller time to live than the one before. |
@@ -50,7 +51,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-24 tests in `ConfigAndClientTest`, `CoreDnsContainerTest`, `DemoRunsTest`, `DnsMessageTest`. The ordinary tests need only a JDK: they check the Corefile and zone text, the pinned image, the DNS message encoding and the client against small servers written in the tests. The container tests (tagged docker) start CoreDNS and check real answers, and run with integrationTest. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
+27 tests in `ConfigAndClientTest`, `CoreDnsContainerTest`, `DemoRunsTest`, `DnsMessageTest`, `WireStepsTest`. The ordinary tests need only a JDK: they check the Corefile and zone text, the bytes of act one worked out by `WireSteps` against the golden output, the pinned image, the DNS message encoding and the client against small servers written in the tests. The container tests (tagged docker) start CoreDNS and check real answers, and run with integrationTest. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

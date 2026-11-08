@@ -19,7 +19,7 @@ class SurfaceTest {
     void everyNewFeatureAddsWaysIn() {
         Surface surface = ThreatsDemo.storeSurface();
         surface.add(new EntryPoint("POST /reviews", Exposure.AUTHENTICATED, "review text"));
-        surface.add(new EntryPoint("GET /debug/config", Exposure.PUBLIC, "settings and keys"));
+        surface.add(new EntryPoint("GET /debug/config", Exposure.PUBLIC, "settings, keys"));
         assertEquals("8 entry points: 3 public, 3 authenticated, 2 internal", surface.summary());
     }
 }

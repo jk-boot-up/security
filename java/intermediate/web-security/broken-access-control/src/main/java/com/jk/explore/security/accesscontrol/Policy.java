@@ -85,6 +85,11 @@ final class Policy {
         return new Decision(false, status, reason);
     }
 
+    /** Every rule, in the order it was added, so the demo can print the table. */
+    Map<Route, Rule> rules() {
+        return java.util.Collections.unmodifiableMap(rules);
+    }
+
     List<String> denials() {
         return List.copyOf(denials);
     }

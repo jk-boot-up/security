@@ -25,7 +25,9 @@ final class GrantAuthorization implements AuthorizationManager<RequestAuthorizat
         if (who == null || !who.isAuthenticated()) {
             return new AuthorizationDecision(false);
         }
-        boolean held = who.getAuthorities().stream().map(GrantedAuthority::getAuthority).anyMatch(permission::equals);
+        boolean held = who.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(permission::equals);
         return new AuthorizationDecision(held || grants.active(who.getName(), permission));
     }
 }

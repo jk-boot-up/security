@@ -8,27 +8,31 @@ TLS lets a client and a server agree on fresh secret keys in public, lets the cl
 
 ### 1. A sniffer on the wire, without and with TLS
 
-Without TLS the order is sent as it is, and the sniffer sees the card number. With TLS the sniffer sees a record of type 23, application data, and no card number. The record is only a few dozen bytes larger than the order: a header, padding and an authentication tag.
+Before TLS, the order card=4111111111111111&order=A-1001 crosses the wire as it is: 34 bytes, and the sniffer reads the card number. After TLS, the sniffer sees one record of 72 bytes. Its 5-byte header is in the clear: 17 is record type 23, application data;
+03 03 is a version label kept for old network boxes; 00 43 says 67 bytes follow. Those 67 bytes are the 34 bytes of the order, encrypted, 1 byte for the real record type, 16 bytes of zero padding that the JDK adds, and the 16-byte authentication tag. 5 + 34 + 1 + 16 + 16 = 72, and the card number is no longer readable.
 
 ### 2. The handshake
 
-The client speaks first, with a handshake record called ClientHello. It is not encrypted, because no key exists yet, so the sniffer reads the name of the site. The server answers with a ServerHello, which chooses the protocol and cipher: TLS 1.3 and TLS_AES_256_GCM_SHA384.
-After the ServerHello the rest of the handshake is encrypted, so even the certificate is hidden from the sniffer. Both sides now share keys that were never sent over the wire.
+Before the keys exist, two hellos cross the wire in the clear, both handshake records of type 22. The ClientHello lists the versions and ciphers the client can use, a temporary public key and the site name, shop.example.test, which the sniffer can read. The ServerHello chooses TLSv1.3 and TLS_AES_256_GCM_SHA384 and adds the server's temporary public key.
+Each side mixes its own temporary private key with the other's public key and gets the same secret, so the keys are never sent. After that, the client sends records of types 22 20 23 and the server 22 20 23 23: type 20, change cipher spec, is kept only for old network boxes, and type 23 is encrypted, so the certificate is not readable.
+The cipher suite, part by part: TLS, the protocol; AES with a 256-bit key, the cipher; GCM, the mode that encrypts and adds a tag; SHA384, the hash that makes the keys.
 
 ### 3. Who is on the other end
 
-The shop's own certificate, for the name shop.example.test, works. An impostor with the same name but a certificate the client does not trust is refused by the client. The shop's real certificate, when the client asked for another name, is also refused: the name must match.
-A certificate proves a key belongs to a name because someone the client trusts vouched for it.
+Before the handshake the client knows two things: the name it asks for, shop.example.test, and the one certificate it trusts, whose SHA-256 fingerprint starts 0ded3842d38b01a7. After the handshake, three servers have answered. The shop presents that certificate, and the name matches: it works.
+An impostor presents a certificate with the same name but another fingerprint, b72122451fcf2531, which the client does not trust: refused. The shop again, but the client asked for other.example.test: the certificate is trusted, but the name does not match, so it is refused too.
+A name alone proves nothing; a certificate proves a key belongs to a name only because someone the client trusts vouched for it.
 
 ### 4. Protecting the data
 
-The server opens an untouched record and gets the order back. The same order in two connections gives different bytes on the wire, because each connection has fresh keys. One changed bit in a record is refused, so TLS protects integrity as well as secrecy.
-Because the keys of each connection are made fresh from temporary key pairs, a stolen server key cannot open recorded traffic. This is called forward secrecy.
+Before sending, the order. After sending, the same order in two connections gives different bytes on the wire, because each connection has fresh keys, and untouched the server opens the record and gets the order back.
+Before the check, an attacker flips one bit, byte 36 of 72, xor 01. After the check, the server, which recomputes the tag with its key, refuses the record: (bad_record_mac) Tag mismatch. So TLS protects integrity as well as secrecy.
+Because the keys of each connection come from temporary key pairs, a stolen server key cannot open recorded traffic. This is called forward secrecy.
 
 ### 5. Settings, and the bill
 
-A client that only offers TLS 1.0 cannot connect, because old versions are switched off. A client that offers only TLS 1.2 still works and agrees TLS 1.2, but fails against a server that requires TLS 1.3. The bill: certificates must be obtained and renewed,
-the handshake costs a round trip and some computing, and the keys must be kept safe. TLS protects the connection between two ends, not what the ends do with the data, and the name of the site and the sizes of messages still show.
+Before tightening, against a default server: a client that offers only TLSv1 is refused, because old versions are switched off, and a client that offers only TLSv1.2 connects and agrees TLSv1.2. After tightening, the server requires TLS 1.3: the TLSv1.2 client is refused and a TLSv1.3 client connects.
+The bill: certificates must be obtained, renewed and kept safe, the handshake costs a round trip and some computing, TLS protects the connection but not the ends, and the site name and the message sizes still show.
 
 ## The verdict
 

@@ -8,7 +8,7 @@
 ## Explicitly not required
 
 - Any security knowledge: this is the first project in the track
-- Cryptography: the seal is used as a black box and explained properly in a later project
+- Cryptography: the seal is worked out step by step, and SHA-256 itself is used as a black box (the hashing project explains it)
 - Networking, web frameworks or databases
 
 ## What you will need

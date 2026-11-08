@@ -1,34 +1,81 @@
 ONE. Roles and permissions, and deny by default.
-  the online store has 15 things that can be done, such as orders:read and refunds:approve
-  the admin role allows 15 of 15
-  the support role allows 3 of 15
-  the warehouse role allows 3 of 15
-  the finance role allows 3 of 15
-  support asks for refunds:approve: DENY_DEFAULT  <- NOTHING ALLOWS IT, SO IT IS DENIED
-  an admin with an explicit deny on secrets asks for secrets:read: DENY_EXPLICIT  <- A DENY BEATS ANY ALLOW
+  THE CATALOGUE (15 things that can be done in the store):
+    orders     read  write  delete
+    customers  read  write  delete
+    payments   read  write
+    refunds    create  approve
+    inventory  read  write
+    reports    read
+    secrets    read  write
+  THE ROLES (what each one allows):
+    admin      15 of 15  *
+    support    3 of 15   orders:read customers:read refunds:create
+    warehouse  3 of 15   inventory:read inventory:write orders:read
+    finance    3 of 15   payments:read refunds:approve reports:read
+  THE REQUEST: support asks for refunds:approve
+  THE CHECK, STATEMENT BY STATEMENT:
+    allow orders:read     does not match
+    allow customers:read  does not match
+    allow refunds:create  does not match
+  THE DECISION: DENY_DEFAULT  <- NOTHING ALLOWS IT
+  THE REQUEST: an admin with deny secrets:* asks for secrets:read
+  THE CHECK, STATEMENT BY STATEMENT:
+    allow *               matches: allowed, unless a deny matches
+    deny secrets:*        matches: a deny, which wins
+  THE DECISION: DENY_EXPLICIT  <- A DENY BEATS ANY ALLOW
 TWO. Blast radius: what a stolen credential can reach.
-  the nightly order export runs as an admin, because that was quick: a stolen token reaches 15 of 15  <- EVERYTHING
-  the same job with only the exporter role: a stolen token reaches 2 of 15
-  an admin account with an explicit deny on secrets reaches 13 of 15
-  the job needs only orders:read and reports:read, so everything else it was given is risk without benefit
+  WHAT THE NIGHTLY ORDER EXPORT NEEDS:
+    orders:read  reports:read
+  BEFORE THE FIX (the job runs as admin, because it was quick):
+    a stolen token reaches 15 of 15  <- EVERYTHING
+    13 of them the job never needs
+  AFTER THE FIX (the same job with only the exporter role):
+    a stolen token reaches 2 of 15
+    0 of them the job never needs
+  ANOTHER ADMIN, WITH AN EXPLICIT deny secrets:*:
+    a stolen token reaches 13 of 15
+  whatever the job does not need is risk without benefit
 THREE. Separation of duties: two people for a refund.
-  alice (support) creates refund R-1: DONE
-  alice tries to approve it: NOT_ALLOWED  (support cannot approve)
-  dave (admin) creates refund R-2 and tries to approve it himself: DONE, then SAME_PERSON  <- ADMIN POWER DOES NOT REMOVE THE RULE
-  carol (finance) approves R-1: DONE, approved: true
-  nobody could move money alone, so one stolen account is not enough
+  THE RULE: approving needs refunds:approve, and not the creator
+  THE REQUESTS (who asks for what):
+    1  alice (support)  creates refund R-1
+    2  alice (support)  approves refund R-1
+    3  dave (admin)     creates refund R-2
+    4  dave (admin)     approves refund R-2
+    5  carol (finance)  approves refund R-1
+  THE RESULTS (what the refund desk says):
+    1  DONE
+    2  NOT_ALLOWED  support has no refunds:approve
+    3  DONE
+    4  SAME_PERSON  dave created R-2  <- ADMIN POWER DOES NOT HELP
+    5  DONE  R-1 approved: true
+  nobody can move money alone: one stolen account is not enough
 FOUR. Access that expires by itself.
-  carol (finance) is granted payments:write for ticks 10 to 12, for a month-end fix
-  at tick 9 she can write payments: false
-  at tick 10 she can write payments: true
-  at tick 12 she can write payments: true
-  at tick 13 she can write payments: false
-  at tick 13 the grant is gone, and nobody had to remember to remove it
+  THE GRANT (for a month-end fix):
+    carol (finance) gets payments:write
+    from tick 10 until tick 13, the first tick without it
+  THE CHECKS (can carol write payments?):
+    tick 9   false  before the grant
+    tick 10  true   inside the grant
+    tick 12  true   inside the grant
+    tick 13  false  expired by itself
+  nobody had to remember to remove it
 FIVE. Privilege creep, and the operating system.
-  on day 200, of 5 permissions held, 2 were not used in the last 90 days:
-    bob orders:read, never used
-    carol payments:read, last used on day 100
-  an export file with permissions rw-r--r-- is readable by others: true
-  with permissions rw------- it is readable by others: false, and its folder is rwx------
-  the Java SecurityManager that once limited code inside one program has been removed from the JDK
-  the limits that remain are outside the program: separate operating system users, containers and separate processes
+  THE HOLDINGS (5 permissions, and when each was last used):
+    alice  orders:read      last used on day 198
+    alice  customers:read   last used on day 150
+    bob    inventory:write  last used on day 190
+    bob    orders:read      never used
+    carol  payments:read    last used on day 100
+  THE AUDIT (unused for 90 days: before day 200 - 90 = 110):
+    bob    orders:read      never used            <- REMOVE
+    carol  payments:read    last used on day 100  <- REMOVE
+    2 of 5 are candidates for removal
+  BEFORE THE FIX (the export file as first written):
+    export.csv  rw-r--r--  readable by others: true
+  AFTER THE FIX (owner only):
+    export.csv  rw-------  readable by others: false
+    its folder  rwx------
+  the Java SecurityManager is disabled for good (JDK 24),
+  so the limits that remain are outside the program:
+  separate operating system users, containers, processes

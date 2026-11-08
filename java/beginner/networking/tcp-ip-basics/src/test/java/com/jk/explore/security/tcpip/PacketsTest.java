@@ -18,6 +18,20 @@ class PacketsTest {
     }
 
     @Test
+    void checksumStepsAddUpOnTheRfc1071Example() {
+        byte[] data = {0x00, 0x01, (byte) 0xf2, 0x03, (byte) 0xf4, (byte) 0xf5, (byte) 0xf6, (byte) 0xf7};
+        assertArrayEquals(new int[] {0x0001, 0xf203, 0xf4f5, 0xf6f7}, Checksum.words(data));
+        assertEquals(0x2ddf0, Checksum.total(data));
+        assertEquals(0xddf0 + 0x2, Checksum.sum(data));
+        assertEquals(0xffff - 0xddf2, Checksum.of(data));
+    }
+
+    @Test
+    void hexShowsOneWordPerGroup() {
+        assertEquals("4500 0028 ab00", TcpIpDemo.hex(new byte[] {0x45, 0x00, 0x00, 0x28, (byte) 0xab}));
+    }
+
+    @Test
     void checksumHandlesAnOddLength() {
         assertEquals(Checksum.of(new byte[] {1, 2, 3, 0}), Checksum.of(new byte[] {1, 2, 3}));
     }

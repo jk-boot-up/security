@@ -41,9 +41,14 @@ final class TestCertificates {
         return context;
     }
 
+    /** The shop's certificate: the one the client trusts. */
+    static Certificate shopCertificate() throws GeneralSecurityException, IOException {
+        return load("shop.p12").getCertificate("shop");
+    }
+
     /** A client context that trusts only the shop's certificate. */
     static SSLContext client() throws GeneralSecurityException, IOException {
-        Certificate shop = load("shop.p12").getCertificate("shop");
+        Certificate shop = shopCertificate();
         KeyStore trust = KeyStore.getInstance("PKCS12");
         trust.load(null, null);
         trust.setCertificateEntry("shop", shop);

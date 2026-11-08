@@ -1,8 +1,6 @@
 package com.jk.explore.security.authspring;
 
 import jakarta.servlet.Filter;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -50,8 +48,7 @@ public class Shop implements AutoCloseable {
         try {
             var request = MockMvcRequestBuilders.request(method, path);
             if (user != null) {
-                String pair = user + ":" + password;
-                request.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8)));
+                request.header("Authorization", BasicHeader.header(user, password));
             }
             var response = mvc.perform(request).andReturn().getResponse();
             return new Result(response.getStatus(), response.getContentAsString());

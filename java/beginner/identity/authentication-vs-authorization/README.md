@@ -4,7 +4,7 @@
 src/main/java/com/jk/explore/security/auth/
 ├── Account.java        A person who can sign in: a username and the role they were given
 ├── Action.java         The things a request can ask to do to an order
-├── AuthDemo.java       Runs the online store story in five numbered acts and prints exact, repeatable results
+├── AuthDemo.java       Runs the online store story in seven numbered acts and prints exact, repeatable results
 ├── Authenticator.java  Authentication: finding out who is asking
 ├── Credentials.java    Checks a username and password
 ├── Gate.java           The check in front of every request: decides whether this token may do this action to this order
@@ -30,9 +30,10 @@ ownership. A system that answers only the first question lets every signed-in
 user do everything. The two have their own answers too: 401 means "I do not know
 who you are", and 403 means "I know who you are, and you may not do this".
 
-This project builds the online store's order endpoints three times. The first has
-no checks. The second checks who is asking and nothing else. The third checks who
-is asking and what that person may do.
+This project builds the online store's order endpoints three times, in seven acts. The first
+has no checks. The second checks who is asking and nothing else. The third checks who
+is asking and what that person may do. Two acts work out, step by step, how a password
+is checked against its salted hash and how the gate decides one request.
 
 ## The idea in everyday terms
 
@@ -57,15 +58,17 @@ read anyone's.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. The first version, with no checks | Nobody is asked who they are, so anyone can refund and view any order. |
-| 2. Authentication: finding out who is asking | A wrong password is rejected, the right one gives a session token, and requests without a live token get a 401. |
-| 3. Authenticated is not the same as authorized | With a login and nothing else, a customer can refund orders and read other people's orders. |
-| 4. Authorization: what may this person do? | Roles and ownership decide: no token gets 401, a customer who may not gets 403, support and admins get what their role allows. |
-| 5. The bill: sessions expire, and roles go stale | A session dies after 3 ticks; a role copied at login survives a demotion, and looking it up every time costs one lookup per request. |
+| 1. The first version, with no checks | Two requests with no login and no token, a refund and a view of order O-1, both get 200 OK. |
+| 2. Authentication: finding out who is asking | A wrong password is rejected, the right one gives session tok-1, and requests with no token or a made-up token get 401. |
+| 3. How a password is checked, step by step | The shop keeps only a 32-byte PBKDF2 hash of ben-pass with its salt; at login the typed password is hashed the same way and compared. |
+| 4. Authenticated is not the same as authorized | With a login and nothing else, Ben, a customer, can refund Ana's order O-1 and read it: 200 OK both times. |
+| 5. Authorization: what may this person do? | Eight requests through the policy gate: no token gets 401, a known person who may not gets 403, and each role gets what it allows. |
+| 6. How the gate decides, step by step | For tok-1 viewing O-1: step 1 finds a live session for ben, a CUSTOMER; step 2 finds the rule says own only and the owner is ana; so 403. |
+| 7. The bill: sessions expire, and roles go stale | A session dies after 3 ticks, so at tick 4 Sam gets 401; a role copied at login survives a demotion (200 OK), while looking it up costs one lookup (403). |
 
 ## Test
 
@@ -73,7 +76,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `AuthenticatorTest`, `CredentialsTest`, `DemoRunsTest`, `GateTest`, `PolicyTest`, `StaleRoleTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and sessions use a simulated clock, so every run gives the same result.
+24 tests in `AuthenticatorTest`, `CredentialsTest`, `DemoRunsTest`, `GateTest`, `PolicyTest`, `StaleRoleTest`. Every line the demo prints is checked against `docs/expected-output.txt`, and sessions use a simulated clock, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

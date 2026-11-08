@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Runs the online bank story in five numbered acts and prints exact, repeatable results. */
+/**
+ * Runs the online bank story in five numbered acts and prints exact, repeatable results. Each act prints what goes in
+ * (THE REQUEST, THE DICTIONARY, THE SPRAY, THE LEAK) apart from what comes out (THE RESPONSE, THE RESULT).
+ */
 public class AttacksDemo {
 
     static final List<String> WORDLIST = List.of(
@@ -74,101 +77,162 @@ public class AttacksDemo {
         out.append(text).append('\n');
     }
 
-    private static String names(Map<String, Integer> taken) {
-        return taken.isEmpty() ? "nobody" : String.join(", ", taken.keySet());
+    private static String shortHash(String hex) {
+        return hex.substring(0, 16) + "...";
     }
 
     private static void act1NoDefences(StringBuilder out) {
         line(out, "ONE. No defences.");
+        Bank bank = bank(new Ticker(), Defences.none(), Set.of());
+        line(out, "  THE REQUEST: one guess at dana's password");
+        line(out, "    from attacker   name dana   password 123456");
+        line(out, "  THE CHECK: SHA-256 of \"demo-salt:dana:\" + password");
+        line(out, "    guess hash    " + shortHash(Bank.hashOf("dana", "123456")) + "  (123456)");
+        line(out, "    stored hash   " + shortHash(Bank.hashOf("dana", "midnight7")) + "  (midnight7)");
+        line(out, "    the same?     " + Bank.hashOf("dana", "123456").equals(Bank.hashOf("dana", "midnight7")));
+        Reply reply = bank.login("attacker", "dana", "123456");
+        line(out, "  THE RESPONSE:");
+        line(out, "    " + reply.outcome() + "  \"" + reply.message() + "\"");
+
         Ticker t1 = new Ticker();
-        Found dictionary = new Attacks(bank(t1, Defences.none(), Set.of()), t1).dictionary("attacker", "dana", WORDLIST);
-        line(out, "  dictionary attack on dana: found after " + dictionary.guesses() + " guesses, at tick "
-                + dictionary.taken().get("dana") + "  <- NOTHING STOPS IT");
+        Attacks dictionary = new Attacks(bank(t1, Defences.none(), Set.of()), t1);
+        dictionary.dictionary("attacker", "dana", WORDLIST);
+        line(out, "  THE DICTIONARY: " + WORDLIST.size() + " common words on dana, 1 per tick");
+        timeline(out, dictionary.steps());
+        line(out, "  THE RESULT: found at tick 13  <- NOTHING STOPS IT");
+
         Ticker t2 = new Ticker();
-        Found spray = new Attacks(bank(t2, Defences.none(), Set.of()), t2).spray("attacker", usernames(), SPRAY_PASSWORDS);
-        line(out, "  spraying 3 common passwords over " + usernames().size() + " accounts: " + spray.taken().size()
-                + " taken (" + names(spray.taken()) + ")");
-        line(out, "  " + spray.guesses() + " guesses in all, finished at tick " + spray.ticks());
+        Attacks spray = new Attacks(bank(t2, Defences.none(), Set.of()), t2);
+        Found sprayed = spray.spray("attacker", usernames(), SPRAY_PASSWORDS);
+        line(out, "  THE SPRAY: " + SPRAY_PASSWORDS.size() + " common passwords on all " + usernames().size() + " accounts");
+        line(out, "    accounts  " + String.join(" ", usernames()));
+        for (String password : SPRAY_PASSWORDS) {
+            List<Step> tries = spray.steps().stream().filter(s -> s.password().equals(password)).toList();
+            List<String> taken = tries.stream().filter(s -> s.outcome() == Outcome.OK).map(Step::username).toList();
+            line(out, String.format("    %-9s %2d tries   taken: %s", password, tries.size(),
+                    taken.isEmpty() ? "nobody" : String.join(", ", taken)));
+        }
+        line(out, "  THE RESULT: " + sprayed.taken().size() + " of " + usernames().size() + " taken in "
+                + sprayed.guesses() + " guesses, at tick " + sprayed.ticks());
+        line(out, "    most wrong guesses on one account: " + mostFailures(spray.steps()));
+    }
+
+    private static void timeline(StringBuilder out, List<Step> steps) {
+        for (String run : Timeline.runs(steps)) {
+            line(out, "    " + run);
+        }
+    }
+
+    private static long mostFailures(List<Step> steps) {
+        return steps.stream().filter(s -> s.outcome() == Outcome.WRONG_PASSWORD)
+                .collect(java.util.stream.Collectors.groupingBy(Step::username, java.util.stream.Collectors.counting()))
+                .values().stream().mapToLong(Long::longValue).max().orElse(0);
     }
 
     private static void act2Lockout(StringBuilder out) {
         line(out, "TWO. Lock an account after " + LOCK_AFTER + " wrong passwords, for " + LOCK_TICKS + " ticks.");
         Defences lock = Defences.none().withLockout(LOCK_AFTER, LOCK_TICKS, LockScope.ACCOUNT);
         Ticker t1 = new Ticker();
-        Found dictionary = new Attacks(bank(t1, lock, Set.of()), t1).dictionary("attacker", "dana", WORDLIST);
-        line(out, "  dictionary attack on dana: found at tick " + dictionary.taken().get("dana") + " instead of tick 13");
+        Attacks dictionary = new Attacks(bank(t1, lock, Set.of()), t1);
+        Found found = dictionary.dictionary("attacker", "dana", WORDLIST);
+        line(out, "  THE DICTIONARY: the same " + WORDLIST.size() + " words on dana");
+        timeline(out, dictionary.steps());
+        line(out, "  THE RESULT: found at tick " + found.taken().get("dana") + " instead of 13  <- SLOWED");
         Ticker t2 = new Ticker();
-        Found spray = new Attacks(bank(t2, lock, Set.of()), t2).spray("attacker", usernames(), SPRAY_PASSWORDS);
-        line(out, "  the same spray: " + spray.taken().size() + " taken, finished at tick " + spray.ticks()
-                + "  <- NO ACCOUNT FAILED 5 TIMES");
+        Attacks spray = new Attacks(bank(t2, lock, Set.of()), t2);
+        Found sprayed = spray.spray("attacker", usernames(), SPRAY_PASSWORDS);
+        line(out, "  THE SPRAY: the same " + SPRAY_PASSWORDS.size() + " passwords on all " + usernames().size() + " accounts");
+        line(out, "    most wrong guesses on one account: " + mostFailures(spray.steps())
+                + ", the lock needs " + LOCK_AFTER);
+        line(out, "  THE RESULT: " + sprayed.taken().size() + " taken by tick " + sprayed.ticks()
+                + "  <- NOT SLOWED AT ALL");
     }
 
     private static void act3RateLimit(StringBuilder out) {
         line(out, "THREE. Allow each address " + LIMIT_PER_WINDOW + " attempts in every " + WINDOW_TICKS + " ticks.");
         Defences limit = Defences.none().withRateLimit(LIMIT_PER_WINDOW, WINDOW_TICKS);
         Ticker t1 = new Ticker();
-        Found dictionary = new Attacks(bank(t1, limit, Set.of()), t1).dictionary("attacker", "dana", WORDLIST);
-        line(out, "  dictionary attack on dana: found at tick " + dictionary.taken().get("dana"));
+        Attacks dictionary = new Attacks(bank(t1, limit, Set.of()), t1);
+        Found found = dictionary.dictionary("attacker", "dana", WORDLIST);
+        line(out, "  THE DICTIONARY: the same " + WORDLIST.size() + " words on dana, from 1 address");
+        timeline(out, dictionary.steps());
+        line(out, "  THE RESULT: found at tick " + found.taken().get("dana") + " instead of 13");
         Ticker t2 = new Ticker();
-        Found spray = new Attacks(bank(t2, limit, Set.of()), t2).spray("attacker", usernames(), SPRAY_PASSWORDS);
-        line(out, "  the same spray: " + spray.taken().size() + " taken, but it needs " + spray.ticks()
-                + " ticks instead of 23  <- SLOWED, NOT STOPPED");
+        Found sprayed = new Attacks(bank(t2, limit, Set.of()), t2).spray("attacker", usernames(), SPRAY_PASSWORDS);
+        line(out, "  THE SPRAY: the same " + SPRAY_PASSWORDS.size() + " passwords on all " + usernames().size() + " accounts");
+        line(out, "  THE RESULT: " + sprayed.taken().size() + " taken by tick " + sprayed.ticks()
+                + ", not 23  <- SLOWED, NOT STOPPED");
+    }
+
+    private static String who(List<Step> steps, Outcome outcome) {
+        List<String> names = steps.stream().filter(s -> s.outcome() == outcome).map(Step::username).toList();
+        return names.isEmpty() ? "nobody" : String.join(", ", names);
     }
 
     private static void act4Stuffing(StringBuilder out) {
         line(out, "FOUR. Credential stuffing: passwords leaked from another site.");
-        line(out, "  " + LEAKED.size() + " leaked pairs, each tried once, each from a different address");
+        line(out, "  THE LEAK: " + LEAKED.size() + " name and password pairs from another site");
+        line(out, "    each pair tried once, each from its own address");
         Defences both = Defences.none().withLockout(LOCK_AFTER, LOCK_TICKS, LockScope.ACCOUNT)
                 .withRateLimit(LIMIT_PER_WINDOW, WINDOW_TICKS);
         Ticker t1 = new Ticker();
-        Map<Outcome, Integer> plain = new Attacks(bank(t1, both, Set.of()), t1).stuff(LEAKED);
-        line(out, "  with a lockout and a rate limit: " + plain.getOrDefault(Outcome.OK, 0) + " of " + LEAKED.size()
-                + " accounts taken  <- NEITHER EVER TRIGGERS");
+        Attacks plain = new Attacks(bank(t1, both, Set.of()), t1);
+        Map<Outcome, Integer> counts = plain.stuff(LEAKED);
+        line(out, "  THE RESULT, with a lockout and a rate limit:");
+        line(out, "    " + counts.getOrDefault(Outcome.OK, 0) + " of " + LEAKED.size() + " taken: "
+                + who(plain.steps(), Outcome.OK) + "  <- NOTHING TRIGGERS");
         Ticker t2 = new Ticker();
-        Map<Outcome, Integer> mfa = new Attacks(bank(t2, both, Set.of("dana", "joel")), t2).stuff(LEAKED);
-        line(out, "  with a second factor on dana and joel: " + mfa.getOrDefault(Outcome.OK, 0) + " taken, "
-                + mfa.getOrDefault(Outcome.SECOND_FACTOR_NEEDED, 0) + " stopped at the second factor");
+        Attacks mfa = new Attacks(bank(t2, both, Set.of("dana", "joel")), t2);
+        mfa.stuff(LEAKED);
+        line(out, "  THE RESULT, with a second factor on dana and joel:");
+        line(out, "    taken: " + who(mfa.steps(), Outcome.OK));
+        line(out, "    stopped at the second factor: " + who(mfa.steps(), Outcome.SECOND_FACTOR_NEEDED));
         Ticker t3 = new Ticker();
         Defences checked = both.withBreachedCheck(Set.copyOf(LEAKED.values()));
-        Map<Outcome, Integer> breached = new Attacks(bank(t3, checked, Set.of()), t3).stuff(LEAKED);
-        line(out, "  with a check against known breaches: " + breached.getOrDefault(Outcome.OK, 0) + " taken, "
-                + breached.getOrDefault(Outcome.RESET_REQUIRED, 0) + " customers forced to choose a new password");
+        Attacks breached = new Attacks(bank(t3, checked, Set.of()), t3);
+        breached.stuff(LEAKED);
+        line(out, "  THE RESULT, with a check against known breaches:");
+        line(out, "    taken: " + who(breached.steps(), Outcome.OK));
+        line(out, "    must choose a new password: " + who(breached.steps(), Outcome.RESET_REQUIRED));
     }
 
     private static void act5Bill(StringBuilder out) {
-        line(out, "FIVE. The bill: a lock can be used against the customer, and messages can leak.");
+        line(out, "FIVE. The bill: what the defences cost.");
+        line(out, "  THE ATTACK: " + LOCK_AFTER + " wrong passwords for dana, from attacker");
         Ticker t1 = new Ticker();
         Bank byAccount = bank(t1, Defences.none().withLockout(LOCK_AFTER, LOCK_TICKS, LockScope.ACCOUNT), Set.of());
         for (int i = 0; i < LOCK_AFTER; i++) {
             byAccount.login("attacker", "dana", "wrong" + i);
             t1.advance(1);
         }
-        line(out, "  an attacker fails " + LOCK_AFTER + " times on dana's account, then dana logs in with the right password: "
-                + byAccount.login("dana-phone", "dana", "midnight7").outcome() + "  <- DENIAL OF SERVICE");
         Ticker t2 = new Ticker();
         Bank byPair = bank(t2, Defences.none().withLockout(LOCK_AFTER, LOCK_TICKS, LockScope.ACCOUNT_AND_ADDRESS), Set.of());
         for (int i = 0; i < LOCK_AFTER; i++) {
             byPair.login("attacker", "dana", "wrong" + i);
             t2.advance(1);
         }
-        line(out, "  locking each account-and-address pair instead: dana logs in: "
-                + byPair.login("dana-phone", "dana", "midnight7").outcome());
-        line(out, "  but 10 addresses get 10 x " + LOCK_AFTER + " = " + (10 * LOCK_AFTER)
-                + " guesses before any of them is locked");
+        line(out, "  THE REQUEST: dana, the right password, from dana-phone");
+        line(out, "  THE RESPONSE:");
+        line(out, "    lock per account:  " + byAccount.login("dana-phone", "dana", "midnight7").outcome()
+                + "  <- DENIAL OF SERVICE");
+        line(out, "    lock per pair:     " + byPair.login("dana-phone", "dana", "midnight7").outcome());
+        line(out, "    but 10 addresses then get 10 x " + LOCK_AFTER + " = " + (10 * LOCK_AFTER)
+                + " guesses, not " + LOCK_AFTER);
 
         Bank open = bank(new Ticker(), Defences.none(), Set.of());
-        line(out, "  unknown name zed: \"" + open.login("probe", "zed", "x").message() + "\"");
-        line(out, "  known name emil, wrong password: \"" + open.login("probe", "emil", "x").message()
-                + "\"  <- LEAKS WHICH NAMES EXIST");
         Bank generic = bank(new Ticker(), Defences.none().withGenericMessages(), Set.of());
-        line(out, "  with one message for both: \"" + generic.login("probe", "zed", "x").message() + "\" and \""
-                + generic.login("probe", "emil", "x").message() + "\"");
+        line(out, "  THE REQUEST: zed (no account), emil (wrong password)");
+        line(out, "  THE RESPONSE, with a message for each case:");
+        line(out, "    zed:   \"" + open.login("probe", "zed", "x").message() + "\"");
+        line(out, "    emil:  \"" + open.login("probe", "emil", "x").message() + "\"  <- LEAKS WHICH NAMES EXIST");
+        line(out, "  THE RESPONSE, with one message for both:");
+        line(out, "    zed:   \"" + generic.login("probe", "zed", "x").message() + "\"");
+        line(out, "    emil:  \"" + generic.login("probe", "emil", "x").message() + "\"");
         int before = generic.hashesComputed();
         generic.login("probe", "zed", "y");
         int forUnknown = generic.hashesComputed() - before;
         generic.login("probe", "emil", "y");
         int forKnown = generic.hashesComputed() - before - forUnknown;
-        line(out, "  and the same work behind it: " + forUnknown + " password hash for zed, " + forKnown
-                + " for emil, so the time a reply takes does not tell them apart either");
+        line(out, "    work behind it: " + forUnknown + " password hash for zed, " + forKnown + " for emil");
     }
 }

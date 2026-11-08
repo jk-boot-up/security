@@ -19,7 +19,8 @@ final class Audit {
             }
             SemVer installed = SemVer.parse(component.version());
             for (Advisory advisory : advisories) {
-                if (advisory.component().equals(component.name()) && advisory.affected().contains(installed)) {
+                if (advisory.component().equals(component.name())
+                        && advisory.affected().contains(installed)) {
                     double score = Cvss31.base(advisory.vector());
                     List<String> path = sbom.pathTo(component.ref()).orElse(List.of());
                     if (path.isEmpty()) {

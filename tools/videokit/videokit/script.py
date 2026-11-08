@@ -24,6 +24,7 @@ class Phrase:
 def phrases(narration, sentence_gap=0.45, pause_scale=1.0):
     """Split narration into the phrases to speak, each with its pause."""
     out = []
+    narration = narration.replace("[[page]]", " ")   # a slide-page marker, never spoken
     tokens = MARKER.split(narration)          # text, ms, text, ms, ..., text
     for i in range(0, len(tokens), 2):
         chunk = re.sub(r"\s+", " ", tokens[i]).strip()

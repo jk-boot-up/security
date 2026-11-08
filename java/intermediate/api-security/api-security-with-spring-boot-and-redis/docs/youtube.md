@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-api security, mass assignment, bean validation, rate limiting, redis, lua, spring boot, owasp api top 10, java
+api security, mass assignment, bean validation, rate limiting, redis, lua, spring boot, owasp api top 10, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ api security, mass assignment, bean validation, rate limiting, redis, lua, sprin
 | --- | --- |
 | Video | `video/api-security-with-spring-boot-and-redis-explained.mp4` |
 | Captions | `video/api-security-with-spring-boot-and-redis-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: API Security in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (88)
-- [ ] tags are at most 500 characters in total — ok (102)
+- [ ] tags are at most 500 characters in total — ok (153)
 - [ ] description is at most 5,000 characters — ok (560)
 - [ ] chapters start at 00:00 and there are at least three

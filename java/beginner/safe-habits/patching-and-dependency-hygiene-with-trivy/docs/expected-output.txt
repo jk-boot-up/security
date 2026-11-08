@@ -1,42 +1,70 @@
 ONE. Pinning exactly what the build uses.
-  Gradle's lock file, gradle.lockfile, records the exact version of every library: 5 entries
-    commons-codec:commons-codec:1.23.0
-    org.apache.commons:commons-lang3:3.11
-    org.apache.commons:commons-text:1.9
-    org.apache.logging.log4j:log4j-core:2.14.1
-    org.yaml:snakeyaml:1.26
-  the store asked for 4 of these; commons-lang3 arrived on its own, as a dependency of commons-text
-  without the file, a range such as 1.+ would pick a different version on a different day
+  THE LOCK FILE (gradle.lockfile, 5 entries):
+    group                     artifact        version
+    commons-codec             commons-codec   1.23.0
+    org.apache.commons        commons-lang3   3.11
+    org.apache.commons        commons-text    1.9
+    org.apache.logging.log4j  log4j-core      2.14.1
+    org.yaml                  snakeyaml       1.26
+  WHO ASKED FOR THEM:
+    the store's build asked for 4 of the 5
+    commons-lang3 came on its own, with commons-text
+  BEFORE THE LOCK: a range such as 1.+ can change any day
+  AFTER THE LOCK: the same 5 versions on every build
 TWO. A bill of materials a scanner can read.
-  the store writes a CycloneDX 1.6 file listing 5 libraries, each with a package URL
-  first package URL: pkg:maven/commons-codec/commons-codec@1.23.0
-  the bill of materials and the lock file list the same libraries: true
-  the committed fixtures/online-store.cdx.json is exactly what the code writes: true
-  a package URL that disagrees with its version: refused (the package URL of org.yaml:snakeyaml:1.31 does not match its group, name and version)
+  THE INPUT (one line of the lock file):
+    org.yaml:snakeyaml:1.26
+  THE OUTPUT (one of 5 components, CycloneDX 1.6):
+    pkg:maven/org.yaml/snakeyaml@1.26
+  THE PACKAGE URL, PART BY PART:
+    pkg:maven  org.yaml  snakeyaml  1.26
+    type       group     name       version
+  THE CHECKS:
+    the SBOM lists the same 5 as the lock file: true
+    online-store.cdx.json is what the code writes: true
+    version 1.31 with a purl that says 1.26: refused
 THREE. What the scanner reported.
-  Trivy 0.76.0 scanned the bill of materials; the report is saved in fixtures/trivy-report.json
-  it reported 16 problems in 4 libraries: 3 critical, 3 high, 10 medium, 0 low
-  every installed version is older than the version that fixes it, as the code compares them: true
-  CVE-2021-44228: the store's own range check says affected: true, Trivy reports it: true
-  CVE-2022-42889: the store's own range check says affected: true, Trivy reports it: true
-  a scanner only knows what is in its database on the day it runs, so a clean report means no known problem today
+  THE INPUT: online-store.cdx.json, scanned by Trivy 0.76.0
+  THE REPORT (fixtures/trivy-report.json):
+    16 problems in 4 libraries
+    CRITICAL 3   HIGH 3   MEDIUM 10   LOW 0
+    commons-lang3  1 problem
+    commons-text   1 problem
+    log4j-core     7 problems
+    snakeyaml      7 problems
+  CROSS-CHECKS, BY THE STORE'S OWN CODE:
+    every installed version is older than its fix: true
+    CVE-2021-44228  our range check: true, Trivy: true
+    CVE-2022-42889  our range check: true, Trivy: true
+  a clean report means no KNOWN problem, on the day it ran
 FOUR. What to fix first, and to which version.
-  the most serious first:
-    CRITICAL CVE-2022-42889 in org.apache.commons:commons-text 1.9, fixed in 1.10.0
-    CRITICAL CVE-2021-44228 in org.apache.logging.log4j:log4j-core 2.14.1, fixed in 2.15.0
-    CRITICAL CVE-2021-45046 in org.apache.logging.log4j:log4j-core 2.14.1, fixed in 2.16.0
-    HIGH CVE-2021-45105 in org.apache.logging.log4j:log4j-core 2.14.1, fixed in 2.17.0
-    HIGH CVE-2022-1471 in org.yaml:snakeyaml 1.26, fixed in 2.0
-  one move per library fixes everything that has a fix:
-    org.apache.commons:commons-lang3 3.11 -> 3.18.0
-    org.apache.commons:commons-text 1.9 -> 1.10.0
-    org.apache.logging.log4j:log4j-core 2.14.1 -> 2.25.4
-    org.yaml:snakeyaml 1.26 -> 2.0
-  each target is the highest of the nearest fixes, so log4j-core needs 2.25.4 for its last problem, further than the first fix, 2.15.0, suggested
-  a fix that crosses a major version, such as snakeyaml 1.26 to 2.0, can break the build, so run the tests after each move
+  THE MOST SERIOUS FIRST (5 of 16):
+    CRITICAL CVE-2022-42889  commons-text 1.9   fix 1.10.0
+    CRITICAL CVE-2021-44228  log4j-core 2.14.1  fix 2.15.0
+    CRITICAL CVE-2021-45046  log4j-core 2.14.1  fix 2.16.0
+    HIGH     CVE-2021-45105  log4j-core 2.14.1  fix 2.17.0
+    HIGH     CVE-2022-1471   snakeyaml 1.26     fix 2.0
+  THE TARGET FOR log4j-core (the highest of its fixes):
+    fixes 2.15.0, 2.16.0, 2.17.0, 2.17.1, 2.25.3, 2.25.4
+    highest 2.25.4: one move fixes all 7
+  ONE MOVE PER LIBRARY:
+    commons-lang3  3.11   -> 3.18.0
+    commons-text   1.9    -> 1.10.0
+    log4j-core     2.14.1 -> 2.25.4
+    snakeyaml      1.26   -> 2.0  <- NEW MAJOR: RUN THE TESTS
 FIVE. Checking what is downloaded, and automating the updates.
-  Gradle's verification-metadata.xml pins the SHA-256 of 6 downloaded files
-  one checksum changed in a copy of the file: 1 file differs, commons-codec:commons-codec:1.23.0/commons-codec-1.23.0.jar
-  Gradle refuses to build when a download does not match (the integration test runs this with the real Gradle)
-  dependabot.yml and renovate.json in infra/ open a pull request for each update, so the review is small: true
-  the cost: every update means reviewing a new hash, and a scanner is only as good as its database
+  THE PINS (SHA-256 of 6 downloaded files):
+    commons-codec-1.23.0.jar      47504a3ce71d73a1...
+    commons-codec-1.23.0.pom      8c234370108606fe...
+    commons-parent-105.pom        31a68daabb4b3614...
+    apache-39.pom                 71752ed4c2435a1d...
+    junit-bom-5.14.4.pom          5706e8f29a0a07f5...
+    mockito-bom-4.11.0.pom        d8531a746c988f7f...
+  BEFORE THE CHECK (a copy with one checksum changed):
+    commons-codec-1.23.0.jar      0000000000000000...
+  AFTER THE CHECK: 1 file differs
+    commons-codec-1.23.0.jar: Gradle refuses to build
+  AUTOMATED UPDATES: dependabot.yml, renovate.json: true
+    one pull request per update, so each review is small
+  the cost: every new hash needs a review,
+  and a scanner knows only what is in its database

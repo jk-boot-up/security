@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Teach symmetric encryption by encrypting an online bank's statements five ways and showing what ECB leaks, what GCM adds, what a repeated nonce gives away, and what GCM costs.
+Teach symmetric encryption by encrypting an online bank's statements step by step, showing the bytes before and after, and showing what ECB leaks, what GCM adds, what a repeated nonce gives away, and what GCM costs.
 
 ## Not in scope
 
@@ -36,10 +36,10 @@ Learners know "use AES" but not which mode, what a nonce is, or how a small mist
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 23 lines, identical on every run |
-| Acts | 5 |
-| Video | 08:57, 1920×1080, narrated in the amy-slow voice |
+| Tests | 24, all passing |
+| Demo output | 104 lines, identical on every run |
+| Acts | 8 |
+| Video | 22:24, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

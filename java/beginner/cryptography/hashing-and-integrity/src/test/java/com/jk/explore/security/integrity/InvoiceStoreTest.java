@@ -21,6 +21,7 @@ class InvoiceStoreTest {
         store.save(IntegrityDemo.INVOICE);
         store.tamper(IntegrityDemo.INVOICE.withAmount(12), false);
         assertFalse(store.looksIntact("INV-1001"));
+        assertEquals(Sha256.hex(IntegrityDemo.INVOICE.text()), store.storedHash("INV-1001"));
     }
 
     @Test
@@ -30,6 +31,7 @@ class InvoiceStoreTest {
         store.tamper(IntegrityDemo.INVOICE.withAmount(12), true);
         assertTrue(store.looksIntact("INV-1001"));
         assertEquals(12, store.get("INV-1001").amountDollars());
+        assertEquals(Sha256.hex(IntegrityDemo.INVOICE.withAmount(12).text()), store.storedHash("INV-1001"));
     }
 
     @Test

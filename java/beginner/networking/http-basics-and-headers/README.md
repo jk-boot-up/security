@@ -41,11 +41,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. An HTTP message is just text | A request of 82 characters is parsed into method, target, Host and a 17-byte body, and written out again as the same text. |
-| 2. Messages that two programs could read differently | Both Content-Length and Transfer-Encoding, two different lengths, a space before a colon and a body with a hidden second request are all refused; the exact request is accepted. |
-| 3. Header injection | A normal search redirect is written; search text with a line break and a second header is refused, because otherwise the attacker would set a cookie. |
+| 1. An HTTP message is just text | A request of 82 characters (23 + 20 + 20 + 2 + 17) is parsed into method, target, Host and a 17-byte body, and written out again as the same text. |
+| 2. Messages that two programs could read differently | Content-Length says 4 but 4 + 21 + 20 + 2 = 47 bytes follow, a second request hidden after the body: refused. Both length headers, Turkish capitals, two lengths and a space before the colon are refused too; the exact request is accepted. |
+| 3. Header injection | Search text with a line break adds a Set-Cookie header the attacker wrote; after the fix, the normal search is written and the attack is refused. |
 | 4. Cookies that carry a login | A bare cookie has three problems; Secure, HttpOnly, SameSite=Lax and Path=/ has none; SameSite=None without Secure has two; a __Host- cookie with a Domain has one. |
-| 5. Security headers on a real response | A real local server with no security headers scores 0 of 5, the same server with the five headers scores 5 of 5, and headers set badly score 1 of 5. |
+| 5. Security headers on a real response | A real local server with no security headers scores 0 of 5, the same server with the five headers scores 5 of 5, and the five headers set badly score 0 + 0 + 1 + 0 + 0 = 1 of 5. |
 
 ## Test
 

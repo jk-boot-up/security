@@ -14,12 +14,7 @@ import java.util.Map;
 public class Planner {
 
     public Plan plan(RiskRegister register, List<Treatment> options, int budget) {
-        List<Treatment> byValue = options.stream()
-                .filter(t -> reduction(register, t) > 0)
-                .sorted(Comparator.comparingDouble((Treatment t) -> value(register, t)).reversed()
-                        .thenComparing(Comparator.comparingInt((Treatment t) -> reduction(register, t)).reversed())
-                        .thenComparing(Treatment::riskId))
-                .toList();
+        List<Treatment> byValue = byValue(register, options);
         List<Treatment> funded = new ArrayList<>();
         List<Treatment> unfunded = new ArrayList<>();
         Map<String, int[]> rescored = new HashMap<>();
@@ -34,6 +29,16 @@ public class Planner {
             }
         }
         return new Plan(funded, unfunded, spent, budget, register.rescored(rescored));
+    }
+
+    /** The treatments that remove something, best value first: the order in which they are bought. */
+    public static List<Treatment> byValue(RiskRegister register, List<Treatment> options) {
+        return options.stream()
+                .filter(t -> reduction(register, t) > 0)
+                .sorted(Comparator.comparingDouble((Treatment t) -> value(register, t)).reversed()
+                        .thenComparing(Comparator.comparingInt((Treatment t) -> reduction(register, t)).reversed())
+                        .thenComparing(Treatment::riskId))
+                .toList();
     }
 
     /** The score a treatment removes from its risk. */

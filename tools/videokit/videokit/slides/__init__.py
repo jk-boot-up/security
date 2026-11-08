@@ -1,4 +1,4 @@
-"""Slides: one 1920x1080 PNG per scene.
+"""Slides: one PNG per scene, laid out in 1920x1080 units and drawn at 3840x2160.
 
 A project with its own make_slides.py (for hand-drawn diagram scenes) keeps
 it and it is run as before; it can import the primitives from
@@ -16,6 +16,7 @@ from . import draw, kinds
 def render_standard(scenes, out_dir, video=None):
     """Render scenes with the standard kinds. Returns the PNG paths."""
     cfg = kinds.settings(video)
+    cfg["project_dir"] = Path(out_dir).resolve().parent.parent      # <project>/video/build
     right = cfg["footer"] or "%s  ·  Security" % scenes[0]["title"]
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

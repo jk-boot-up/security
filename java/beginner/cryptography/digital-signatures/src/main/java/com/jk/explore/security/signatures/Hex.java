@@ -17,6 +17,11 @@ final class Hex {
         return HexFormat.of().formatHex(bytes);
     }
 
+    /** Bytes from..to as hex in groups of four bytes: "a83b53e9 ba4d832c ...". */
+    static String grouped(byte[] bytes, int from, int to) {
+        return of(java.util.Arrays.copyOfRange(bytes, from, to)).replaceAll("(.{8})(?!$)", "$1 ");
+    }
+
     static byte[] parse(String hex) {
         return HexFormat.of().parseHex(hex);
     }

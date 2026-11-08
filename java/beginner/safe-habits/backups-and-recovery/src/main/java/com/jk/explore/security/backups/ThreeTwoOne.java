@@ -10,7 +10,8 @@ final class ThreeTwoOne {
 
     record Result(boolean threeCopies, boolean twoMedia, boolean oneOffsite, boolean oneImmutable) {
         int score() {
-            return (threeCopies ? 1 : 0) + (twoMedia ? 1 : 0) + (oneOffsite ? 1 : 0) + (oneImmutable ? 1 : 0);
+            return (threeCopies ? 1 : 0) + (twoMedia ? 1 : 0)
+                    + (oneOffsite ? 1 : 0) + (oneImmutable ? 1 : 0);
         }
     }
 

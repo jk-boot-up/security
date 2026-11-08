@@ -27,7 +27,8 @@ final class Ransomware {
         private final Map<String, TreeMap<Long, byte[]>> versions = new TreeMap<>();
 
         void append(String name, byte[] data, long time) {
-            versions.computeIfAbsent(name, key -> new TreeMap<>()).put(time, data.clone());
+            versions.computeIfAbsent(name, key -> new TreeMap<>())
+                    .put(time, data.clone());
         }
 
         Optional<byte[]> latestBefore(String name, long time) {

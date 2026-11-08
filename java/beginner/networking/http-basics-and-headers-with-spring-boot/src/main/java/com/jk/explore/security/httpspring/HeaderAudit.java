@@ -48,7 +48,8 @@ final class HeaderAudit {
             if (p.startsWith("max-age=")) {
                 try {
                     long age = Long.parseLong(p.substring(8));
-                    return age >= 31536000 ? new Finding("Strict-Transport-Security", true, "max-age at least a year")
+                    return age >= 31536000
+                            ? new Finding("Strict-Transport-Security", true, "max-age at least a year")
                             : new Finding("Strict-Transport-Security", false, "max-age under a year");
                 } catch (NumberFormatException e) {
                     break;

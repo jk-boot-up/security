@@ -2,9 +2,14 @@ package com.jk.explore.security.tlsopenssl;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.net.InetAddress;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
 import java.security.GeneralSecurityException;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import javax.net.ssl.SSLContext;
 
@@ -45,51 +50,96 @@ public class TlsOpenSslDemo {
         out.append(text).append('\n');
     }
 
+    private static String fingerprint(X509Certificate certificate) throws GeneralSecurityException {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());
+        return HexFormat.of().formatHex(digest, 0, 8);
+    }
+
     private static void act1RealSockets(StringBuilder out) throws IOException, GeneralSecurityException {
         line(out, "ONE. A real TLS server and client on this machine.");
         try (TlsServer server = new TlsServer(TestCertificates.server("shop.p12"), null)) {
+            line(out, "  THE REQUEST (a Java client, over a real socket):");
+            line(out, "    connects to  " + TestCertificates.HOST + " at " + InetAddress.getLoopbackAddress().getHostAddress());
+            line(out, "    sends        " + ORDER);
             TlsClient.Result result = TlsClient.send(TestCertificates.client(), server.port(), TestCertificates.HOST, null, ORDER);
-            line(out, "  the server listens on the loopback address; the client connects by the name " + TestCertificates.HOST);
-            line(out, "  handshake works: " + result.ok() + ", agreed protocol: " + result.protocol());
-            line(out, "  agreed cipher suite: " + result.cipherSuite());
-            line(out, "  the server answered: " + result.reply());
+            line(out, "  THE RESPONSE (from the Java server, after the handshake):");
+            line(out, "    handshake works: " + result.ok());
+            line(out, "    protocol      " + result.protocol());
+            line(out, "    cipher suite  " + result.cipherSuite());
+            line(out, "    reply         " + result.reply());
         }
         Connection engines = new Connection(TestCertificates.client(), TestCertificates.server("shop.p12"), TestCertificates.HOST);
-        line(out, "  two engines wired together in memory agree the same suite: " + (engines.handshake() && engines.cipherSuite().equals("TLS_AES_256_GCM_SHA384")));
-        line(out, "  anything that speaks TLS can take the client's place, so the tests let the openssl program do it");
+        line(out, "  two engines in memory agree the same suite: "
+                + (engines.handshake() && engines.cipherSuite().equals("TLS_AES_256_GCM_SHA384")));
+        line(out, "  anything that speaks TLS can take a side: the tests use openssl");
     }
 
     private static void act2FilesForOtherPrograms(StringBuilder out, Path dir) throws IOException, GeneralSecurityException {
         line(out, "TWO. Giving the certificate and key to other programs.");
         X509Certificate certificate = TestCertificates.certificate("shop.p12");
+        byte[] der = certificate.getEncoded();
+        line(out, "  BEFORE PEM (the certificate as Java holds it, DER bytes):");
+        line(out, "    " + der.length + " bytes, starting  " + HexFormat.ofDelimiter(" ").formatHex(der, 0, 3) + " ...");
+        byte[] three = Arrays.copyOf(der, 3);
+        int[] groups = Base64Steps.groups(three);
+        StringBuilder bits = new StringBuilder();
+        StringBuilder six = new StringBuilder();
+        StringBuilder numbers = new StringBuilder();
+        for (int i = 0; i < 3; i++) {
+            bits.append(i == 0 ? "" : " ").append(Base64Steps.binary(three[i] & 0xff, 8));
+        }
+        for (int i = 0; i < 4; i++) {
+            six.append(i == 0 ? "" : " ").append(Base64Steps.binary(groups[i], 6));
+            numbers.append(i == 0 ? "" : " ").append(groups[i]);
+        }
+        line(out, "  STEP 1. BASE64: 3 BYTES = 24 BITS = 4 GROUPS OF 6 BITS");
+        line(out, "    bits    " + bits);
+        line(out, "    groups  " + six + "  = " + numbers);
+        line(out, "    letters " + Base64Steps.encode(three) + "   (0 = A, 1 = B, 8 = I, 12 = M, 63 = /)");
         Path certFile = dir.resolve("shop-cert.pem");
-        Path keyFile = dir.resolve("shop-key.pem");
         Pem.writeCertificate(certFile, certificate);
-        Pem.writePrivateKey(keyFile, TestCertificates.privateKey("shop.p12"));
         List<String> certLines = Files.readAllLines(certFile);
+        line(out, "  STEP 2. " + ((der.length + 2) / 3 * 4) + " LETTERS, IN LINES OF 64, BETWEEN TWO LABELS");
+        line(out, "  AFTER PEM (shop-cert.pem, " + certLines.size() + " lines):");
+        line(out, "    " + certLines.get(0));
+        line(out, "    " + certLines.get(1).substring(0, 32) + "...");
+        line(out, "    " + certLines.get(certLines.size() - 1));
+        Path keyFile = dir.resolve("shop-key.pem");
+        Pem.writePrivateKey(keyFile, TestCertificates.privateKey("shop.p12"));
         List<String> keyLines = Files.readAllLines(keyFile);
-        line(out, "  the certificate file starts with " + certLines.get(0) + " and ends with " + certLines.get(certLines.size() - 1));
-        line(out, "  the key file starts with " + keyLines.get(0) + " and ends with " + keyLines.get(keyLines.size() - 1));
-        line(out, "  the certificate names " + certificate.getSubjectX500Principal().getName() + " and the key type is " + certificate.getPublicKey().getAlgorithm());
-        line(out, "  the key file is readable by its owner only: "
-                + Files.getPosixFilePermissions(keyFile).equals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
-        line(out, "  PEM is only Base64 of the same bytes, so openssl reads what Java wrote and Java reads what openssl writes");
-        line(out, "  the key file holds the private key in the clear  <- PROTECT IT LIKE A PASSWORD");
+        line(out, "  THE KEY FILE (shop-key.pem):");
+        line(out, "    " + keyLines.get(0) + " ... " + keyLines.get(keyLines.size() - 1));
+        line(out, "    for " + certificate.getSubjectX500Principal().getName() + ", key type " + certificate.getPublicKey().getAlgorithm());
+        line(out, "    permissions " + PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile)) + ", owner only");
+        line(out, "    the private key, in the clear  <- PROTECT IT LIKE A PASSWORD");
     }
 
     private static void act3WhoIsOnTheOtherEnd(StringBuilder out) throws IOException, GeneralSecurityException {
         line(out, "THREE. Who is on the other end.");
+        String shopPrint = fingerprint(TestCertificates.certificate("shop.p12"));
+        String fakePrint = fingerprint(TestCertificates.certificate("impostor.p12"));
+        line(out, "  THE REQUEST (what the client asks for, and trusts):");
+        line(out, "    asks for  " + TestCertificates.HOST);
+        line(out, "    trusts    one certificate, SHA-256 " + shopPrint);
         try (TlsServer shop = new TlsServer(TestCertificates.server("shop.p12"), null);
                 TlsServer impostor = new TlsServer(TestCertificates.server("impostor.p12"), null)) {
             SSLContext client = TestCertificates.client();
-            line(out, "  the shop's own certificate, name " + TestCertificates.HOST + ": handshake works: "
-                    + TlsClient.send(client, shop.port(), TestCertificates.HOST, null, ORDER).ok());
-            line(out, "  an impostor with the same name but a certificate the client does not trust: handshake works: "
-                    + TlsClient.send(client, impostor.port(), TestCertificates.HOST, null, ORDER).ok() + "  <- THE CLIENT REFUSES");
-            line(out, "  the shop's real certificate, but the client asked for another.example.test: handshake works: "
-                    + TlsClient.send(client, shop.port(), "another.example.test", null, ORDER).ok() + "  <- THE NAME MUST MATCH");
+            line(out, "  THE RESPONSE (three servers, over real sockets):");
+            line(out, "    1. the shop, certificate " + shopPrint);
+            line(out, "       works: " + TlsClient.send(client, shop.port(), TestCertificates.HOST, null, ORDER).ok());
+            line(out, "    2. an impostor, same name, certificate " + fakePrint);
+            line(out, "       works: " + TlsClient.send(client, impostor.port(), TestCertificates.HOST, null, ORDER).ok() + "  <- NOT TRUSTED");
+            line(out, "    3. the shop, but the client asked for another.example.test");
+            line(out, "       works: " + TlsClient.send(client, shop.port(), "another.example.test", null, ORDER).ok() + "  <- THE NAME MUST MATCH");
         }
-        line(out, "  openssl s_client checks the same two things when given -verify_return_error and -verify_hostname");
+        line(out, "  openssl s_client checks the same two things when given");
+        line(out, "  -CAfile, -verify_hostname NAME and -verify_return_error");
+    }
+
+    private static String offer(SSLContext client, TlsServer server, String version) {
+        TlsClient.Result result = TlsClient.send(client, server.port(), TestCertificates.HOST, new String[] {version}, ORDER);
+        return "client offers " + (version + "   ").substring(0, 7) + "  works: " + result.ok()
+                + (result.ok() ? ", agreed " + result.protocol() : "");
     }
 
     private static void act4Versions(StringBuilder out) throws IOException, GeneralSecurityException {
@@ -97,24 +147,37 @@ public class TlsOpenSslDemo {
         SSLContext client = TestCertificates.client();
         SSLContext shop = TestCertificates.server("shop.p12");
         try (TlsServer open = new TlsServer(shop, null); TlsServer modern = new TlsServer(shop, new String[] {"TLSv1.3"})) {
-            line(out, "  a client that offers only TLS 1.2 to a server that allows the defaults: handshake works: "
-                    + TlsClient.send(client, open.port(), TestCertificates.HOST, new String[] {"TLSv1.2"}, ORDER).ok());
-            TlsClient.Result twelve = TlsClient.send(client, open.port(), TestCertificates.HOST, new String[] {"TLSv1.2"}, ORDER);
-            line(out, "  the agreed protocol is " + twelve.protocol());
-            line(out, "  the same client against a server that allows only TLS 1.3: handshake works: "
-                    + TlsClient.send(client, modern.port(), TestCertificates.HOST, new String[] {"TLSv1.2"}, ORDER).ok());
-            line(out, "  a client that offers only TLS 1.1: handshake works: "
-                    + TlsClient.send(client, open.port(), TestCertificates.HOST, new String[] {"TLSv1.1"}, ORDER).ok() + "  <- OLD VERSIONS ARE SWITCHED OFF");
+            line(out, "  BEFORE TIGHTENING (a server with the JDK's defaults):");
+            line(out, "    " + offer(client, open, "TLSv1.1") + "  <- OLD VERSIONS ARE OFF");
+            line(out, "    " + offer(client, open, "TLSv1.2"));
+            line(out, "  AFTER TIGHTENING (the server allows only TLS 1.3):");
+            line(out, "    " + offer(client, modern, "TLSv1.2"));
+            line(out, "    " + offer(client, modern, "TLSv1.3"));
         }
-        line(out, "  openssl s_client -tls1_2 and -tls1_1 make the same offers, and the tests check what it is told");
+        line(out, "  openssl s_client -tls1_1, -tls1_2 and -tls1_3 make the same offers");
     }
 
-    private static void act5Bill(StringBuilder out) {
+    private static void act5Bill(StringBuilder out) throws IOException, GeneralSecurityException {
         line(out, "FIVE. Checking from the outside, and the bill.");
-        line(out, "  to check a server with another program, run: openssl s_client -connect HOST:PORT -servername NAME -CAfile cert.pem -verify_hostname NAME -verify_return_error");
-        line(out, "  to serve with another program, run: openssl s_server -accept PORT -cert cert.pem -key key.pem");
-        line(out, "  the bill: a second implementation catches mistakes in the first, but only the settings that you actually pass are checked");
-        line(out, "  openssl without -verify_return_error prints the problem and carries on, so a script must check the exit status and the verification line");
-        line(out, "  a private key written to a file for another program is one more copy to protect");
+        TlsClient.Result result;
+        try (TlsServer server = new TlsServer(TestCertificates.server("shop.p12"), null)) {
+            result = TlsClient.send(TestCertificates.client(), server.port(), TestCertificates.HOST, null, ORDER);
+        }
+        line(out, "  THE REQUEST (openssl as the client, the command):");
+        line(out, "    openssl s_client -connect HOST:PORT -servername NAME");
+        line(out, "      -CAfile cert.pem -verify_hostname NAME");
+        line(out, "      -verify_return_error -brief");
+        line(out, "  THE RESPONSE (the lines the tests check, for this server):");
+        line(out, "    Protocol version: " + result.protocol());
+        line(out, "    Ciphersuite: " + result.cipherSuite());
+        line(out, "    Verification: OK");
+        line(out, "    " + result.reply());
+        line(out, "  openssl as the server: s_server -cert cert.pem -key key.pem");
+        line(out, "  THE BILL:");
+        line(out, "    a second program catches mistakes in the first,");
+        line(out, "    but only the settings you pass are checked");
+        line(out, "    without -verify_return_error, openssl reports and goes on,");
+        line(out, "    so a script must check the exit status");
+        line(out, "    a key file for another program is one more copy to protect");
     }
 }

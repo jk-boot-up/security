@@ -39,7 +39,7 @@ Developers parse files and render templates with default settings, which run ins
 | Tests | 10, all passing |
 | Demo output | 23 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:04, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:09, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

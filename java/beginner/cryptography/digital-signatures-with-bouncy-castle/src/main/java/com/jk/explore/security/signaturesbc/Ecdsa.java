@@ -95,12 +95,19 @@ final class Ecdsa {
         }
     }
 
+    /** The nonce two signatures shared, from the signatures alone: k = (h1 - h2) / (s1 - s2), modulo the curve order. */
+    static BigInteger recoverNonce(byte[] message1, Signature s1, byte[] message2, Signature s2) {
+        BigInteger n = P256.getN();
+        BigInteger h1 = new BigInteger(1, sha256(message1));
+        BigInteger h2 = new BigInteger(1, sha256(message2));
+        return h1.subtract(h2).multiply(s1.s().subtract(s2.s()).modInverse(n)).mod(n);
+    }
+
     /** What two signatures made with the same nonce reveal: k = (h1 - h2) / (s1 - s2), then d = (s1 k - h1) / r, all modulo the curve order. */
     static BigInteger recoverKeyFromReusedNonce(byte[] message1, Signature s1, byte[] message2, Signature s2) {
         BigInteger n = P256.getN();
         BigInteger h1 = new BigInteger(1, sha256(message1));
-        BigInteger h2 = new BigInteger(1, sha256(message2));
-        BigInteger k = h1.subtract(h2).multiply(s1.s().subtract(s2.s()).modInverse(n)).mod(n);
+        BigInteger k = recoverNonce(message1, s1, message2, s2);        // the shared nonce
         return s1.s().multiply(k).subtract(h1).multiply(s1.r().modInverse(n)).mod(n);
     }
 

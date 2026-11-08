@@ -16,23 +16,38 @@ Chapters:
 
 ```
 00:00 Introduction
-01:00 The Scenario
-01:19 The Words
-01:49 Act One — An HTTP message is just text
-02:22 Act Two — Messages that two programs could read differently
-03:19 Act Three — Header injection
-03:47 Act Four — Cookies that carry a login
-04:22 Act Five — Security headers on a real response
-05:01 Five Headers, Five Refusals
-05:43 Who Does What
-06:14 Where You Have Seen It
-06:38 How To Use It
-07:06 Thanks for Watching
+00:51 The Scenario
+01:10 The Words
+01:39 What the Letters Stand For
+02:24 One request, as plain text
+03:24 From text to fields, and back to text
+04:15 Act One — An HTTP message is just text
+04:48 One request, two ends: a request hidden after the body
+05:53 Act Two — Messages that two programs could read differently
+06:18 Act Two — Messages that two programs could read differently
+07:00 A line break in the search text adds a header
+08:00 Act Three — Header injection
+08:19 Four cookies, checked one attribute at a time
+09:22 Act Four — Cookies that carry a login
+09:37 Act Four — Cookies that carry a login
+09:49 Five headers, three responses, three scores
+10:52 Act Five — Security headers on a real response
+11:13 Act Five — Security headers on a real response
+11:42 Where You Have Seen It
+12:06 How To Use It
+12:34 The Java Classes
+12:45 HttpRequest — writing the request as text
+13:06 HttpParser — the checks that stop smuggling
+13:26 HttpResponse — no line break in a header value
+13:42 Cookie — what is wrong for a login cookie
+14:00 HeaderAudit — a header is only worth its value
+14:18 LoopbackExchange — a real exchange over a socket
+14:35 Thanks for Watching
 ```
 
 ## Tags
 
-http, security headers, cookies, httponly, samesite, request smuggling, header injection, hsts, java, cybersecurity for beginners
+http, security headers, cookies, httponly, samesite, request smuggling, header injection, hsts, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +55,16 @@ http, security headers, cookies, httponly, samesite, request smuggling, header i
 | --- | --- |
 | Video | `video/http-basics-and-headers-explained.mp4` |
 | Captions | `video/http-basics-and-headers-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Networking for Security in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (72)
-- [ ] tags are at most 500 characters in total — ok (120)
+- [ ] tags are at most 500 characters in total — ok (171)
 - [ ] description is at most 5,000 characters — ok (466)
 - [ ] chapters start at 00:00 and there are at least three

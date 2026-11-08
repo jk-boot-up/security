@@ -41,11 +41,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Layers: a packet inside a packet | A TCP segment is 20 bytes and inside an IP packet it is 40 bytes; the packet decodes again, but nothing in it says who the sender really is. |
-| 2. A checksum catches accidents, not attackers | A changed byte is refused, but the same change made by someone who recomputes the checksum is accepted, because the checksum has no key. |
-| 3. The three-way handshake | SYN with sequence 1000, SYN-ACK acknowledging 1001 and one half-open entry, ACK establishes the connection; an ACK with no SYN before it is refused. |
-| 4. A SYN flood | Eight SYNs that never answer fill a table of eight, so a real customer is refused; SYN cookies keep no entry and the customer still connects. |
-| 5. Guessable numbers, and a stream anyone can read | A counter that adds 64000 lets an attacker forge a connection as the admin machine; a keyed hash does not; and a real connection shows the card number to anyone watching. |
+| 1. Layers: a packet inside a packet | The customer's first packet: a 20-byte TCP segment inside a 40-byte IP packet; the shop decodes the same values again, but the source address is just a field. |
+| 2. A checksum catches accidents, not attackers | The IP header checksum is made in three steps (add, fold, flip); a changed byte is refused, but the same change with a recomputed checksum is accepted, because the checksum has no key. |
+| 3. The three-way handshake | SYN with sequence 1000; SYN-ACK with the shop's own number, acknowledging 1001, and one half-open entry; ACK with the shop's number + 1 establishes the connection. An ACK with no SYN before it is refused. |
+| 4. A SYN flood | Eight SYNs that never answer fill a table of eight, so a real customer is not answered; with SYN cookies the store keeps no entry, its sequence number is an HMAC of the connection, and the customer connects. |
+| 5. Guessable numbers, and a stream anyone can read | With a counter that adds 64000 the attacker guesses the admin's number and forges a connection; with a keyed hash the guess misses; and a real connection shows the card number to anyone watching. |
 
 ## Test
 
@@ -53,7 +53,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-19 tests in `DemoRunsTest`, `ListenerTest`, `PacketsTest`. The checksum is checked against the RFC 1071 example. Packets are built and read in memory, the handshake is a state machine with fixed addresses, and the one real connection prints only facts that do not depend on port numbers, so the golden output is the same on every run.
+21 tests in `DemoRunsTest`, `ListenerTest`, `PacketsTest`. The checksum is checked against the RFC 1071 example. Packets are built and read in memory, the handshake is a state machine with fixed addresses, and the one real connection prints only facts that do not depend on port numbers, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

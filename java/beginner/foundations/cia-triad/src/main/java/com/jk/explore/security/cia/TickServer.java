@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A order server that can do a fixed amount of work in one tick (a slice of simulated time, so
+ * An order server that can do a fixed amount of work in one tick (a slice of simulated time, so
  * every run is identical). Requests are served in the order they arrive until the work runs out.
  */
 public class TickServer {

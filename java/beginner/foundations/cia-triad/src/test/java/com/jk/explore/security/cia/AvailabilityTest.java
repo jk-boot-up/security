@@ -21,4 +21,14 @@ class AvailabilityTest {
         TickServer.Result result = new TickServer(10).serve(CiaDemo.flood(), new RateLimiter(0));
         assertEquals(0, result.totalServed());
     }
+
+    @Test
+    void theLimiterCountsEachClientsRequests() {
+        RateLimiter limiter = new RateLimiter(3);
+        for (int i = 0; i < 4; i++) {
+            limiter.allow("bot");
+        }
+        assertEquals(4, limiter.count("bot"));
+        assertEquals(0, limiter.count("maya"));
+    }
 }

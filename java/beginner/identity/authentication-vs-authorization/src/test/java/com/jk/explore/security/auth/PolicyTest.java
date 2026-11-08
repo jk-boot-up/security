@@ -26,4 +26,14 @@ class PolicyTest {
         Order order = new Order("O-x", owner, "Thing", 10);
         assertEquals(expected, PolicyGate.allowed(role, user, action, order));
     }
+
+    /** The rule table the demo prints is read from the same rules. */
+    @ParameterizedTest
+    @CsvSource({
+        "CUSTOMER, VIEW, own only", "CUSTOMER, REFUND, no", "SUPPORT, VIEW, any",
+        "SUPPORT, CANCEL, no", "ADMIN, CANCEL, any"
+    })
+    void theRuleTableSummarisesTheRules(Role role, Action action, String expected) {
+        assertEquals(expected, AuthDemo.rule(role, action));
+    }
 }

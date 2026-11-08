@@ -15,7 +15,7 @@ domain_note = ""
 youtube_description = """Backups and recovery with RustFS, an S3-compatible object store, in Java: the same S3 API as Amazon S3, run locally in Docker. Explained with an online store, like a safe deposit box where the courier can post envelopes through a slot but cannot open the box. We watch ransomware overwrite a file and restore the older version, lock a backup with Object Lock so that not even the root account can delete it, give the backup job an identity that can only add objects, catch a damaged upload with a SHA-256 checksum, and finish with the bill: storage grows with every version, a compliance lock cannot be undone, and the root account is the real key."""
 thumb_lines = ["BACKUPS WITH RUSTFS", "S3 OBJECT LOCK"]
 thumb_code = "ObjectLockMode.COMPLIANCE"
-youtube_title = "Backups and Recovery with RustFS, an S3-Compatible Object Store (Versioning, Object Lock, Write-Only Keys)"
+youtube_title = "Backups and Recovery with RustFS, an S3-Compatible Store (Versioning, Object Lock, Write-Only Keys)"
 youtube_tags = ["backups", "ransomware", "object lock", "s3", "rustfs", "versioning", "least privilege", "docker", "java", "cybersecurity for beginners"]
 
 [readme]
@@ -64,124 +64,210 @@ test_note = "The ordinary tests need only a JDK (the checksum helper, the outcom
 
 [[act]]
 title = "Versioning: an overwrite does not destroy the old data"
-summary = "Ransomware overwrites orders.csv, two versions are kept, the original is restored by writing it back, and a plain delete only adds a marker."
+summary = "Ransomware overwrites orders.csv, 2 versions are kept, the original is restored by copying version 1 back as version 3, and a plain delete only adds 1 marker: a normal read fails with 404, version 1 is still there."
 detail = """
-The shop stores orders.csv and ransomware overwrites it with scrambled bytes. Two versions are kept. A normal read returns the scrambled file, but the original is still there as an older version. Restoring is writing the older version back as the newest.
-The scrambled version stays in the history as evidence. A plain delete only adds a delete marker: reading the key fails, the data is not gone. But an attacker with the right to delete versions could still remove every version, which is what the next act stops.
+The input: the bucket shop-orders with versioning on, and two writes to orders.csv. Version 1 is the shop's orders, 40 bytes; version 2 is ransomware's scrambled bytes, 25 bytes.
+The result: 2 versions are kept. A normal read returns version 2, the scrambled one, but version 1, read by its id, is still the original. The restore copies version 1 back as version 3: a normal read is the original again, 3 versions are kept, and version 2 stays as evidence.
+A plain delete adds 1 delete marker. A normal read now fails with 404 NoSuchKey, but version 1 is still there. Whoever may delete versions can still erase them all, which is what the next act stops.
+"""
+figure = "versions"
+figure_title = "The versions of orders.csv, step by step"
+figure_speech = """
+First demo: versioning. [[slnc 400]] Each column is one step. [[slnc 300]] The boxes are the versions of the orders file, newest on top. [[slnc 600]]
+First, the shop writes its orders. [[slnc 300]] One version, forty bytes. [[slnc 600]]
+Then ransomware writes scrambled bytes. [[slnc 300]] On a plain disk, that would replace the file. [[slnc 300]] Here it becomes version two, and version one is still underneath. [[slnc 600]]
+The restore copies version one back, as version three. [[slnc 300]] A normal read sees the orders again. [[slnc 300]] The scrambled version stays, as evidence. [[slnc 600]]
+Last, a plain delete. [[slnc 300]] It only adds a delete marker on top. [[slnc 300]] A normal read now fails, with four oh four. [[slnc 300]] But nothing below is gone.
 """
 speech = """
-First demo: versioning. [[slnc 400]] The shop stores its orders file. [[slnc 300]] Ransomware overwrites it with scrambled bytes. [[slnc 600]]
-Two versions are kept. [[slnc 300]] A normal read returns the scrambled file. [[slnc 300]] But the original is still there, as an older version. [[slnc 600]]
-Restoring is writing the older version back as the newest. [[slnc 600]]
-A plain delete only adds a marker. [[slnc 300]] The data is not gone. [[slnc 600]]
-But an attacker who may delete versions could still destroy them all. [[slnc 300]] The next demo stops that.
+Here is the real output. [[slnc 400]] The input: the bucket, and the two writes, with their sizes. [[slnc 500]] The history: two versions, a normal read returns the scrambled one, and version one is the original. [[page]]
+The restore: a normal read is the original, three versions, the scrambled one kept. [[slnc 400]] A plain delete: one marker, the read fails, version one still there. [[slnc 300]] Whoever may delete versions can still erase it all.
 """
 rows = { versions = "active ok" }
 console = [
-    ["the shop stores orders.csv, then ransomware overwrites it with scrambled bytes", "muted"],
-    ["versions kept for orders.csv: 2", "ok"],
-    ["what a normal read returns now is the scrambled file: true", "amber"],
-    ["the original is still there as an older version: true", "ok"],
-    ["restore = write the older version back as the newest: true", "ok"],
-    ["a plain delete only adds a delete marker (1): reading the key now fails, the data is not gone: true", "ok"],
-    ["but an attacker with delete rights on versions can still remove every version, which is what the next act stops", "amber"],
+    ["THE BUCKET", "code"],
+    ["  shop-orders, versioning on", "muted"],
+    ["THE WRITES TO orders.csv", "code"],
+    ["  1  the shop's orders, 40 bytes", "muted"],
+    ["  2  ransomware's scrambled bytes, 25 bytes", "muted"],
+    ["THE HISTORY", "code"],
+    ["  versions kept              2", "muted"],
+    ["  a normal read is 2         true", "muted"],
+    ["  version 1 is original      true", "muted"],
+    ["---", ""],
+    ["THE RESTORE: COPY VERSION 1 BACK AS VERSION 3", "code"],
+    ["  a normal read is original  true", "muted"],
+    ["  versions kept              3", "muted"],
+    ["  2 kept as evidence         true", "muted"],
+    ["A PLAIN DELETE", "code"],
+    ["  delete markers added       1", "muted"],
+    ["  a normal read              refused (404 NoSuchKey)", "bad"],
+    ["  version 1 still there      true", "muted"],
+    ["  <- WHOEVER CAN DELETE VERSIONS CAN STILL ERASE ALL", "amber"],
 ]
 
 [[act]]
 title = "Object Lock: nobody can delete a locked version"
-summary = "A COMPLIANCE-locked backup refuses deletion, even with bypass and from the root account, and the retention cannot be shortened; GOVERNANCE can be lifted with a special permission."
+summary = "With a compliance lock until tomorrow, even the root account is refused with 403 when it deletes, bypasses or shortens; a plain delete only adds a marker; a governance lock can be lifted with the bypass permission."
 detail = """
-A backup is stored with COMPLIANCE retention for a day. Deleting that version is refused. Deleting it while asking to bypass governance is refused. Shortening the retention is refused. A plain delete is allowed but only adds a marker, and the locked version is still readable.
-GOVERNANCE is softer: deleting is refused, but with the special bypass permission it can be lifted. COMPLIANCE cannot be lifted by anyone until the date, so choose it with care.
+The input: the bucket shop-backups, created with object lock on, and two backups. backup-full.tar is locked in COMPLIANCE mode until now plus one day; backup-soft.tar in GOVERNANCE mode until the same time.
+The result for the compliance version, tried by the root account: delete the version, refused with 403 AccessDenied; delete asking to bypass governance, refused; shorten the retention, refused. A plain delete is allowed, but only adds a marker, and the version still reads.
+For the governance version: a plain delete of the version is refused, but with the bypass flag, which needs a special permission, it is allowed. Compliance cannot be lifted by anyone until the date, so choose it with care.
+"""
+figure = "lock_matrix"
+figure_title = "What root may do to a locked version"
+figure_speech = """
+Second demo: object lock. [[slnc 400]] Two backups, each locked until tomorrow. [[slnc 300]] In amber, compliance mode. [[slnc 300]] In blue, governance mode. [[slnc 600]]
+The rows are what the root account tries. [[slnc 300]] Root is the most powerful account the store has. [[slnc 600]]
+On the compliance version, delete is refused. [[slnc 300]] Delete with the bypass flag is refused. [[slnc 300]] Shortening the lock is refused. [[slnc 300]] All with four oh three. [[slnc 600]]
+A plain delete is allowed, but it only adds a marker, so the version still reads. [[slnc 600]]
+On the governance version, a delete is refused too. [[slnc 300]] But with the bypass flag, and the special permission it needs, it goes through. [[slnc 300]] So governance protects against mistakes. [[slnc 300]] Compliance protects against everyone, until the date.
 """
 speech = """
-Second demo: Object Lock. [[slnc 400]] A backup is stored with a compliance lock for one day. [[slnc 600]]
-Deleting that version is refused. [[slnc 300]] Asking to bypass the lock is refused. [[slnc 300]] Shortening the lock is refused. [[slnc 600]]
-This is the root account, and it is still refused. [[slnc 600]]
-A plain delete only adds a marker. [[slnc 300]] The locked version is still readable. [[slnc 600]]
-The governance lock is softer. [[slnc 300]] It can be lifted with a special permission. [[slnc 300]] The compliance lock cannot be lifted by anyone, until the date.
+The real output. [[slnc 400]] The input: the bucket with object lock, and the two locks.
+[[page]]
+The result on the compliance version: refused, refused, refused. [[slnc 300]] A plain delete only adds a marker, and the version still reads. [[slnc 400]] On the governance version, the bypass flag is allowed. [[slnc 300]] Compliance cannot be lifted by anyone, so choose its date with care.
 """
 rows = { lock = "active ok" }
 console = [
-    ["a backup is stored with COMPLIANCE retention for a day", "muted"],
-    ["delete that version: refused (403 AccessDenied)", "ok"],
-    ["delete it asking to bypass governance: refused (403 AccessDenied)", "ok"],
-    ["shorten the retention: refused (403 AccessDenied)", "ok"],
-    ["a plain delete is allowed but only adds a marker: allowed", "muted"],
-    ["the locked version is still readable: true", "ok"],
-    ["GOVERNANCE is softer. Delete that version: refused (403 AccessDenied)", "muted"],
-    ["with the special bypass permission it can be lifted: allowed", "amber"],
-    ["COMPLIANCE cannot be lifted by anyone until the date, so choose it with care", "amber"],
+    ["THE BUCKET", "code"],
+    ["  shop-backups, object lock on", "muted"],
+    ["THE LOCKS", "code"],
+    ["  backup-full.tar  COMPLIANCE  until now + 1 day", "muted"],
+    ["  backup-soft.tar  GOVERNANCE  until now + 1 day", "muted"],
+    ["---", ""],
+    ["THE ROOT ACCOUNT TRIES THE COMPLIANCE VERSION", "code"],
+    ["  delete the version         refused (403 AccessDenied)", "bad"],
+    ["  delete, bypass governance  refused (403 AccessDenied)", "bad"],
+    ["  shorten the retention      refused (403 AccessDenied)", "bad"],
+    ["  plain delete, a marker     allowed", "ok"],
+    ["  the version still reads    true", "muted"],
+    ["THE ROOT ACCOUNT TRIES THE GOVERNANCE VERSION", "code"],
+    ["  delete the version         refused (403 AccessDenied)", "bad"],
+    ["  delete, bypass governance  allowed", "ok"],
+    ["  <- COMPLIANCE: NOBODY UNTIL THE DATE. CHOOSE WITH CARE", "amber"],
 ]
 
 [[act]]
 title = "The backup job gets an identity that can only add objects"
-summary = "The backup job's policy has one action, PutObject: it can write a backup but cannot read, list, delete, delete a version or write to another bucket."
+summary = "The backup-writer policy allows one action, s3:PutObject, on shop-backups: its put is allowed and get, list, delete, delete-version and a put into shop-orders are all refused with 403."
 detail = """
-The backup job gets its own identity with a policy that has one action, adding objects to one bucket. It can write a backup. It cannot read one back, list versions, delete, delete a version, or write to the orders bucket.
-So a thief who steals the backup job's key can add data but cannot read it, change history or destroy backups. It can still add junk, so quotas and alerts on unusual uploads matter.
+The input: the user backup-writer, with a policy of one statement. Effect Allow, Action s3:PutObject, Resource arn:aws:s3:::shop-backups/*: add objects to the backup bucket, and nothing else.
+The result: the backup job's put of nightly.tar is allowed. Reading it back, listing its versions, deleting it, deleting a version, and writing into shop-orders are all refused with 403 AccessDenied.
+So a thief who steals the backup job's key can add data, but cannot read the backups, change their history or destroy them. It can still add junk, so set a quota and alert on unusual uploads.
+"""
+figure = "writer"
+figure_title = "One action, on one bucket"
+figure_speech = """
+Third demo: the backup job gets its own identity. [[slnc 400]] On the left, its policy. [[slnc 300]] Effect: allow. [[slnc 300]] Action: put object, which only adds. [[slnc 300]] Resource: the objects of the backup bucket. [[slnc 600]]
+On the right, everything the job tries. [[slnc 300]] Putting the nightly backup is allowed. [[slnc 600]]
+Reading it back is refused. [[slnc 300]] Listing versions is refused. [[slnc 300]] Deleting, and deleting a version, are refused. [[slnc 300]] Writing into the orders bucket is refused. [[slnc 600]]
+So if a thief steals this key from the backup server, the backups stay safe. [[slnc 300]] The thief can add junk, so a quota and an alert still matter.
 """
 speech = """
-Third demo: a write only identity. [[slnc 400]] The backup job gets its own user, whose policy has one action: add an object, to one bucket. [[slnc 600]]
-It can write a backup. [[slnc 300]] It cannot read one. [[slnc 300]] It cannot list. [[slnc 300]] It cannot delete. [[slnc 300]] It cannot delete a version. [[slnc 300]] And it cannot write to any other bucket. [[slnc 600]]
-So a thief who steals this key can add data, and nothing else. [[slnc 300]] It can still add junk, so alerts on unusual uploads still matter.
+The real output. [[slnc 400]] The input: the policy, three fields. [[slnc 400]] The result: one allowed, five refused with four oh three. [[slnc 400]] A stolen key can add, but not read or destroy.
 """
 rows = { writer = "active ok" }
 console = [
-    ["the backup job writes a backup: allowed", "ok"],
-    ["it tries to read one back: refused (403 AccessDenied)", "ok"],
-    ["it tries to list versions: refused (403 AccessDenied)", "ok"],
-    ["it tries to delete: refused (403 AccessDenied)", "ok"],
-    ["it tries to delete a version: refused (403 AccessDenied)", "ok"],
-    ["it tries to write to the orders bucket: refused (403 AccessDenied)", "ok"],
-    ["so a thief who steals the backup job's key can add data but cannot read, change history or destroy backups", "muted"],
-    ["it can still add junk, so the quota and the alerts on unusual uploads matter", "amber"],
+    ["THE POLICY OF backup-writer", "code"],
+    ["  Effect    Allow", "muted"],
+    ["  Action    s3:PutObject", "muted"],
+    ["  Resource  arn:aws:s3:::shop-backups/*", "muted"],
+    ["THE REQUESTS AND THE ANSWERS", "code"],
+    ["  put nightly.tar            allowed", "ok"],
+    ["  get nightly.tar            refused (403 AccessDenied)", "bad"],
+    ["  list its versions          refused (403 AccessDenied)", "bad"],
+    ["  delete it                  refused (403 AccessDenied)", "bad"],
+    ["  delete a version           refused (403 AccessDenied)", "bad"],
+    ["  put into shop-orders       refused (403 AccessDenied)", "bad"],
+    ["  <- A STOLEN KEY CAN ADD, NOT READ OR DESTROY", "amber"],
+    ["  it can add junk: set a quota, alert on odd uploads", "muted"],
 ]
 
 [[act]]
 title = "A checksum catches a damaged backup"
-summary = "An upload with the right SHA-256 is accepted; one whose bytes do not match the checksum is refused with BadDigest and leaves nothing behind."
+summary = "An upload whose bytes match its SHA-256 is allowed, one whose bytes do not is refused with 400 BadDigest and leaves 0 versions; the stored copy hashes to the same value."
 detail = """
-Uploading with the SHA-256 of the data is allowed. Uploading bytes whose SHA-256 does not match the one sent is refused, and leaves nothing behind. What was stored for the good upload hashes to the same value.
-The store checks bytes in transit and at upload; a restore test is still needed to know that a backup is usable.
+The input: the SHA-256 of the backup bytes and of other bytes, in Base64, and two uploads. checked.tar sends the backup with its own checksum; damaged.tar sends the backup with the checksum of other bytes, as a transfer damaged on the way would.
+The result: checked.tar is allowed, and damaged.tar is refused with 400 BadDigest. What is stored for checked.tar hashes to the same value, and damaged.tar left 0 versions behind.
+The store checks the bytes it receives. Whether the backup is usable is a different question: a restore test is still needed.
+"""
+figure = "checksum"
+figure_title = "The checksum travels with the bytes"
+figure_speech = """
+Fourth demo: checksums. [[slnc 400]] At the top, two fingerprints, in Base sixty four. [[slnc 300]] One for the backup, one for some other bytes. [[slnc 600]]
+Each upload sends the bytes and a claimed fingerprint. [[slnc 300]] The store computes the fingerprint of what arrived, and compares. [[slnc 600]]
+For checked dot tar, they match: allowed. [[slnc 600]]
+For damaged dot tar, the claim is the other bytes' fingerprint, as if the data changed on the way. [[slnc 300]] Refused, with four hundred, bad digest. [[slnc 300]] And nothing is stored. [[slnc 600]]
+A checksum proves the bytes arrived intact. [[slnc 300]] It does not prove they restore into a working shop.
 """
 speech = """
-Fourth demo: a checksum. [[slnc 400]] An upload with the right S H A two five six is accepted. [[slnc 600]]
-Bytes that do not match the checksum are refused. [[slnc 300]] And nothing is left behind. [[slnc 600]]
-The stored copy hashes to the same value. [[slnc 600]]
-But a checksum only shows the bytes arrived. [[slnc 300]] A restore test shows the backup is usable.
+The real output. [[slnc 400]] The input: the two checksums, and the two uploads.
+[[page]]
+The answers: allowed, and refused with bad digest. [[slnc 400]] What is stored: the same hash, and zero versions of the damaged one. [[slnc 300]] Intact is not usable, so still run a restore test.
 """
 rows = { checksum = "active ok" }
 console = [
-    ["upload with the SHA-256 of the data: allowed", "ok"],
-    ["upload bytes whose SHA-256 does not match the one sent: refused (400 BadDigest)", "ok"],
-    ["what was stored for the good upload hashes to the same value: true", "ok"],
-    ["the damaged upload left nothing behind: true", "ok"],
-    ["the store checks bytes in transit and at upload; a restore test is still needed to know the backup is usable", "amber"],
+    ["THE CHECKSUMS (SHA-256 IN BASE64)", "code"],
+    ["  the backup   Du5R0k8IE/PhcdlE4tmKtfFjDbpcvgZLRF3U08cDIys=", "muted"],
+    ["  other bytes  U4p0HGInM6/hR4Gek52CzAce376z60ntcBpVl1rCiLM=", "muted"],
+    ["THE UPLOADS", "code"],
+    ["  checked.tar  the backup, with its own checksum", "muted"],
+    ["  damaged.tar  the backup, with other bytes' checksum", "muted"],
+    ["---", ""],
+    ["THE ANSWERS", "code"],
+    ["  checked.tar                allowed", "ok"],
+    ["  damaged.tar                refused (400 BadDigest)", "bad"],
+    ["WHAT IS STORED", "code"],
+    ["  checked.tar, same hash     true", "muted"],
+    ["  damaged.tar, versions      0", "muted"],
+    ["  <- INTACT IS NOT USABLE: STILL RUN A RESTORE TEST", "amber"],
 ]
 
 [[act]]
 title = "Keeping history without keeping it for ever, and the cost"
-summary = "A lifecycle rule removes old versions after 30 days; the bill is storage that grows, a lock that cannot be undone, a root account that is the real key, and disks that the lock does not protect."
+summary = "A lifecycle rule removes old versions 30 days after they are replaced; a 2 MB file overwritten every hour keeps 24 x 30 = 720 old versions, 720 x 2 = 1440 MB."
 detail = """
-A lifecycle rule on the orders bucket removes old versions 30 days after they are replaced. Every version is stored in full, so storage grows with every overwrite until the rule removes them. A COMPLIANCE lock cannot be undone. The root account is the real key, so keep it out of daily use.
-Object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too.
+The input: one lifecycle rule on shop-orders, expire-old-versions, enabled: an old version is removed 30 days after it is replaced.
+The cost, worked out: every version is stored in full. An orders.csv of 2 MB overwritten every hour keeps 24 x 30 = 720 old versions, and 720 x 2 MB = 1440 MB of storage for one 2 MB file. The rule keeps it bounded, not free.
+The limits: a compliance date set wrong is paid for in storage, since nobody can lift it. The root account can change every policy, so keep it out of daily use. And a lock stops the API, not someone deleting the disks, so keep a copy somewhere else too.
+"""
+figure = "cost"
+figure_title = "History is kept in full, for thirty days"
+figure_speech = """
+Fifth demo: how long to keep history, and what it costs. [[slnc 400]] At the top, the lifecycle rule. [[slnc 300]] An old version is removed thirty days after it is replaced. [[slnc 600]]
+Now the cost, worked out. [[slnc 300]] An orders file of two megabytes, overwritten every hour. [[slnc 300]] Twenty four versions a day, times thirty days, is seven hundred and twenty old versions. [[slnc 600]]
+Every version is stored in full. [[slnc 300]] Seven hundred and twenty times two megabytes is one thousand four hundred and forty megabytes. [[slnc 300]] For one two megabyte file. [[slnc 600]]
+Each block on the bar is one day: forty eight megabytes. [[slnc 300]] After thirty days, the oldest block goes. [[slnc 300]] The rule keeps the history bounded, but not free.
 """
 speech = """
-Fifth demo: the lifecycle, and the bill. [[slnc 400]] A lifecycle rule removes old versions thirty days after they are replaced. [[slnc 600]]
-Every version is stored in full, so storage grows with every overwrite, until the rule removes them. [[slnc 600]]
-A compliance lock cannot be undone. [[slnc 300]] A wrong date is paid for in storage. [[slnc 600]]
-The root account is the real key. [[slnc 300]] Keep it out of daily use. [[slnc 600]]
-And the lock stops the A P I from deleting backups, not someone from deleting the disks. [[slnc 300]] So keep a copy somewhere else too.
+The real output. [[slnc 400]] The input: one rule, thirty days. [[slnc 400]] The cost: seven hundred and twenty versions, one thousand four hundred and forty megabytes.
+[[page]]
+And the limits. [[slnc 300]] A wrong compliance date is paid for in storage. [[slnc 300]] Keep the root account out of daily use. [[slnc 300]] And keep a copy somewhere else, because a lock does not stop someone deleting the disks.
 """
 rows = { lifecycle = "active amber" }
 console = [
-    ["a lifecycle rule on the orders bucket: 1 rule, expire-old-versions, removes old versions 30 days after they are replaced", "ok"],
-    ["every version is stored in full, so storage grows with every overwrite until the rule removes them", "amber"],
-    ["a COMPLIANCE lock cannot be undone, so a mistaken retention date is paid for in storage", "amber"],
-    ["the root account is the real key: whoever holds it can change policies and users, so keep it out of daily use", "amber"],
-    ["object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too", "amber"],
+    ["THE LIFECYCLE RULE ON shop-orders", "code"],
+    ["  rules 1, id expire-old-versions, Enabled", "muted"],
+    ["  an old version is removed 30 days after it is replaced", "muted"],
+    ["THE COST, WORKED OUT", "code"],
+    ["  orders.csv of 2 MB, overwritten every hour", "muted"],
+    ["  old versions kept: 24 x 30 days = 720", "muted"],
+    ["  storage: 720 x 2 MB = 1440 MB for one 2 MB file", "muted"],
+    ["---", ""],
+    ["THE LIMITS", "code"],
+    ["  a COMPLIANCE date set wrong is paid for in storage", "muted"],
+    ["  the root account can change every policy:", "muted"],
+    ["    keep it out of daily use", "muted"],
+    ["  a lock stops the API, not someone deleting the disks:", "muted"],
+    ["    keep a copy somewhere else too", "muted"],
 ]
+
+[highlight]
+console_green = ["THE RESTORE", "THE REQUESTS", "THE ANSWERS", "WHAT IS STORED"]
+console_rose = ["A PLAIN DELETE", "THE ROOT ACCOUNT TRIES"]
+console_amber = ["THE HISTORY", "THE COST", "THE LIMITS", "THE LOCKS"]
+console_cyan = ["THE BUCKET", "THE WRITES", "THE POLICY", "THE CHECKSUMS", "THE UPLOADS", "THE LIFECYCLE"]
 
 [animation]
 subtitle = "An online store backs up to an object store that keeps versions, locks them, and lets the backup job only add objects."
@@ -442,6 +528,19 @@ body = ["Bucket: a container of objects", "Version: an older copy of an object",
 narration = """Before the demos, the words. [[slnc 500]] A bucket is a container of objects. [[slnc 500]] A version is an older copy of an object. [[slnc 500]] Object Lock means no delete until a date. [[slnc 500]] Compliance mode means nobody can lift the lock. [[slnc 500]] And a policy says what an identity may do."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "04-three-guards"
+kind = "figure"
+title = "One nightly backup, and the guards around it"
+body = "three_guards"
+narration = """Let's see the whole idea on one real example: the shop's nightly backup. [[slnc 400]] On the left, the backup job. [[slnc 300]] It has its own key. [[slnc 600]] Guard one, in blue: the key may only add. [[slnc 300]] Put object, and nothing else. [[slnc 300]] Reading and deleting are refused. [[slnc 600]] Guard two, in cyan: a checksum travels with the bytes. [[slnc 300]] A good upload is allowed. [[slnc 300]] A damaged one is refused. [[slnc 600]] Guard three, in amber: versions. [[slnc 300]] An overwrite adds a version, and the old ones stay. [[slnc 600]] Guard four, in green: the lock. [[slnc 300]] Until its date, even the root account cannot delete the backup. [[slnc 600]] The five demos take these guards one at a time."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -453,13 +552,6 @@ kind = "bullets"
 title = "Three Protections"
 body = ["Versions: the old data stays", "Locks: it cannot be deleted before a date", "A write-only key: the job can only add", "Each stops a different attack."]
 narration = """Let's put the three side by side. [[slnc 400]] Versions keep the old data when something is overwritten. [[slnc 500]] Locks stop anyone deleting a version before a date. [[slnc 500]] A write only key means the backup job can only add. [[slnc 600]] Each one stops a different attack, and together they leave ransomware very little to destroy."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["ObjectStoreContainer: the store in Docker", "Store: one identity's S3 calls", "BackupsRustfsDemo: the five acts", "rc admin tool: users and policies"]
-narration = """Here is who does what in the code. [[slnc 400]] The object store container class starts the store in Docker, and removes it afterwards. [[slnc 500]] The store class makes every call as one identity, so what each one may do is visible. [[slnc 500]] The demo class runs the five acts. [[slnc 300]] And the admin tool creates the users and their policies."""
 
 [[scene]]
 key = "11-recognise"
@@ -474,6 +566,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["Versioned bucket, with a lifecycle rule", "A write-only identity for the job", "Object Lock for backups that matter", "Test restores; protect the root account", "Keep a copy outside the account"]
 narration = """So, how do you use it? [[slnc 400]] Use a versioned bucket, with a lifecycle rule. [[slnc 500]] Give the backup job a write only identity. [[slnc 500]] Use Object Lock for the backups that matter most. [[slnc 500]] Test restores, and protect the root account. [[slnc 500]] And keep a copy outside the account."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -561,3 +659,98 @@ threat = "The root account is stolen, and policies, users and governance locks a
 where = "the root account"
 control = "COMPLIANCE locks cannot be lifted even by the root account"
 residual = "GOVERNANCE locks can, new users can be added, and the store's disks are outside the lock, so keep the root credentials out of daily use and keep a copy elsewhere"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Three classes: one starts the store in Docker, one talks to it with the A W S S D K, and the demo runs the five acts. [[slnc 300]] Here are the parts that matter."""
+
+[[class]]
+name = "ObjectStoreContainer"
+what = "starts RustFS in Docker, pinned, and adds the backup user"
+[[class.part]]
+title = "both images pinned to exact versions"
+code = """
+public static final String STORE_IMAGE = "rustfs/rustfs:1.0.2";
+public static final String ADMIN_IMAGE = "rustfs/rc:v0.1.36";
+"""
+speech = """The store runs in a container, from an image pinned to an exact version. [[slnc 300]] So every run uses the same software, and prints the same output."""
+[[class.part]]
+title = "the backup job's policy: one action"
+code = """
+static String writeOnlyPolicy(String bucket) {
+    return "{\\"Version\\":\\"2012-10-17\\",\\"Statement\\":[{\\"Effect\\":\\"Allow\\",\\"Action\\":[\\"s3:PutObject\\"],"
+            + "\\"Resource\\":[\\"arn:aws:s3:::" + bucket + "/*\\"]}]}";
+"""
+speech = """The backup job's policy has one statement. [[slnc 300]] Allow put object, on the objects of one bucket. [[slnc 300]] Everything else is denied, because nothing else is allowed."""
+
+[[class]]
+name = "Store"
+what = "the S3 calls the demo makes"
+[[class.part]]
+title = "every upload carries its SHA-256"
+code = """
+return s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key)
+        .checksumSHA256(sha256Base64(data)).build(),
+        RequestBody.fromBytes(data)).versionId();
+"""
+speech = """Every upload sends the S H A two five six of its bytes. [[slnc 300]] The store recomputes it and refuses a mismatch. [[slnc 300]] And on a versioned bucket, each put returns a new version id."""
+[[class.part]]
+title = "read one version by its id"
+code = """
+return s3.getObjectAsBytes(GetObjectRequest.builder()
+        .bucket(bucket).key(key)
+        .versionId(versionId)
+        .build()).asByteArray();
+"""
+speech = """A restore reads an older version by its id. [[slnc 300]] Then writes it back as the newest."""
+[[class.part]]
+title = "lock a version until a date"
+code = """
+s3.putObjectRetention(PutObjectRetentionRequest.builder()
+        .bucket(bucket).key(key).versionId(versionId)
+        .retention(ObjectLockRetention.builder()
+                .mode(mode)
+                .retainUntilDate(until)
+                .build())
+"""
+speech = """Retention locks one version, in a mode, until a date. [[slnc 300]] Compliance or governance. [[slnc 300]] The same call, with an earlier date, is how the demo tries to shorten it."""
+[[class.part]]
+title = "old versions expire after some days"
+code = """
+LifecycleRule rule = LifecycleRule.builder()
+        .id("expire-old-versions")
+        .status(ExpirationStatus.ENABLED)
+        .filter(LifecycleRuleFilter.builder().prefix("").build())
+        .noncurrentVersionExpiration(NoncurrentVersionExpiration.builder()
+                .noncurrentDays(days)
+"""
+speech = """The lifecycle rule applies to every key in the bucket. [[slnc 300]] A version that has been replaced is removed after the given number of days."""
+
+[[acronym]]
+short = "S3, SDK, AWS"
+long = "Simple Storage Service, the object store API; Software Development Kit"
+say = "S3 is the Simple Storage Service interface that RustFS speaks. The A W S S D K is the software development kit the Java code uses to call it."
+[[acronym]]
+short = "API, IAM, ARN"
+long = "the store's interface; Identity and Access Management; Amazon Resource Name"
+say = "The A P I is the store's programming interface. I A M is identity and access management: users and policies. An A R N is a resource name, here the backup bucket's objects."
+[[acronym]]
+short = "SHA-256, Base64"
+long = "Secure Hash Algorithm, 256 bits; a text encoding of bytes"
+say = "S H A two five six is the Secure Hash Algorithm with two hundred and fifty six bits: a fingerprint. Base sixty four writes those bytes as text."
+[[acronym]]
+short = "WORM, FS"
+long = "Write Once, Read Many; File System (the FS in RustFS)"
+say = "WORM means write once, read many: a stored copy can be read but never changed or deleted until its lock runs out. The F S in RustFS stands for file system."
+[[acronym]]
+short = "HTTP 400, 403, 404"
+long = "status codes: bad request; forbidden; not found"
+say = "The numbers are H T T P status codes. Four hundred is a bad request, four oh three is forbidden, and four oh four is not found."
+[[acronym]]
+short = "COMPLIANCE, GOVERNANCE"
+long = "lock modes: nobody can lift it; a special permission can"
+say = "These are the two object lock modes. A compliance lock cannot be lifted by anyone until its date. A governance lock can be, by someone with a special permission."
+[[acronym]]
+short = "MB, csv, tar"
+long = "megabytes; comma-separated values; a tape archive file"
+say = "M B is megabytes. Each C S V file holds comma separated values, and a tar file is an archive of many files."

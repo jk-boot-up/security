@@ -13,6 +13,8 @@ final class UsageAudit {
     }
 
     static List<Holding> unused(List<Holding> holdings, long today, long days) {
-        return holdings.stream().filter(h -> h.lastUsedDay() < 0 || today - h.lastUsedDay() > days).toList();
+        return holdings.stream()
+                .filter(h -> h.lastUsedDay() < 0 || today - h.lastUsedDay() > days)
+                .toList();
     }
 }

@@ -17,12 +17,22 @@ final class Retention {
 
     static TreeSet<LocalDate> keep(List<LocalDate> days, LocalDate today, int daily, int weekly, int monthly) {
         TreeSet<LocalDate> kept = new TreeSet<>();
-        days.stream().filter(day -> !day.isAfter(today) && day.isAfter(today.minusDays(daily))).forEach(kept::add);
-        days.stream().filter(day -> day.getDayOfWeek() == DayOfWeek.SUNDAY).sorted(Comparator.reverseOrder()).limit(weekly).forEach(kept::add);
+        days.stream()
+                .filter(day -> !day.isAfter(today))
+                .filter(day -> day.isAfter(today.minusDays(daily)))
+                .forEach(kept::add);
+        days.stream()
+                .filter(day -> day.getDayOfWeek() == DayOfWeek.SUNDAY)
+                .sorted(Comparator.reverseOrder())
+                .limit(weekly)
+                .forEach(kept::add);
         Map<YearMonth, LocalDate> firstOfMonth = new TreeMap<>();
-        days.stream().sorted().forEach(day -> firstOfMonth.putIfAbsent(YearMonth.from(day), day));
-        firstOfMonth.entrySet().stream().sorted(Map.Entry.<YearMonth, LocalDate>comparingByKey().reversed())
-                .limit(monthly).forEach(entry -> kept.add(entry.getValue()));
+        days.stream().sorted()
+                .forEach(day -> firstOfMonth.putIfAbsent(YearMonth.from(day), day));
+        firstOfMonth.entrySet().stream()
+                .sorted(Map.Entry.<YearMonth, LocalDate>comparingByKey().reversed())
+                .limit(monthly)
+                .forEach(entry -> kept.add(entry.getValue()));
         return kept;
     }
 }

@@ -37,11 +37,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A sniffer on the wire, without and with TLS | Without TLS the sniffer reads the card number; with TLS it sees a record of type 23 and no card number, and the record is only a few dozen bytes larger than the order. |
-| 2. The handshake | The client speaks first with a readable ClientHello that shows the site's name; the ServerHello chooses TLS 1.3 and TLS_AES_256_GCM_SHA384; the rest of the handshake, including the certificate, is encrypted. |
-| 3. Who is on the other end | The shop's own certificate works; an impostor with the same name but an untrusted certificate is refused; the real certificate with a different requested name is refused. |
-| 4. Protecting the data | The server opens an untouched record; the same order in two connections looks different; one changed bit is refused; keys are made fresh each time from temporary key pairs. |
-| 5. Settings, and the bill | A client offering only TLS 1.0 fails; TLS 1.2 still works and agrees TLSv1.2 unless the server requires 1.3; the bill is certificates, a round trip, and what still shows. |
+| 1. A sniffer on the wire, without and with TLS | Without TLS the sniffer reads the card number in the 34-byte order; with TLS it sees one 72-byte record: a 5-byte header in the clear, then 67 encrypted bytes (34 order, 1 type, 16 padding, 16 tag). |
+| 2. The handshake | The client speaks first with a readable ClientHello that shows the site's name; the ServerHello chooses TLS 1.3 and TLS_AES_256_GCM_SHA384; after it, record types 20 and 23 follow and the certificate is encrypted. |
+| 3. Who is on the other end | The client asks for shop.example.test and trusts one certificate, fingerprint 0ded3842d38b01a7; the shop works, an impostor with the same name but fingerprint b72122451fcf2531 is refused, and the shop is refused when the client asked for another name. |
+| 4. Protecting the data | The same order gives different bytes in two connections and opens untouched; one bit flipped in byte 36 of 72 is refused with (bad_record_mac) Tag mismatch; keys from temporary key pairs give forward secrecy. |
+| 5. Settings, and the bill | Against a default server, a client offering only TLSv1 is refused and TLSv1.2 agrees TLSv1.2; against a server that requires TLS 1.3, TLSv1.2 is refused and TLSv1.3 works; the bill is certificates, a round trip, and what still shows. |
 
 ## Test
 
@@ -49,7 +49,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `DemoRunsTest`, `HandshakeTest`. The two engines run in memory and the keys and nonces are random, so the demo prints only facts that do not depend on them: protocol and cipher suite names, the types of records, and yes or no results. The test keystores are fixed files, valid for a hundred years.
+15 tests in `DemoRunsTest`, `HandshakeTest`. The two engines run in memory and the keys and nonces are random, so the demo prints only facts that do not depend on them: protocol and cipher suite names, the types of records, and yes or no results. The test keystores are fixed files, valid for a hundred years.
 
 ## What the simulation got right, and what it left out
 

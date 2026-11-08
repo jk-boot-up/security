@@ -13,7 +13,11 @@ public final class UnsafeSearch {
 
     /** Returns the name and price of every listed product that matches. */
     public List<MiniDb.Row> search(String term, String sort) {
-        String sql = "SELECT name, price FROM products WHERE name LIKE '%" + term + "%' AND listed = 1 ORDER BY " + sort;
-        return db.query(sql);
+        return db.query(statement(term, sort));
+    }
+
+    /** The statement exactly as it is sent: the customer's text pasted into it. */
+    static String statement(String term, String sort) {
+        return "SELECT name, price FROM products WHERE name LIKE '%" + term + "%' AND listed = 1 ORDER BY " + sort;
     }
 }

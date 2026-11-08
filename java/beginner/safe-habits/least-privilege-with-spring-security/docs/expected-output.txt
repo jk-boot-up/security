@@ -1,36 +1,81 @@
 ONE. Deny by default: every path needs a rule.
-  no credentials, GET /orders: 401  <- WHO ARE YOU?
-  alice (support) with a wrong password: 401
-  alice (support) GET /orders: 200
-  alice (support) GET /reports: 403  <- KNOWN, BUT NOT ALLOWED
-  dave (admin) GET /admin/debug, a path nobody wrote a rule for: 403  <- NO RULE MEANS NO, EVEN FOR AN ADMIN
-  the last rule is anyRequest().denyAll(), so a forgotten endpoint stays closed
+  THE RULES (in Shop.chain, checked top to bottom):
+    GET /orders       needs orders:read
+    GET /reports      needs reports:read
+    GET /secrets      needs secrets:read
+    GET /staff/**     needs the role SUPPORT
+    PUT /payments/**  needs payments:write, or a grant
+    /refunds/**       signed in; the methods decide
+    anything else     denyAll
+  THE REQUESTS:
+    1  no credentials         GET /orders
+    2  alice, wrong password  GET /orders
+    3  alice (support)        GET /orders
+    4  alice (support)        GET /reports
+    5  dave (admin)           GET /admin/debug
+  THE RESPONSES:
+    1  401  who are you?
+    2  401  wrong password, so still unknown
+    3  200  she holds orders:read
+    4  403  known, but no reports:read
+    5  403  no rule matches, so denyAll  <- EVEN FOR AN ADMIN
+  401: not signed in.  403: signed in, but not allowed.
 TWO. Method security: the rule sits next to the code it guards.
-  bob (warehouse) POST /refunds: 403  <- NO refunds:create
-  alice (support) POST /refunds: 200, the new refund is R-1
-  alice GET /refunds/R-1: 200, her own request
-  carol (finance) GET /refunds/R-1: 200, an approver may read any
-  bob GET /refunds/R-1: 403, someone else's request
-  the method ran for bob before the answer was withheld: true  <- @PostAuthorize JUDGES THE RESULT, SO KEEP SIDE EFFECTS OUT OF SUCH METHODS
-  @PreAuthorize stops a call before it runs, and @PostAuthorize judges it after it has run
+  THE RULES ON THE METHODS (in Refunds):
+    create()  @PreAuthorize   needs refunds:create
+    view()    @PostAuthorize  requester, or refunds:approve
+  THE REQUESTS:
+    1  bob (warehouse)  POST /refunds
+    2  alice (support)  POST /refunds
+    3  alice            GET /refunds/R-1
+    4  carol (finance)  GET /refunds/R-1
+    5  bob              GET /refunds/R-1
+  THE RESPONSES:
+    1  403  no refunds:create, so create() never ran
+    2  200  the new refund is R-1
+    3  200  her own request
+    4  200  an approver may read any
+    5  403  someone else's request
+  did view() run for bob before his 403? true
+  <- @PostAuthorize RUNS FIRST: NO SIDE EFFECTS
 THREE. Separation of duties: two people for a refund.
-  alice approves her own refund R-1: 403  <- NO refunds:approve
-  dave (admin) creates refund R-2 and then approves it himself: 403  <- ADMIN POWER DOES NOT REMOVE THE RULE
-  carol (finance) approves R-1: approved by carol
-  alice creates R-3 and dave approves it: approved by dave  <- AN ADMIN MAY APPROVE SOMEONE ELSE'S REQUEST
-  the rule is in one place, a bean that the annotation calls, and no role can switch it off
+  THE RULE ON approve() (in Refunds):
+    hasAuthority('refunds:approve')
+    and @refundRules.differentPerson(#id, authentication)
+  THE REQUESTS:
+    1  alice (support)  approves her own R-1
+    2  dave (admin)     creates R-2, then approves it
+    3  carol (finance)  approves R-1, alice's
+    4  dave (admin)     approves R-3, which alice created
+  THE RESPONSES:
+    1  403  no refunds:approve
+    2  403  same person  <- ADMIN POWER DOES NOT HELP
+    3  200  approved by carol
+    4  200  approved by dave: someone else's request
+  the rule is one bean the annotation calls: no role turns it off
 FOUR. A role hierarchy, and what a stolen credential can reach.
-  the staff queue needs the support role. alice (support): 200, dave (admin, which includes support): 200, carol (finance): 403, exporter: 403
-  the nightly order export runs as dave, because that was quick: a stolen token reaches 15 of 15  <- EVERYTHING
-  the same job as the exporter service account: a stolen token reaches 2 of 15
-  alice reaches 3 of 15, bob 3, carol 3
-  the exporter can read orders: 200, and cannot reach the secrets: 403
-  the numbers come from asking Spring Security's own authorization manager about each action, not from a separate list
+  THE HIERARCHY: ADMIN includes SUPPORT, FINANCE and WAREHOUSE
+  GET /staff/queue NEEDS THE ROLE SUPPORT:
+    alice (SUPPORT)      200
+    dave (ADMIN)         200  ADMIN includes SUPPORT
+    carol (FINANCE)      403
+    exporter (EXPORTER)  403
+  BEFORE THE FIX (the nightly export runs as dave, the admin):
+    a stolen token reaches 15 of 15  <- EVERYTHING
+  AFTER THE FIX (the exporter service account):
+    it holds orders:read reports:read
+    a stolen token reaches 2 of 15
+    GET /orders: 200, GET /secrets: 403
+  the others: alice 3 of 15, bob 3, carol 3
+  each count asks Spring Security's own authorization manager
 FIVE. Access that expires by itself.
-  carol (finance) is granted payments:write for ticks 10 to 12, for a month-end fix
-  at tick 9 PUT /payments/P-1: 403
-  at tick 10 PUT /payments/P-1: 200
-  at tick 12 PUT /payments/P-1: 200
-  at tick 13 PUT /payments/P-1: 403
-  alice, who never had a grant, at tick 11: 403
-  the rule is a custom AuthorizationManager that asks an injected clock, so the demo and the tests control time
+  THE GRANT (for a month-end fix):
+    carol (finance) gets payments:write
+    from tick 10 to tick 12, both included
+  THE REQUESTS AND RESPONSES (PUT /payments/P-1):
+    tick 9   carol  403  before the grant
+    tick 10  carol  200  inside the grant
+    tick 12  carol  200  inside the grant
+    tick 13  carol  403  expired by itself
+    tick 11  alice  403  never had a grant
+  GrantAuthorization asks a clock the tests can set

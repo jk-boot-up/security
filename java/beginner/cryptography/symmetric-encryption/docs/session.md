@@ -14,18 +14,21 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: A statement stored as it is | 7 min |
-| 0:17 | Act 2: AES in ECB mode: every block on its own | 7 min |
-| 0:24 | Act 3: AES-GCM: hiding and checking | 7 min |
-| 0:31 | Act 4: The one mistake: using a nonce twice | 7 min |
-| 0:38 | Act 5: The bill: sizes, nonces, and the key | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: A statement stored as it is | 5 min |
+| 0:15 | Act 2: AES in ECB mode: every block on its own | 5 min |
+| 0:20 | Act 3: AES-GCM, step by step: sealing one line | 5 min |
+| 0:25 | Act 4: How the tag is made, step by step | 5 min |
+| 0:30 | Act 5: The same line, sealed again | 5 min |
+| 0:35 | Act 6: Opening it, and three changes | 5 min |
+| 0:40 | Act 7: The one mistake: using a nonce twice | 5 min |
+| 0:45 | Act 8: The bill: sizes, nonces, and the key | 5 min |
+| 0:50 | Exercises | 10 min |
 
 ## Walkthrough
 
 Start with the lock box analogy. Run the demo one act at a time. After act two, ask the group what the attacker has learnt, without reading any line. After
-act three, ask what the associated data protects against, and let them name moving a message between accounts. In act four, ask what the attacker needed, and make the
-point that the key was never involved. In act five, ask where the key should live and who should be able to read it.
+act six, ask what the associated data protects against, and let them name moving a message between accounts. In act seven, ask what the attacker needed, and make the
+point that the key was never involved. In act eight, ask where the key should live and who should be able to read it.
 
 ## Exercises
 

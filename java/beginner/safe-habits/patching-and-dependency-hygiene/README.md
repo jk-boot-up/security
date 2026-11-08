@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. An inventory of what the store ships | A bill of materials lists 7 components, the store and 6 libraries; 3 are direct choices and 3 arrive as dependencies of dependencies. |
-| 2. Matching the inventory against known problems | Versions are compared as numbers, so 1.10.0 is newer than 1.9.0; 3 of 5 fictional advisories apply, two through transitive libraries, and the fixed versions are not flagged. |
-| 3. How bad, and what to fix first | The CVSS equation scores the three problems 9.8, 7.5 and 6.1; reachability puts the critical one and the medium one ahead of the high one that the store cannot reach. |
-| 4. Patch windows | On day 40 of a simulated clock, the critical fix was made in 5 days within its 7, the medium one has 62 days left, and the high one is 10 days past its 30-day deadline. |
-| 5. Pinning, and checking what you download | Three reviewed artifacts are pinned by SHA-256; the same file verifies, a single changed bit or an unreviewed version is refused, and a name one letter from a real one is flagged. |
+| 1. An inventory of what the store ships | The store's SBOM lists 7 components: the store and 6 libraries; 3 were chosen by the team (direct), 3 came with them (transitive): acme-json, acme-crypto and acme-xml. |
+| 2. Matching the inventory against known problems | Five fictional advisories are matched by comparing versions as numbers, not text: 3 of 5 apply, two transitive (fix by forcing the fixed version) and one direct (change the version). |
+| 3. How bad, and what to fix first | The CVSS 3.1 score of DEMO-2026-0001 is worked out step by step, 0.915, 5.873, 3.887, 9.760, rounded up to 9.8 Critical; with reachability, the order is 0001 now, 0003 in the window, 0002 with the next upgrade. |
+| 4. Patch windows | Deadlines are Critical 7, High 30, Medium 90, Low 180 days; on day 40, DEMO-2026-0001 was patched on day 5 (in time), DEMO-2026-0003 has 62 days left, and DEMO-2026-0002 BREACHED its 30 days 10 days ago. |
+| 5. Pinning, and checking what you download | 3 artifacts are pinned by their SHA-256; the reviewed download is VERIFIED, a copy with one bit flipped is a MISMATCH and an unreviewed version is NOT_PINNED; acme-jsom is flagged as a copy of acme-json. |
 
 ## Test
 

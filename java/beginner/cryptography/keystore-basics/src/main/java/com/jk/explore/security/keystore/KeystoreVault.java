@@ -10,6 +10,7 @@ import java.security.KeyStore;
 import java.security.Security;
 import java.security.UnrecoverableKeyException;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
@@ -53,6 +54,22 @@ public class KeystoreVault {
         try {
             store.setEntry(alias, new KeyStore.SecretKeyEntry(new SecretKeySpec(keyBytes, "AES")),
                     new KeyStore.PasswordProtection(password));
+            return this;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Puts a key locked with a chosen number of rounds. The key is locked here, when it is put, not when the file is saved,
+     * so this is the place to raise its rounds.
+     */
+    public KeystoreVault put(String alias, byte[] keyBytes, int rounds) {
+        byte[] salt = new byte[16];
+        new java.security.SecureRandom().nextBytes(salt);
+        try {
+            store.setEntry(alias, new KeyStore.SecretKeyEntry(new SecretKeySpec(keyBytes, "AES")),
+                    new KeyStore.PasswordProtection(password, "PBEWithHmacSHA256AndAES_256", new PBEParameterSpec(salt, rounds)));
             return this;
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
@@ -104,7 +121,8 @@ public class KeystoreVault {
 
     /**
      * Saves with a chosen number of rounds for the key that protects the file. The JDK reads these settings from security
-     * properties, so they are set for the save and put back afterwards.
+     * properties, so they are set for the save and put back afterwards. They reach the integrity check made at save, but not
+     * the keys, which were already locked when they were put.
      */
     public void saveWithRounds(Path file, int rounds) {
         String[] names = {"keystore.pkcs12.keyPbeIterationCount", "keystore.pkcs12.certPbeIterationCount", "keystore.pkcs12.macIterationCount"};
@@ -123,20 +141,23 @@ public class KeystoreVault {
     }
 
     /**
-     * Reads, from the saved file itself, how many rounds of key derivation protect it: the file records the count as a DER
-     * integer. Only a few common counts are looked for, which is enough to show what the file says.
+     * Reads, from the saved file itself, how many rounds of key derivation protect it, in file order: first the lock on the
+     * key, then the integrity check at the end of the file. The file records each count as a DER integer (02, length, value).
+     * Only a few common counts are looked for, which is enough to show what the file says.
      */
     public static java.util.List<Integer> allRoundsRecordedIn(byte[] file) {
         java.util.List<Integer> found = new java.util.ArrayList<>();
         int[] candidates = {10_000, 50_000, 100_000, 210_000, 600_000, 1_000_000};
-        for (int rounds : candidates) {
-            byte[] value = java.math.BigInteger.valueOf(rounds).toByteArray();
-            byte[] der = new byte[2 + value.length];
-            der[0] = 0x02;
-            der[1] = (byte) value.length;
-            System.arraycopy(value, 0, der, 2, value.length);
-            if (Hex.contains(file, der)) {
-                found.add(rounds);
+        for (int i = 0; i < file.length; i++) {
+            for (int rounds : candidates) {
+                byte[] value = java.math.BigInteger.valueOf(rounds).toByteArray();
+                byte[] der = new byte[2 + value.length];
+                der[0] = 0x02;
+                der[1] = (byte) value.length;
+                System.arraycopy(value, 0, der, 2, value.length);
+                if (i + der.length <= file.length && java.util.Arrays.equals(file, i, i + der.length, der, 0, der.length)) {
+                    found.add(rounds);
+                }
             }
         }
         return found;

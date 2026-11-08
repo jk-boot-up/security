@@ -2,14 +2,24 @@ package com.jk.explore.security.tls;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 
-/** Runs the online store story in five numbered acts and prints exact, repeatable results. Keys and nonces are random, so only facts that do not depend on them are printed. */
+/**
+ * Runs the online store story in five numbered acts and prints exact, repeatable results. Keys and nonces are random, so only facts that
+ * do not depend on them are printed. Each act prints its input and its result in separate, labelled sections.
+ */
 public class TlsDemo {
 
     static final String ORDER = "card=4111111111111111&order=A-1001";
+    static final String CARD = "4111111111111111";
+    /** The JDK adds this many zero bytes after the data in every TLS 1.3 record (see the JDK's OutputRecord). */
+    static final int PADDING = 16;
+    /** The authentication tag that AES-GCM adds to every record. */
+    static final int TAG = 16;
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -21,7 +31,7 @@ public class TlsDemo {
         SSLContext client = TestCertificates.client();
         SSLContext shop = TestCertificates.server("shop.p12");
         act1BeforeAndAfter(out, client, shop);
-        act2Handshake(out, client, shop);
+        act2Handshake(out, shop);
         act3Identity(out, client, shop);
         act4Protection(out, client, shop);
         act5SettingsAndCosts(out, client, shop);
@@ -40,85 +50,130 @@ public class TlsDemo {
         return connection;
     }
 
+    private static String hex(byte[] bytes, int from, int to) {
+        return HexFormat.ofDelimiter(" ").formatHex(bytes, from, to);
+    }
+
+    private static String types(byte[] bytes) {
+        return Wire.recordTypes(bytes).stream().map(String::valueOf).collect(Collectors.joining(" "));
+    }
+
     private static void act1BeforeAndAfter(StringBuilder out, SSLContext client, SSLContext shop) throws SSLException {
         line(out, "ONE. A sniffer on the wire, without and with TLS.");
         byte[] plain = ORDER.getBytes(StandardCharsets.UTF_8);
-        line(out, "  without TLS the order is sent as it is, and the sniffer sees the card number: " + Wire.contains(plain, "4111111111111111"));
-        Connection connection = connected(client, shop);
-        byte[] record = connection.clientSeals(plain);
-        line(out, "  with TLS the sniffer sees a record of type " + Wire.recordTypes(record).get(0) + " (application data) and the card number: "
-                + Wire.contains(record, "4111111111111111"));
-        line(out, "  the record is not larger than the order plus a few dozen bytes of header, padding and tag: " + (record.length - plain.length < 48));
+        line(out, "  BEFORE TLS (the order, as the sniffer sees it):");
+        line(out, "    " + ORDER);
+        line(out, "    " + plain.length + " bytes, the card number readable: " + Wire.contains(plain, CARD) + "  <- READABLE");
+        byte[] record = connected(client, shop).clientSeals(plain);
+        int length = record.length - 5;
+        line(out, "  AFTER TLS (one record of " + record.length + " bytes, as the sniffer sees it):");
+        line(out, "    header    " + hex(record, 0, 5) + "  (in the clear)");
+        line(out, "    the rest  " + length + " bytes, encrypted");
+        line(out, "    the card number readable: " + Wire.contains(record, CARD));
+        line(out, "  HOW THE " + record.length + " BYTES ARE MADE:");
+        line(out, "    " + hex(record, 0, 1) + "        type " + Wire.recordTypes(record).get(0) + ", application data");
+        line(out, "    " + hex(record, 1, 3) + "     version, written as TLS 1.2 for old boxes");
+        line(out, "    " + hex(record, 3, 5) + "     length: " + length + " bytes follow the header");
+        line(out, "    " + length + " bytes  " + plain.length + " order + 1 type + " + PADDING + " padding + " + TAG + " tag");
     }
 
-    private static void act2Handshake(StringBuilder out, SSLContext client, SSLContext shop) {
+    private static void act2Handshake(StringBuilder out, SSLContext shop) throws Exception {
         line(out, "TWO. The handshake.");
-        Connection connection = connected(client, shop);
-        List<Integer> first = Wire.recordTypes(connection.wire.clientBytes());
-        List<Integer> reply = Wire.recordTypes(connection.wire.serverBytes());
-        line(out, "  the client speaks first, with a handshake record (type " + first.get(0) + ") called ClientHello");
-        line(out, "  the ClientHello is not encrypted, because no key exists yet, so the sniffer reads the name of the site: "
-                + Wire.contains(connection.wire.clientBytes(), TestCertificates.HOST));
-        line(out, "  the server answers with a handshake record (type " + reply.get(0) + ") called ServerHello, which chooses the protocol and cipher");
-        line(out, "  after the ServerHello the rest of the handshake is encrypted: the certificate is hidden from the sniffer: "
-                + !Wire.contains(connection.wire.serverBytes(), TestCertificates.HOST));
-        line(out, "  agreed protocol: " + connection.protocol());
-        line(out, "  agreed cipher suite: " + connection.cipherSuite());
-        line(out, "  both sides now share keys that were never sent over the wire");
+        // a client that has never met the shop, so the whole handshake runs and the certificate is sent
+        Connection connection = connected(TestCertificates.client(), shop);
+        byte[] fromClient = connection.wire.clientBytes();
+        byte[] fromServer = connection.wire.serverBytes();
+        line(out, "  BEFORE THE KEYS (the two hellos, in the clear):");
+        line(out, "    client sends  ClientHello, record type " + Wire.recordTypes(fromClient).get(0));
+        line(out, "    the site name " + TestCertificates.HOST + " readable: " + Wire.contains(fromClient, TestCertificates.HOST));
+        line(out, "    server sends  ServerHello, record type " + Wire.recordTypes(fromServer).get(0));
+        line(out, "    chosen        " + connection.protocol() + ", " + connection.cipherSuite());
+        line(out, "  AFTER THE KEYS (the rest of the handshake, encrypted):");
+        line(out, "    record types from the client  " + types(fromClient));
+        line(out, "    record types from the server  " + types(fromServer));
+        line(out, "    the certificate readable: " + Wire.contains(fromServer, TestCertificates.HOST) + "  <- ENCRYPTED");
+        line(out, "    the keys themselves were never sent");
+        line(out, "  WHAT THE RECORD TYPES MEAN:");
+        line(out, "    " + Wire.HANDSHAKE + "  handshake, in the clear");
+        line(out, "    " + Wire.CHANGE_CIPHER_SPEC + "  change cipher spec, kept only for old boxes");
+        line(out, "    " + Wire.APPLICATION_DATA + "  encrypted: the rest of the handshake, then data");
+        String[] part = connection.cipherSuite().split("_");          // TLS, AES, 256, GCM, SHA384
+        line(out, "  THE CIPHER SUITE, PART BY PART:");
+        line(out, "    " + part[0] + "        the protocol");
+        line(out, "    " + part[1] + " " + part[2] + "    the cipher, with a " + part[2] + "-bit key");
+        line(out, "    " + part[3] + "        the mode: encrypts and adds a tag");
+        line(out, "    " + part[4] + "     the hash that makes the keys");
     }
 
     private static void act3Identity(StringBuilder out, SSLContext client, SSLContext shop) throws Exception {
         line(out, "THREE. Who is on the other end.");
-        line(out, "  the shop's own certificate, name " + TestCertificates.HOST + ": handshake works: " + new Connection(client, shop, TestCertificates.HOST).handshake());
+        String shopPrint = TestCertificates.fingerprint("shop.p12");
+        String fakePrint = TestCertificates.fingerprint("impostor.p12");
+        line(out, "  BEFORE THE HANDSHAKE (what the client knows):");
+        line(out, "    asks for  " + TestCertificates.HOST);
+        line(out, "    trusts    one certificate, SHA-256 " + shopPrint);
+        line(out, "  AFTER THE HANDSHAKE (three servers answer):");
+        line(out, "    1. the shop, certificate " + shopPrint);
+        line(out, "       works: " + new Connection(client, shop, TestCertificates.HOST).handshake());
         SSLContext impostor = TestCertificates.server("impostor.p12");
-        Connection fake = new Connection(client, impostor, TestCertificates.HOST);
-        line(out, "  an impostor with the same name but a certificate the client does not trust: handshake works: " + fake.handshake()
-                + "  <- THE CLIENT REFUSES");
-        Connection wrongName = new Connection(client, shop, "other.example.test");
-        line(out, "  the shop's real certificate, but the client asked for another.example.test: handshake works: " + wrongName.handshake()
-                + "  <- THE NAME MUST MATCH");
-        line(out, "  a certificate proves a key belongs to a name, because someone the client trusts vouched for it");
+        line(out, "    2. an impostor, same name, certificate " + fakePrint);
+        line(out, "       works: " + new Connection(client, impostor, TestCertificates.HOST).handshake() + "  <- NOT TRUSTED");
+        line(out, "    3. the shop, but the client asked for other.example.test");
+        line(out, "       works: " + new Connection(client, shop, "other.example.test").handshake() + "  <- THE NAME MUST MATCH");
+        line(out, "  a name alone proves nothing: the client must trust the certificate");
     }
 
     private static void act4Protection(StringBuilder out, SSLContext client, SSLContext shop) throws SSLException {
         line(out, "FOUR. Protecting the data.");
         byte[] plain = ORDER.getBytes(StandardCharsets.UTF_8);
+        line(out, "  BEFORE SENDING (the order):");
+        line(out, "    " + ORDER);
         Connection connection = connected(client, shop);
         byte[] record = connection.clientSeals(plain);
-        line(out, "  the server opens an untouched record and gets the order back: " + Arrays.equals(connection.serverOpens(record), plain));
-        Connection other = connected(client, shop);
-        Connection again = connected(client, shop);
-        byte[] first = other.clientSeals(plain);
-        byte[] second = again.clientSeals(plain);
-        line(out, "  the same order in two connections gives different bytes on the wire, because each has fresh keys: " + !Arrays.equals(first, second));
+        byte[] second = connected(client, shop).clientSeals(plain);
+        line(out, "  AFTER SENDING (the record, in two connections):");
+        line(out, "    the same bytes on the wire both times: " + Arrays.equals(record, second) + "  <- FRESH KEYS");
+        line(out, "    the server opens it, and gets the order back: " + Arrays.equals(connection.serverOpens(record), plain));
         Connection tampered = connected(client, shop);
         byte[] changed = tampered.clientSeals(plain);
-        changed[changed.length / 2] ^= 0x01;
+        int at = changed.length / 2;
+        changed[at] ^= 0x01;
+        line(out, "  BEFORE THE CHECK (an attacker flips one bit):");
+        line(out, "    byte " + at + " of " + changed.length + ", xor 01");
         String result;
         try {
             tampered.serverOpens(changed);
             result = "accepted";
         } catch (SSLException e) {
-            result = "refused";
+            result = "refused, " + e.getMessage();
         }
-        line(out, "  one changed bit in a record: " + result + "  <- TLS PROTECTS INTEGRITY AS WELL AS SECRECY");
-        line(out, "  the keys of each connection are made fresh from temporary key pairs, so a stolen server key cannot open recorded traffic");
+        line(out, "  AFTER THE CHECK (the server checks the tag):");
+        line(out, "    " + result + "  <- CHANGE SEEN");
+        line(out, "  fresh keys come from temporary key pairs, made per connection,");
+        line(out, "  so a stolen server key cannot open recorded traffic");
+    }
+
+    private static String offer(Connection connection, String version) {
+        connection.client.setEnabledProtocols(new String[] {version});
+        boolean works = connection.handshake();
+        return "client offers " + (version + "   ").substring(0, 7) + "  works: " + works + (works ? ", agreed " + connection.protocol() : "");
     }
 
     private static void act5SettingsAndCosts(StringBuilder out, SSLContext client, SSLContext shop) {
         line(out, "FIVE. Settings, and the bill.");
-        Connection old = new Connection(client, shop, TestCertificates.HOST);
-        old.client.setEnabledProtocols(new String[] {"TLSv1"});
-        line(out, "  a client that only offers TLS 1.0: handshake works: " + old.handshake() + "  <- OLD VERSIONS ARE SWITCHED OFF");
-        Connection middle = new Connection(client, shop, TestCertificates.HOST);
-        middle.client.setEnabledProtocols(new String[] {"TLSv1.2"});
-        boolean twelve = middle.handshake();
-        line(out, "  a client that offers only TLS 1.2: handshake works: " + twelve + ", agreed protocol: " + (twelve ? middle.protocol() : "none"));
-        Connection strict = new Connection(client, shop, TestCertificates.HOST);
-        strict.server.setEnabledProtocols(new String[] {"TLSv1.3"});
-        strict.client.setEnabledProtocols(new String[] {"TLSv1.2"});
-        line(out, "  the same client against a server that requires TLS 1.3: handshake works: " + strict.handshake());
-        line(out, "  the bill: certificates must be obtained and renewed, the handshake costs a round trip and some computing, and the keys must be kept safe");
-        line(out, "  TLS protects the connection between two ends, not what the ends do with the data, and the name of the site and the sizes of messages still show");
+        line(out, "  BEFORE TIGHTENING (a default server):");
+        line(out, "    " + offer(new Connection(client, shop, TestCertificates.HOST), "TLSv1") + "  <- OLD VERSIONS ARE OFF");
+        line(out, "    " + offer(new Connection(client, shop, TestCertificates.HOST), "TLSv1.2"));
+        line(out, "  AFTER TIGHTENING (the server requires TLS 1.3):");
+        for (String version : List.of("TLSv1.2", "TLSv1.3")) {
+            Connection strict = new Connection(client, shop, TestCertificates.HOST);
+            strict.server.setEnabledProtocols(new String[] {"TLSv1.3"});
+            line(out, "    " + offer(strict, version));
+        }
+        line(out, "  THE BILL:");
+        line(out, "    certificates must be obtained, renewed and kept safe");
+        line(out, "    the handshake costs a round trip and some computing");
+        line(out, "    TLS protects the connection, not the ends");
+        line(out, "    the site name and the message sizes still show");
     }
 }

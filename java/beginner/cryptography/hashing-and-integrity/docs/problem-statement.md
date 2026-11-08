@@ -15,5 +15,6 @@ Put a CRC or a hash next to the data. It catches accidents and misses an attacke
 - A demonstration that a CRC and a hash beside the data can be replaced by an attacker.
 - A demonstration that a hash reaching the checker by another channel catches a tampered download.
 - An HMAC check that refuses a changed invoice, a plain-hash tag and a tag made with a guessed key.
+- The HMAC tag worked out step by step by hand, giving exactly the JDK's tag.
 - The three problems around HMAC: ambiguous encoding, replay and a shared key.
 - The same output every run, checked against a golden output file.

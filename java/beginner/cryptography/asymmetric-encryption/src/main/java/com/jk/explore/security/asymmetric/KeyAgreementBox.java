@@ -1,10 +1,17 @@
 package com.jk.explore.security.asymmetric;
 
+import java.math.BigInteger;
 import java.security.GeneralSecurityException;
+import java.security.Key;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.spec.NamedParameterSpec;
+import java.security.spec.XECPrivateKeySpec;
+import java.security.spec.XECPublicKeySpec;
+import java.util.Arrays;
 import javax.crypto.KDF;
 import javax.crypto.KeyAgreement;
 import javax.crypto.spec.HKDFParameterSpec;
@@ -25,6 +32,35 @@ public final class KeyAgreementBox {
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** A private key from its 32 raw bytes, as written in RFC 7748. */
+    public static PrivateKey privateKey(byte[] raw) {
+        try {
+            return KeyFactory.getInstance("X25519").generatePrivate(new XECPrivateKeySpec(NamedParameterSpec.X25519, raw));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    /** A public key from its 32 raw bytes, as written in RFC 7748 (least significant byte first). */
+    public static PublicKey publicKey(byte[] raw) {
+        byte[] bigEndian = new byte[raw.length];
+        for (int i = 0; i < raw.length; i++) {
+            bigEndian[i] = raw[raw.length - 1 - i];
+        }
+        try {
+            return KeyFactory.getInstance("X25519")
+                    .generatePublic(new XECPublicKeySpec(NamedParameterSpec.X25519, new BigInteger(1, bigEndian)));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    /** The 32 raw key bytes: the encoded key ends with them, after a short header naming X25519. */
+    public static byte[] raw(Key key) {
+        byte[] encoded = key.getEncoded();
+        return Arrays.copyOfRange(encoded, encoded.length - 32, encoded.length);
     }
 
     /** The raw shared secret from one side's private key and the other side's public key. */

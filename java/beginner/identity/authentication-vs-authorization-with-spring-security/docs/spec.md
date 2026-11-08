@@ -27,7 +27,7 @@ Learners meet Spring Security as a block of configuration that appears to protec
 
 ## Requirements
 
-1. The demo prints five numbered acts and the output equals `docs/expected-output.txt`.
+1. The demo prints seven numbered acts and the output equals `docs/expected-output.txt`.
 2. A request with no or wrong credentials is answered 401 whenever authentication is required.
 3. A known user who is not allowed is answered 403 and the method body never runs.
 4. Stored passwords are BCrypt hashes and never the passwords.
@@ -38,10 +38,10 @@ Learners meet Spring Security as a block of configuration that appears to protec
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 25 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:20, 1920×1080, narrated in the amy-slow voice |
+| Tests | 21, all passing |
+| Demo output | 76 lines, identical on every run |
+| Acts | 7 |
+| Video | 14:43, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

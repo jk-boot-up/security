@@ -35,10 +35,10 @@ Learners who have seen the plain version need to see how a library removes its s
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 28 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:15, 1920×1080, narrated in the amy-slow voice |
+| Tests | 22, all passing |
+| Demo output | 72 lines, identical on every run |
+| Acts | 6 |
+| Video | 14:01, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

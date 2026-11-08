@@ -38,9 +38,9 @@ Developers join text to build statements, and so a customer can change what the 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 11, all passing |
-| Demo output | 16 lines, identical on every run |
+| Demo output | 67 lines, identical on every run |
 | Acts | 4 |
-| Video | 05:40, 1920×1080, narrated in the amy-slow voice |
+| Video | 12:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

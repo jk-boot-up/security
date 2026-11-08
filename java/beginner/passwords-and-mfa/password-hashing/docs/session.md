@@ -18,7 +18,7 @@ By the end of the session you can:
 | 0:17 | Act 2: A fast hash, with no salt | 7 min |
 | 0:24 | Act 3: A fast hash, with a salt for each account | 7 min |
 | 0:31 | Act 4: A slow hash, with a salt for each account | 7 min |
-| 0:38 | Act 5: The bill: every login pays, and old hashes must be upgraded | 7 min |
+| 0:38 | Act 5: The bill: login costs, and upgrades | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

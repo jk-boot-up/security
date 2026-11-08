@@ -1,11 +1,26 @@
 package com.jk.explore.security.authspring;
 
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.springframework.http.HttpMethod;
 
-/** Runs the online store story in five numbered acts, with Spring Security, and prints exact, repeatable results. */
+/**
+ * Runs the online store story in seven numbered acts, with Spring Security, and prints exact, repeatable results.
+ * Each act prints what goes in (THE REQUESTS, BEFORE ...) apart from what comes out (THE RESPONSES, AFTER ...).
+ */
 public class SpringAuthDemo {
+
+    /** The demo's fixed BCrypt salt, so the output repeats. Real use takes a random salt every time. */
+    static final String SALT = "ShopSaltForBenAccount.";
+
+    /** One request of an act: who sends it (null: no login at all), the password, and what it asks for. */
+    record Ask(String who, String password, HttpMethod method, String path, String note, String mark) {
+
+        static Ask as(String who, HttpMethod method, String path, String note, String mark) {
+            return new Ask(who, who + "-pass", method, path, note, mark);
+        }
+    }
 
     public static void main(String[] args) {
         System.out.print(run());
@@ -17,9 +32,11 @@ public class SpringAuthDemo {
         StringBuilder out = new StringBuilder();
         act1NoChecks(out);
         act2Authentication(out);
-        act3LoginIsNotEnough(out);
-        act4Authorization(out);
-        act5Bill(out);
+        act3BasicHeader(out);
+        act4PasswordCheck(out);
+        act5LoginIsNotEnough(out);
+        act6Authorization(out);
+        act7Bill(out);
         return out.toString();
     }
 
@@ -27,63 +44,125 @@ public class SpringAuthDemo {
         out.append(text).append('\n');
     }
 
+    /** Prints the requests, sends them all, then prints the responses, numbered the same way. */
+    private static void exchange(StringBuilder out, Shop shop, String requests, boolean counts, List<Ask> asks) {
+        line(out, "  THE REQUESTS (" + requests + "):");
+        for (int i = 0; i < asks.size(); i++) {
+            Ask a = asks.get(i);
+            line(out, String.format("    %d  %-6s %-4s %-19s %s", i + 1, a.who() == null ? "nobody" : a.who(),
+                    a.method().name(), a.path(), a.note()).stripTrailing());
+        }
+        line(out, "  THE RESPONSES:");
+        for (int i = 0; i < asks.size(); i++) {
+            Ask a = asks.get(i);
+            int before = shop.encoder().checks();
+            Shop.Result result = shop.send(a.method(), a.path(), a.who(), a.password());
+            int checks = shop.encoder().checks() - before;
+            String extra = counts ? String.format("%-20s %d password check%s", result, checks, checks == 1 ? "" : "s")
+                                  : result.toString();
+            line(out, "    " + (i + 1) + "  " + extra + (a.mark().isEmpty() ? "" : "  <- " + a.mark()));
+        }
+    }
+
     private static void act1NoChecks(StringBuilder out) {
-        line(out, "ONE. Spring Security present, but every request permitted.");
+        line(out, "ONE. Spring Security present, everything permitted.");
         try (Shop shop = new Shop(OpenConfig.class)) {
-            line(out, "  nobody refunds O-1: " + shop.send(HttpMethod.POST, "/orders/O-1/refund", null, null)
-                    + "  <- NOBODY ASKED WHO");
-            line(out, "  nobody views O-1: " + shop.send(HttpMethod.GET, "/orders/O-1", null, null));
+            exchange(out, shop, "no Authorization header", false, List.of(
+                    new Ask(null, null, HttpMethod.POST, "/orders/O-1/refund", "", "NOBODY ASKED WHO"),
+                    new Ask(null, null, HttpMethod.GET, "/orders/O-1", "", "")));
         }
     }
 
     private static void act2Authentication(StringBuilder out) {
-        line(out, "TWO. Authentication: HTTP Basic, passwords stored as BCrypt.");
+        line(out, "TWO. Authentication: HTTP Basic and BCrypt.");
         try (Shop shop = new Shop(LoginOnlyConfig.class)) {
-            line(out, "  a stored password starts with " + shop.encoder().encode("x").substring(0, 7) + " (BCrypt, cost 4)");
-            line(out, "  request with no credentials: " + shop.send(HttpMethod.GET, "/orders/O-2", null, null));
-            line(out, "  ben with a wrong password: " + shop.send(HttpMethod.GET, "/orders/O-2", "ben", "guess"));
-            line(out, "  ben with his password: " + shop.as("ben", HttpMethod.GET, "/orders/O-2"));
+            exchange(out, shop, "ben's own order O-2", true, List.of(
+                    new Ask(null, null, HttpMethod.GET, "/orders/O-2", "no login", ""),
+                    new Ask("ben", "guess", HttpMethod.GET, "/orders/O-2", "password guess", ""),
+                    Ask.as("ben", HttpMethod.GET, "/orders/O-2", "password ben-pass", "")));
         }
     }
 
-    private static void act3LoginIsNotEnough(StringBuilder out) {
-        line(out, "THREE. Authenticated is not the same as authorized.");
+    private static void act3BasicHeader(StringBuilder out) {
+        line(out, "THREE. The login on the wire: the HTTP Basic header.");
+        String joined = BasicHeader.joined("ben", "ben-pass");
+        line(out, "  BEFORE ENCODING (what ben types):");
+        line(out, "    username ben, password ben-pass");
+        line(out, "    joined   " + joined + "   (" + joined.length() + " bytes)");
+        line(out, "  STEP BY STEP (every 3 bytes become 4 letters):");
+        for (String[] step : BasicHeader.steps(joined)) {
+            line(out, "    " + step[0] + "  ->  " + step[1]);
+        }
+        String header = BasicHeader.header("ben", "ben-pass");
+        line(out, "  AFTER ENCODING (what every request carries):");
+        line(out, "    Authorization: " + header);
+        line(out, "  anyone can decode it: " + BasicHeader.decode(header.substring(6))
+                + "  <- NOT ENCRYPTED");
+    }
+
+    private static void act4PasswordCheck(StringBuilder out) {
+        line(out, "FOUR. The password check, step by step: BCrypt.");
+        HashSteps.Parts stored = HashSteps.hash("ben-pass", SALT, 4);
+        line(out, "  BEFORE HASHING (when ben signs up):");
+        line(out, "    password   ben-pass");
+        line(out, "    salt       " + SALT);
+        line(out, "    cost       4, so 2^4 = 16 rounds");
+        line(out, "  AFTER HASHING (the stored line, in four parts):");
+        line(out, "    version    " + stored.version());
+        line(out, "    cost       " + stored.cost());
+        line(out, "    salt       " + stored.salt());
+        line(out, "    hash       " + stored.hash());
+        line(out, "  CHECKING A LOGIN (hash again, same salt):");
+        CountingPasswordEncoder encoder = new CountingPasswordEncoder();
+        for (String typed : List.of("ben-pass", "guess")) {
+            HashSteps.Parts again = HashSteps.again(typed, stored);
+            line(out, String.format("    %-9s %s  %s", typed, again.hash(), again.hash().equals(stored.hash()) ? "same" : "different"));
+        }
+        line(out, "  Spring's encoder agrees: " + encoder.matches("ben-pass", stored.stored())
+                + ", " + encoder.matches("guess", stored.stored()));
+    }
+
+    private static void act5LoginIsNotEnough(StringBuilder out) {
+        line(out, "FIVE. Authenticated is not the same as authorized.");
         try (Shop shop = new Shop(LoginOnlyConfig.class)) {
-            line(out, "  ben, a customer, refunds O-1: " + shop.as("ben", HttpMethod.POST, "/orders/O-1/refund")
-                    + "  <- LOGGED IN, SO ALLOWED");
-            line(out, "  ben views ana's order O-1: " + shop.as("ben", HttpMethod.GET, "/orders/O-1")
-                    + "  <- NOT HIS ORDER");
+            exchange(out, shop, "ben, a customer, logged in", false, List.of(
+                    Ask.as("ben", HttpMethod.POST, "/orders/O-1/refund", "", "LOGGED IN, SO ALLOWED"),
+                    Ask.as("ben", HttpMethod.GET, "/orders/O-1", "ana's order", "NOT HIS ORDER")));
         }
     }
 
-    private static void act4Authorization(StringBuilder out) {
-        line(out, "FOUR. Authorization: @PreAuthorize rules on the endpoints.");
+    private static void act6Authorization(StringBuilder out) {
+        line(out, "SIX. Authorization: @PreAuthorize rules on the endpoints.");
         try (Shop shop = new Shop(PolicyConfig.class)) {
-            line(out, "  no credentials refunds O-1: " + shop.send(HttpMethod.POST, "/orders/O-1/refund", null, null));
-            line(out, "  ben refunds O-1: " + shop.as("ben", HttpMethod.POST, "/orders/O-1/refund"));
-            line(out, "  ben views ana's order O-1: " + shop.as("ben", HttpMethod.GET, "/orders/O-1"));
-            line(out, "  ben views his own order O-2: " + shop.as("ben", HttpMethod.GET, "/orders/O-2"));
-            line(out, "  sam, from support, views O-1: " + shop.as("sam", HttpMethod.GET, "/orders/O-1"));
-            line(out, "  sam refunds O-1: " + shop.as("sam", HttpMethod.POST, "/orders/O-1/refund"));
-            line(out, "  ana cancels ben's order O-2: " + shop.as("ana", HttpMethod.POST, "/orders/O-2/cancel"));
-            line(out, "  alex, an admin, cancels O-2: " + shop.as("alex", HttpMethod.POST, "/orders/O-2/cancel"));
+            exchange(out, shop, "the same shop, now with rules", false, List.of(
+                    new Ask(null, null, HttpMethod.POST, "/orders/O-1/refund", "", ""),
+                    Ask.as("ben", HttpMethod.POST, "/orders/O-1/refund", "customer", ""),
+                    Ask.as("ben", HttpMethod.GET, "/orders/O-1", "ana's order", ""),
+                    Ask.as("ben", HttpMethod.GET, "/orders/O-2", "his own", ""),
+                    Ask.as("sam", HttpMethod.GET, "/orders/O-1", "support", ""),
+                    Ask.as("sam", HttpMethod.POST, "/orders/O-1/refund", "support", ""),
+                    Ask.as("ana", HttpMethod.POST, "/orders/O-2/cancel", "ben's order", ""),
+                    Ask.as("alex", HttpMethod.POST, "/orders/O-2/cancel", "admin", "")));
         }
     }
 
-    private static void act5Bill(StringBuilder out) {
-        line(out, "FIVE. The bill: a forgotten rule, and a password check on every request.");
+    private static void act7Bill(StringBuilder out) {
+        line(out, "SEVEN. The bill: a forgotten rule, a check every time.");
         try (Shop shop = new Shop(PolicyConfig.class)) {
             int before = shop.encoder().checks();
             shop.as("sam", HttpMethod.GET, "/orders/O-1");
             shop.as("sam", HttpMethod.GET, "/orders/O-2");
             shop.as("sam", HttpMethod.POST, "/orders/O-1/refund");
-            line(out, "  sam makes 3 requests with HTTP Basic: " + (shop.encoder().checks() - before) + " password checks");
-            line(out, "  ben exports every order, the endpoint has no @PreAuthorize: "
-                    + shop.as("ben", HttpMethod.GET, "/orders/export") + "  <- FORGOTTEN RULE");
+            line(out, "  EVERY REQUEST PAYS (the password goes every time):");
+            line(out, "    sam sends 3 requests: " + (shop.encoder().checks() - before) + " password checks");
+            line(out, "  BEFORE THE FIX (export has no @PreAuthorize):");
+            line(out, "    ben   GET /orders/export: " + shop.as("ben", HttpMethod.GET, "/orders/export")
+                    + "  <- FORGOTTEN RULE");
         }
         try (Shop shop = new Shop(LayeredConfig.class)) {
-            line(out, "  with a rule on the address too, ben exports: " + shop.as("ben", HttpMethod.GET, "/orders/export"));
-            line(out, "  alex exports: " + shop.as("alex", HttpMethod.GET, "/orders/export"));
+            line(out, "  AFTER THE FIX (/orders/export needs ADMIN):");
+            line(out, "    ben   GET /orders/export: " + shop.as("ben", HttpMethod.GET, "/orders/export"));
+            line(out, "    alex  GET /orders/export: " + shop.as("alex", HttpMethod.GET, "/orders/export"));
         }
     }
 }

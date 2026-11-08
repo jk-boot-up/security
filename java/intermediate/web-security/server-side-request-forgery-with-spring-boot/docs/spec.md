@@ -42,7 +42,7 @@ Servers fetch customer-supplied addresses from inside a trusted network, and che
 | Tests | 33, all passing |
 | Demo output | 35 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:33, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:55, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

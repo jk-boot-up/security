@@ -18,4 +18,13 @@ public class RateLimiter {
         int count = seen.merge(client, 1, Integer::sum);
         return count <= perClientPerTick;
     }
+
+    /** How many requests this client has made in the current tick, served or not. */
+    public int count(String client) {
+        return seen.getOrDefault(client, 0);
+    }
+
+    public int perClientPerTick() {
+        return perClientPerTick;
+    }
 }

@@ -116,4 +116,18 @@ class HandshakeTest {
         byte[] two = {22, 3, 3, 0, 2, 9, 9, 23, 3, 3, 0, 1, 7};
         assertEquals(List.of(22, 23), Wire.recordTypes(two));
     }
+
+    @Test
+    void aRecordIsHeaderOrderTypePaddingAndTag() throws SSLException {
+        byte[] order = TlsDemo.ORDER.getBytes(StandardCharsets.UTF_8);
+        byte[] record = connect().clientSeals(order);
+        assertEquals(5 + order.length + 1 + TlsDemo.PADDING + TlsDemo.TAG, record.length);
+        assertEquals(record.length - 5, ((record[3] & 0xff) << 8) | (record[4] & 0xff));
+    }
+
+    @Test
+    void theImpostorHasTheSameNameButAnotherFingerprint() throws Exception {
+        assertNotEquals(TestCertificates.fingerprint("shop.p12"), TestCertificates.fingerprint("impostor.p12"));
+        assertEquals(16, TestCertificates.fingerprint("shop.p12").length());
+    }
 }

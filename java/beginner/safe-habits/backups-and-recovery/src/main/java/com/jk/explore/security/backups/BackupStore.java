@@ -65,14 +65,16 @@ final class BackupStore {
     }
 
     /** The newest copy of a file in the chain that ends at this snapshot, if any snapshot stored it. */
-    private static Path locate(Path root, String name, String file) throws IOException {
+    static Path locate(Path root, String name, String file) throws IOException {
         String current = name;
         while (!current.isEmpty()) {
-            Path candidate = snapshot(root, current).resolve("data").resolve(file);
+            Path candidate = snapshot(root, current)
+                    .resolve("data").resolve(file);
             if (Files.isRegularFile(candidate)) {
                 return candidate;
             }
-            current = Files.readString(snapshot(root, current).resolve("PARENT.txt"));
+            current = Files.readString(
+                    snapshot(root, current).resolve("PARENT.txt"));
         }
         return null;
     }

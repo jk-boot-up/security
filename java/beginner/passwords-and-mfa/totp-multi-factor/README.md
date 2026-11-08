@@ -4,13 +4,14 @@
 src/main/java/com/jk/explore/security/totp/
 ├── Authenticator.java  The authenticator app on the customer's phone: it holds the secret and works out the code from its own clock
 ├── Base32.java         Base32 (RFC 4648), the text form authenticator apps use for a shared secret: upper-case letters and the digits 2 to 7, so it can be typed or put in a QR code without any look-alike characters
+├── CodeSteps.java      Works out a six-digit TOTP code one step at a time, keeping every value in between, so the demo can show how the code is made
 ├── DemoSecrets.java    Fixed secrets, so the demo prints the same codes on every run
 ├── Hotp.java           HOTP (RFC 4226): a code made from a secret key and a counter
 ├── MfaServer.java      The bank's login with an optional second factor
 ├── SecretSource.java   Where shared secrets and recovery codes come from
 ├── SecureSecrets.java  Real secrets and recovery codes, from the system's secure random generator
 ├── Totp.java           TOTP (RFC 6238): HOTP where the counter is the number of whole steps of time since the start of 1970
-├── TotpDemo.java       Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── TotpDemo.java       Runs the online bank story in six numbered acts and prints exact, repeatable results
 └── Verdict.java        The bank's answer to a login attempt
 ```
 
@@ -47,15 +48,16 @@ checked, through clocks that disagree, a code used twice, and a fake bank page.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
 | 1. A password alone | With only the password, which leaked from another site, the attacker logs in: one factor, one leak. |
-| 2. Enrolling a second factor | The bank makes a 20-byte secret shown as Base32; at time 59 the counter is 1 and the code is 287082; steps 0 to 3 give 755224, 287082, 359152, 969429. |
-| 3. Logging in with a code, and clocks that disagree | The password alone now asks for a code; the right code is accepted; a phone 25 seconds fast is accepted, 70 seconds fast and a 2-step-old code are not. |
-| 4. The same code twice | Without replay protection an observer can reuse Dana's code 5 seconds later; with it, the second use is REPLAYED. |
-| 5. The bill: what a code cannot do | A fake bank page can pass on the password and code at once; the bank's table holds the secret; a recovery code is a second way in that works once. |
+| 2. Enrolling: one secret, shared once | The bank makes a 20-byte secret, shows it as 32 Base32 letters for the app, and the secret gives a new code every 30 seconds: 755224, 287082, 359152, 969429. |
+| 3. How the code is made, step by step | From the secret and time 59: counter 1, HMAC-SHA1 gives 20 bytes, the last half-byte b picks bytes 11 to 14, c1397eea, the top bit is dropped, 1094287082, and the last six digits are the code 287082. |
+| 4. Logging in, and clocks that disagree | At time 59 (step 1) the bank accepts steps 0 to 2: no code is CODE_NEEDED, the right code and a phone 25 seconds fast are OK, a wrong code and a phone 70 seconds fast are WRONG_CODE. |
+| 5. The same code twice | An observer reuses Dana's code 5 seconds later: without replay protection it is OK; with it, the bank remembers step 1 and says REPLAYED. |
+| 6. The bill: what a code cannot do | A fake bank page passes on the password and code at once and gets OK; the bank's stolen table gives the attacker Dana's code; a recovery code works once, but is a second way in. |
 
 ## Test
 
@@ -63,7 +65,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-29 tests in `AuthenticatorTest`, `Base32Test`, `DemoRunsTest`, `HotpTest`, `MfaServerTest`, `TotpTest`. The code generator is tested against the published values of RFC 4226 (HOTP, 10 values), RFC 6238 (TOTP with SHA-1, SHA-256 and SHA-512) and RFC 4648 (Base32). Every line the demo prints is checked against `docs/expected-output.txt`, and time is a number given to the code, so every run gives the same result.
+32 tests in `AuthenticatorTest`, `Base32Test`, `CodeStepsTest`, `DemoRunsTest`, `HotpTest`, `MfaServerTest`, `TotpTest`. The code generator is tested against the published values of RFC 4226 (HOTP, 10 values), RFC 6238 (TOTP with SHA-1, SHA-256 and SHA-512) and RFC 4648 (Base32). Every line the demo prints is checked against `docs/expected-output.txt`, and time is a number given to the code, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

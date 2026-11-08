@@ -1,30 +1,71 @@
 ONE. TLS from an SSL bundle.
-  the server's certificate and key, and TLS 1.3 only, are set in properties: server.ssl.bundle=shop and a bundle that names the keystore
-  a client built from a bundle that trusts only the demo root asks for /products: 200 over TLSv1.3
-  the same call through Spring's RestClient: kettle, toaster, lamp
-  the same server reached by another name, evil.example.test: refused  <- THE NAME ON THE CERTIFICATE MUST MATCH
-  a client that offers only TLS 1.2: refused
-  a client that uses the JDK's default trust and not the bundle: refused  <- THE DEMO ROOT IS NOT IN THE JDK'S LIST
+  THE CONFIGURATION (properties, no TLS code):
+    server.ssl.bundle=shop
+    spring.ssl.bundle.jks.shop.keystore.location=file:.../shop.p12
+    spring.ssl.bundle.jks.shop.options.enabled-protocols=TLSv1.3
+  THE CERTIFICATE (what the shop presents):
+    subject   CN=shop.example.test
+    issuer    CN=Demo Root CA   (the root the trust bundle holds)
+  THE ATTEMPTS:
+    a  the trust bundle, TLS 1.3, shop.example.test
+    b  the same, reached as evil.example.test
+    c  a client that offers only TLS 1.2
+    d  the JDK's default trust instead of the bundle
+  THE RESULTS:
+    a  200 over TLSv1.3
+       Spring's RestClient reads: kettle, toaster, lamp
+    b  refused  the name on the certificate must match
+    c  refused  the bundle allows TLS 1.3 only
+    d  refused  the demo root is not in the JDK's list
 TWO. Redirect, HSTS and secure cookies.
-  a request to the plain HTTP port is answered with 302 pointing to an https address: true, and the body is empty: true
-  the plain answer carries Strict-Transport-Security: false
-  the HTTPS answer carries Strict-Transport-Security: max-age=31536000 ; includeSubDomains
-  the session cookie is Secure: true, HttpOnly: true, SameSite=Strict: true
-  the client would send that cookie over HTTPS: true, over plain HTTP: false
+  THE REQUEST (to the plain HTTP port):
+    GET http://shop.example.test/products
+  THE RESPONSE:
+    302  Location: https://shop.example.test:<https port>/products
+         body: empty, Strict-Transport-Security: none
+  THE HTTPS ANSWER (to GET /login):
+    Strict-Transport-Security:
+      max-age=31536000 ; includeSubDomains
+      31536000 / 86400 seconds a day = 365 days
+    Set-Cookie: JSESSIONID=<32 random characters>
+      Path=/; Secure; HttpOnly; SameSite=Strict
+  THE NEXT REQUESTS (does the client attach the cookie?):
+    over https   sent
+    over http    not sent  because of Secure
 THREE. Renewing a certificate without a restart.
-  the certificate served matches the file on disk: true
-  the file is replaced with the renewed certificate and the server is not restarted
-  the certificate served has changed: true, and now matches the new file: true
-  clients that trust the root still connect without any change: ok (200)
+  THE CONFIGURATION:
+    spring.ssl.bundle.jks.shop.reload-on-update=true
+  BEFORE (SHA-256 fingerprints, shown as letters):
+    shop.p12 on disk  A    served  A
+  THE CHANGE: shop.p12 is replaced by the renewed file,
+  and the server is not restarted
+  AFTER:
+    shop.p12 on disk  B    served  B
+    renewed: CN=shop.example.test, by CN=Demo Root CA
+    a client that trusts the root: ok (200), no change
 FOUR. Mutual TLS: the server checks the client too.
-  the server is told server.ssl.client-auth=need and the bundle gets a trust store for client certificates
-  Ana's client presents a certificate signed by the demo root: 200, the server saw: CN=Ana the customer
-  a client with no certificate: refused
-  a client whose certificate is signed by nobody: refused
-  this identifies a machine or an app, not a person who types a password, so it suits service-to-service calls
+  THE CONFIGURATION:
+    server.ssl.client-auth=need
+    spring.ssl.bundle.jks.shop.truststore.location=file:.../trust.p12
+  THE CLIENTS (the certificate each one presents):
+    ana       CN=Ana the customer, issued by CN=Demo Root CA
+    nobody    no certificate
+    mallory   CN=shop.example.test, issued by itself
+  THE RESULTS:
+    ana       200, the server saw: CN=Ana the customer
+    nobody    refused
+    mallory   refused
+  this identifies a machine or an app, not a person who types
+  a password, so it suits service-to-service calls
 FIVE. What Spring leaves to you.
-  /actuator/health: 404  <- the actuator is not on the class path, so nothing extra is exposed
-  a failing page answers 500 and its body mentions the internal detail: false
-  a Server header that names the software: false
-  configuration is short, and that is the risk: a wrong property is as silent as a right one, so check the result from outside
-  the private key sits in a file the server can read, so protect it, rotate it, and renew before it expires
+  THE REQUESTS:
+    GET /actuator/health  a page many apps expose
+    GET /boom             its error holds a password
+    GET /products         does a header name the server?
+  THE RESPONSES:
+    /actuator/health      404  no actuator on the class path
+    /boom                 500  the password in the body: no
+    /products             200  Server header: none
+  THE BILL:
+    a wrong property fails silently: check from outside
+    the private key is a file: protect, rotate, renew it

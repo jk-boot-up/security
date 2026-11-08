@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * A caching resolver in a simulation with a clock in seconds. It asks a question with a fresh id and source port, and believes the
@@ -36,6 +37,12 @@ final class Resolver {
             return Optional.empty();
         }
         return Optional.of(entry.address());
+    }
+
+    /** The second at which the cached answer for a name expires, if there is one. */
+    OptionalLong expiresAt(String name) {
+        Entry entry = cache.get(name);
+        return entry == null ? OptionalLong.empty() : OptionalLong.of(entry.expiresAt());
     }
 
     /** Sends a question upstream, unless the answer is cached. */

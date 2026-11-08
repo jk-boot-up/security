@@ -18,21 +18,34 @@ Chapters:
 00:00 Introduction
 01:11 The Scenario
 01:32 The Words
-02:00 Act One — Pinning exactly what the build uses
-02:26 Act Two — A bill of materials a scanner can read
-02:51 Act Three — What the scanner reported
-03:18 Act Four — What to fix first, and to which version
-03:48 Act Five — Checking what is downloaded, and automating the updates
-04:22 What Each Tool Answers
-04:49 Who Does What
-05:19 Where You Have Seen It
-05:46 How To Use It
-06:09 Thanks for Watching
+02:00 What the Letters Stand For
+03:11 From the build to a decision
+04:04 The lock file, line by line
+05:02 Act One — Pinning exactly what the build uses
+05:19 From a lock file line to a package URL
+06:19 Act Two — A bill of materials a scanner can read
+06:31 What Trivy found
+07:20 Act Three — What the scanner reported
+07:44 Which version to move to
+08:44 Act Four — What to fix first, and to which version
+09:02 Checksums that stop a changed download
+09:53 Act Five — Checking what is downloaded, and automating the updates
+10:02 Act Five — Checking what is downloaded, and automating the updates
+10:19 What Each Tool Answers
+10:46 Where You Have Seen It
+11:13 How To Use It
+11:36 The Java Classes
+11:49 Dependency — the package URL
+12:02 GradleLockfile — one line, three parts
+12:14 Vulnerability — the nearest fix
+12:26 Triage — keep the highest nearest fix
+12:42 VerificationMetadata — which files differ
+12:56 Thanks for Watching
 ```
 
 ## Tags
 
-trivy, sbom, cyclonedx, gradle dependency locking, gradle dependency verification, dependabot, renovate, log4shell, java, cybersecurity for beginners
+trivy, sbom, cyclonedx, gradle dependency locking, gradle dependency verification, dependabot, renovate, log4shell, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +53,16 @@ trivy, sbom, cyclonedx, gradle dependency locking, gradle dependency verificatio
 | --- | --- |
 | Video | `video/patching-and-dependency-hygiene-with-trivy-explained.mp4` |
 | Captions | `video/patching-and-dependency-hygiene-with-trivy-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Safe Habits in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (86)
-- [ ] tags are at most 500 characters in total — ok (140)
+- [ ] tags are at most 500 characters in total — ok (191)
 - [ ] description is at most 5,000 characters — ok (637)
 - [ ] chapters start at 00:00 and there are at least three

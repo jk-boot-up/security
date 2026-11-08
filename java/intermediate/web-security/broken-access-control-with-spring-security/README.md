@@ -57,11 +57,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A Spring store with three common mistakes | A sign-in rule where ownership was needed, a pattern that misses /admin/users/ben, and permitAll() at the end let seven of nine attacks through. |
-| 2. Deny by default in the filter chain | One rule per method and path, with denyAll() last: signed out gets 401, the wrong role 403, and a method or path with no rule 403, even for an admin. |
-| 3. The object-level check, in the query | findByIdAndOwner makes ben's order 404 for ana in all four object attacks; @PostAuthorize instead answers 403 after the lookup has run; 0 of 9 attacks succeed, 6 of 6 honest requests work. |
-| 4. Method security, and a log of every refusal | @PreAuthorize on the refund service refuses a nightly job running as ana with no URL in between; 22 refusals are logged with who and what, and none contains a password or header. |
-| 5. The route inventory, and the bill | The inventory reads 11 routes from Spring MVC's handler mapping and reports GET /admin/export, added without a rule, which even the admin is refused. |
+| 1. A Spring store with three common mistakes | The filter chain says /orders/** needs a sign-in, /admin/users needs ADMIN, and anyRequest().permitAll(): ana reads ben's order, a signed-out visitor reads the report, and DELETE /admin/users/ben slips past the /admin/users pattern. |
+| 2. Deny by default in the filter chain | Every route gets its own rule by method and path, and anyRequest().denyAll() comes last: signed out answers 401, the wrong role 403, and a method or path nobody wrote, such as PUT /orders/1001 or /admin/debug, 403 even for the admin. |
+| 3. The object-level check, in the query | The lookup is findByIdAndOwner(id, ana), so ben's order is simply not found: 404 for all four order attacks. The same check with @PostAuthorize answers 403, which confirms the order exists, after the lookup already ran. 0 of 9 attacks, 6 of 6 honest requests. |
+| 4. Method security, and a log of every refusal | RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"): a nightly job running as ana is refused with no URL in between, as sam it is recorded; 22 refusals are logged, with no password or Authorization header. |
+| 5. The route inventory, and the bill | The inventory reads 11 routes from Spring MVC's handler mapping; a new GET /admin/export without a rule fails the build and is refused even to the admin; the bill is rules in two places and the owner in every query. |
 
 ## Test
 

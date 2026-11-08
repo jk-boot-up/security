@@ -23,7 +23,7 @@ What it shows:
 - **A stolen SVID.** It works while it lives and is refused after 20 seconds; a shared secret still works.
 - **No entry, no identity.** A process that matches nothing gets no SVID, and deleting an entry ends a workload's identity.
 
-**Maps to:** NIST SP 800-207 (zero trust) · SPIFFE and SPIRE · OWASP ASVS V9 · CWE-798 (hard-coded credentials).
+**Maps to:** NIST SP 800-207 (zero trust) · SPIFFE and SPIRE · OWASP ASVS 5.0 V12 Secure Communication · CWE-798 (hard-coded credentials).
 
 ## The idea in everyday terms
 

@@ -32,7 +32,7 @@ class OpenSslInteropTest {
 
     @BeforeAll
     static void make() {
-        assertTrue(OpenSsl.available(), "openssl 3 must be on the PATH");
+        assertTrue(OpenSsl.available(), "openssl 3 or later must be on the PATH");
         pki = new Pki();
     }
 

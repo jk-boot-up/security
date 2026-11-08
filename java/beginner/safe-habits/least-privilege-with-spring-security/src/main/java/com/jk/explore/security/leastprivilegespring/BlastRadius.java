@@ -24,7 +24,8 @@ final class BlastRadius {
         Authentication token = token(account);
         int count = 0;
         for (String permission : Catalogue.PERMISSIONS) {
-            if (AuthorityAuthorizationManager.hasAuthority(permission).authorize(() -> token, null).isGranted()) {
+            var rule = AuthorityAuthorizationManager.hasAuthority(permission);
+            if (rule.authorize(() -> token, null).isGranted()) {
                 count++;
             }
         }

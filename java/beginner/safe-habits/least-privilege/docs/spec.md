@@ -8,7 +8,7 @@ Teach least privilege by modelling an online store's permissions, measuring blas
 
 - Cloud IAM and Kubernetes RBAC: the tools projects.
 - Authentication: the identity module.
-- Sandboxing code inside a JVM: the SecurityManager has been removed.
+- Sandboxing code inside a JVM: the SecurityManager is permanently disabled since JDK 24.
 
 ## The problem
 
@@ -41,9 +41,9 @@ Broad permissions are convenient and invisible until an account is stolen; learn
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 28, all passing |
-| Demo output | 34 lines, identical on every run |
+| Demo output | 81 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:42, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:32, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

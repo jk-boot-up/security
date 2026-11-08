@@ -27,7 +27,7 @@ What it shows:
 - **What TLS 1.3 removed.** A TLS 1.3 only server refuses **3 of 3** older versions, static RSA and CBC; compression and renegotiation have no place in the protocol.
 - **Honest limits.** This OpenSSL build has no RC4 and no zlib, and refuses DH groups below 1024 bits, so those could not be planted.
 
-**Maps to:** OWASP Top 10 A02 Cryptographic Failures · NIST SP 800-52 Rev. 2 · RFC 7507 (fallback SCSV), RFC 8446 (TLS 1.3), RFC 8996 (TLS 1.0 and 1.1 deprecated) · PCI DSS 4.0 requirement 4.2.1 · CWE-326, CWE-327.
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · NIST SP 800-52 Rev. 2 · RFC 7507 (fallback SCSV), RFC 8446 (TLS 1.3), RFC 8996 (TLS 1.0 and 1.1 deprecated) · PCI DSS 4.0 requirement 4.2.1 · CWE-326, CWE-327.
 
 ## The idea in everyday terms
 

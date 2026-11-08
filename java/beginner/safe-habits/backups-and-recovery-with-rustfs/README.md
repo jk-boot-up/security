@@ -34,11 +34,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Versioning: an overwrite does not destroy the old data | Ransomware overwrites orders.csv, two versions are kept, the original is restored by writing it back, and a plain delete only adds a marker. |
-| 2. Object Lock: nobody can delete a locked version | A COMPLIANCE-locked backup refuses deletion, even with bypass and from the root account, and the retention cannot be shortened; GOVERNANCE can be lifted with a special permission. |
-| 3. The backup job gets an identity that can only add objects | The backup job's policy has one action, PutObject: it can write a backup but cannot read, list, delete, delete a version or write to another bucket. |
-| 4. A checksum catches a damaged backup | An upload with the right SHA-256 is accepted; one whose bytes do not match the checksum is refused with BadDigest and leaves nothing behind. |
-| 5. Keeping history without keeping it for ever, and the cost | A lifecycle rule removes old versions after 30 days; the bill is storage that grows, a lock that cannot be undone, a root account that is the real key, and disks that the lock does not protect. |
+| 1. Versioning: an overwrite does not destroy the old data | Ransomware overwrites orders.csv, 2 versions are kept, the original is restored by copying version 1 back as version 3, and a plain delete only adds 1 marker: a normal read fails with 404, version 1 is still there. |
+| 2. Object Lock: nobody can delete a locked version | With a compliance lock until tomorrow, even the root account is refused with 403 when it deletes, bypasses or shortens; a plain delete only adds a marker; a governance lock can be lifted with the bypass permission. |
+| 3. The backup job gets an identity that can only add objects | The backup-writer policy allows one action, s3:PutObject, on shop-backups: its put is allowed and get, list, delete, delete-version and a put into shop-orders are all refused with 403. |
+| 4. A checksum catches a damaged backup | An upload whose bytes match its SHA-256 is allowed, one whose bytes do not is refused with 400 BadDigest and leaves 0 versions; the stored copy hashes to the same value. |
+| 5. Keeping history without keeping it for ever, and the cost | A lifecycle rule removes old versions 30 days after they are replaced; a 2 MB file overwritten every hour keeps 24 x 30 = 720 old versions, 720 x 2 = 1440 MB. |
 
 ## Test
 

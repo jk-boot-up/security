@@ -23,6 +23,7 @@ The plain project had to write certificates by hand, which hides what the standa
 | Revocation lists | `Crls` |
 | Chain validation | `ChainValidator` |
 | Signing requests and policy | `SigningRequest` |
+| The name rule by hand | `NameRule` |
 | PEM text | `Pem` |
 | Entry point | `CertsBcDemo` |
 
@@ -40,10 +41,10 @@ The plain project had to write certificates by hand, which hides what the standa
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 32, all passing |
-| Demo output | 36 lines, identical on every run |
+| Tests | 34, all passing |
+| Demo output | 62 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 12:14, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

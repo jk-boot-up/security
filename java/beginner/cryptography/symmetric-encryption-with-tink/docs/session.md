@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: One call, and no nonce to look after | 7 min |
-| 0:17 | Act 2: Any change is refused | 7 min |
-| 0:24 | Act 3: Replacing the key without losing the data | 7 min |
-| 0:31 | Act 4: Keys that stay at home: envelope encryption | 7 min |
-| 0:38 | Act 5: The bill: what Tink decides for you, and what it does not | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: One call, and no nonce to look after | 5 min |
+| 0:15 | Act 2: Inside one Tink message, worked out by hand | 5 min |
+| 0:20 | Act 3: Any change is refused | 5 min |
+| 0:25 | Act 4: Replacing the key without losing the data | 5 min |
+| 0:30 | Act 5: Keys that stay at home: envelope encryption | 5 min |
+| 0:35 | Act 6: The bill: what Tink decides, and what it does not | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

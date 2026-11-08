@@ -16,7 +16,7 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A chain of three certificates | 7 min |
-| 0:17 | Act 2: The browser's check | 7 min |
+| 0:17 | Act 2: The browser's check, step by step | 7 min |
 | 0:24 | Act 3: Three reasons to refuse | 7 min |
 | 0:31 | Act 4: Changed certificates, and certificates that overstep | 7 min |
 | 0:38 | Act 5: Revocation, and the bill | 7 min |

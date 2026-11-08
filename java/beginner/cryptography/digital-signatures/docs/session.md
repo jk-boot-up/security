@@ -14,17 +14,18 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: A tag made with a shared key | 7 min |
-| 0:17 | Act 2: A signature: made with the private key, checked with the public key | 7 min |
-| 0:24 | Act 3: What exactly is signed | 7 min |
-| 0:31 | Act 4: A good signature on an old message | 7 min |
-| 0:38 | Act 5: The bill: whose key is it, and what if it is stolen? | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: A tag made with a shared key | 5 min |
+| 0:15 | Act 2: A signature: the private key signs, the public key checks | 5 min |
+| 0:20 | Act 3: How the signature is made, step by step | 5 min |
+| 0:25 | Act 4: What exactly is signed | 5 min |
+| 0:30 | Act 5: A good signature on an old message | 5 min |
+| 0:35 | Act 6: The bill: whose key is it, and what if it is stolen? | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
-Start with the notary analogy. Run the demo one act at a time. After act one, ask the group who can forge, and why that cannot be fixed with a better tag. After act three, ask what could go wrong if the
-refund order and the price list used the same label. After act four, ask where the version should be stored, and what happens after a restart. In act five, ask how a checkout should come to hold the right public key in the first place.
+Start with the notary analogy. Run the demo one act at a time. After act one, ask the group who can forge, and why that cannot be fixed with a better tag. After act three, ask which step needs the secret a, and why the check does not. After act four, ask what could go wrong if the
+refund order and the price list used the same label. After act five, ask where the version should be stored, and what happens after a restart. In act six, ask how a checkout should come to hold the right public key in the first place.
 
 ## Exercises
 

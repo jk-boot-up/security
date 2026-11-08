@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.MessageDigest;
 import java.security.cert.Certificate;
+import java.util.HexFormat;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
@@ -39,6 +41,14 @@ final class TestCertificates {
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(keys.getKeyManagers(), null, null);
         return context;
+    }
+
+    /** The first 8 bytes of the SHA-256 fingerprint of the keystore's certificate: two certificates with one name still differ here. */
+    static String fingerprint(String keystore) throws GeneralSecurityException, IOException {
+        KeyStore store = load(keystore);
+        Certificate certificate = store.getCertificate(store.aliases().nextElement());
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());
+        return HexFormat.of().formatHex(digest, 0, 8);
     }
 
     /** A client context that trusts only the shop's certificate. */

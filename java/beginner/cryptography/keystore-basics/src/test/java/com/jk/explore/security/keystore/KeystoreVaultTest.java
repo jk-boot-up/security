@@ -29,12 +29,12 @@ class KeystoreVaultTest {
     }
 
     @Test
-    void theFileShowsNeitherTheKeyNorItsName() throws IOException {
+    void theFileHidesTheKeyButNotItsName() throws IOException {
         Path file = dir.resolve("b.p12");
         KeystoreVault.create(KeystoreDemo.PASSWORD).put("statements-v1", KEY).save(file);
         byte[] bytes = Files.readAllBytes(file);
         assertFalse(Hex.contains(bytes, KEY));
-        assertFalse(Hex.contains(bytes, Hex.bytes("statements-v1")));
+        assertTrue(Hex.contains(bytes, Hex.utf16("statements-v1")));   // the alias is stored in the clear
     }
 
     @Test
@@ -74,8 +74,16 @@ class KeystoreVaultTest {
         Path raised = dir.resolve("f.p12");
         KeystoreVault.create(KeystoreDemo.PASSWORD).put("k", KEY).save(normal);
         KeystoreVault.create(KeystoreDemo.PASSWORD).put("k", KEY).saveWithRounds(raised, 600_000);
-        assertEquals(List.of(10_000), KeystoreVault.allRoundsRecordedIn(Files.readAllBytes(normal)));
-        assertTrue(KeystoreVault.allRoundsRecordedIn(Files.readAllBytes(raised)).contains(600_000));
+        assertEquals(List.of(10_000, 10_000), KeystoreVault.allRoundsRecordedIn(Files.readAllBytes(normal)));
+        assertEquals(List.of(10_000, 600_000), KeystoreVault.allRoundsRecordedIn(Files.readAllBytes(raised)));
+    }
+
+    @Test
+    void roundsSetWhenTheKeyIsPutReachTheKeyLockToo() throws IOException {
+        Path file = dir.resolve("h.p12");
+        KeystoreVault.create(KeystoreDemo.PASSWORD).put("k", KEY, 600_000).saveWithRounds(file, 600_000);
+        assertEquals(List.of(600_000, 600_000), KeystoreVault.allRoundsRecordedIn(Files.readAllBytes(file)));
+        assertArrayEquals(KEY, KeystoreVault.open(file, KeystoreDemo.PASSWORD).get("k").getEncoded());
     }
 
     @Test

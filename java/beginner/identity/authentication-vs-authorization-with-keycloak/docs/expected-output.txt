@@ -1,28 +1,97 @@
 ONE. No login in the shop, only tokens.
-  no token: 401, garbage as a token: 401, a token signed with another key: 401
-  a token the login server signed, good for 300 seconds: 200
-  the same token 301 seconds later: 401  <- EXPIRED, AND THE SHOP NEEDED NO CALL TO THE LOGIN SERVER TO KNOW
-TWO. Who is it, and what may they do.
-  the roles in realm_access.roles become authorities: ana [ROLE_CUSTOMER], sam [ROLE_SUPPORT], root [ROLE_ADMIN]
-  Ana reads her own order A-1: 200, and Ben's order B-2: 403  <- LOGGED IN, NOT ALLOWED
-  support Sam reads Ben's order B-2: 200
-  the sales report: customer 403, support 403, admin 200
-  401 means the shop does not know who is asking, 403 means it knows and the answer is no
-THREE. A real signature is not enough.
-  a correctly signed token from another issuer: 401
-  a correctly signed token meant for another API: 401  <- WITHOUT AN AUDIENCE CHECK, ANY API'S TOKEN OPENS THIS ONE
-  the shop checks the signature, the expiry, the issuer and the audience
-FOUR. The roles in a token are a copy.
-  root, an admin, opens the sales report: 200
+  THE REQUESTS (GET /me, each with a different token):
+    1  no token at all
+    2  the text not-a-token as the token
+    3  a token signed with another key
+    4  a token the login server signed, good for 300 s
+    5  the same token, 301 seconds later
+  THE RESPONSES:
+    1  401  nobody is logged in
+    2  401  not a token
+    3  401  the signature does not match
+    4  200  ana [ROLE_CUSTOMER]
+    5  401  expired  <- NO CALL TO THE LOGIN SERVER
+TWO. Inside a token, and its signature.
+  BEFORE DECODING (the token as sent, 642 characters):
+    eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhbmEiLCJhdWQ...
+  AFTER DECODING (base64url, split at the two dots):
+    header     {"alg":"RS256"}
+    claims     iss          http://login.shop.example/realms/shop
+               sub          ana
+               aud          shop-api
+               azp          shop-web
+               preferred_username ana
+               realm_access {"roles":["customer"]}
+               iat          1767258301 = 2026-01-01 09:05:01Z
+               exp          1767258601 = 2026-01-01 09:10:01Z
+               jti          token-2
+    signature  256 bytes, made with the private key
+  STEP 1. THE SIGNED TEXT = header + "." + claims, as sent:
+    eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhbmEiLCJhdWQ...
+  STEP 2. ITS HASH = SHA-256(signed text), 32 bytes:
+    hash     a1ec3b27 76ab890b 126b93e6 e7602ef4
+             9266e7f3 570f2f2b 97992666 074a90a4
+  STEP 3. OPEN THE SIGNATURE: signature ^ e mod n (public key)
+    e = 65537, n has 2048 bits, the result has 256 bytes:
+    0001, then 202 bytes of ff, then 00
+    3031300d 06096086 48016503 04020105 000420 = "SHA-256"
+    last 32  a1ec3b27 76ab890b 126b93e6 e7602ef4
+             9266e7f3 570f2f2b 97992666 074a90a4
+  STEP 4. COMPARE the two hashes: true
+  BEFORE TAMPERING (roles [customer]): GET /me 200
+  AFTER TAMPERING (customer -> admin, same signature):
+    hash     4b680136 69a41069 0c45e69e 0b6c8b1d
+             e6244c67 c42b8073 1f6ff516 491bad93
+    in sig   a1ec3b27 76ab890b 126b93e6 e7602ef4
+    compare  false: GET /me 401  <- BROKEN
+THREE. Who is it, and what may they do.
+  IN THE TOKEN (the claim realm_access.roles):
+    ana [customer]   sam [support]   root [admin]
+  IN THE SHOP (authorities: ROLE_ + the role in capitals):
+    ana [ROLE_CUSTOMER]   sam [ROLE_SUPPORT]   root [ROLE_ADMIN]
+  THE REQUESTS:
+    1  ana   GET /orders/A-1     her own order
+    2  ana   GET /orders/B-2     Ben's order
+    3  sam   GET /orders/B-2     support may read any order
+    4  ana   GET /admin/report
+    5  sam   GET /admin/report
+    6  root  GET /admin/report
+  THE RESPONSES:
+    1  200  A-1 owner ana
+    2  403  <- LOGGED IN, NOT ALLOWED
+    3  200  B-2 owner ben
+    4  403
+    5  403
+    6  200  sales
+  401: who are you?  403: I know you, and no
+FOUR. A real signature is not enough.
+  THE REQUESTS (GET /me, both signed with the right key):
+    1  iss http://login.elsewhere.example/realms/other
+    2  aud another-api
+  THE RESPONSES (wanted: .../realms/shop and shop-api):
+    1  401  another issuer
+    2  401  another API  <- ELSE ANY API'S TOKEN WOULD WORK
+  checked: signature, expiry, issuer, audience
+FIVE. The roles in a token are a copy.
+  BEFORE THE DEMOTION (root's token says [admin]):
+    GET /admin/report  200  sales
   root is demoted to customer in the login server's directory
-  the token root already holds still opens the report: 200  <- THE SHOP ONLY SEES THE COPY
-  after the token expires: 401
-  a new token carries the new roles: report 403, own pages 200
-  so a short lifetime is the control: the stale window is at most the lifetime of the token
-FIVE. Ending a token early, and the bill.
-  an admin token: 200 and 200
-  its id is put on the revocation list: 401  <- ENDED AT ONCE
-  the price: the list was consulted 3 times for 3 requests, once for every request
-  without a list the shop made no call at all, and the token could be used until it expired
-  refresh tokens give long sessions with short access tokens, and the login server can refuse to refresh
-  the login server is now one more system that must be kept running, patched and backed up
+  AFTER THE DEMOTION:
+    the same token:     GET /admin/report  200  <- ONLY A COPY
+    301 seconds later:  GET /admin/report  401  expired
+    a new token says [customer]:
+                        GET /admin/report  403
+                        GET /me            200
+  the stale window is at most the token's lifetime: 300 s
+SIX. Ending a token early, and the bill.
+  BEFORE REVOKING (root's admin token, jti token-10):
+    GET /admin/report  200  sales
+    GET /admin/report  200  sales
+  token-10 is put on the revocation list
+  AFTER REVOKING:
+    GET /admin/report  401  <- ENDED AT ONCE
+  THE BILL:
+    the list was read 3 times for 3 requests: every time
+    without a list: no call, but the token works until expiry
+    refresh tokens: long sessions with short access tokens
+    the login server: one more system to run, patch, back up

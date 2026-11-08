@@ -59,6 +59,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `SocketsTest` checks the handshake over sockets, an untrusted certificate, a wrong name, protocol versions, PEM round trips, owner-only key files and failed-handshake counts.
 - `OpenSslInteropTest` (integration) has openssl as client and server, and checks protocol, cipher, verification, wrong names, untrusted certificates, TLS 1.2, TLS 1.3 only and TLS 1.1.
+- `Base64StepsTest` checks the Base64 worked out by hand against the JDK's encoder, for the whole certificate.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

@@ -1,26 +1,74 @@
-ONE. Keys as PEM text.
-  Ana's public key as text begins: -----BEGIN PUBLIC KEY-----
-  her private key as text begins: -----BEGIN PRIVATE KEY-----  <- ANYONE WHO READS THE FILE HAS THE KEY
-  the public key reads back to the same key: true
-  encrypted with a password it begins: -----BEGIN ENCRYPTED PRIVATE KEY-----
-  with the right password it reads back: true
-  with a wrong password: refused
-TWO. A certificate for the public key.
-  subject: CN=Ana,O=Example Bank customer
-  valid from 2026-01-01T00:00:00Z to 2027-01-01T00:00:00Z
-  signed with SHA256WITHRSA
-  issuer equals subject: true  <- ANYONE CAN MAKE ONE, SO IT PROVES NOTHING YET
-  the certificate as text begins: -----BEGIN CERTIFICATE-----
-THREE. A standard envelope: CMS EnvelopedData.
-  the bank seals a 10000-byte statement for Ana's certificate: AES-256 for the data, RSA-OAEP for the key
-  Ana opens it: true
-  Eve tries her own private key: refused
-FOUR. A different program opens it.
-  the openssl command-line tool, written by other people, is given the envelope, the key file and the certificate
-  it opens the statement: true  <- A REAL STANDARD, NOT ONLY THIS LIBRARY
-FIVE. The bill: what Bouncy Castle costs.
-  the envelope above locks the key with RSA-OAEP (1.2.840.113549.1.1.7)
-  the simple call that most examples show locks it with RSA with PKCS#1 v1.5 padding (1.2.840.113549.1.1.1)  <- THE EASY CALL PICKS THE OLDER PADDING
-  the library is about 7 MB, and registering it changes every library in the program
-  its package names changed from jdk15on to jdk18on, so upgrades need care
-  the JDK alone could do the maths, but not the PEM, the certificate or the CMS format
+ONE. The public key as PEM text.
+  BEFORE PEM (the key as bytes):
+    size         294 bytes
+    first bytes  30820122 300d0609 2a864886 f70d0101
+  AFTER PEM (text between a BEGIN and an END line):
+    first line   -----BEGIN PUBLIC KEY-----
+    text begins  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...
+    size         392 letters, in 7 lines of up to 64
+    last line    -----END PUBLIC KEY-----
+  it reads back to the same key: true
+  BASE64, STEP BY STEP (the first 3 bytes):
+    bytes        30       82       01
+    bits         00110000 10000010 00000001
+    6-bit groups 001100   001000   001000   000001
+    numbers      12       8        8        1
+    letters      M        I        I        B
+  all 294 bytes by hand = the PEM text: true
+TWO. The private key file, locked with a password.
+  BEFORE LOCKING (the key in the clear):
+    first line   -----BEGIN PRIVATE KEY-----
+    no password needed: true  <- ANYONE CAN USE IT
+  AFTER LOCKING (AES-256, a key made from the password):
+    first line   -----BEGIN ENCRYPTED PRIVATE KEY-----
+    right password: the same key: true
+    wrong password: refused
+THREE. A certificate for the public key.
+  BEFORE SIGNING (the inputs):
+    name         CN=Ana,O=Example Bank customer
+    public key   Ana's, 294 bytes
+    valid        2026-01-01T00:00:00Z to 2027-01-01T00:00:00Z
+  AFTER SIGNING (the certificate, 749 bytes):
+    subject      CN=Ana,O=Example Bank customer
+    issuer       CN=Ana,O=Example Bank customer
+    serial       1
+    signed with  SHA256WITHRSA, by Ana's own private key
+    as text      -----BEGIN CERTIFICATE-----
+  issuer equals subject: true  <- ANYONE CAN MAKE ONE
+FOUR. A standard envelope: CMS EnvelopedData.
+  BEFORE SEALING:
+    statement    10000 bytes, 625 lines of RENT      -1200
+    recipient    Ana's certificate, serial 1
+  AFTER SEALING (one envelope, 10520 bytes):
+    for          the certificate with serial 1
+    locked key   256 bytes: a new AES key, RSA-OAEP
+    IV           16 bytes, for AES-256-CBC
+    cipher text  10016 bytes: the statement
+  OPENING IT:
+    Ana, her private key: true
+    Eve, her own private key: refused  <- NOT FOR HER
+FIVE. Opening it by hand, then with openssl.
+  STEP 1. UNLOCK THE AES KEY (RSA-OAEP, Ana's private key):
+    locked key   256 bytes in
+    AES key      32 bytes out: 256 bits
+  STEP 2. DECRYPT (AES-256-CBC, that key and the IV):
+    cipher text  10016 bytes in
+    plain text   10016 bytes out
+    last block   10101010 10101010 10101010 10101010
+  STEP 3. REMOVE THE PADDING (the last byte says how many):
+    0x10 = 16 bytes off: 10000 bytes, the statement
+  the JDK alone opened it, as Bouncy Castle did: true
+  OPENSSL, A DIFFERENT PROGRAM (envelope, key file, certificate):
+    openssl cms -decrypt opens it: true  <- A REAL STANDARD
+SIX. The bill: what Bouncy Castle costs.
+  THE CAREFUL CALL (OAEP asked for by name):
+    key locked with  RSA-OAEP
+    OID              1.2.840.113549.1.1.7
+  THE EASY CALL (the one most examples show):
+    key locked with  RSA with PKCS#1 v1.5  <- OLDER PADDING
+    OID              1.2.840.113549.1.1.1
+  THE REST OF THE BILL:
+    the library is about 7 MB
+    registering it is global: every library can use it
+    names moved from jdk15on to jdk18on: upgrade with care
+    the JDK cannot make a certificate and has no CMS

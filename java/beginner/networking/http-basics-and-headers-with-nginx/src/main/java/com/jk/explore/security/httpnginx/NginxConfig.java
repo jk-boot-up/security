@@ -38,7 +38,8 @@ public final class NginxConfig {
     private static String headers(String indent) {
         StringBuilder text = new StringBuilder();
         for (String[] header : HEADERS) {
-            text.append(indent).append("add_header ").append(header[0]).append(" \"").append(header[1]).append("\" always;\n");
+            text.append(indent).append("add_header ").append(header[0])
+                    .append(" \"").append(header[1]).append("\" always;\n");
         }
         return text.toString();
     }

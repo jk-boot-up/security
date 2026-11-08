@@ -39,7 +39,8 @@ final class Triage {
         for (Vulnerability v : vulnerabilities) {
             Optional<Version> fix = v.nearestFix();
             Optional<Version> current = targets.getOrDefault(v.packageName(), Optional.empty());
-            if (fix.isPresent() && (current.isEmpty() || current.get().isOlderThan(fix.get()))) {
+            if (fix.isPresent()
+                    && (current.isEmpty() || current.get().isOlderThan(fix.get()))) {
                 targets.put(v.packageName(), fix);
             } else {
                 targets.putIfAbsent(v.packageName(), current);

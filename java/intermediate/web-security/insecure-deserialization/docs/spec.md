@@ -38,7 +38,7 @@ Developers read objects from bytes that the customer can change, and the bytes c
 | Tests | 10, all passing |
 | Demo output | 17 lines, identical on every run |
 | Acts | 4 |
-| Video | 05:56, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:25, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

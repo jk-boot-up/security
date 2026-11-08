@@ -2,13 +2,14 @@
 
 ```
 src/main/java/com/jk/explore/security/authkeycloak/
-├── Issuer.java        A stand-in for the login server in the demo: it signs tokens in the shape Keycloak produces (issuer, audience, authorized party, realm_access.roles, expiry)
-├── KeycloakDemo.java  Runs the online store story in five numbered acts against a real Spring Boot resource server on the loopback interface
-├── Revocations.java   A list of token ids that were revoked
-├── Running.java       The order API started on a free loopback port with the given token decoder
-├── Shop.java          The online store's order API as an OAuth 2 resource server: it holds no passwords and trusts only tokens the login server signed
-├── SimClock.java      A clock that only moves when told to, so token lifetimes can be shown without waiting
-└── Validators.java    The checks a resource server makes after the signature: expiry, issuer, audience, and optionally a revocation list
+├── Issuer.java          A stand-in for the login server in the demo: it signs tokens in the shape Keycloak produces (issuer, audience, authorized party, realm_access.roles, expiry)
+├── KeycloakDemo.java    Runs the online store story in six numbered acts against a real Spring Boot resource server on the loopback interface
+├── Revocations.java     A list of token ids that were revoked
+├── Running.java         The order API started on a free loopback port with the given token decoder
+├── Shop.java            The online store's order API as an OAuth 2 resource server: it holds no passwords and trusts only tokens the login server signed
+├── SignatureSteps.java  Redoes by hand the check the resource server makes on an RS256 token, so each step can be printed
+├── SimClock.java        A clock that only moves when told to, so token lifetimes can be shown without waiting
+└── Validators.java      The checks a resource server makes after the signature: expiry, issuer, audience, and optionally a revocation list
 ```
 
 **With Keycloak the shop stops handling passwords: a login server proves who is asking and signs a token, and the shop only checks the token's signature, expiry, issuer and audience, and then its own rules, but the roles in the token are a copy that can be stale.**
@@ -36,15 +37,16 @@ a role that is taken away while the token is alive, and a token that is revoked.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. No login in the shop, only tokens | No token, garbage and a token signed with another key all get 401; a signed token works; 301 seconds later the same token is expired and refused, with no call to the login server. |
-| 2. Who is it, and what may they do | The roles in realm_access.roles become authorities; Ana reads her own order and gets 403 for Ben's; support reads it; only admin opens the sales report. |
-| 3. A real signature is not enough | A correctly signed token from another issuer, and one meant for another API, are both refused; without an audience check any API's token would open this one. |
-| 4. The roles in a token are a copy | An admin is demoted but the token already issued still opens the report until it expires; a new token carries the new roles; a short lifetime limits the stale window. |
-| 5. Ending a token early, and the bill | A revocation list ends a token at once, but it is consulted on every request; without it the shop makes no call, and the login server becomes one more system to run. |
+| 1. No login in the shop, only tokens | No token, garbage and a token signed with another key all get 401; a signed token gets 200; 301 seconds later the same token is expired and refused, with no call to the login server. |
+| 2. Inside a token, and its signature | A token is header, claims and a 256-byte RS256 signature; the shop hashes header.claims with SHA-256, opens the signature with the public key, and finds the same hash; change one word and the hashes differ, so 401. |
+| 3. Who is it, and what may they do | The roles in realm_access.roles become authorities ROLE_CUSTOMER, ROLE_SUPPORT and ROLE_ADMIN; Ana reads her own order and gets 403 for Ben's; support reads it; only admin opens the sales report. |
+| 4. A real signature is not enough | A correctly signed token from another issuer, and one meant for another API, are both refused with 401; without an audience check any API's token would open this one. |
+| 5. The roles in a token are a copy | An admin is demoted but the token already issued still opens the report until it expires; a new token carries the new roles; a short lifetime limits the stale window. |
+| 6. Ending a token early, and the bill | A revocation list ends a token at once, but it is read on every request; without it the shop makes no call, and the login server becomes one more system to run. |
 
 ## Test
 
@@ -52,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-28 tests in `DemoRunsTest`, `Keycloak`, `KeycloakIntegrationTest`, `RealmFileTest`, `TokenRulesTest`. The default tests need only a JDK: the stand-in login server signs tokens with a random key and a simulated clock, so the demo prints only status codes and booleans, and the golden output is the same on every run. The integration tests (tagged docker) run the real Keycloak in Docker.
+33 tests in `DemoRunsTest`, `Keycloak`, `KeycloakIntegrationTest`, `RealmFileTest`, `SignatureStepsTest`, `TokenRulesTest`. The default tests need only a JDK: the stand-in login server signs tokens with a random key and a simulated clock, so the demo prints only status codes and booleans, and the golden output is the same on every run. The integration tests (tagged docker) run the real Keycloak in Docker.
 
 ## What the simulation got right, and what it left out
 

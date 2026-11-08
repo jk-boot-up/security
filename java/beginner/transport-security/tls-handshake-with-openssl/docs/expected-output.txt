@@ -1,31 +1,66 @@
 ONE. A real TLS server and client on this machine.
-  the server listens on the loopback address; the client connects by the name shop.example.test
-  handshake works: true, agreed protocol: TLSv1.3
-  agreed cipher suite: TLS_AES_256_GCM_SHA384
-  the server answered: received: order=A-1001
-  two engines wired together in memory agree the same suite: true
-  anything that speaks TLS can take the client's place, so the tests let the openssl program do it
+  THE REQUEST (a Java client, over a real socket):
+    connects to  shop.example.test at 127.0.0.1
+    sends        order=A-1001
+  THE RESPONSE (from the Java server, after the handshake):
+    handshake works: true
+    protocol      TLSv1.3
+    cipher suite  TLS_AES_256_GCM_SHA384
+    reply         received: order=A-1001
+  two engines in memory agree the same suite: true
+  anything that speaks TLS can take a side: the tests use openssl
 TWO. Giving the certificate and key to other programs.
-  the certificate file starts with -----BEGIN CERTIFICATE----- and ends with -----END CERTIFICATE-----
-  the key file starts with -----BEGIN PRIVATE KEY----- and ends with -----END PRIVATE KEY-----
-  the certificate names CN=shop.example.test and the key type is EC
-  the key file is readable by its owner only: true
-  PEM is only Base64 of the same bytes, so openssl reads what Java wrote and Java reads what openssl writes
-  the key file holds the private key in the clear  <- PROTECT IT LIKE A PASSWORD
+  BEFORE PEM (the certificate as Java holds it, DER bytes):
+    371 bytes, starting  30 82 01 ...
+  STEP 1. BASE64: 3 BYTES = 24 BITS = 4 GROUPS OF 6 BITS
+    bits    00110000 10000010 00000001
+    groups  001100 001000 001000 000001  = 12 8 8 1
+    letters MIIB   (0 = A, 1 = B, 8 = I, 12 = M, 63 = /)
+  STEP 2. 496 LETTERS, IN LINES OF 64, BETWEEN TWO LABELS
+  AFTER PEM (shop-cert.pem, 10 lines):
+    -----BEGIN CERTIFICATE-----
+    MIIBbzCCARWgAwIBAgIIS44KRdwJBm4w...
+    -----END CERTIFICATE-----
+  THE KEY FILE (shop-key.pem):
+    -----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----
+    for CN=shop.example.test, key type EC
+    permissions rw-------, owner only
+    the private key, in the clear  <- PROTECT IT LIKE A PASSWORD
 THREE. Who is on the other end.
-  the shop's own certificate, name shop.example.test: handshake works: true
-  an impostor with the same name but a certificate the client does not trust: handshake works: false  <- THE CLIENT REFUSES
-  the shop's real certificate, but the client asked for another.example.test: handshake works: false  <- THE NAME MUST MATCH
-  openssl s_client checks the same two things when given -verify_return_error and -verify_hostname
+  THE REQUEST (what the client asks for, and trusts):
+    asks for  shop.example.test
+    trusts    one certificate, SHA-256 0ded3842d38b01a7
+  THE RESPONSE (three servers, over real sockets):
+    1. the shop, certificate 0ded3842d38b01a7
+       works: true
+    2. an impostor, same name, certificate b72122451fcf2531
+       works: false  <- NOT TRUSTED
+    3. the shop, but the client asked for another.example.test
+       works: false  <- THE NAME MUST MATCH
+  openssl s_client checks the same two things when given
+  -CAfile, -verify_hostname NAME and -verify_return_error
 FOUR. Versions: what each side offers.
-  a client that offers only TLS 1.2 to a server that allows the defaults: handshake works: true
-  the agreed protocol is TLSv1.2
-  the same client against a server that allows only TLS 1.3: handshake works: false
-  a client that offers only TLS 1.1: handshake works: false  <- OLD VERSIONS ARE SWITCHED OFF
-  openssl s_client -tls1_2 and -tls1_1 make the same offers, and the tests check what it is told
+  BEFORE TIGHTENING (a server with the JDK's defaults):
+    client offers TLSv1.1  works: false  <- OLD VERSIONS ARE OFF
+    client offers TLSv1.2  works: true, agreed TLSv1.2
+  AFTER TIGHTENING (the server allows only TLS 1.3):
+    client offers TLSv1.2  works: false
+    client offers TLSv1.3  works: true, agreed TLSv1.3
+  openssl s_client -tls1_1, -tls1_2 and -tls1_3 make the same offers
 FIVE. Checking from the outside, and the bill.
-  to check a server with another program, run: openssl s_client -connect HOST:PORT -servername NAME -CAfile cert.pem -verify_hostname NAME -verify_return_error
-  to serve with another program, run: openssl s_server -accept PORT -cert cert.pem -key key.pem
-  the bill: a second implementation catches mistakes in the first, but only the settings that you actually pass are checked
-  openssl without -verify_return_error prints the problem and carries on, so a script must check the exit status and the verification line
-  a private key written to a file for another program is one more copy to protect
+  THE REQUEST (openssl as the client, the command):
+    openssl s_client -connect HOST:PORT -servername NAME
+      -CAfile cert.pem -verify_hostname NAME
+      -verify_return_error -brief
+  THE RESPONSE (the lines the tests check, for this server):
+    Protocol version: TLSv1.3
+    Ciphersuite: TLS_AES_256_GCM_SHA384
+    Verification: OK
+    received: order=A-1001
+  openssl as the server: s_server -cert cert.pem -key key.pem
+  THE BILL:
+    a second program catches mistakes in the first,
+    but only the settings you pass are checked
+    without -verify_return_error, openssl reports and goes on,
+    so a script must check the exit status
+    a key file for another program is one more copy to protect

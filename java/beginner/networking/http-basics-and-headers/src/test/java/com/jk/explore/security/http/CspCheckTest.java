@@ -35,6 +35,6 @@ class CspCheckTest {
     @Test
     void aPolicyWithoutScriptRulesOrWithUnsafeKeywordsFails() {
         assertEquals("no default-src or script-src", csp("img-src 'self'").reason());
-        assertEquals("allows unsafe-inline or unsafe-eval", csp("default-src 'self' 'unsafe-inline'").reason());
+        assertEquals("allows unsafe-inline/eval", csp("default-src 'self' 'unsafe-inline'").reason());
     }
 }

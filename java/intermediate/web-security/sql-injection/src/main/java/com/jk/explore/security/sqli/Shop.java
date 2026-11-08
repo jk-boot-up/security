@@ -7,6 +7,10 @@ public final class Shop {
 
     static final String SECRET_HASH = "pbkdf2$ana$9f2c";
 
+    /** The tables each database user may read, in a fixed order for printing. */
+    static final java.util.List<String> ADMIN_TABLES = java.util.List.of("products", "users", "orders");
+    static final java.util.List<String> SEARCH_TABLES = java.util.List.of("products");
+
     private Shop() {
     }
 
@@ -28,11 +32,11 @@ public final class Shop {
 
     /** The database user the search page runs as: everything, as in a first version where one account does all the work. */
     public static MiniDb.Connection adminConnection(MiniDb db) {
-        return db.connect(Set.of("products", "users", "orders"));
+        return db.connect(Set.copyOf(ADMIN_TABLES));
     }
 
     /** A user that may only read the product table: all the search page needs. */
     public static MiniDb.Connection searchConnection(MiniDb db) {
-        return db.connect(Set.of("products"));
+        return db.connect(Set.copyOf(SEARCH_TABLES));
     }
 }

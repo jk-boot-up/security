@@ -2,9 +2,11 @@
 
 ```
 src/main/java/com/jk/explore/security/asymmetricbc/
-├── BouncyCastleDemo.java  Runs the online bank story in five numbered acts, with Bouncy Castle and OpenSSL, and prints facts that do not depend on random keys
+├── Base64Steps.java       Base64 by hand, the way PEM turns a key's bytes into text: every 3 bytes (24 bits) are cut into four 6-bit groups, and each group, a number from 0 to 63, picks one letter from the alphabet below
+├── BouncyCastleDemo.java  Runs the online bank story in six numbered acts, with Bouncy Castle and OpenSSL, and prints facts that do not depend on random keys
 ├── Certificates.java      Makes a self-signed X.509 certificate: a public key, a name, a validity period, all signed with the matching private key
 ├── CmsEnvelope.java       Hybrid encryption in a standard file format: CMS EnvelopedData (RFC 5652), the format behind S/MIME email
+├── EnvelopeSteps.java     Opens a CMS envelope by hand, step by step, with the JDK's own ciphers: read its parts, unlock the AES key with RSA-OAEP, then decrypt the statement with AES-CBC and remove the padding
 ├── Hex.java               Small helpers for text and bytes
 ├── OpenSsl.java           Calls the openssl command-line tool, a different program written by different people, to open a CMS envelope
 ├── Pem.java               Keys and certificates as PEM: the text format with a "-----BEGIN ...-----" line, Base64 in the middle and an "-----END ...-----" line, which OpenSSL, SSH tools, web servers and most libraries read and write
@@ -19,8 +21,8 @@ OpenSSL, SSH and web servers all use. It builds **X.509 certificates**. And it w
 recipient's RSA key, and the recipient named by a certificate. Because it is a standard, a different program can open it, and this project proves that by asking **OpenSSL**, a command-line tool written by other people, to open
 the bank's envelope.
 
-The demo keeps the same online bank and customer, Ana, as the plain project. It writes her keys as PEM, protects the private key with a password, makes a self-signed certificate, seals a statement in a CMS envelope, has OpenSSL open it,
-and ends with what Bouncy Castle costs.
+The demo keeps the same online bank and customer, Ana, as the plain project, in six acts. It writes her public key as PEM and works out the Base64 letters by hand, locks the private key with a password, makes a
+self-signed certificate, seals a statement in a CMS envelope and shows its parts by size, opens it by hand with the JDK alone and then with OpenSSL, and ends with what Bouncy Castle costs. Every act shows its input and its result in separate sections.
 
 ## The idea in everyday terms
 
@@ -30,7 +32,7 @@ homemade format could be perfectly secure and still be useless, because nobody e
 ## The scenario
 
 The online bank and Ana from the plain project. This time the bank must give Ana's keys a form that she can keep in files, and send her statements in a format that her email program and other tools can read. The
-demo writes her keys as PEM, makes a certificate for her public key, seals a 10,000-byte statement in a CMS envelope, opens it with Java, with Eve's key, and with OpenSSL, and finally looks at the costs of using the library.
+demo writes her keys as PEM, makes a certificate for her public key, seals a 10,000-byte statement in a CMS envelope, opens it with Bouncy Castle, with Eve's key, by hand with the JDK alone and with OpenSSL, and finally looks at the costs of using the library.
 
 ## Run
 
@@ -38,15 +40,16 @@ demo writes her keys as PEM, makes a certificate for her public key, seals a 10,
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Keys as PEM text | A public key and a PKCS#8 private key are written as PEM; the private key in the clear is readable by anyone, encrypted with a password it is not, and a wrong password is refused. |
-| 2. A certificate for the public key | A self-signed X.509 certificate names Ana, is valid for the year 2026, is signed with SHA256WITHRSA, and has the same issuer and subject, so anyone could have made it. |
-| 3. A standard envelope: CMS EnvelopedData | A 10,000-byte statement is sealed for Ana's certificate with AES-256 and RSA-OAEP; Ana opens it, and Eve's private key is refused. |
-| 4. A different program opens it | The openssl command-line tool, written by other people, is given the envelope, the key file and the certificate, and opens the statement: it is a real standard. |
-| 5. The bill: what Bouncy Castle costs | The envelope locks its key with RSA-OAEP, but the easy call picks PKCS#1 v1.5; the library is about 7 MB, and registering it changes the whole program. |
+| 1. The public key as PEM text | Ana's 294-byte public key becomes 392 Base64 letters in 7 lines between a BEGIN and an END line; the first three bytes 30 82 01 become the letters MIIB, worked out by hand. |
+| 2. The private key file, locked with a password | In the clear, the private key file is ready for anyone to use; locked with a password (AES-256, with a key made from the password) it reads back only with the right password. |
+| 3. A certificate for the public key | A name, Ana's 294-byte public key and fixed dates are signed with SHA256WITHRSA by her own private key, giving a 749-byte certificate whose issuer equals its subject: anyone could have made it. |
+| 4. A standard envelope: CMS EnvelopedData | A 10,000-byte statement is sealed for Ana's certificate into one 10,520-byte envelope: the recipient's serial, a 256-byte locked AES key, a 16-byte IV and 10,016 bytes of cipher text; Ana opens it, Eve is refused. |
+| 5. Opening it by hand, then with openssl | With the JDK alone: RSA-OAEP turns the 256-byte locked key into a 32-byte AES key; AES-256-CBC turns 10,016 bytes into 10,016, the last 16 all 10 hex; removing 16 bytes of padding leaves the 10,000-byte statement. openssl opens it too. |
+| 6. The bill: what Bouncy Castle costs | The careful call locks the key with RSA-OAEP (OID 1.2.840.113549.1.1.7), the easy call with the older PKCS#1 v1.5 (1.2.840.113549.1.1.1); the library is about 7 MB, registering it is global, and its names have moved. |
 
 ## Test
 
@@ -54,12 +57,13 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-20 tests in `CertificateTest`, `CmsEnvelopeTest`, `OpenSslInteropTest`, `PemTest`. The unit tests (`./gradlew test`) need nothing installed. The tests that call `openssl`, including the golden-output comparison, are tagged `openssl` and run with `./gradlew integrationTest`, which needs openssl 3 on the PATH. The demo's comparison with its golden output runs with the integration tests, because the demo needs OpenSSL 3: run `./gradlew integrationTest` after changing the demo or its narration.
+27 tests in `Base64StepsTest`, `CertificateTest`, `CmsEnvelopeTest`, `EnvelopeStepsTest`, `OpenSslInteropTest`, `PemTest`. The unit tests (`./gradlew test`) need nothing installed. The tests that call `openssl`, including the golden-output comparison, are tagged `openssl` and run with `./gradlew integrationTest`, which needs openssl 3 on the PATH. The demo's comparison with its golden output runs with the integration tests, because the demo needs OpenSSL 3: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 
-Keys are fresh and random on every run, so the demo prints only facts that do not depend on them: the headers of the files, the subject and dates of a certificate whose dates are fixed, and whether
-operations open or are refused. The certificate is self-signed, with fixed start and end dates so its text does not change. Act four calls the `openssl` command-line tool, which must be version 3 and on the PATH, and says so if it is not. The size
+Keys are fresh and random on every run, so the demo prints only facts that do not depend on them: the headers of the files, sizes in bytes (a 2048-bit RSA key, its certificate and the envelope
+always have the same length), the first bytes of the key's encoding, which are the same for every 2048-bit RSA public key, the padding block, and whether operations open or are refused.
+The certificate is self-signed, with fixed start and end dates so its text does not change. Act five calls the `openssl` command-line tool, which must be version 3 and on the PATH, and says so if it is not. The size
 of the library is printed in whole megabytes and belongs to the pinned version.
 
 ## Technologies and versions
@@ -74,7 +78,7 @@ Every version below is pinned in the project's build files and was the latest st
 | org.bouncycastle:bcpkix-jdk18on | 1.86 | Bouncy Castle PKIX: PEM, X.509 certificates and CMS |
 | org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
-| OpenSSL (command-line tool) | 3.x | the independent check that opens the CMS envelope; needed for act four and the integration tests |
+| OpenSSL (command-line tool) | 3.x | the independent check that opens the CMS envelope; needed for act five and the integration tests |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material
@@ -99,7 +103,7 @@ The statement is encrypted with AES-256; the AES key is locked with the RSA key 
 
 ### Where each piece sits
 
-Four small classes wrap the library: Pem, Certificates, CmsEnvelope and OpenSsl; Providers registers Bouncy Castle once.
+Four small classes wrap the library: Pem, Certificates, CmsEnvelope and OpenSsl; Providers registers Bouncy Castle once; Base64Steps and EnvelopeSteps redo the hidden steps by hand.
 
 ![The classes and what they hold](docs/images/class-diagram.png)
 

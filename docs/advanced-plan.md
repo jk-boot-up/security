@@ -19,7 +19,8 @@ The conventions are the same as in the other tracks:
 - plain and `-with-<tool>` versions, five acts, a threat model with a diagram, golden output, animation and video;
 - local labs only, no cloud account;
 - latest stable versions, no deprecated API;
-- nothing uploaded before review.
+- nothing uploaded before review;
+- every video and animation follows the [video and animation teaching standard](video-teaching-standard.md).
 
 ## Modules and projects
 

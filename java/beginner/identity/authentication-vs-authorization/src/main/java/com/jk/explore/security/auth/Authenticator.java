@@ -30,6 +30,8 @@ public class Authenticator {
             return Optional.empty();
         }
         Account account = directory.find(username);
+        // Numbered so the demo output is easy to read. A real session token must be long and
+        // unguessable: at least 128 bits from SecureRandom, never a counter.
         Session session = new Session("tok-" + (++issued), username, account.role(), ticker.now());
         sessions.put(session.token(), session);
         return Optional.of(session);

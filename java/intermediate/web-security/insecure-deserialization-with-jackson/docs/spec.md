@@ -41,7 +41,7 @@ Teams let JSON choose the class to build, for convenience, and trust prices and 
 | Tests | 12, all passing |
 | Demo output | 28 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:24, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:41, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

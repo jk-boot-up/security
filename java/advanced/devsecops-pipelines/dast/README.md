@@ -21,7 +21,7 @@ What it shows:
 - **The fixed application.** Nothing planted is raised; one medium alert (no anti-CSRF token) remains for a person to judge.
 - **The bill.** A scanner finds what it can reach, and a clean scan is not a proof.
 
-**Maps to:** OWASP Top 10 A03 Injection and A05 Security Misconfiguration · OWASP ASVS V5, V14 · NIST SSDF PW.8 · CWE-79, CWE-89.
+**Maps to:** OWASP Top 10 (2025) A05 Injection and A02 Security Misconfiguration · OWASP ASVS 5.0 V1 Encoding and Sanitization, V13 Configuration · NIST SSDF PW.8 · CWE-79, CWE-89.
 
 ## The idea in everyday terms
 

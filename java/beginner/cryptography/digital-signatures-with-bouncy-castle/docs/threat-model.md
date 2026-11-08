@@ -57,6 +57,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
+- `SignatureStepsTest` checks that the by-hand ECDSA steps give Bouncy Castle's signature and RFC 6979's r, s and k, and that the CMS digest attribute is the statement's SHA-256.
 - `VectorsTest` checks Ed25519 and Ed448 against RFC 8032, ECDSA against RFC 6979, the JWS against RFC 8037, and the reused-nonce recovery.
 - `CmsAndJwsTest` checks attached and detached verification, changed content, another certificate, garbage, the signing time, PEM, and the JWS refusals.
 - `OpenSslInteropTest` (integration) checks that OpenSSL 3 verifies CMS, Ed25519 and ECDSA signatures from Java, and that Java verifies an ECDSA signature from OpenSSL.

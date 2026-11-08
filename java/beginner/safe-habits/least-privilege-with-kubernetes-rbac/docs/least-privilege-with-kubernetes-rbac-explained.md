@@ -8,28 +8,32 @@ RBAC allows only what a rule says, so the harm from a stolen token is the sum of
 
 ### 1. The nightly job that was given cluster-admin
 
-The shop's namespace has 56 things a token could be used for: 7 verbs on 8 kinds of object. If the nightly-export-admin token is stolen it reaches all 56, and the whole cluster as well. If the exporter token is stolen it reaches 2 of 56: get and list pods.
-It can also read one config map by name, export-settings, but not another one, payment-keys, and it cannot read secrets.
+The shop's namespace has 7 verbs (get, list, watch, create, update, patch, delete) on 8 resources (pods, pods/exec, secrets, configmaps, services, deployments, roles, rolebindings): 7 x 8 = 56 things a token could be used for.
+Before the fix, the nightly-export-admin service account is bound to cluster-admin, and a stolen token reaches all 56, and the whole cluster as well. After the fix, the exporter has the role order-exporter with two rules: get and list on pods, and get on the one config map named export-settings.
+A stolen exporter token reaches 2 of 56, plus that named config map. It can read export-settings, not payment-keys, and not secrets.
 
 ### 2. The wildcard trap: read everything
 
-The reporter's role says get and list on all resources, which sounds read-only and harmless. But the reporter can read secrets, every password and key in the namespace. It reaches 16 of 56, and "everything" also includes things that did not exist when the role was written.
-A rule that names its resources keeps meaning what it said.
+The reporter's role, report-reader, has one rule: get and list on *, which means every resource. Read everything sounds read-only and harmless.
+But secrets are a resource too, so the reporter can read every password and key in the namespace. It cannot update a deployment. It reaches 16 of 56: 2 verbs x 8 resources.
+And * also covers kinds of object added after the role was written. Name the resources instead, and use resourceNames for a single object.
 
 ### 3. Ways to become more powerful
 
-The exporter has no escalation paths. The ci-deployer has four: it can create pods, which can mount any secret or service account token in the namespace, it can create role bindings, bind roles it does not hold, and edit roles to add permissions it does not hold.
-It cannot read secrets directly, but it can create a pod that mounts them. So "create pods" is as powerful as "read secrets", and "bind" or "escalate" is as powerful as owning the namespace.
+The role deployer, held by the ci-deployer service account, has four rules: get, list and create on pods; get, list, create, update and patch on deployments; create on rolebindings; and bind and escalate on roles.
+It cannot get secrets. But it has 4 escalation paths, ways to become more powerful than it was given: it can create pods, and a pod can mount any secret or token; it can create role bindings; it can bind roles it does not hold; and it can edit roles to add permissions it does not hold. The exporter has none.
+So create pods is the same as read secrets, and bind or escalate is the same as owning the namespace.
 
 ### 4. A cluster-wide role through a namespaced binding
 
-The role shop-viewer is a ClusterRole, and the support agent holds it through a RoleBinding in the shop namespace. The agent can list pods in shop, cannot list pods in warehouse, and cannot delete pods in shop.
-The cluster-admin job can list pods in warehouse because a cluster binding ignores namespaces. The binding decides the reach, not the role.
+The role shop-viewer is a ClusterRole: it has no namespace, and its rule is get, list and watch on pods, services and configmaps. The support agent holds it through a RoleBinding in the shop namespace.
+So the support agent can list pods in shop, but not in warehouse, and cannot delete pods in shop. By contrast, the nightly-export-admin is bound by a ClusterRoleBinding, and can list pods in warehouse: a cluster binding ignores namespaces.
+The binding sets the scope, not the role: a role can be shared, and the binding is where the reach is decided.
 
 ### 5. A linter for the habits that cause incidents
 
-The linter finds six problems in the shop manifests: a binding to cluster-admin, a wildcard on resources, the escalate and bind verbs, and two service accounts whose token is mounted into every pod. A linter finds wildcards and cluster-admin, not a role that is too wide but spelled out in full,
-so ask the cluster too, with kubectl auth can-i --list.
+The linter reads the manifests in infra/rbac/shop.yaml: 5 roles, 5 bindings and 6 service accounts. It finds 6 problems: a binding to cluster-admin, a role with wildcard resources, the escalation verbs escalate and bind, and two service accounts whose token is mounted into every pod.
+A linter finds wildcards and cluster-admin; it does not find a role that is too wide but spelled out in full. So ask the cluster too, with kubectl auth can-i --list for each service account.
 
 ## The verdict
 

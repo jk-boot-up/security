@@ -43,9 +43,9 @@ Access control is the most common serious weakness in web applications and APIs,
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 36, all passing |
-| Demo output | 40 lines, identical on every run |
+| Demo output | 103 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:35, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:08, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

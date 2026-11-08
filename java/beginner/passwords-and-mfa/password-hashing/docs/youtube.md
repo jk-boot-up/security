@@ -16,23 +16,40 @@ Chapters:
 
 ```
 00:00 Introduction
-01:21 The Scenario
-01:55 The Words
-02:29 Act One — Passwords stored as they are
-03:01 Act Two — A fast hash, with no salt
-03:50 Act Three — A fast hash, with a salt for each account
-04:39 Act Four — A slow hash, with a salt for each account
-05:36 Act Five — The bill: every login pays, and old hashes must be upgraded
-06:32 Four Ways, Compared
-07:15 Who Does What
-07:53 Where You Have Seen It
-08:26 How To Use It
-08:58 Thanks for Watching
+01:03 The Scenario
+01:26 The Words
+01:46 What the Letters Stand For
+02:36 What a hash does to one password
+03:14 The row holds the password itself
+03:42 Act One — Passwords stored as they are
+03:53 No salt: one table cracks every account
+04:28 Act Two — A fast hash, with no salt
+04:47 How a salted hash is made
+05:30 Act Three — A fast hash, with a salt for each account
+05:45 Act Three — A fast hash, with a salt for each account
+05:57 What one hundred thousand rounds are
+06:44 Act Four — A slow hash, with a salt for each account
+07:00 Act Four — A slow hash, with a salt for each account
+07:18 Act Four — A slow hash, with a salt for each account
+07:33 The bill, and an upgrade at login
+08:09 Act Five — The bill: login costs, and upgrades
+08:26 Four Ways, Compared
+08:49 Where You Have Seen It
+09:13 How To Use It
+09:38 The Java Classes
+09:44 PasswordHasher — one interface, four ways
+09:55 SaltedSha256 — salt, then password, then SHA-256
+10:09 Pbkdf2Hasher — the rounds are stored with the hash
+10:30 RoundSteps — each round from the one before
+10:45 AccountStore — upgrade after a correct password
+10:59 Attacker — a table, or guesses per account
+11:11 SaltSource — secure in real use, counting in the demo
+11:29 Thanks for Watching
 ```
 
 ## Tags
 
-password hashing, salt, pbkdf2, password storage, security basics, java, cybersecurity for beginners
+password hashing, salt, pbkdf2, password storage, security basics, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +57,16 @@ password hashing, salt, pbkdf2, password storage, security basics, java, cyberse
 | --- | --- |
 | Video | `video/password-hashing-explained.mp4` |
 | Captions | `video/password-hashing-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Passwords and MFA in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (34)
-- [ ] tags are at most 500 characters in total — ok (94)
+- [ ] tags are at most 500 characters in total — ok (145)
 - [ ] description is at most 5,000 characters — ok (579)
 - [ ] chapters start at 00:00 and there are at least three

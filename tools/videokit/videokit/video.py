@@ -5,15 +5,25 @@ import shutil
 
 from . import ffmpeg
 
+# Slides are drawn and encoded at 3840x2160: YouTube gives 4K uploads its
+# high-bitrate encodes, which keep slide text sharp even when watched at 1080p.
+OUTPUT_SIZE = (3840, 2160)
 
-def slide_clip(png, frames, fps, dst):
+
+def slide_clip(png, frames, fps, dst, crf=18):
     """A still slide held for exactly `frames` frames, video only.
 
+    BT.709 is written into the file, so every player turns it back into the
+    slide's exact colours instead of guessing.
     -bf 0: B-frames save nothing on a still image and push the first video
     timestamp past the audio's, which shows black at 0:00.
     """
-    ffmpeg.run("-loop", 1, "-i", png, "-frames:v", frames, "-c:v", "libx264",
-               "-preset", "slow", "-crf", 18, "-pix_fmt", "yuv420p", "-r", fps,
+    ffmpeg.run("-loop", 1, "-i", png, "-frames:v", frames,
+               "-vf", "scale=%d:%d:flags=lanczos:out_color_matrix=bt709:out_range=tv" % OUTPUT_SIZE,
+               "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+               "-color_range", "tv", "-c:v", "libx264",
+               "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
+               "-preset", "slow", "-crf", crf, "-tune", "stillimage", "-pix_fmt", "yuv420p", "-r", fps,
                "-bf", 0, "-an", dst)
 
 
@@ -53,4 +63,7 @@ def audio_gaps(mp4, packet=1024 / 48000):
 
 
 def copy_poster(first_slide, dst):
-    shutil.copyfile(first_slide, dst)
+    """The poster image, kept at 1920x1080 (slides themselves are drawn at 4K)."""
+    from PIL import Image
+    with Image.open(first_slide) as img:
+        img.resize((1920, 1080), Image.LANCZOS).save(dst)

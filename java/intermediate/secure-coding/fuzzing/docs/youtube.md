@@ -32,7 +32,7 @@ Chapters:
 
 ## Tags
 
-fuzzing, fuzz testing, coverage guided fuzzing, delta debugging, regression tests, secure coding, java, jazzer, application security
+fuzzing, fuzz testing, coverage guided fuzzing, delta debugging, regression tests, secure coding, java, jazzer, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +40,16 @@ fuzzing, fuzz testing, coverage guided fuzzing, delta debugging, regression test
 | --- | --- |
 | Video | `video/fuzzing-explained.mp4` |
 | Captions | `video/fuzzing-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Secure Coding in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (62)
-- [ ] tags are at most 500 characters in total — ok (124)
+- [ ] tags are at most 500 characters in total — ok (175)
 - [ ] description is at most 5,000 characters — ok (773)
 - [ ] chapters start at 00:00 and there are at least three

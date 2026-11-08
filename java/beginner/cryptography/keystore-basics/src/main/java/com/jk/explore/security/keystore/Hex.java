@@ -13,12 +13,26 @@ final class Hex {
         return text.getBytes(StandardCharsets.UTF_8);
     }
 
+    /** The text as UTF-16, the way a PKCS12 file stores a key's name (its friendlyName). */
+    static byte[] utf16(String text) {
+        return text.getBytes(StandardCharsets.UTF_16BE);
+    }
+
     static String text(byte[] bytes) {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
     static String of(byte[] bytes) {
         return HexFormat.of().formatHex(bytes);
+    }
+
+    /** The first 16 bytes in groups of four, "68617264 2d636f64 ...", and "..." if there are more. */
+    static String first16(byte[] bytes) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < Math.min(16, bytes.length); i += 4) {
+            out.append(i == 0 ? "" : " ").append(of(java.util.Arrays.copyOfRange(bytes, i, Math.min(i + 4, bytes.length))));
+        }
+        return out + (bytes.length > 16 ? " ..." : "");
     }
 
     static byte[] parse(String hex) {

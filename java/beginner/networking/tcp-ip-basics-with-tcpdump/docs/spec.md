@@ -6,7 +6,7 @@ Teach how to look at packets by writing a standard pcap file from Java, reading 
 
 ## Not in scope
 
-- Live capture from an interface, which needs root.
+- Live capture from an interface, which needs special rights, usually root.
 - Protocols other than TCP over IPv4.
 - Intrusion detection rules.
 
@@ -38,10 +38,10 @@ Packets are abstract until you have seen them; learners need to see real ones, w
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 25 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:26, 1920×1080, narrated in the amy-slow voice |
+| Tests | 18, all passing |
+| Demo output | 76 lines, identical on every run |
+| Acts | 6 |
+| Video | 13:25, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

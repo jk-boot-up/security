@@ -1,16 +1,16 @@
 package com.jk.explore.security.symmetrictink;
 
 import com.google.crypto.tink.Aead;
+import com.google.crypto.tink.Key;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.aead.PredefinedAeadParameters;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.HexFormat;
 
-/** Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results. */
+/** Runs the online bank story in six numbered acts, with Google's Tink, and prints exact, repeatable results. */
 public class TinkDemo {
 
     static final int KEY_ID = 1001;
@@ -18,6 +18,10 @@ public class TinkDemo {
     static final byte[] ACCOUNT = "account=ANA-1".getBytes(StandardCharsets.UTF_8);
     static final String MASTER_TEXT = "demo-master-key-standing-for-a-kms";
     static final byte[] LINE = "RENT      -1200\n".getBytes(StandardCharsets.UTF_8);
+    static final byte[] NONCE = HexFormat.of().parseHex("000000000000000000000001");
+    static final int NEW_KEY_ID = 1002;
+    static final String NEW_KEY_TEXT = "demo-statement-key-two-not-real";
+    static final int MASTER_ID = 2001;
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -28,10 +32,11 @@ public class TinkDemo {
         StringBuilder out = new StringBuilder();
         try {
             act1NoNonce(out);
-            act2Tamper(out);
-            act3Rotation(out);
-            act4Envelope(out);
-            act5Bill(out);
+            act2ByHand(out);
+            act3Tamper(out);
+            act4Rotation(out);
+            act5Envelope(out);
+            act6Bill(out);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
@@ -46,62 +51,150 @@ public class TinkDemo {
         return bytes == null ? "refused" : new String(bytes, StandardCharsets.UTF_8).trim();
     }
 
+    /** Bytes as hex, in groups of four bytes: 00000000 00000000 00000001. */
+    static String hex(byte[] bytes) {
+        String h = HexFormat.of().formatHex(bytes);
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < h.length(); i += 8) {
+            out.append(i == 0 ? "" : " ").append(h, i, Math.min(i + 8, h.length()));
+        }
+        return out.toString();
+    }
+
+    private static String start(byte[] message) {
+        return HexFormat.of().formatHex(message, 0, 5);
+    }
+
+    private static String keys(KeysetHandle keyset) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < keyset.size(); i++) {
+            out.append(i == 0 ? "" : ", ").append("key ").append(keyset.getAt(i).getId())
+                    .append(keyset.getAt(i).isPrimary() ? " (primary)" : "");
+        }
+        return out.toString();
+    }
+
     private static void act1NoNonce(StringBuilder out) {
         line(out, "ONE. One call, and no nonce to look after.");
         Bank bank = new Bank(DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT));
+        line(out, "  BEFORE ENCRYPTION (what the bank gives Tink):");
+        line(out, "    plain text   " + new String(LINE, StandardCharsets.UTF_8).trim() + "   (" + LINE.length + " bytes)");
+        line(out, "    account      " + new String(ACCOUNT, StandardCharsets.UTF_8) + "   (checked, not hidden)");
+        line(out, "    keyset       one AES256_GCM key, key id " + KEY_ID);
         byte[] first = bank.seal(ACCOUNT, LINE);
         byte[] second = bank.seal(ACCOUNT, LINE);
-        line(out, "  the same line sealed twice gives the same bytes: " + Arrays.equals(first, second) + "  <- TINK PICKS A NEW NONCE");
-        line(out, "  the stored message starts with " + HexFormat.of().formatHex(first, 0, 5) + ": version 1, then key id " + KEY_ID);
-        line(out, "  " + LINE.length + " bytes seal to " + first.length + " bytes: 5 for the key id, 12 for the nonce, 16 for the tag");
-        line(out, "  opened with the right key and account: " + text(bank.openOrNull(ACCOUNT, first)));
+        line(out, "  AFTER ENCRYPTION (the same line, sealed twice):");
+        line(out, "    message 1    " + first.length + " bytes, starts " + start(first));
+        line(out, "    message 2    " + second.length + " bytes, starts " + start(second));
+        line(out, "    the two are the same: " + Arrays.equals(first, second) + "  <- A NEW NONCE EACH TIME");
+        line(out, "  OPENING message 1 (right key, right account):");
+        line(out, "    " + text(bank.openOrNull(ACCOUNT, first)) + "  <- OPENED");
     }
 
-    private static void act2Tamper(StringBuilder out) {
-        line(out, "TWO. Any change is refused.");
+    private static void act2ByHand(StringBuilder out) throws GeneralSecurityException {
+        line(out, "TWO. Inside one Tink message, worked out by hand.");
+        line(out, "  BEFORE ENCRYPTION (a fixed nonce, only for this demo):");
+        line(out, "    key id       " + KEY_ID);
+        line(out, "    nonce        " + hex(NONCE));
+        line(out, "    account      " + new String(ACCOUNT, StandardCharsets.UTF_8));
+        line(out, "    plain text   " + new String(LINE, StandardCharsets.UTF_8).trim());
+        byte[] message = byHand();
+        TinkLayout.Parts parts = TinkLayout.split(message);
+        line(out, "  AFTER ENCRYPTION (" + message.length + " bytes, part by part):");
+        line(out, "    version      " + HexFormat.of().formatHex(parts.prefix(), 0, 1));
+        line(out, "    key id       " + HexFormat.of().formatHex(parts.prefix(), 1, 5)
+                + "   (" + KEY_ID + " = " + KEY_ID / 256 + " x 256 + " + KEY_ID % 256
+                + ", " + HexFormat.of().toHexDigits((byte) KEY_ID) + " = " + KEY_ID % 256 + ")");
+        line(out, "    nonce        " + hex(parts.nonce()));
+        line(out, "    cipher text  " + hex(parts.cipherText()));
+        line(out, "    tag          " + hex(parts.tag()));
+        line(out, "  1 + 4 + " + TinkLayout.NONCE + " + " + parts.cipherText().length + " + " + TinkLayout.TAG
+                + " = " + message.length + " bytes");
         Bank bank = new Bank(DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT));
-        byte[] sealed = bank.seal(ACCOUNT, LINE);
+        line(out, "  Tink opens the hand-built message: " + text(bank.openOrNull(ACCOUNT, message)) + "  <- SAME LAYOUT");
+    }
+
+    /** The message of act two: the demo's key and key id, a fixed nonce, laid out by hand. */
+    static byte[] byHand() throws GeneralSecurityException {
+        return TinkLayout.seal(DemoKeysets.keyBytes(KEY_TEXT), KEY_ID, NONCE, ACCOUNT, LINE);
+    }
+
+    private static void act3Tamper(StringBuilder out) throws GeneralSecurityException {
+        line(out, "THREE. Any change is refused.");
+        byte[] sealed = byHand();
+        byte[] tag = TinkLayout.split(sealed).tag();
+        Bank bank = new Bank(DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT));
+        line(out, "  THE SEALED MESSAGE (from act two):");
+        line(out, "    tag          " + hex(tag));
+        line(out, "  OPENING IT (Tink checks the tag first):");
+        line(out, "    right key, right account: " + text(bank.openOrNull(ACCOUNT, sealed)) + "  <- OPENED");
         byte[] flipped = sealed.clone();
         flipped[sealed.length - 1] ^= 0x01;
-        line(out, "  one bit of the message is flipped: " + text(bank.openOrNull(ACCOUNT, flipped)) + "  <- DETECTED");
-        line(out, "  the message is moved to another account: "
+        line(out, "  THREE CHANGES:");
+        line(out, "    last byte " + HexFormat.of().toHexDigits(sealed[sealed.length - 1]) + " -> "
+                + HexFormat.of().toHexDigits(flipped[sealed.length - 1]) + ": "
+                + text(bank.openOrNull(ACCOUNT, flipped)) + "  <- DETECTED");
+        line(out, "    moved to account=MAL-2: "
                 + text(bank.openOrNull("account=MAL-2".getBytes(StandardCharsets.UTF_8), sealed)) + "  <- DETECTED");
         Bank other = new Bank(DemoKeysets.aes256Gcm(KEY_ID, "a-completely-different-key-text!"));
-        line(out, "  opened with a different key of the same id: " + text(other.openOrNull(ACCOUNT, sealed)));
+        line(out, "    another key, same id " + KEY_ID + ": " + text(other.openOrNull(ACCOUNT, sealed)) + "  <- DETECTED");
     }
 
-    private static void act3Rotation(StringBuilder out) throws GeneralSecurityException {
-        line(out, "THREE. Replacing the key without losing the data.");
+    private static void act4Rotation(StringBuilder out) throws GeneralSecurityException {
+        line(out, "FOUR. Replacing the key without losing the data.");
         KeysetHandle original = DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT);
         byte[] old = new Bank(original).seal(ACCOUNT, LINE);
-        KeysetHandle rotated = KeysetHandle.newBuilder(original)
-                .addEntry(KeysetHandle.generateEntryFromParameters(PredefinedAeadParameters.AES256_GCM).withRandomId().makePrimary())
-                .build();
+        line(out, "  BEFORE ROTATION:");
+        line(out, "    keyset       " + keys(original));
+        line(out, "    old message  starts " + start(old));
+        KeysetHandle rotated = rotate(original);
         Bank bank = new Bank(rotated);
         byte[] fresh = bank.seal(ACCOUNT, LINE);
-        line(out, "  a new key is added and made primary: the keyset now holds " + rotated.size() + " keys");
-        line(out, "  a message sealed before the change still opens: " + text(bank.openOrNull(ACCOUNT, old)));
-        line(out, "  a new message starts with a different key id: " + !Arrays.equals(Arrays.copyOf(old, 5), Arrays.copyOf(fresh, 5)));
+        line(out, "  AFTER ROTATION (key " + NEW_KEY_ID + " added and made primary):");
+        line(out, "    keyset       " + keys(rotated));
+        line(out, "    new message  starts " + start(fresh));
+        line(out, "    old message opens: " + text(bank.openOrNull(ACCOUNT, old)));
+        line(out, "    new message opens: " + text(bank.openOrNull(ACCOUNT, fresh)));
         KeysetHandle onlyNew = KeysetHandle.newBuilder(rotated).deleteAt(0).build();
-        line(out, "  the old key is removed from the keyset: " + text(new Bank(onlyNew).openOrNull(ACCOUNT, old))
-                + " for old messages, " + text(new Bank(onlyNew).openOrNull(ACCOUNT, fresh)) + " for new ones");
+        line(out, "  AFTER REMOVING KEY " + KEY_ID + ":");
+        line(out, "    keyset       " + keys(onlyNew));
+        line(out, "    old message opens: " + text(new Bank(onlyNew).openOrNull(ACCOUNT, old)) + "  <- RE-ENCRYPT FIRST");
+        line(out, "    new message opens: " + text(new Bank(onlyNew).openOrNull(ACCOUNT, fresh)));
     }
 
-    private static void act4Envelope(StringBuilder out) throws GeneralSecurityException {
-        line(out, "FOUR. Keys that stay at home: envelope encryption.");
-        CountingAead master = new CountingAead(new Bank(DemoKeysets.aes256Gcm(2001, MASTER_TEXT)).aead());
+    /** Rotation: the old keyset plus a new key, which becomes primary. Real code uses withRandomId(). */
+    static KeysetHandle rotate(KeysetHandle original) throws GeneralSecurityException {
+        Key newKey = DemoKeysets.aes256Gcm(NEW_KEY_ID, NEW_KEY_TEXT).getPrimary().getKey();
+        return KeysetHandle.newBuilder(original)
+                .addEntry(KeysetHandle.importKey(newKey).withFixedId(NEW_KEY_ID).makePrimary())
+                .build();
+    }
+
+    private static void act5Envelope(StringBuilder out) throws GeneralSecurityException {
+        line(out, "FIVE. Keys that stay at home: envelope encryption.");
+        CountingAead master = new CountingAead(new Bank(DemoKeysets.aes256Gcm(MASTER_ID, MASTER_TEXT)).aead());
         Aead envelope = envelope(master);
+        line(out, "  BEFORE ENCRYPTION:");
+        line(out, "    plain text   " + new String(LINE, StandardCharsets.UTF_8).trim() + "   (" + LINE.length + " bytes)");
+        line(out, "    data key     32 random bytes, new for every message");
+        line(out, "    master key   key id " + MASTER_ID + ", standing in for a KMS");
         byte[] first = envelope.encrypt(LINE, ACCOUNT);
         byte[] second = envelope.encrypt(LINE, ACCOUNT);
+        byte[] wrapped = wrappedKey(first);
+        int body = first.length - 4 - wrapped.length;
+        line(out, "  AFTER ENCRYPTION (" + LINE.length + " bytes become " + first.length + "):");
+        line(out, "    length       " + HexFormat.of().formatHex(first, 0, 4) + " = " + wrapped.length
+                + ", the wrapped key's size");
+        line(out, "    wrapped key  " + wrapped.length + " = 5 + 12 + 32 + 16, starts " + start(wrapped));
+        line(out, "    cipher text  " + body + " = 12 + 16 + 16, no key id");
+        line(out, "  4 + " + wrapped.length + " + " + body + " = " + first.length + " bytes");
         byte[] statement = new byte[100_000];
         byte[] big = envelope.encrypt(statement, ACCOUNT);
-        line(out, "  each message is sealed with its own fresh data key, and only that small key goes to the master key to be wrapped");
-        line(out, "  " + LINE.length + " bytes become " + first.length + ": a length, the wrapped data key, then the cipher text");
-        line(out, "  two messages carry different wrapped keys: " + !Arrays.equals(wrappedKey(first), wrappedKey(second)));
-        line(out, "  the master key was used " + master.calls() + " times for 2 short lines and a " + statement.length
-                + "-byte statement: once each, whatever the size");
-        line(out, "  opened with the master key: " + text(envelope.decrypt(first, ACCOUNT)) + ", and " + envelope.decrypt(big, ACCOUNT).length + " bytes");
-        Aead wrong = envelope(new Bank(DemoKeysets.aes256Gcm(2001, "a-different-master-key-text-here")).aead());
+        line(out, "  two messages, different wrapped keys: " + !Arrays.equals(wrapped, wrappedKey(second)));
+        line(out, "  master key calls: " + master.calls() + ", one per message, any size");
+        line(out, "  opened: " + text(envelope.decrypt(first, ACCOUNT)) + ", and "
+                + envelope.decrypt(big, ACCOUNT).length + " bytes");
+        Aead wrong = envelope(new Bank(DemoKeysets.aes256Gcm(MASTER_ID, "a-different-master-key-text-here")).aead());
         String result;
         try {
             wrong.decrypt(first, ACCOUNT);
@@ -109,8 +202,8 @@ public class TinkDemo {
         } catch (GeneralSecurityException e) {
             result = "refused";
         }
-        line(out, "  opened with a different master key: " + result);
-        line(out, "  the master key's own bytes appear in a stored message: " + contains(first, DemoKeysets.keyBytes(MASTER_TEXT)));
+        line(out, "  another master key: " + result);
+        line(out, "  master key's bytes in a message: " + contains(first, DemoKeysets.keyBytes(MASTER_TEXT)));
     }
 
     /** Envelope encryption, written out with Tink primitives: a fresh data key for each message, wrapped by the master key. */
@@ -133,20 +226,27 @@ public class TinkDemo {
         return false;
     }
 
-    private static void act5Bill(StringBuilder out) {
-        line(out, "FIVE. The bill: what Tink decides for you, and what it does not.");
+    private static void act6Bill(StringBuilder out) {
+        line(out, "SIX. The bill: what Tink decides, and what it does not.");
         StringBuilder available = new StringBuilder();
-        for (String name : new String[] {"AES128_GCM", "AES256_GCM", "AES128_EAX", "AES256_CTR_HMAC_SHA256",
-            "CHACHA20_POLY1305", "XCHACHA20_POLY1305", "AES256_GCM_SIV"}) {
+        for (String name : new String[] {"AES128_GCM", "AES256_GCM", "CHACHA20_POLY1305", "XCHACHA20_POLY1305"}) {
             if (exists(name)) {
                 available.append(available.length() == 0 ? "" : ", ").append(name);
             }
         }
-        line(out, "  the AEAD templates offered include: " + available);
-        line(out, "  an ECB template: " + (exists("AES128_ECB") ? "offered" : "not offered") + "  <- THE UNSAFE CHOICE IS NOT ON THE MENU");
-        line(out, "  the stored format is Tink's own: other libraries need Tink to read it");
-        line(out, "  Tink adds a library and its protocol buffer dependency, and the master key still has to live somewhere");
-        line(out, "  and message lengths still show: 33 bytes more than the message, every time");
+        line(out, "  THE MENU (AEAD templates Tink offers, among others):");
+        line(out, "    " + available.substring(0, available.indexOf(", CHACHA")) + ",");
+        line(out, "    " + available.substring(available.indexOf("CHACHA")));
+        line(out, "    an ECB template: " + (exists("AES128_ECB") ? "offered" : "not offered") + "  <- NOT ON THE MENU");
+        Bank bank = new Bank(DemoKeysets.aes256Gcm(KEY_ID, KEY_TEXT));
+        int small = bank.seal(ACCOUNT, LINE).length;
+        int large = bank.seal(ACCOUNT, new byte[100_000]).length;
+        line(out, "  WHAT IT LEAVES TO YOU:");
+        line(out, "    " + LINE.length + " -> " + small + " bytes, 100000 -> " + large + ": always " + (small - LINE.length)
+                + " more");
+        line(out, "    the format is Tink's own: other libraries need Tink");
+        line(out, "    a library to add, with its protocol buffer dependency");
+        line(out, "    the master key still has to live somewhere");
     }
 
     private static boolean exists(String template) {

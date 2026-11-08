@@ -21,6 +21,7 @@ Learners know a rate limit is good but not that what it counts decides whether i
 | The configuration | `NginxConfig` |
 | The container | `Nginx` |
 | The attacker | `Attacker` and `Tally` |
+| The rule by hand | `LeakyBucket` |
 | Entry point | `NginxAttacksDemo` |
 
 ## Requirements
@@ -36,10 +37,10 @@ Learners know a rate limit is good but not that what it counts decides whether i
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
+| Tests | 18, all passing |
 | Demo output | 14 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:21, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

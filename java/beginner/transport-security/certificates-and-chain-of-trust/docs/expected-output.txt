@@ -1,30 +1,68 @@
 ONE. A chain of three certificates.
-  root:         CN=Example Root CA, signed by itself: true
-  intermediate: CN=Example Issuing CA, signed by CN=Example Root CA, may issue certificates: true
-  server:       CN=shop.example, signed by CN=Example Issuing CA, may issue certificates: false
-  each certificate holds its owner's public key and the issuer's signature over it, both as plain data
-  the signature algorithm is SHA256withECDSA, and anyone can check it with the issuer's public key
-TWO. The browser's check.
-  the server sends its own certificate and the intermediate; the browser already trusts the root
-  the chain is accepted: true
-  the certificate is for shop.example: true
-  the certificate is for evil.example: false
-  a wildcard *.example stands for exactly one label: shop.example true, a.b.example false
+  BEFORE SIGNING (what the shop asks for):
+    name        CN=shop.example, for the site shop.example
+    public key  EC, 256 bits, the shop's own
+    valid       2025-06-01 to 2026-06-01
+  AFTER SIGNING (the certificate, serial 3):
+    the same three, and issuer  CN=Example Issuing CA
+    signature   SHA256withECDSA, by the issuer's private key
+    anyone checks it with the issuer's public key: true
+  THE CHAIN, FROM THE ROOT DOWN:
+    root          Example Root CA     self-signed: true
+    intermediate  Example Issuing CA  CA: true, by the root
+    server        shop.example        CA: false, by the intermediate
+TWO. The browser's check, step by step.
+  BEFORE THE CHECK (what the browser has):
+    sent by the server  shop.example, Example Issuing CA
+    already trusted     Example Root CA
+    visiting            shop.example, on 2026-01-01
+  STEP 1. shop.example AGAINST Example Issuing CA:
+    names it as the issuer: true
+    its signature checks with that public key: true
+    2026-01-01 is in 2025-06-01 to 2026-06-01: true
+  STEP 2. Example Issuing CA AGAINST Example Root CA:
+    names it as the issuer: true
+    its signature checks with that public key: true
+    2026-01-01 is in 2025-01-01 to 2030-01-01: true
+    it may issue certificates (a CA): true
+  STEP 3. THE ROOT AND THE NAME:
+    Example Root CA is in the trust store: true
+    shop.example is in the certificate: true
+  AFTER THE CHECK:
+    by hand: accepted true, the JDK: accepted true
+    *.example matches shop.example true, a.b.example false
 THREE. Three reasons to refuse.
-  a certificate that ended on 2024-12-31, checked on 2026-01-01: accepted false, reason EXPIRED
-  a certificate for shop.example from an authority the browser does not trust: accepted false, reason INVALID_SIGNATURE
-  the rogue root has the same name as the real one: true, so names prove nothing, only keys do
-  the same valid chain, shown to a visitor who meant evil.example: chain accepted true, name matches: false
-  so a client must check the chain and the name, and both are separate checks
+  BEFORE THE CHECK (three chains the browser is shown):
+    1. shop.example, valid 2024-01-01 to 2024-12-31
+    2. shop.example, from a root also named Example Root CA
+    3. the good chain, but the visitor meant evil.example
+  AFTER THE CHECK (the failed step, and the JDK's reason):
+    1. by hand: the dates       JDK: EXPIRED
+    2. by hand: the signature   JDK: INVALID_SIGNATURE
+       (the issuer's name matched: true, the key did not)
+    3. chain accepted true, the name evil.example matches false
+  names prove nothing, only keys do; chain and name are two checks
 FOUR. Changed certificates, and certificates that overstep.
-  one letter of the name changed (CN=shop.examplE): it still parses, accepted false, reason INVALID_SIGNATURE
-  the shop's server key signs a certificate for other.example: accepted false, reason INVALID_KEY_USAGE
-  a server certificate says it is not a CA, so what it signs is not trusted
-  the intermediate's limit on further authorities below it (path length): 0
+  BEFORE THE CHANGE (the signed name):  CN=shop.example
+  AFTER THE CHANGE (one letter):        CN=shop.examplE
+    it still parses: true
+    by hand: the signature   JDK: INVALID_SIGNATURE
+  BEFORE THE CHECK (the shop's server key signs other.example):
+    the shop's certificate is a CA: false
+  AFTER THE CHECK:
+    by hand: the CA flag     JDK: INVALID_KEY_USAGE
+  the intermediate allows 0 more CAs below it (path length)
 FIVE. Revocation, and the bill.
-  someone steals the intermediate's private key and issues their own certificate for shop.example
-  the forged chain is accepted: true  <- A STOLEN CA KEY BREAKS EVERYTHING BELOW IT
-  the shop's own certificate put on the revocation list: accepted false, reason REVOKED
-  the intermediate put on the list: the shop's chain accepted false, the forged chain accepted false
-  but a list only works if the client gets the latest one: real clients use CRLs, OCSP, short lifetimes, or all three
-  trusting a root is a decision: it may vouch for any name, so keep the store small and keep CA keys offline or in hardware
+  BEFORE REVOCATION (a thief has the intermediate's private key):
+    the thief issues shop.example, serial 77
+    the forged chain accepted: true  <- EVERYTHING BELOW FALLS
+  AFTER REVOCATION (serials on the client's list):
+    serial 3 (the shop's)
+       the shop's chain accepted false, REVOKED
+    serial 2 (the intermediate's)
+       the shop's chain accepted false, the forged false
+  THE BILL:
+    a list works only if the client has the latest one:
+    real clients use CRLs, OCSP, short lifetimes, or all three
+    a trusted root may vouch for any name: keep the store small
+    and keep CA keys offline or in hardware

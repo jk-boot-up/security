@@ -12,7 +12,11 @@ public final class SafeSearch {
     }
 
     public List<MiniDb.Row> search(String term, String sort) {
-        String sql = "SELECT name, price FROM products WHERE name LIKE ? AND listed = 1 ORDER BY " + SortColumn.parse(sort).column();
-        return db.query(sql, "%" + term + "%");
+        return db.query(statement(sort), "%" + term + "%");
+    }
+
+    /** The statement as it is sent: fixed text with a ?, and a sort column taken from the list. */
+    static String statement(String sort) {
+        return "SELECT name, price FROM products WHERE name LIKE ? AND listed = 1 ORDER BY " + SortColumn.parse(sort).column();
     }
 }

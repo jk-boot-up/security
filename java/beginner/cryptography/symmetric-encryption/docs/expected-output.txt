@@ -1,23 +1,104 @@
 ONE. A statement stored as it is.
   a stolen disk shows the statement: 8 lines, all readable
+  line 1  SALARY    +4000
+  line 2  RENT      -1200
+  line 3  RENT      -1200
+  line 4  FOOD      -0310
+  line 5  RENT      -1200
+  line 6  SALARY    +4000
+  line 7  RENT      -1200
+  line 8  RENT      -1200
   first line: SALARY    +4000  <- NOTHING TO DECRYPT
 TWO. AES in ECB mode: every block on its own.
-  the statement is 8 blocks of 16 bytes
-  the plain text has 3 different blocks, and so does the cipher text: 3
-  the attacker cannot read a line, but sees that 5 of 8 are the same payment  <- PATTERNS SHOW THROUGH
-  the first rent block begins 59a345b721951fa8, the second rent block begins 59a345b721951fa8
-THREE. AES-GCM: hiding and checking.
-  the same line sealed twice: 081a4d6d5de30f22 and e2d8337cdaa2332c  <- A NEW NONCE EACH TIME
-  opened with the right key and account: RENT      -1200
-  one bit of the cipher text is flipped: refused  <- DETECTED
-  the message is moved to another account: refused  <- DETECTED
-  opened with a different key: refused  <- DETECTED
-FOUR. The one mistake: using a nonce twice.
-  two messages sealed with the same key and the same nonce
-  cipher text one XOR cipher text two equals plain text one XOR plain text two: true
-  the attacker knows the first message and recovers the second: balance=900100  <- NO KEY WAS NEEDED
-FIVE. The bill: sizes, nonces, and the key.
-  5 bytes seal to 33 bytes, 500 bytes to 528: 28 bytes of overhead, and the length still shows  <- SIZE LEAKS
-  with random 12-byte nonces, a repeat becomes likely near 4294967296 messages under one key
+  key  64656d6f 2d6b6579 2d313662 79746573
+  BEFORE ENCRYPTION (plain text, one line per block):
+    line 1  SALARY    +4000
+    line 2  RENT      -1200
+    line 3  RENT      -1200
+    line 4  FOOD      -0310
+    line 5  RENT      -1200
+    line 6  SALARY    +4000
+    line 7  RENT      -1200
+    line 8  RENT      -1200
+  AFTER ENCRYPTION (cipher text, block by block):
+    line 1  d0259865 ffa1bf51 fad698aa a1c793eb
+    line 2  59a345b7 21951fa8 3cf52b5e 42d0fbc9
+    line 3  59a345b7 21951fa8 3cf52b5e 42d0fbc9
+    line 4  f0742ed6 e64e2ee3 e80fd911 38627b51
+    line 5  59a345b7 21951fa8 3cf52b5e 42d0fbc9
+    line 6  d0259865 ffa1bf51 fad698aa a1c793eb
+    line 7  59a345b7 21951fa8 3cf52b5e 42d0fbc9
+    line 8  59a345b7 21951fa8 3cf52b5e 42d0fbc9
+  3 different lines in, 3 different blocks out
+  5 of 8 blocks are the same payment  <- PATTERNS SHOW THROUGH
+THREE. AES-GCM, step by step: sealing one line.
+  BEFORE ENCRYPTION (the inputs):
+    key          64656d6f 2d6b6579 2d313662 79746573
+    nonce        00000000 00000000 00000001
+    account      account=ANA-1
+    plain text   RENT      -1200
+    as bytes     52454e54 20202020 20202d31 3230300a
+  AFTER ENCRYPTION (the outputs):
+    cipher text  081a4d6d 5de30f22 23d0ee44 b1b85aea
+    tag          b78e5ab9 bfe2dae4 139b7b0f 168d3c72
+  stored: nonce + cipher text + tag = 12 + 16 + 16 = 44 bytes
+FOUR. How the tag is made, step by step.
+  STEP 1. A HASH KEY H = AES(key, 16 zero bytes):
+    H          28a4c82c 939593a9 3e625dd0 c42041f3
+  STEP 2. STIR EACH BLOCK INTO X:  X = (X xor block) times H
+    start X    00000000 00000000 00000000 00000000
+    account    6163636f 756e743d 414e412d 31000000
+      X =      6ad8a385 d6f7b828 ef0e0f77 28648b74
+    cipher     081a4d6d 5de30f22 23d0ee44 b1b85aea
+      X =      1bb4275f e5c112a0 a09ae234 5e57df4a
+    lengths    00000000 00000068 00000000 00000080
+      X =      0546a381 4647a1ad b0a2297a 584e3313
+  STEP 3. A MASK = AES(key, nonce + 00000001):
+    counter    00000000 00000000 00000001 00000001
+    mask       b2c8f938 f9a57b49 a3395275 4ec30f61
+  STEP 4. TAG = X xor MASK:
+    tag        b78e5ab9 bfe2dae4 139b7b0f 168d3c72
+    the same tag GCM gave in act three: true
+FIVE. The same line, sealed again.
+  BEFORE ENCRYPTION (the same both times):
+    plain text   RENT      -1200
+    nonce 1      00000000 00000000 00000001
+    nonce 2      00000000 00000000 00000002
+  AFTER ENCRYPTION:
+    with nonce 1 081a4d6d 5de30f22 23d0ee44 b1b85aea
+    with nonce 2 e2d8337c daa2332c 8a6558a7 c2860bf9
+  new nonce, different cipher text: true  <- A NEW NONCE EACH TIME
+SIX. Opening it, and three changes.
+  THE SEALED LINE (from act three):
+    cipher text  081a4d6d 5de30f22 23d0ee44 b1b85aea
+    tag          b78e5ab9 bfe2dae4 139b7b0f 168d3c72
+  OPENING IT (the tag is checked first):
+    right key, right account: RENT      -1200  <- OPENED
+  THREE CHANGES:
+    one bit flipped, 08 -> 09: refused  <- DETECTED
+    account changed to account=MAL-2: refused  <- DETECTED
+    opened with another key: refused  <- DETECTED
+SEVEN. The one mistake: using a nonce twice.
+  the same nonce twice  00000000 00000000 00000000
+  BEFORE ENCRYPTION:
+    plain text 1   balance=000100   (the attacker knows it)
+    plain text 2   balance=900100   (the secret)
+  AFTER ENCRYPTION:
+    cipher text 1  9268a82d a80e5735 45d47db8 860f
+    cipher text 2  9268a82d a80e5735 4cd47db8 860f
+  THE ATTACK, WITHOUT THE KEY:
+    cipher 1 XOR cipher 2  00000000 00000000 09000000 0000
+    plain 1 XOR plain 2    00000000 00000000 09000000 0000
+    the two are equal: true
+    XOR with plain text 1: balance=900100  <- NO KEY WAS NEEDED
+EIGHT. The bill: sizes, nonces, and the key.
+  BEFORE ENCRYPTION:
+    message 1  "hello"        5 bytes
+    message 2  500 letters    500 bytes
+  AFTER ENCRYPTION (nonce + cipher text + tag):
+    message 1  12 + 5 + 16   = 33 bytes
+    message 2  12 + 500 + 16 = 528 bytes  <- SIZE LEAKS
+  the content is hidden, the length is not
+  random 12-byte nonces: at most 4294967296 messages per key
   so the key must be replaced long before that
-  and the key must be stored somewhere safe: lose it, and every message is lost with it
+  and the key must be kept safe: lose it, lose every message

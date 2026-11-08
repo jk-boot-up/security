@@ -1,6 +1,7 @@
 package com.jk.explore.security.threats;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** Runs the online store story in five numbered acts and prints exact, repeatable results. */
@@ -31,12 +32,12 @@ public class ThreatsDemo {
 
     static List<Treatment> storeTreatments() {
         return List.of(
-                new Treatment("R1", Strategy.MITIGATE, "check the order owner on every read", 2, 1, 4),
-                new Treatment("R2", Strategy.MITIGATE, "require a second approval for exports", 3, 1, 5),
-                new Treatment("R3", Strategy.MITIGATE, "limit attempts and lock out after five", 3, 2, 3),
+                new Treatment("R1", Strategy.MITIGATE, "check the order owner", 2, 1, 4),
+                new Treatment("R2", Strategy.MITIGATE, "second approval on exports", 3, 1, 5),
+                new Treatment("R3", Strategy.MITIGATE, "limit login attempts", 3, 2, 3),
                 new Treatment("R4", Strategy.AVOID, "delete the debug page", 1, 0, 0),
                 new Treatment("R5", Strategy.ACCEPT, "moderate by hand", 0, 3, 2),
-                new Treatment("R6", Strategy.TRANSFER, "use the payment provider's hosted page", 5, 1, 2),
+                new Treatment("R6", Strategy.TRANSFER, "provider's hosted page", 5, 1, 2),
                 new Treatment("R7", Strategy.ACCEPT, "live with it", 0, 4, 1));
     }
 
@@ -59,61 +60,124 @@ public class ThreatsDemo {
         out.append(text).append('\n');
     }
 
+    private static String entry(EntryPoint e) {
+        return String.format("%-13s  %-18s  %s", e.exposure().name().toLowerCase(), e.route(), e.data());
+    }
+
     private static void act1Surface(StringBuilder out) {
         line(out, "ONE. The attack surface: every way in.");
         Surface surface = storeSurface();
-        line(out, "  " + surface.summary());
+        List<EntryPoint> before = surface.entryPoints();
+        line(out, "  BEFORE THE RELEASE (" + surface.size() + " entry points):");
+        for (EntryPoint e : before) {
+            line(out, "    " + entry(e));
+        }
+        line(out, "    " + surface.summary());
+        long publicBefore = surface.count(Exposure.PUBLIC);
         surface.add(new EntryPoint("POST /reviews", Exposure.AUTHENTICATED, "review text"));
-        surface.add(new EntryPoint("GET /debug/config", Exposure.PUBLIC, "settings and keys"));
-        line(out, "  the team ships reviews and leaves a debug page behind");
-        line(out, "  " + surface.summary() + "  <- NEW WAYS IN");
+        surface.add(new EntryPoint("GET /debug/config", Exposure.PUBLIC, "settings, keys"));
+        line(out, "  AFTER THE RELEASE (reviews added, debug page left):");
+        for (EntryPoint e : surface.entryPoints()) {
+            if (!before.contains(e)) {
+                line(out, "    + " + entry(e));
+            }
+        }
+        line(out, "    " + surface.summary());
+        line(out, "  " + (surface.size() - before.size()) + " new ways in, "
+                + (surface.count(Exposure.PUBLIC) - publicBefore) + " open to everyone  <- COUNT AGAIN");
     }
 
     private static void act2Vocabulary(StringBuilder out) {
         line(out, "TWO. Threat, vulnerability, asset, and risk.");
         Risk r1 = storeRisks().byId("R1");
-        line(out, "  asset:         " + r1.asset());
-        line(out, "  threat:        " + r1.threat());
-        line(out, "  vulnerability: " + r1.vulnerability());
-        line(out, "  likelihood " + r1.likelihood() + " x impact " + r1.impact() + " = score " + r1.score()
-                + " (" + r1.rating() + ")");
+        line(out, "  THE RISK (" + r1.id() + "), IN FOUR WORDS:");
+        line(out, "    asset          " + r1.asset());
+        line(out, "    threat         " + r1.threat());
+        line(out, "    vulnerability  " + r1.vulnerability());
+        line(out, "    risk           how likely, and how bad");
+        line(out, "  THE SCORE, STEP BY STEP:");
+        line(out, "    step 1  likelihood  " + r1.likelihood() + " of 5");
+        line(out, "    step 2  impact      " + r1.impact() + " of 5");
+        line(out, "    step 3  score       " + r1.likelihood() + " x " + r1.impact() + " = " + r1.score());
+        line(out, "    step 4  rating      " + r1.score() + " is in " + r1.rating().range() + ", so " + r1.rating());
+        line(out, "  bands: LOW " + Rating.LOW.range() + ", MEDIUM " + Rating.MEDIUM.range()
+                + ", HIGH " + Rating.HIGH.range());
     }
 
     private static void act3Ranking(StringBuilder out) {
         line(out, "THREE. Ranking the risks.");
-        List<Risk> ranked = storeRisks().ranked();
+        RiskRegister register = storeRisks();
+        line(out, "  BEFORE RANKING (in the order they were written):");
+        for (Risk r : register.all()) {
+            line(out, String.format("    %s  %d x %d = %2d  %s", r.id(), r.likelihood(), r.impact(), r.score(), r.threat()));
+        }
+        List<Risk> ranked = register.ranked();
+        line(out, "  AFTER RANKING (highest score first):");
         for (int i = 0; i < ranked.size(); i++) {
             Risk r = ranked.get(i);
-            line(out, String.format("  %d. %s %2d %-6s %s", i + 1, r.id(), r.score(), r.rating(), r.threat()));
+            line(out, String.format("    %d. %s %2d %-6s %s", i + 1, r.id(), r.score(), r.rating(), r.threat()));
         }
-        line(out, "  total score " + storeRisks().totalScore());
+        for (int i = 1; i < ranked.size(); i++) {
+            Risk a = ranked.get(i - 1);
+            Risk b = ranked.get(i);
+            if (a.score() == b.score()) {
+                String rule = a.impact() != b.impact() ? "higher impact first" : "same impact, so lower id first";
+                line(out, "  tie: " + a.id() + " and " + b.id() + " both " + a.score() + ", " + rule);
+            }
+        }
+        line(out, "  total score " + register.totalScore());
     }
 
     private static void act4Plan(StringBuilder out) {
         line(out, "FOUR. Spending a budget of " + BUDGET + " where it removes the most.");
         RiskRegister register = storeRisks();
-        Plan plan = new Planner().plan(register, storeTreatments(), BUDGET);
+        List<Treatment> options = storeTreatments();
+        line(out, "  BEFORE THE PLAN (value = score removed / cost):");
+        for (Treatment t : Planner.byValue(register, options)) {
+            int now = register.byId(t.riskId()).score();
+            line(out, String.format(Locale.ROOT, "    %s %-8s  %2d -> %d  removes %2d / cost %d = %4.1f", t.riskId(), t.strategy(),
+                    now, t.newLikelihood() * t.newImpact(), Planner.reduction(register, t), t.cost(),
+                    Planner.value(register, t)));
+        }
+        Plan plan = new Planner().plan(register, options, BUDGET);
+        line(out, "  AFTER THE PLAN (best value first, within budget):");
+        int spent = 0;
         for (Treatment t : plan.funded()) {
-            line(out, String.format("  funded   %s %-8s cost %d: %s", t.riskId(), t.strategy(), t.cost(), t.action()));
+            spent += t.cost();
+            line(out, String.format("    funded   %s cost %d, spent %d: %s", t.riskId(), t.cost(), spent, t.action()));
         }
         for (Treatment t : plan.unfunded()) {
-            line(out, String.format("  waiting  %s %-8s cost %d: %s", t.riskId(), t.strategy(), t.cost(), t.action()));
+            line(out, String.format("    waiting  %s cost %d, %d + %d > %d: %s", t.riskId(), t.cost(), plan.spent(),
+                    t.cost(), plan.budget(), t.action()));
         }
-        line(out, "  spent " + plan.spent() + " of " + plan.budget());
-        line(out, "  total score " + register.totalScore() + " -> " + plan.after().totalScore());
+        line(out, "    spent " + plan.spent() + " of " + plan.budget());
+        line(out, "    total score " + register.totalScore() + " -> " + plan.after().totalScore());
         Risk worst = plan.after().ranked().get(0);
-        line(out, "  worst risk left: " + worst.id() + " " + worst.score() + " " + worst.rating());
+        line(out, "    worst risk left: " + worst.id() + " " + worst.score() + " " + worst.rating());
     }
 
     private static void act5Bill(StringBuilder out) {
         line(out, "FIVE. The bill: a score is a judgment, not a measurement.");
         RiskRegister base = storeRisks();
-        RiskRegister engineering = base.rescored(Map.of("R3", new int[] {2, 3}, "R7", new int[] {4, 1}));
-        RiskRegister finance = base.rescored(Map.of("R3", new int[] {5, 4}, "R7", new int[] {4, 3}));
-        line(out, "  engineering top three: " + topThree(engineering));
-        line(out, "  finance top three:     " + topThree(finance));
+        Map<String, int[]> engineeringView = Map.of("R3", new int[] {2, 3}, "R7", new int[] {4, 1});
+        Map<String, int[]> financeView = Map.of("R3", new int[] {5, 4}, "R7", new int[] {4, 3});
+        RiskRegister engineering = base.rescored(engineeringView);
+        RiskRegister finance = base.rescored(financeView);
+        line(out, "  THE TWO REVIEWS (same rules, different estimates):");
+        for (String id : List.of("R3", "R7")) {
+            Risk e = engineering.byId(id);
+            Risk f = finance.byId(id);
+            line(out, String.format("    %s  engineering %d x %d = %2d   finance %d x %d = %2d", id,
+                    e.likelihood(), e.impact(), e.score(), f.likelihood(), f.impact(), f.score()));
+        }
+        line(out, "  THE TWO RANKINGS:");
+        line(out, "    engineering top three: " + topThree(engineering));
+        line(out, "    finance top three:     " + topThree(finance));
         line(out, "  same rules, different ranking  <- JUDGMENT");
-        line(out, "  accepted risks need an owner and a review date: R5, R6, R7");
+        Plan plan = new Planner().plan(base, storeTreatments(), BUDGET);
+        List<String> funded = plan.funded().stream().map(Treatment::riskId).toList();
+        List<String> accepted = base.all().stream().map(Risk::id).filter(id -> !funded.contains(id)).toList();
+        line(out, "  accepted " + String.join(", ", accepted) + ": each needs an owner and a date");
     }
 
     private static String topThree(RiskRegister register) {

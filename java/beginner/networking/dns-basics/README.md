@@ -38,11 +38,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A DNS message, byte by byte | The question for shop.example.com is 34 bytes; the answer repeats the name as a two-byte pointer and is 50 bytes, not 66; nothing in it says who made it. |
-| 2. The cache and the time to live | An answer is kept for 300 seconds: a hit at second 100, a new question at second 300; caching repeats one false answer to every customer. |
-| 3. A real exchange over UDP | One datagram of 34 bytes goes out and 50 come back; the name is readable in the query; there is no connection and no signature. |
-| 4. Cache poisoning by guessing | Counting ids from port 53 are guessed at once and the cache says the attacker's address; a keyed id and port stop 1000 guesses out of about four billion pairs. |
-| 5. How long a false answer lives, and what stops it | A false answer with a 86400-second lifetime is still believed after two hours unless the resolver caps lifetimes at 3600; DNSSEC, encrypted DNS and TLS cover the rest. |
+| 1. A DNS message, byte by byte | The question for shop.example.com is 34 bytes; the answer copies it and adds a 16-byte record whose name is the pointer c00c, so it is 50 bytes, not 66; nothing in it says who sent it. |
+| 2. The cache and the time to live | An answer with a TTL of 300 is kept until second 0 + min(300, 3600) = 300: questions at seconds 100 and 299 come from the cache, at second 300 the resolver asks again. |
+| 3. A real exchange over UDP | One datagram of 34 bytes goes out and one of 50 comes back with the same id; on the path the query reads .shop.example.com, in plain text; there is no connection and no signature. |
+| 4. Cache poisoning by guessing | With counting ids from port 53 the first forged answer is believed; with an id and port from HMAC-SHA-256 of a counter, 1000 forged answers do nothing among 4227858432 pairs. |
+| 5. How long a false answer lives, and what stops it | A false answer asking for 86400 seconds is still believed after two hours when the cap is a day, and gone when the cap is 3600 seconds; DNSSEC, encrypted DNS and TLS cover the rest. |
 
 ## Test
 
@@ -50,7 +50,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `DemoRunsTest`, `DnsMessageTest`, `ResolverTest`. The query bytes are checked against the RFC 1035 layout and the answer's name pointer against its compression rule. The resolver uses a simulated clock and fixed secrets, and the one real exchange prints only facts that do not depend on port numbers, so the golden output is the same on every run.
+23 tests in `DemoRunsTest`, `DnsMessageTest`, `ResolverTest`. The query bytes are checked against the RFC 1035 layout and the answer's name pointer against its compression rule. The resolver uses a simulated clock and fixed secrets, and the one real exchange prints only facts that do not depend on port numbers, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

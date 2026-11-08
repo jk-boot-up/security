@@ -1,43 +1,95 @@
 ONE. An HTTP message is just text.
-  a customer's browser sends 82 characters: a request line, headers, a blank line, and a body
-  parsed: method POST, target /orders, Host shop.example, body 17 bytes
+  THE REQUEST (the text the browser sends, line by line):
+    POST /orders HTTP/1.1\r\n  21 + 2 = 23
+    host: shop.example\r\n     18 + 2 = 20
+    content-length: 17\r\n     18 + 2 = 20
+    \r\n                        0 + 2 =  2
+    item=A-1001&qty=2          17     = 17
+    total                               82 characters
+  THE PARSED REQUEST:
+    method   POST
+    target   /orders
+    Host     shop.example
+    body     17 bytes, as Content-Length said
   written out again it is the same text: true
-  every header is only a line of text that the sender chose, so the server must check it
 TWO. Messages that two programs could read differently.
-  Content-Length and Transfer-Encoding together: refused (both Content-Length and Transfer-Encoding)
-  the same, with TRANSFER-ENCODING in capitals, on a machine set to Turkish: refused (both Content-Length and Transfer-Encoding)  <- HEADER NAMES ARE LOWER-CASED WITHOUT THE LOCALE
-  two different Content-Length headers: refused (two different Content-Length headers)
-  a space before the colon in a header name: refused (a header name with a space or odd character: 'Content-Length ')
-  a body longer than its Content-Length, with a second request hidden after it: refused (Content-Length says 4 bytes but 47 follow)
-  the same request, plain and exact: accepted
-  when a proxy and a server disagree about where a request ends, the rest is read as the next customer's request
+  THE REQUEST (Content-Length: 4, then more after the body):
+    body     abcd                        4 bytes
+    hidden   GET /admin HTTP/1.1\r\n    21 bytes
+    hidden   Host: shop.example\r\n     20 bytes
+    hidden   \r\n                        2 bytes
+    after the blank line: 4 + 21 + 20 + 2 = 47 bytes
+  THE PARSER'S ANSWER:
+    refused: Content-Length says 4 bytes but 47 follow
+    a proxy that trusts Content-Length stops after 4 bytes
+    and reads the other 43 as the next customer's request
+  MORE MESSAGES THAT TWO PROGRAMS COULD READ DIFFERENTLY:
+    Content-Length and Transfer-Encoding together
+      refused: both Content-Length and Transfer-Encoding
+    TRANSFER-ENCODING on a machine set to Turkish
+      Turkish lower case: transfer-encodıng (dotless i)
+      refused: both Content-Length and Transfer-Encoding
+    two different Content-Length headers
+      refused: two different Content-Length headers
+    a space before the colon: 'Content-Length : 4'
+      refused: a space or odd character in a header name
+    the same request, plain and exact
+      accepted
 THREE. Header injection.
-  the store puts the customer's search text in a redirect address
-  a normal search, shoes: written
-  search text with a line break and a second header: refused (a line break inside the value of Location)  <- WITHOUT THE CHECK THE ATTACKER SETS A COOKIE
-  the answer is to refuse or encode line breaks in anything that reaches a header
+  THE SEARCH TEXT (typed by the customer):
+    normal   shoes
+    attack   shoes\r\nSet-Cookie: session=attacker
+  BEFORE THE FIX (the attack, put in the redirect as it is):
+    HTTP/1.1 302 Found
+    Location: /search?q=shoes
+    Set-Cookie: session=attacker  <- WRITTEN BY THE ATTACKER
+  AFTER THE FIX (line breaks refused when writing a header):
+    normal   written: Location: /search?q=shoes
+    attack   refused: a line break inside the value of Location
 FOUR. Cookies that carry a login.
-  session=abc123
-    problems: 3
-    - no HttpOnly: a script in the page can read it
-    - no Secure: it is also sent over plain HTTP
-    - no SameSite: other sites can trigger requests that carry it
-  session=abc123; Secure; HttpOnly; SameSite=Lax; Path=/
-    problems: 0
-  session=abc123; HttpOnly; SameSite=None
-    problems: 2
-    - no Secure: it is also sent over plain HTTP
-    - SameSite=None without Secure: browsers reject it
-  __Host-session=abc123; Secure; HttpOnly; SameSite=Strict; Path=/; Domain=shop.example
-    problems: 1
-    - the __Host- prefix needs Secure, Path=/ and no Domain
+  THE COOKIES (what the store sends in Set-Cookie):
+    cookie 1  session=abc123
+    cookie 2  session=abc123; Secure; HttpOnly;
+              SameSite=Lax; Path=/
+  THE VERDICT (what is wrong, if it carries a login):
+    cookie 1  3 problems
+      - no HttpOnly: a script in the page can read it
+      - no Secure: it is also sent over plain HTTP
+      - no SameSite: other sites can make the browser send it
+    cookie 2  0 problems
+  THE COOKIES (what the store sends in Set-Cookie):
+    cookie 3  session=abc123; HttpOnly; SameSite=None
+    cookie 4  __Host-session=abc123; Secure; HttpOnly;
+              SameSite=Strict; Path=/; Domain=shop.example
+  THE VERDICT (what is wrong, if it carries a login):
+    cookie 3  2 problems
+      - no Secure: it is also sent over plain HTTP
+      - SameSite=None without Secure: browsers reject it
+    cookie 4  1 problem
+      - the __Host- prefix needs Secure, Path=/ and no Domain
 FIVE. Security headers on a real response.
-  a real request to a plain server: status 200, body 'order A-1001 received'
-  security headers present: 0 of 5
-  the same request to a server that sets the five headers: 5 of 5
-    Strict-Transport-Security: ok (max-age at least a year)
-    Content-Security-Policy: ok (restricts where scripts load from)
-    X-Content-Type-Options: ok (nosniff)
-    X-Frame-Options: ok (DENY)
-    Referrer-Policy: ok (strict-origin-when-cross-origin)
-  headers present but set badly score 1 of 5: a header is only worth its value
+  THE RESPONSES (a real server and client on this machine):
+    plain server     status 200, body 'order A-1001 received'
+    hardened server  status 200, the same body, and these five:
+    Strict-Transport-Security max-age=31536000; includeSubDomains
+    Content-Security-Policy   default-src 'self'; script-src 'self'
+    X-Content-Type-Options    nosniff
+    X-Frame-Options           DENY
+    Referrer-Policy           strict-origin-when-cross-origin
+  THE AUDIT (one point per header):
+    plain server     0 + 0 + 0 + 0 + 0 = 0 of 5
+    hardened server  1 + 1 + 1 + 1 + 1 = 5 of 5
+  HEADERS SET BADLY (all five present):
+    Strict-Transport-Security max-age=300
+    Content-Security-Policy   script-src 'unsafe-inline'
+    X-Content-Type-Options    nosniff
+    X-Frame-Options           ALLOWALL
+    Referrer-Policy           unsafe-url
+  THE AUDIT, HEADER BY HEADER:
+    Strict-Transport-Security FAIL max-age under a year
+    Content-Security-Policy   FAIL allows unsafe-inline/eval
+    X-Content-Type-Options    ok   nosniff
+    X-Frame-Options           FAIL should be DENY or SAMEORIGIN
+    Referrer-Policy           FAIL leaks the full address
+    score 0 + 0 + 1 + 0 + 0 = 1 of 5
+  a header is only worth its value

@@ -39,10 +39,10 @@ Learners who know what a certificate is still ship servers that are only partly 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 17, all passing |
+| Demo output | 62 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:44, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:27, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

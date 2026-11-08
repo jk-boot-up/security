@@ -25,6 +25,7 @@ Each project's README says which of these it maps to, so a learner can connect t
 - Latest stable versions, pinned. No deprecated API: every build compiles with `-Xlint:deprecation -Xlint:removal -Werror`.
 - Deterministic tests. Tool-dependent tests are tagged and run through `./gradlew integrationTest`, and they always remove their containers.
 - Nothing is uploaded until the author has reviewed it.
+- Every video and animation follows the [video and animation teaching standard](video-teaching-standard.md).
 
 **Frameworks and tools** (all local): Spring Boot 4.1 with Spring Framework 7 and Spring Security 7 on Tomcat; Hibernate 7; PostgreSQL, Redis,
 Hazelcast, Ehcache; Vert.x; Jackson 3; Keycloak; nginx, Caddy, step-ca, OpenSSL; OpenBao (the open-source Vault fork); Sigstore cosign;

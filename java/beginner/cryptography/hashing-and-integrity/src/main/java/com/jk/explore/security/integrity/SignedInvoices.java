@@ -3,6 +3,7 @@ package com.jk.explore.security.integrity;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Set;
 
 /**
@@ -36,7 +37,7 @@ public class SignedInvoices {
 
     /** Checks an invoice and its tag, and with {@code rememberNumbers} refuses an invoice number that was accepted before. */
     public Verdict accept(Invoice invoice, String tag) {
-        if (!Hmac.verify(key, encode(invoice), java.util.HexFormat.of().parseHex(tag))) {
+        if (!Hmac.verify(key, encode(invoice), HexFormat.of().parseHex(tag))) {
             return Verdict.BAD_TAG;
         }
         if (rememberNumbers && !seen.add(invoice.number())) {

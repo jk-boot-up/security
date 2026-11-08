@@ -43,11 +43,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Full and incremental backups, with a manifest | A full backup stores 3 files, an incremental one only the files that changed, and the day 3 state of 4 files restores from the chain with no problems. |
-| 2. Can the backup be trusted? Only a restore test says | A changed byte and a deleted file are both found from the manifest, yet a backup that skipped the orders file passes the manifest and fails the restore test. |
-| 3. The 3-2-1 rule, and how long to keep backups | A second folder on the same server scores 0 of 4 against the rule while a server, a NAS and an off-site locked bucket score 4 of 4; 400 snapshots shrink to 21. |
-| 4. Ransomware, and the copy it cannot change | Ransomware encrypts the shop's 3 files and the 3 files in the mounted backup folder, but a store that only adds versions restores every original, and read-only files stop it only until the same user changes them. |
-| 5. How much can be lost, how long it takes, and backups as secrets | A nightly backup loses 13:30 of work, about 162 orders, and takes 01:55 to recover, an hourly one loses 6; the archive is sealed with AES-256-GCM and a wrong key is refused. |
+| 1. Full and incremental backups, with a manifest | A full backup stores 3 files, the incremental ones only what changed (2, then 1), and the day 3 state of 4 files restores from the chain with 0 problems. |
+| 2. Can the backup be trusted? Only a restore test says | The manifest check finds a changed byte and a deleted file, yet a backup that skipped the orders file passes the manifest and fails the restore test, while a good backup passes with 3 orders. |
+| 3. The 3-2-1 rule, and how long to keep backups | Two copies on one server score 0 of 4 against the rule while the server, a NAS and a locked off-site bucket score 4 of 4; of 400 daily snapshots, 7 + 4 + 12 - 2 = 21 are kept. |
+| 4. Ransomware, and the copy it cannot change | Ransomware encrypts the shop's 3 files and the mounted backup's 3; the versioned store keeps the version from before the attack and gives every file back; read-only files block it only until the same user runs chmod u+w. |
+| 5. Recovery point, recovery time, and a sealed backup | A nightly backup at 02:00 and a failure at 15:30 lose 13:30 of work, 13.5 h x 12 = 162 orders, and the shop is back after 01:55; hourly backups cut the loss to 6 orders; the archive is sealed with AES-256-GCM and a wrong key or name is refused. |
 
 ## Test
 

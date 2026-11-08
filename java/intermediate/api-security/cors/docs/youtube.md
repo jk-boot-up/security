@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-cors, same-origin policy, access-control-allow-origin, owasp, java, application security
+cors, same-origin policy, access-control-allow-origin, owasp, java, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ cors, same-origin policy, access-control-allow-origin, owasp, java, application 
 | --- | --- |
 | Video | `video/cors-explained.mp4` |
 | Captions | `video/cors-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: API Security in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (62)
-- [ ] tags are at most 500 characters in total — ok (83)
+- [ ] tags are at most 500 characters in total — ok (134)
 - [ ] description is at most 5,000 characters — ok (122)
 - [ ] chapters start at 00:00 and there are at least three

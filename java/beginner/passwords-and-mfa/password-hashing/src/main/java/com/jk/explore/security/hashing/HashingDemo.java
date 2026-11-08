@@ -52,16 +52,26 @@ public class HashingDemo {
         return found.isEmpty() ? "nobody" : found.keySet().stream().collect(Collectors.joining(", "));
     }
 
-    private static String shortHash(String stored) {
-        String text = stored.contains("$") ? stored.substring(stored.lastIndexOf('$') + 1) : stored;
-        return text.substring(0, Math.min(8, text.length()));
+    /** A 32-byte hash over two lines of four groups, the second line under the first. */
+    private static void hashLines(StringBuilder out, String label, String hex) {
+        String grouped = Hex.grouped(hex);
+        line(out, String.format("    %-12s%s", label, grouped.substring(0, 35)));
+        line(out, String.format("    %-12s%s", "", grouped.substring(36)));
+    }
+
+    private static String half(byte[] bytes) {
+        return Hex.grouped(bytes).substring(0, 35) + " ...";
     }
 
     private static void act1PlainText(StringBuilder out) {
         line(out, "ONE. Passwords stored as they are.");
         AccountStore store = fill(new PlainText(new WorkMeter()));
-        line(out, "  the database is stolen: " + store.stolen().size() + " of " + PASSWORDS.size() + " passwords readable");
-        line(out, "  ana's row: " + store.storedFor("ana") + "  <- NOTHING TO CRACK");
+        line(out, "  BEFORE STORING (what ana typed):");
+        line(out, "    password    " + PASSWORDS.get("ana"));
+        line(out, "  AFTER STORING (ana's row in the table):");
+        line(out, "    stored      " + store.storedFor("ana") + "  <- THE PASSWORD ITSELF");
+        line(out, "  THE ATTACK (the table is stolen):");
+        line(out, "    " + store.stolen().size() + " of " + PASSWORDS.size() + " passwords readable  <- NOTHING TO CRACK");
     }
 
     private static void act2Unsalted(StringBuilder out) {
@@ -69,14 +79,18 @@ public class HashingDemo {
         WorkMeter meter = new WorkMeter();
         PasswordHasher hasher = new UnsaltedSha256(meter);
         AccountStore store = fill(hasher);
-        line(out, "  ana's stored value begins " + shortHash(store.storedFor("ana"))
-                + ", ben's begins " + shortHash(store.storedFor("ben")));
-        line(out, "  same password, same stored value: " + store.storedFor("ana").equals(store.storedFor("ben"))
+        line(out, "  BEFORE HASHING (what ana and ben typed):");
+        line(out, "    ana         " + PASSWORDS.get("ana"));
+        line(out, "    ben         " + PASSWORDS.get("ben"));
+        line(out, "  AFTER HASHING with SHA-256 (32 bytes each):");
+        hashLines(out, "ana", store.storedFor("ana"));
+        line(out, "    ben         the same 32 bytes: " + store.storedFor("ana").equals(store.storedFor("ben"))
                 + "  <- EASY TO SPOT");
         Cracked cracked = new Attacker(WORDLIST).crackWithTable(store.stolen(), hasher);
-        line(out, "  a table of " + WORDLIST.size() + " common passwords is hashed once and looked up");
-        line(out, "  cracked " + cracked.found().size() + " of " + PASSWORDS.size() + ": " + names(cracked.found())
-                + "  <- NO GUESSING PER ACCOUNT");
+        line(out, "  THE ATTACK (a table made in advance):");
+        line(out, "    " + WORDLIST.size() + " common passwords, each hashed once");
+        line(out, "    cracked " + cracked.found().size() + " of " + PASSWORDS.size() + ": " + names(cracked.found()));
+        line(out, "    one table fits every account  <- NO GUESSING PER ACCOUNT");
     }
 
     private static void act3Salted(StringBuilder out) {
@@ -84,14 +98,26 @@ public class HashingDemo {
         WorkMeter meter = new WorkMeter();
         PasswordHasher hasher = new SaltedSha256(meter, new CountingSalts());
         AccountStore store = fill(hasher);
-        line(out, "  ana's stored value begins " + shortHash(store.storedFor("ana"))
-                + ", ben's begins " + shortHash(store.storedFor("ben")));
-        line(out, "  same password, same stored value: " + store.storedFor("ana").equals(store.storedFor("ben")));
+        String[] ana = store.storedFor("ana").split("\\$");
+        String[] ben = store.storedFor("ben").split("\\$");
+        byte[] typed = PASSWORDS.get("ana").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        line(out, "  BEFORE HASHING (ana: her salt, then her password):");
+        line(out, "    salt        " + Hex.grouped(ana[0]));
+        line(out, "    password    " + PASSWORDS.get("ana") + " = " + Hex.grouped(typed));
+        line(out, "    joined      salt + password = " + (ana[0].length() / 2 + typed.length) + " bytes");
+        line(out, "  AFTER HASHING with SHA-256 (the joined bytes):");
+        hashLines(out, "hash", ana[1]);
+        line(out, "    stored      salt $ hash  (the salt is not a secret)");
+        line(out, "  BEN: the same password, salt ending " + ben[0].substring(24));
+        line(out, "    hash        " + Hex.grouped(ben[1]).substring(0, 35) + " ...");
+        line(out, "    same stored value as ana: " + store.storedFor("ana").equals(store.storedFor("ben")));
         meter.reset();
         Cracked cracked = new Attacker(WORDLIST).crackEachAccount(store.stolen(), hasher);
-        line(out, "  the table trick is gone; each account needs its own guesses");
-        line(out, "  cracked " + cracked.found().size() + " of " + PASSWORDS.size() + " in " + cracked.guesses()
-                + " guesses, " + meter.steps() + " steps of work  <- STILL CHEAP");
+        line(out, "  THE ATTACK (each account on its own):");
+        line(out, "    the table made in advance fits no account");
+        line(out, "    cracked " + cracked.found().size() + " of " + PASSWORDS.size() + " in " + cracked.guesses()
+                + " guesses");
+        line(out, "    " + meter.steps() + " steps of work  <- STILL CHEAP");
     }
 
     private static void act4Slow(StringBuilder out) {
@@ -100,32 +126,58 @@ public class HashingDemo {
         Pbkdf2Hasher hasher = new Pbkdf2Hasher(meter, new CountingSalts(), CURRENT_ROUNDS);
         AccountStore store = fill(hasher);
         String[] parts = store.storedFor("ana").split("\\$");
-        line(out, "  ana's stored text has four parts: " + parts[0] + ", " + parts[1] + " rounds, a salt beginning "
-                + parts[2].substring(0, 8) + ", and a hash beginning " + parts[3].substring(0, 8));
-        line(out, "  ana logs in with the right password: " + store.login("ana", "welcome1"));
-        line(out, "  ana logs in with a wrong one: " + store.login("ana", "guess"));
+        line(out, "  BEFORE HASHING (ana):");
+        line(out, "    password    " + PASSWORDS.get("ana"));
+        line(out, "    salt        " + Hex.grouped(parts[2]));
+        line(out, "    rounds      " + CURRENT_ROUNDS);
+        line(out, "  AFTER HASHING with PBKDF2 (the stored text, four parts):");
+        line(out, "    method      " + parts[0]);
+        line(out, "    rounds      " + parts[1]);
+        line(out, "    salt        " + Hex.grouped(parts[2]));
+        hashLines(out, "hash", parts[3]);
+        line(out, "    ana logs in with the right password: " + store.login("ana", "welcome1"));
+        line(out, "    ana logs in with a wrong one: " + store.login("ana", "guess"));
+
+        RoundSteps.Steps steps = RoundSteps.of(PASSWORDS.get("ana"),
+                java.util.HexFormat.of().parseHex(parts[2]), CURRENT_ROUNDS);
+        line(out, "  STEP 1. ROUND 1 = HMAC-SHA-256(password, salt + 00000001)");
+        line(out, "    round 1      " + half(steps.firstRounds().get(0)));
+        line(out, "  STEP 2. EACH NEXT ROUND = HMAC-SHA-256(password, round before)");
+        line(out, "    round 2      " + half(steps.firstRounds().get(1)));
+        line(out, "    round 3      " + half(steps.firstRounds().get(2)));
+        line(out, "    ...          " + (CURRENT_ROUNDS - 4) + " more rounds");
+        line(out, "    round " + CURRENT_ROUNDS + " " + half(steps.lastRound()));
+        line(out, "  STEP 3. HASH = round 1 xor round 2 xor ... xor round " + CURRENT_ROUNDS);
+        line(out, "    hash         " + half(steps.hash()));
+        line(out, "    the same hash PBKDF2 gave: "
+                + java.util.HexFormat.of().formatHex(steps.hash()).equals(parts[3]));
+
         meter.reset();
         Cracked cracked = new Attacker(WORDLIST).crackEachAccount(store.stolen(), hasher);
-        line(out, "  the same attack, the same " + cracked.guesses() + " guesses: " + meter.steps() + " steps of work");
-        line(out, "  each guess costs " + hasher.stepsPerHash() + " times more than a fast hash");
-        line(out, "  cracked " + cracked.found().size() + " of " + PASSWORDS.size() + ": " + names(cracked.found())
-                + "  <- SLOW HELPS, A WEAK PASSWORD STILL FALLS");
+        line(out, "  THE ATTACK (the same " + cracked.guesses() + " guesses):");
+        line(out, "    each guess costs " + hasher.stepsPerHash() + " steps, not 1");
+        line(out, "    " + cracked.guesses() + " guesses: " + meter.steps() + " steps of work");
+        line(out, "    cracked " + cracked.found().size() + " of " + PASSWORDS.size() + ": " + names(cracked.found()));
+        line(out, "    <- SLOW HELPS, A WEAK PASSWORD STILL FALLS");
     }
 
     private static void act5Bill(StringBuilder out) {
-        line(out, "FIVE. The bill: every login pays, and old hashes must be upgraded.");
+        line(out, "FIVE. The bill: login costs, and upgrades.");
         WorkMeter meter = new WorkMeter();
         Pbkdf2Hasher hasher = new Pbkdf2Hasher(meter, new CountingSalts(), CURRENT_ROUNDS);
         AccountStore store = new AccountStore(hasher);
         store.register("ana", "welcome1");
         store.restore("erin", hasher.hashWithRounds("letmein", LEGACY_ROUNDS));
         long perLogin = hasher.stepsPerHash();
-        line(out, "  one login costs " + perLogin + " steps of work");
-        line(out, "  1000 wrong logins cost " + (1000 * perLogin) + " steps  <- LOGIN CAN BE A TARGET");
-        line(out, "  erin's stored hash uses " + Pbkdf2Hasher.iterationsOf(store.storedFor("erin")) + " rounds, ana's uses "
-                + Pbkdf2Hasher.iterationsOf(store.storedFor("ana")));
-        line(out, "  erin logs in: " + store.login("erin", "letmein") + ", now "
-                + Pbkdf2Hasher.iterationsOf(store.storedFor("erin")) + " rounds");
-        line(out, "  erin logs in again: " + store.login("erin", "letmein"));
+        line(out, "  THE COST OF LOGINS:");
+        line(out, "    one login         " + perLogin + " steps");
+        line(out, "    1000 wrong logins " + (1000 * perLogin) + " steps  <- A TARGET");
+        line(out, "  BEFORE THE UPGRADE (erin's account is years old):");
+        line(out, "    erin        " + Pbkdf2Hasher.iterationsOf(store.storedFor("erin")) + " rounds");
+        line(out, "    ana         " + Pbkdf2Hasher.iterationsOf(store.storedFor("ana")) + " rounds");
+        line(out, "    erin logs in: " + store.login("erin", "letmein"));
+        line(out, "  AFTER THE UPGRADE (a new hash, made at that login):");
+        line(out, "    erin        " + Pbkdf2Hasher.iterationsOf(store.storedFor("erin")) + " rounds");
+        line(out, "    erin logs in again: " + store.login("erin", "letmein"));
     }
 }

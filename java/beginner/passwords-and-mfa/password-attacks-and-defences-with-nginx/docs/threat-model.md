@@ -62,6 +62,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `NginxConfigTest` checks the generated configurations, including the key, the burst and that `limit_req` sits beside `proxy_pass`.
+- `LeakyBucketTest` checks that the hand-made rule gives the counts of the golden output: 1 plus the burst for one key, every guess for a new key each time.
 - `ReferenceConfigTest` checks that `infra/nginx-limit-by-address.conf` is what the code generates.
 - `NginxContainerTest` (tagged `docker`) starts real containers and checks the counts for all five keys and the golden output.
 

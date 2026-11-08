@@ -4,6 +4,8 @@
     conceptkit.sh build <project>    docs, tests, slides, thumbnail, video, animation narration,
                                      YouTube sheet, spec and the HTML twins
     conceptkit.sh build <project> --no-media    the same without the video and the narration audio
+    conceptkit.sh check <project>    tests, docs and slides, then the teaching-standard checks and
+                                     contact sheets in <project>/build/sheets (--no-render: checks only)
     conceptkit.sh html  <project>    only the .html twins of the Markdown files
     conceptkit.sh progress           the built and planned counts at the top of java/learning-path.md (and its .html)
     conceptkit.sh site               the .html twins of every Markdown file under java/ (every level)
@@ -210,6 +212,9 @@ def main(argv):
         print(generate.all_docs(project_dir(rest[0])))
     elif cmd == "build":
         build(rest[0], media="--no-media" not in rest)
+    elif cmd == "check":
+        from . import check
+        raise SystemExit(check.check(rest[0], render="--no-render" not in rest))
     elif cmd == "scaffold":
         print(scaffold(*rest))
     elif cmd == "progress":

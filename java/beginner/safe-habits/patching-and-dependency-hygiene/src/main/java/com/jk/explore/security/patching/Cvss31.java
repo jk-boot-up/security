@@ -13,7 +13,17 @@ final class Cvss31 {
     private Cvss31() {
     }
 
+    /** Every value on the way to a base score, so the demo can show how the score is made. */
+    record Steps(double confidentiality, double integrity, double availability, double iss, double impact,
+                 double attack, double complexity, double privileges, double interaction, double exploitability,
+                 boolean changed, double sum, double score) {
+    }
+
     static double base(String vector) {
+        return steps(vector).score();
+    }
+
+    static Steps steps(String vector) {
         String body = vector.startsWith("CVSS:3.1/") ? vector.substring("CVSS:3.1/".length()) : vector;
         Map<String, String> metrics = new java.util.HashMap<>();
         for (String part : body.split("/")) {
@@ -44,13 +54,16 @@ final class Cvss31 {
         double availability = lookup(metrics, "A", IMPACT, vector);
 
         double iss = 1 - (1 - confidentiality) * (1 - integrity) * (1 - availability);
-        double impact = changed ? 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15) : 6.42 * iss;
+        double impact = changed
+                ? 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15)
+                : 6.42 * iss;
         double exploitability = 8.22 * attack * complexity * privileges * interaction;
-        if (impact <= 0) {
-            return 0.0;
-        }
-        double sum = changed ? 1.08 * (impact + exploitability) : impact + exploitability;
-        return roundUp(Math.min(sum, 10));
+        double sum = changed
+                ? 1.08 * (impact + exploitability)
+                : impact + exploitability;
+        double score = impact <= 0 ? 0.0 : roundUp(Math.min(sum, 10));
+        return new Steps(confidentiality, integrity, availability, iss, impact,
+                attack, complexity, privileges, interaction, exploitability, changed, sum, score);
     }
 
     private static double lookup(Map<String, String> metrics, String name, Map<String, Double> weights, String vector) {

@@ -18,21 +18,36 @@ Chapters:
 00:00 Introduction
 01:02 The Scenario
 01:18 The Words
-01:44 Act One — A chain of three certificates
-02:16 Act Two — The browser's check
-02:42 Act Three — Three reasons to refuse
-03:14 Act Four — Changed certificates, and certificates that overstep
-03:51 Act Five — Revocation, and the bill
-04:37 What a Validator Checks
-04:59 Who Does What
-05:27 Where You Have Seen It
-05:51 How To Use It
-06:15 Thanks for Watching
+01:44 What the Letters Stand For
+02:25 What the Letters Stand For (continued)
+02:51 Trust flows down a chain
+03:28 What a certificate is: a request, signed
+04:16 Act One — A chain of three certificates
+04:44 The browser's check, step by step
+05:36 Act Two — The browser's check, step by step
+05:54 Act Two — The browser's check, step by step
+06:13 Three chains, and the step each one fails
+06:57 Act Three — Three reasons to refuse
+07:17 One changed letter, and a key that oversteps
+07:54 Act Four — Changed certificates, and certificates that overstep
+08:15 A stolen CA key, and revoking it
+08:56 Act Five — Revocation, and the bill
+09:25 What a Validator Checks
+09:47 Where You Have Seen It
+10:11 How To Use It
+10:35 The Java Classes
+10:44 CertsDemo — the five acts
+10:57 CertBuilder — the signed part, then the signature
+11:12 ChainSteps — each certificate against the next
+11:29 ChainValidator — trusted roots, a date, a revocation list
+11:44 HostName — a wildcard is one label
+11:54 Tamper — change one byte inside the signed part
+12:07 Thanks for Watching
 ```
 
 ## Tags
 
-certificates, x509, chain of trust, pki, certificate authority, revocation, pkix, java, cybersecurity for beginners
+certificates, x509, chain of trust, pki, certificate authority, revocation, pkix, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +55,16 @@ certificates, x509, chain of trust, pki, certificate authority, revocation, pkix
 | --- | --- |
 | Video | `video/certificates-and-chain-of-trust-explained.mp4` |
 | Captions | `video/certificates-and-chain-of-trust-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: TLS and Certificates in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (69)
-- [ ] tags are at most 500 characters in total — ok (107)
+- [ ] tags are at most 500 characters in total — ok (158)
 - [ ] description is at most 5,000 characters — ok (665)
 - [ ] chapters start at 00:00 and there are at least three

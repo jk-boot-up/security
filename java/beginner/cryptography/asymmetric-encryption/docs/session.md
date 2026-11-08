@@ -15,7 +15,7 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: The problem: sharing a key | 7 min |
-| 0:17 | Act 2: A key pair: lock with the public key, open with the private key | 7 min |
+| 0:17 | Act 2: A key pair: the public key locks, the private key opens | 7 min |
 | 0:24 | Act 3: Hybrid encryption: RSA for the key, AES for the data | 7 min |
 | 0:31 | Act 4: Key agreement: no key is sent at all | 7 min |
 | 0:38 | Act 5: The bill: whose key is it? | 7 min |

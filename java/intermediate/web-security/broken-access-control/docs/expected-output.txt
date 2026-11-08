@@ -1,40 +1,103 @@
 ONE. Walking order numbers.
-  ana reads her own order 1001: 200
-  ana tries the numbers 1000 to 1010: 4 orders answer, 2 of them other customers': 1002 (ben), 1004 (cara)  <- EVERY ORDER IS ONE NUMBER AWAY
-  ben's gift order has an id nobody could guess, but ben shared the link; ana opens it: 200  <- A HARD-TO-GUESS ID IS NOT A PERMISSION
-  signing in proved who ana is; nothing asked whether the order is hers
+  THE WALK (ana is signed in, and changes the number):
+    GET /orders/1000  404
+    GET /orders/1001  200  hers
+    GET /orders/1002  200  ben's  <- NOT HERS
+    GET /orders/1003  200  hers
+    GET /orders/1004  200  cara's  <- NOT HERS
+    GET /orders/1005  404
+    GET /orders/1006  404
+    GET /orders/1007  404
+    GET /orders/1008  404
+    GET /orders/1009  404
+    GET /orders/1010  404
+  THE RESULT:
+    4 orders answer, 2 of them other customers'
+    1002 (ben), 1004 (cara): each one number away
+  THE GIFT ORDER (an id nobody could guess; ben shared the link):
+    GET /orders/c5e1f0a8-4b2d-4c19-9e7a-3d6b2f8a1c40  200
+    <- A HARD-TO-GUESS ID IS NOT A PERMISSION
+  signing in proved who ana is; nothing asked if the order is hers
 TWO. Routes that nobody checks.
-  the page ana sees: links shown: orders, account (the admin links are hidden)
-  ana sends the refund request by hand: 200  <- THE ROLE WAS CHECKED ONLY IN THE PAGE
-  someone signed out asks for /admin/reports: 200  <- NOBODY LINKS TO IT, BUT IT IS STILL A ROUTE
-  ana: GET /admin/users 403, DELETE /admin/users/ben 200  <- ONE METHOD CHECKED, THE OTHER FORGOTTEN
-  ben's account still exists: false
+  THE PAGE ANA SEES:
+    links shown: orders, account
+    the admin links are hidden
+  THE REQUESTS SENT BY HAND (who, method, path, status):
+    ana    POST   /admin/refunds     200  <- CHECKED ONLY IN THE PAGE
+    nobody GET    /admin/reports     200  <- NOT LINKED, STILL A ROUTE
+    ana    GET    /admin/users       403
+    ana    DELETE /admin/users/ben   200  <- THIS METHOD FORGOTTEN
+  THE RESULT:
+    ben's account still exists: false
 THREE. Sideways and upwards.
-  sideways, the same role and someone else's data: ana redirects ben's order: order 1002: headphones for ben, to 12 Palm Street
-  upwards, a higher role's function: ana's refund of 1002 is recorded: true
-  the naive store, nine attacks: 7 succeed, through 5 of its 9 routes
-  the one route written carefully, DELETE /orders/{id}, refused ana: 403
+  SIDEWAYS (the same role, someone else's data):
+    ana  POST /orders/1002/address  "12 Palm Street"
+    ben's order now: order 1002: headphones for ben, to 12 Palm Street
+  UPWARDS (a higher role's function):
+    ana  POST /admin/refunds  "1002"
+    the refund of 1002 is recorded: true
+  BEFORE THE FIX (the naive store, nine attacks):
+    ana reads ben's order 1002            200
+    ana opens ben's leaked gift link      200
+    ana sends ben's order to her address  200
+    ana cancels ben's order 1002          403
+    signed out, reads the sales report    200
+    ana reads the sales report            200
+    ana refunds order 1002                200
+    ana lists the users                   403
+    ana deletes ben's account             200
+    7 succeed, through 5 of its 9 routes
+  the 403 is DELETE /orders/{id}, the one route written carefully
 FOUR. One choke point, deny by default.
-  ana reads ben's order 1002 (object level, horizontal): 404
-  ana reads ben's gift order from a leaked link: 404
-  ana sends ben's order 1002 to her address (horizontal): 404
-  ana cancels ben's order 1002: 404
-  someone signed out reads the sales report (forgotten route): 401
-  ana reads the sales report (vertical): 403
-  ana refunds order 1002 (button hidden, route open): 403
-  ana lists the users: 403
-  ana deletes ben's account (DELETE has no check): 403
-  attacks that succeed: 0 of 9
-  honest requests that still work: 6 of 6
-  someone else's order answers 404, like a missing one, so the reply does not confirm the order exists
-  refusals logged: 9, for example:
+  AFTER THE FIX (one policy before every handler):
+    ana reads ben's order 1002            404
+    ana opens ben's leaked gift link      404
+    ana sends ben's order to her address  404
+    ana cancels ben's order 1002          404
+    signed out, reads the sales report    401
+    ana reads the sales report            403
+    ana refunds order 1002                403
+    ana lists the users                   403
+    ana deletes ben's account             403
+    attacks that succeed: 0 of 9
+  THE HONEST REQUESTS (they must still work):
+    ana reads her order 1001              200
+    ana moves her order 1003              200
+    sam (support) reads order 1002        200
+    ben cancels his order 1002            200
+    dave (admin) reads the report         200
+    dave (admin) refunds order 1001       200
+    still work: 6 of 6
+  WHY 404 AND NOT 403:
+    someone else's order answers like a missing one,
+    so the reply does not confirm that the order exists
+  THE LOG (9 refusals, two of them):
     DENY ana GET /orders/{id}: no order 1002 that belongs to ana
     DENY ana DELETE /admin/users/{name}: needs [ADMIN], is CUSTOMER
-  a token appears in the log: false
+    a token appears in the log: false
 FIVE. Keeping it right, and the bill.
-  routes without a rule today: 0
-  a developer adds GET /admin/export and forgets its rule; routes without a rule: [GET /admin/export]  <- THE ROUTE INVENTORY TEST FAILS THE BUILD
-  until it has one, even dave the admin is refused: 403, denied by default
-  the same rules over real HTTP on this machine: ana's order 200, ben's order 404, DELETE /admin/users/ben 403, the report signed out 401
-  the bill: the naive store keeps its checks in 9 handlers, nine places to forget one; the guarded store keeps them in one table that a test can read
-  every object-level check needs a lookup of who owns the object, and every refusal is a log line to keep and watch
+  THE RULE TABLE (one rule per route):
+    GET    /menu                 anyone
+    GET    /account              anyone signed in
+    GET    /orders/{id}          the owner, SUPPORT, ADMIN
+    POST   /orders/{id}/address  the owner
+    DELETE /orders/{id}          the owner, ADMIN
+    GET    /admin/users          ADMIN
+    DELETE /admin/users/{name}   ADMIN
+    POST   /admin/refunds        ADMIN
+    GET    /admin/reports        ADMIN
+  THE ROUTE INVENTORY (a test that reads every route):
+    routes without a rule today: 0
+    a developer adds GET /admin/export, and forgets its rule
+    routes without a rule: [GET /admin/export]  <- BUILD FAILS
+    dave the admin asks for it: 403, denied by default
+  OVER REAL HTTP ON THIS MACHINE (who, method, path, status):
+    ana    GET    /orders/1001       200
+    ana    GET    /orders/1002       404
+    ana    DELETE /admin/users/ben   403
+    nobody GET    /admin/reports     401
+  THE BILL:
+    naive: checks in 9 handlers, nine places to forget one
+    guarded: one table of rules that a test can read
+    every object check needs a lookup of who owns the object
+    every refusal is a log line to keep and watch

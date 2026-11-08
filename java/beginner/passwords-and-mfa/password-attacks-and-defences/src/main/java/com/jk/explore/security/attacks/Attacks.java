@@ -1,5 +1,6 @@
 package com.jk.explore.security.attacks;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ public class Attacks {
 
     private final Bank bank;
     private final Ticker ticker;
+    private final List<Step> steps = new ArrayList<>();
 
     public Attacks(Bank bank, Ticker ticker) {
         this.bank = bank;
@@ -24,7 +26,7 @@ public class Attacks {
         int guesses = 0;
         int next = 0;
         while (next < words.size()) {
-            Reply reply = bank.login(address, username, words.get(next));
+            Reply reply = attempt(address, username, words.get(next));
             if (reply.outcome() != Outcome.LOCKED && reply.outcome() != Outcome.RATE_LIMITED) {
                 guesses++;
                 next++;
@@ -52,7 +54,7 @@ public class Attacks {
                 }
                 boolean done = false;
                 while (!done) {
-                    Reply reply = bank.login(address, username, password);
+                    Reply reply = attempt(address, username, password);
                     if (reply.outcome() != Outcome.LOCKED && reply.outcome() != Outcome.RATE_LIMITED) {
                         guesses++;
                         done = true;
@@ -75,10 +77,21 @@ public class Attacks {
         Map<Outcome, Integer> counts = new LinkedHashMap<>();
         int address = 0;
         for (Map.Entry<String, String> pair : leakedPairs.entrySet()) {
-            Reply reply = bank.login("bot-" + (++address), pair.getKey(), pair.getValue());
+            Reply reply = attempt("bot-" + (++address), pair.getKey(), pair.getValue());
             counts.merge(reply.outcome(), 1, Integer::sum);
         }
         return counts;
+    }
+
+    /** Every attempt made so far, in order, with the tick and the answer. */
+    public List<Step> steps() {
+        return List.copyOf(steps);
+    }
+
+    private Reply attempt(String address, String username, String password) {
+        Reply reply = bank.login(address, username, password);
+        steps.add(new Step(ticker.now(), username, password, reply.outcome()));
+        return reply;
     }
 
     private Found finish(Map<String, Integer> taken, int guesses) {

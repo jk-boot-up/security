@@ -56,7 +56,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - Users are who they say they are. Proving it is the job of the identity module, starting with authentication-vs-authorization.
 - The seal key is kept secret. In the demo it is a fixed value; a real system keeps it in a secrets store.
-- An attacker may reach the stored data without going through the application (that is what act three simulates).
+- An attacker may reach the stored data without going through the application (that is what act five simulates).
 
 ## Out of scope
 
@@ -69,6 +69,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `ConfidentialityTest` shows support never receives the address or the amount, and only finance may change an amount.
 - `IntegrityTest` shows that a change made behind the application is refused on read.
+- `SealStepsTest` shows the seal worked out by hand equals Java's HMAC-SHA256.
 - `AvailabilityTest` shows one client cannot take more than its share of the server in one tick.
 - `BreakGlassTest` shows emergency access needs a reason and leaves an audit entry.
 

@@ -324,6 +324,23 @@ def threat_model(d):
 
 # ---------------------------------------------------------- animation ----
 
+def _figure_pngs(d, pdir):
+    """The acts' pictures, drawn as for the video, saved for the animation at 1280x720."""
+    names = [a["figure"] for a in d["act"] if a.get("figure")]
+    if not names:
+        return
+    from videokit.slides import draw, kinds
+    out = pdir / "docs" / "figures"
+    out.mkdir(exist_ok=True)
+    cfg = kinds.settings(None)
+    cfg["project_dir"] = pdir
+    for a in d["act"]:
+        if a.get("figure"):
+            img, dr = draw.base_slide()
+            kinds.KINDS["figure"](dict(title=a.get("figure_title", a["title"]), body=a["figure"]), img, dr, cfg)
+            img.resize((1280, 720), resample=3).save(out / ("%s.png" % a["figure"]), optimize=True)
+
+
 def animation(d, pdir):
     p, a = d["project"], d["animation"]
     template = (Path(__file__).with_name("animation_template.html")).read_text()
@@ -331,8 +348,24 @@ def animation(d, pdir):
         '      <div class="row" id="row-%s">\n        <div class="name">%s</div>\n'
         '        <div class="job">%s</div>\n      </div>' % (b[0], b[1], b[2]) for b in a["boxes"])
     steps = [dict(label="Act %d — %s" % (i, s["title"]), narration=_spoken(s),
-                  rows=s.get("rows", {}), console=[list(c) for c in s.get("console", [])])
+                  rows=s.get("rows", {}), console=[list(c) for c in s.get("console", []) if c[0] != "---"])
              for i, s in enumerate(d["act"], 1)]
+    if d.get("acronym"):                         # the letters first, so every later step can use them
+        steps.insert(0, dict(label="Before we start — what the letters stand for",
+                             narration=_plain(" ".join(a["say"] for a in d["acronym"])), rows={},
+                             console=[["%s  %s" % (a["short"].ljust(6), a["long"]), "code"] for a in d["acronym"]]))
+    for step, act in zip(steps[1:] if d.get("acronym") else steps, d["act"]):
+        if act.get("figure"):
+            step["figure"] = "figures/%s.png" % act["figure"]
+            step["figure_title"] = act.get("figure_title", act["title"])
+    _figure_pngs(d, pdir)
+    if d.get("class"):
+        steps.append(dict(label="Code — " + d["classes"]["title"], narration=_plain(d["classes"]["narration"]), rows={},
+                          console=[["%s: %s" % (c["name"], c["what"]), "muted"] for c in d["class"]]))
+        for title, body, speech in _class_parts(d, pdir):
+            steps.append(dict(label="Code — " + title, narration=_plain(speech), rows={},
+                              console=[[ln, "muted" if ln.strip().startswith("//") else "code"]
+                                       for ln in body.split("\n")]))
     html = (template.replace("__TITLE__", p["title"]).replace("__SUBTITLE__", a["subtitle"])
             .replace("__BOXES__", boxes).replace("__STEPS__", json.dumps(steps, indent=1, ensure_ascii=False))
             .replace("__ROW_IDS__", json.dumps([b[0] for b in a["boxes"]])))
@@ -345,28 +378,111 @@ def animation(d, pdir):
 ORDINAL = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"]
 
 
+def _plain(text):
+    """Narration without its pause marks."""
+    return " ".join(re.sub(r"\[\[(slnc \d+|page)\]\]", " ", text).split())
+
+
 def _spoken(act):
     """The animation's words for an act: its own narration, or its video speech without pauses."""
     if act.get("narration"):
-        return act["narration"]
-    return " ".join(re.sub(r"\[\[slnc \d+\]\]", " ", act["speech"]).split())
+        return _plain(act["narration"])
+    return _plain(act.get("figure_speech", "") + " " + act["speech"])
 
 
 def _act_scenes(d):
     """One console slide per act, built from what the demo printed and the act's speech."""
     out = []
     for i, a in enumerate(d["act"], 1):
-        lines = ["%s. %s." % (ORDINAL[i - 1].upper(), a["title"])] + ["  " + c[0] for c in a.get("console", [])]
-        out.append(dict(key="act-%d" % i, kind="console", title="Act %s — %s" % (ORDINAL[i - 1], a["title"]),
-                        body="\n".join(lines), narration=a["speech"]))
+        title = a["title"] if a["title"][-1:] in ".?!" else a["title"] + "."   # no "?." on the slide
+        if a.get("figure"):                      # a drawn picture first, then the real output
+            out.append(dict(key="act-%d-figure" % i, kind="figure", title=a.get("figure_title", a["title"]),
+                            body=a["figure"], narration=a["figure_speech"].replace("[[page]]", " ")))   # one picture: no pages
+        # A long output may be shown over several slides: a console entry ["---", ""] starts a
+        # new one, and the speech is split to match with the marker [[page]].
+        pages, cur = [], []
+        for c in a.get("console", []):
+            if c[0] == "---":
+                pages.append(cur)
+                cur = []
+            else:
+                cur.append("  " + c[0])
+        pages.append(cur)
+        speeches = [t.strip() for t in a["speech"].split("[[page]]")]
+        assert len(speeches) == len(pages), "act %d: %d pages but %d speeches" % (i, len(pages), len(speeches))
+        head = "%s. %s" % (ORDINAL[i - 1].upper(), title)
+        for n, (page, said) in enumerate(zip(pages, speeches), 1):
+            lines = ([head] if n == 1 else ["%s. (continued)" % ORDINAL[i - 1].upper()]) + page   # the title names the act
+            out.append(dict(key="act-%d" % i + ("" if len(pages) == 1 else "-%d" % n), kind="console",
+                            title="Act %s — %s" % (ORDINAL[i - 1], a["title"]),
+                            body="\n".join(lines), narration=said))
     return out
 
 
-def _expand(d):
+def _class_parts(d, pdir):
+    """The [[class]] tour as (title, code, speech) parts, every shown line checked against the source.
+
+    A part's code is real code from src/main, re-wrapped if needed: whitespace is ignored when it is compared,
+    a line "..." marks code left out, and "//" comments (whole lines or at a line's end) are notes for the viewer.
+    """
+    src = "".join(f.read_text() for f in sorted((pdir / "src" / "main").rglob("*.java")))
+    # "//" comments in the source (whole lines or after code) do not count, so the code can keep its notes;
+    # the comment must follow whitespace, so "https://" inside a string stays.
+    src = re.sub(r"(?m)(^|\s)//.*$", "", src)
+    flat = re.sub(r"\s+", "", src)
+    parts = []
+    for c in d.get("class", []):
+        for part in c["part"]:
+            code = part["code"].strip("\n")
+            chunk = []
+            for ln in code.split("\n") + ["..."]:
+                bare = ln.strip()
+                if bare == "...":
+                    want = "".join(chunk)
+                    if want and want not in flat:
+                        raise ValueError("%s: code not found in src/main:\n%s" % (c["name"], code))
+                    chunk = []
+                elif not bare.startswith("//"):
+                    chunk.append(re.sub(r"\s+", "", re.sub(r"\s+//.*$", "", ln)))
+            body = "// %s: %s\n%s" % (c["name"], c["what"], code)
+            parts.append(("%s — %s" % (c["name"], part["title"]), body, part["speech"]))
+    return parts
+
+
+def _acronym_scenes(d):
+    """What each acronym stands for: slides of at most six, spoken from each entry's "say"."""
+    items, out = d["acronym"], []
+    pages = [items[i:i + 6] for i in range(0, len(items), 6)]
+    for n, page in enumerate(pages, 1):
+        intro = "A few letters come up again and again, so here is what they stand for. [[slnc 400]] " if n == 1 else ""
+        out.append(dict(key="letters-%d" % n, kind="bullets",
+                        title="What the Letters Stand For" + (" (continued)" if n > 1 else ""),
+                        body=["%s: %s" % (a["short"], a["long"]) for a in page],
+                        narration=intro + " [[slnc 400]] ".join(a["say"] for a in page)))
+    return out
+
+
+def _class_scenes(d, pdir):
+    """The overview of the classes, then one code slide per part."""
+    out = [dict(key="classes", kind="bullets", title=d["classes"]["title"],
+                body=["%s: %s" % (c["name"], c["what"]) for c in d["class"]], narration=d["classes"]["narration"])]
+    for n, (title, body, speech) in enumerate(_class_parts(d, pdir), 1):
+        out.append(dict(key="class-%d" % n, kind="code", title=title, body=body, narration=speech))
+    return out
+
+
+def _expand(d, pdir=None):
     """[[scene]] list with a kind = "acts" marker replaced by one slide per act, keys renumbered."""
     out = []
     for s in d["scene"]:
-        out += _act_scenes(d) if s["kind"] == "acts" else [s]
+        if s["kind"] == "acts":
+            out += _act_scenes(d)
+        elif s["kind"] == "acronyms":
+            out += _acronym_scenes(d)
+        elif s["kind"] == "classes":
+            out += _class_scenes(d, pdir)
+        else:
+            out.append(s)
     for n, s in enumerate(out, 1):
         s["key"] = "%02d-%s" % (n, re.sub(r"^\d+-", "", s["key"]))
     return out
@@ -374,7 +490,7 @@ def _expand(d):
 
 def scenes(d, pdir):
     p = d["project"]
-    d = dict(d, scene=_expand(d))
+    d = dict(d, scene=_expand(d, pdir))
     lines = ['"""Scene definitions for the %s teaching video (generated from concept.toml)."""' % p["title"],
              "", "SCENES = ["]
     for s in d["scene"]:

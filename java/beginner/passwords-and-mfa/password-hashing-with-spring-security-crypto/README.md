@@ -3,9 +3,11 @@
 ```
 src/main/java/com/jk/explore/security/hashingspring/
 ├── Attacker.java                 Someone with a stolen table of stored passwords, trying a list of common passwords against each account
+├── BcryptSteps.java              Takes a {bcrypt} stored text apart, and redoes a login check by hand, to show what the library does inside matches
 ├── Customers.java                The five customers of the online store, with the passwords they chose, and the attacker's list of common passwords
 ├── FastSaltedSha256Encoder.java  A SHA-256 hash with a random salt, in the form {@code salt$hash}
 ├── PlainTextEncoder.java         The worst encoder: it stores the password as it is
+├── RepeatableSalts.java          Salts from a fixed seed, so the stored texts this demo prints are the same on every run and the video can show them
 └── SpringHashingDemo.java        Runs the online store story in six numbered acts, with Spring Security's password encoders, and prints repeatable results
 ```
 
@@ -48,12 +50,12 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Two weak encoders, written out here | A plain-text encoder stores the password itself; a fast SHA-256 encoder with a salt costs one cheap step per guess, so 24 guesses crack 4 of 5. |
-| 2. One call: the delegating encoder | The default encoder writes {bcrypt} in front of a 68-character stored text, adds a salt for you, and checks logins with matches. |
-| 3. Four algorithms, one interface | BCrypt, PBKDF2, scrypt and Argon2 each encode and match; the stored text of bcrypt shows its cost, and Argon2's shows its memory, passes and parallelism. |
-| 4. The same attack, at two costs | Bcrypt at cost 4 and at cost 10 both lose 4 of 5 accounts in 24 guesses, but each guess at cost 10 is 64 times the work. |
-| 5. Moving to a stronger algorithm without asking anyone | With Argon2 as the new default, Erin's old {bcrypt} text still checks, upgradeEncoding says it is due, and after her login it is stored as {argon2}. |
-| 6. The bill: an open list, and memory | The default encoder accepts a planted {noop} value, an allow-list refuses it, and one Argon2 hash uses 16 MiB, so 100 logins at once need 1,600 MiB. |
+| 1. Two weak encoders, written out here | A plain-text encoder stores welcome1 itself; a fast SHA-256 encoder adds a salt, but each guess is one cheap step, so 24 guesses crack 4 of 5. |
+| 2. One call: the delegating encoder | The delegating encoder stores {bcrypt}$2a$10$, a 22-character salt and a 31-character hash, 68 characters in all; a login hashes the typed password again with that salt and cost and compares. |
+| 3. Four algorithms, one interface | BCrypt, PBKDF2, scrypt and Argon2 each encode welcome1 and match it; bcrypt, scrypt and Argon2 write their settings at the front of the stored text. |
+| 4. The same attack, at two costs | Eight common passwords tried on each of five accounts: 24 guesses crack 4 of 5 at cost 4 and at cost 10, but each guess at cost 10 is 64 times the work. |
+| 5. Moving to a stronger algorithm without asking anyone | With Argon2 as the new default, Erin's old {bcrypt} text still matches, upgradeEncoding says it is due, and after her login it is stored again as {argon2@SpringSecurity_v5_8}. |
+| 6. The bill: an open list, and memory | The default encoder accepts a planted {noop}letmein, an allow-list refuses it, and one Argon2 hash uses 16 MiB, so 100 logins at once need 1,600 MiB. |
 
 ## Test
 
@@ -61,7 +63,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `AttackerTest`, `DemoRunsTest`, `EncodersTest`, `WeakEncodersTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Nothing printed depends on a random salt or on timing, so every run gives the same result.
+20 tests in `AttackerTest`, `BcryptStepsTest`, `DemoRunsTest`, `EncodersTest`, `RepeatableSaltsTest`, `WeakEncodersTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Nothing printed depends on a random salt or on timing, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

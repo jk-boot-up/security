@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-crypto agility, key rotation, algorithm migration, versioned encryption, aes-gcm, chacha20-poly1305, cryptographic inventory, downgrade, post-quantum readiness, java
+crypto agility, key rotation, algorithm migration, versioned encryption, aes-gcm, chacha20-poly1305, cryptographic inventory, downgrade, post-quantum readiness, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ crypto agility, key rotation, algorithm migration, versioned encryption, aes-gcm
 | --- | --- |
 | Video | `video/crypto-agility-explained.mp4` |
 | Captions | `video/crypto-agility-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Applied Cryptography and PKI in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (74)
-- [ ] tags are at most 500 characters in total — ok (156)
+- [ ] tags are at most 500 characters in total — ok (207)
 - [ ] description is at most 5,000 characters — ok (244)
 - [ ] chapters start at 00:00 and there are at least three

@@ -14,17 +14,18 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Keys as PEM text | 7 min |
-| 0:17 | Act 2: A certificate for the public key | 7 min |
-| 0:24 | Act 3: A standard envelope: CMS EnvelopedData | 7 min |
-| 0:31 | Act 4: A different program opens it | 7 min |
-| 0:38 | Act 5: The bill: what Bouncy Castle costs | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: The public key as PEM text | 5 min |
+| 0:15 | Act 2: The private key file, locked with a password | 5 min |
+| 0:20 | Act 3: A certificate for the public key | 5 min |
+| 0:25 | Act 4: A standard envelope: CMS EnvelopedData | 5 min |
+| 0:30 | Act 5: Opening it by hand, then with openssl | 5 min |
+| 0:35 | Act 6: The bill: what Bouncy Castle costs | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
-Run the plain project first, then this one, and compare the third act with the plain third act: both are hybrid encryption, and this one is in a standard file format. Then run
-`openssl cms -decrypt` by hand on a file the demo wrote, to see it for yourself. In act five, ask the group what other places an "easy call" with a weaker default might hide in code they know.
+Run the plain project first, then this one, and compare the fourth act with the plain third act: both are hybrid encryption, and this one is in a standard file format. Then run
+`openssl cms -decrypt` by hand on a file the demo wrote, to see it for yourself. In act six, ask the group what other places an "easy call" with a weaker default might hide in code they know.
 
 ## Exercises
 

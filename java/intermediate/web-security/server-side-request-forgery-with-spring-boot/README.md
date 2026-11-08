@@ -30,7 +30,7 @@ What it shows:
 - **The fix judges the resolved address.** The name is resolved once, every address it resolves to is checked, and the connection goes to the address that was checked, with the original host in the `Host` header. Each redirect is judged again, user info and odd ports are refused, and the answer must be a small image that arrives in time.
 - **Check-then-connect is not enough.** A name server that answers a public address first and a private one next defeats a client that resolves the name twice.
 
-**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control, which now includes server-side request forgery · CWE-918 · OWASP ASVS 5.0 V5 (File Handling) · OWASP SSRF Prevention Cheat Sheet.
+**Maps to:** OWASP Top 10 (2025) A01 Broken Access Control, which now includes server-side request forgery · CWE-918 · OWASP ASVS 5.0 (its requirement to protect against SSRF) · OWASP SSRF Prevention Cheat Sheet.
 
 ## The idea in everyday terms
 

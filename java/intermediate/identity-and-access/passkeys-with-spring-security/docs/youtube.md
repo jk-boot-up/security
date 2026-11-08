@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-passkeys, webauthn, spring security, webauthn4j, fido2, phishing resistant, owasp top 10, a07, java, identity
+passkeys, webauthn, spring security, webauthn4j, fido2, phishing resistant, owasp top 10, a07, java, identity, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ passkeys, webauthn, spring security, webauthn4j, fido2, phishing resistant, owas
 | --- | --- |
 | Video | `video/passkeys-with-spring-security-explained.mp4` |
 | Captions | `video/passkeys-with-spring-security-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Identity and Access in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — FIX (102)
-- [ ] tags are at most 500 characters in total — ok (100)
+- [ ] tags are at most 500 characters in total — ok (151)
 - [ ] description is at most 5,000 characters — ok (589)
 - [ ] chapters start at 00:00 and there are at least three

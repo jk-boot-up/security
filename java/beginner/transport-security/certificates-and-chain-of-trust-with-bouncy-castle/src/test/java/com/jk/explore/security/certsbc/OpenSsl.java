@@ -18,7 +18,7 @@ final class OpenSsl {
     static boolean available() {
         try {
             Result result = run(null, "version");
-            return result.exit() == 0 && result.output().startsWith("OpenSSL 3");
+            return result.exit() == 0 && result.output().matches("(?s)OpenSSL [3-9].*");
         } catch (IOException | InterruptedException e) {
             return false;
         }

@@ -1,25 +1,64 @@
 ONE. Layers: a packet inside a packet.
-  a customer's browser sends a SYN from 198.51.100.7 to the shop 203.0.113.10 port 443
-  the TCP segment is 20 bytes, and inside an IP packet it is 40 bytes
-  decoded again: from 198.51.100.7 to 203.0.113.10, ports 51000 to 443, SYN flag: true
-  nothing in either header says who the sender really is: the source address is just a field
+  THE PACKET SENT (the customer's browser opens a connection):
+    TCP segment  20 bytes  ports 51000 -> 443, SYN, seq 1000
+    IP header    20 bytes  198.51.100.7 -> 203.0.113.10, TTL 64
+    IP packet    40 bytes  = IP header + TCP segment
+    ip   4500 0028 0000 0000 4006 148b c633 6407 cb00 710a
+    tcp  c738 01bb 0000 03e8 0000 0000 5002 ffff 7cc1 0000
+  THE PACKET RECEIVED (the shop decodes the 40 bytes):
+    from  198.51.100.7 port 51000
+    to    203.0.113.10 port 443
+    SYN flag true, sequence number 1000
+  the source address is just a field  <- ANYONE CAN WRITE IT
 TWO. A checksum catches accidents, not attackers.
-  one byte changed in transit (the time to live): refused (IPv4 header checksum does not match)
-  the same change made by someone who recomputes the checksum: accepted
-  the checksum has no key, so anyone can make it match: it is not protection against an attacker
+  HOW THE CHECKSUM IS MADE (IP header, checksum field 0000):
+    words  4500 0028 0000 0000 4006 0000 c633 6407 cb00 710a
+    sum    2eb72 (hex)
+    fold   eb72 + 2 = eb74
+    flip   ffff - eb74 = 148b  <- the checksum
+  BEFORE THE CHANGE (as the customer sent it):
+    time to live 64, checksum 148b: accepted
+  AFTER THE CHANGE (time to live 64 -> 1 on the way):
+    by accident, checksum kept 148b: refused
+    by an attacker, new checksum 538b: accepted  <- NOT CAUGHT
+  the checksum has no key, so anyone can make it match
 THREE. The three-way handshake.
-  the customer sends SYN with sequence number 1000
-  the shop answers SYN-ACK, acknowledging 1001, and now holds a half-open entry: 1
-  the customer answers ACK: connection established: true, half-open entries left: 0
-  an ACK with no SYN before it: established: false
+  THE REQUEST (customer -> shop):
+    1. SYN      seq 1000
+  THE RESPONSE (shop -> customer):
+    2. SYN-ACK  seq 3120261316, ack 1001 (= 1000 + 1)
+       half-open entries in the shop's table: 1
+  THE REQUEST (customer -> shop):
+    3. ACK      seq 1001, ack 3120261317 (= 3120261316 + 1)
+  THE RESULT:
+    established: true, half-open entries left: 0
+    an ACK with no SYN before it: established: false
 FOUR. A SYN flood.
-  8 SYNs from addresses that never answer fill the shop's table of 8 half-open entries: 8
-  a real customer's SYN is now answered: false  <- THE SHOP IS DENYING SERVICE TO ITS CUSTOMERS
-  with SYN cookies the shop keeps no entry: half-open entries 0, and the real customer connects: true
-  the cost: cookies carry no options and take work for every SYN, so they are a defence for when the table is full
+  BEFORE THE FIX (a table of 8 half-open entries):
+    8 SYNs from 100.64.0.1 to 100.64.0.8, never answered
+    half-open entries: 8 of 8, the table is full
+    a real customer's SYN answered: false  <- DENIAL OF SERVICE
+  AFTER THE FIX (SYN cookies):
+    the same 8 SYNs: half-open entries 0
+    cookie = HMAC(secret, 198.51.100.7, 51000, 1000)
+           = 1053972776, sent as the SYN-ACK's seq
+    the ACK brings 1053972777 = cookie + 1: connects true
+  the cost: few TCP options, and a hash for every SYN
 FIVE. Guessable numbers, and a stream anyone can read.
-  the shop picks its numbers with a counter that adds 64000: the attacker, who sends a SYN pretending to be the admin machine 10.0.0.5, guesses the next number from its own connection and is accepted as the admin: true  <- A FORGED CONNECTION
-  the shop picks its numbers with a keyed hash: the attacker, who sends a SYN pretending to be the admin machine 10.0.0.5, guesses the next number from its own connection and is accepted as the admin: false
-  a real TCP connection on this machine: connected true, the server received every byte: true
-  what a sniffer on the wire sees contains the card number: true  <- TCP DOES NOT HIDE ANYTHING
-  TCP gives reliable, ordered delivery. Secrecy and identity come from TLS, which is the transport-security module
+  BEFORE THE FIX (a counter that adds 64000):
+    the attacker's own SYN-ACK seq:     1000
+    its guess for the admin (+ 64000):  65000
+    what the shop really sent 10.0.0.5: 65000
+    forged ACK accepted: true  <- A FORGED CONNECTION
+  AFTER THE FIX (a keyed hash, RFC 6528):
+    the attacker's own SYN-ACK seq:     692804923
+    its guess for the admin (+ 64000):  692868923
+    what the shop really sent 10.0.0.5: 1773183168
+    forged ACK accepted: false
+  THE STREAM SENT (a real connection on this machine):
+    card=4111111111111111&order=A-1001
+    connected true, the shop received every byte: true
+  WHAT A SNIFFER ON THE WIRE SEES:
+    card=4111111111111111&order=A-1001
+    contains the card number: true  <- TCP HIDES NOTHING
+  secrecy and identity come from TLS

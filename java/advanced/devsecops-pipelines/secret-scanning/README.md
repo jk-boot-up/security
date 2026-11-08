@@ -24,7 +24,7 @@ What it shows:
 - **Blocking.** A pre-commit hook refuses a commit with a key, `--no-verify` skips it, and a pre-receive hook on the shared repository still rejects the push.
 - **The bill.** A fresh clone still holds a key that a later commit removed: revoke first, then clean up.
 
-**Maps to:** OWASP Top 10 A02 Cryptographic Failures and A07 · NIST SSDF PS.1 · CIS Software Supply Chain · MITRE ATT&CK T1552 Unsecured Credentials.
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures and A07 Authentication Failures · NIST SSDF PS.1 · CIS Software Supply Chain · MITRE ATT&CK T1552 Unsecured Credentials.
 
 ## The idea in everyday terms
 

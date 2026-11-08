@@ -22,17 +22,17 @@ Chapters:
 02:29 Act Two — A checksum catches accidents, not attackers
 02:53 Act Three — The three-way handshake
 03:20 Act Four — A SYN flood
-03:57 Act Five — Guessable numbers, and a stream anyone can read
-04:33 What TCP/IP Gives, and Does Not
-05:00 Who Does What
-05:32 Where You Have Seen It
-06:03 How To Use It
-06:25 Thanks for Watching
+04:05 Act Five — Guessable numbers, and a stream anyone can read
+04:42 What TCP/IP Gives, and Does Not
+05:08 Who Does What
+05:41 Where You Have Seen It
+06:11 How To Use It
+06:33 Thanks for Watching
 ```
 
 ## Tags
 
-tcp, ip, three-way handshake, syn flood, syn cookies, sequence numbers, networking, java, cybersecurity for beginners
+tcp, ip, three-way handshake, syn flood, syn cookies, sequence numbers, networking, java, cybersecurity for beginners, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +40,16 @@ tcp, ip, three-way handshake, syn flood, syn cookies, sequence numbers, networki
 | --- | --- |
 | Video | `video/tcp-ip-basics-explained.mp4` |
 | Captions | `video/tcp-ip-basics-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Networking for Security in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (75)
-- [ ] tags are at most 500 characters in total — ok (109)
+- [ ] tags are at most 500 characters in total — ok (160)
 - [ ] description is at most 5,000 characters — ok (488)
 - [ ] chapters start at 00:00 and there are at least three

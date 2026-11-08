@@ -15,14 +15,17 @@ can keep guessing for as long as they like.
 ### 2. limit_req on the client's address: 1r/m, burst 5
 
 The configuration now has a zone that counts requests per client address, at one request a minute, and the login
-location uses it with a burst of five. The first request is allowed. The burst lets five more through at once. That is six answered. The
-remaining fourteen get 429. The rate is deliberately slow, so the count does not depend on how fast the demo runs.
+location uses it with a burst of five. nginx keeps one number for each key, the excess: a key seen for the first time starts at 0,
+and every guess let in adds 1, while the rate takes 1 away per minute. A guess that would take the excess over the burst is refused.
+So guess 1 is let in at 0, guesses 2 to 6 take it to 5, and guess 7 would make 6: that is six answered, and the remaining fourteen
+get 429. `LeakyBucket` redoes this rule by hand, and its test gives the same counts as the real nginx. The rate is deliberately slow,
+so the count does not depend on how fast the demo runs.
 
 ### 3. The same limit, but counted on the X-Forwarded-For header
 
 Many setups sit behind a proxy and take the client's address from the `X-Forwarded-For` header. Here the zone is
-keyed on that header, and the attacker simply sends a different value with every guess. Each value has its own,
-empty bucket, so all 20 guesses are answered: 20 answered, 0 refused. The limit is in place and does nothing, because
+keyed on that header, and the attacker simply sends a different value with every guess, 10.0.0.0 to 10.0.0.19. Each value has its own,
+empty count, so all 20 guesses are answered: 20 answered, 0 refused. The limit is in place and does nothing, because
 the attacker chose the key.
 
 ### 4. The same limit, counted on the real connection address
@@ -34,8 +37,8 @@ address must be taken from a header that only that proxy sets, and the proxy mus
 ### 5. The bill: a limit per username
 
 A limit per username seems natural: protect each account. An attack on Dana is held to 6 answered and 14 refused.
-But the bucket for Dana is now full, and when Dana herself tries from another address, she gets 429: the
-limit locks the owner out too. And a spray, with one guess at each of 20 usernames, fills no bucket at all: 20 answered, 0 refused.
+But the count for Dana is now full, and when Dana herself tries from another address, 203.0.113.7, she gets 429: the
+limit locks the owner out too. And a spray, with one guess at each of 20 usernames, customer0 to customer19, fills no count at all: 20 answered, 0 refused.
 A per-username limit is a lockout with the same two weaknesses as in the plain project. It belongs beside a limit per address, not in place of it.
 
 ## The verdict

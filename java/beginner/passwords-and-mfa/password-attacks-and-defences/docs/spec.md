@@ -20,6 +20,7 @@ Learners know passwords should be strong but not how they are attacked at the lo
 | --- | --- |
 | The login with its defences | `Bank` and `Defences` |
 | The attacks | `Attacks` |
+| Each attempt, tick by tick | `Step` and `Timeline` |
 | Replies and outcomes | `Reply`, `Outcome` |
 | Lock settings | `LockScope` |
 | The clock | `Ticker` |
@@ -38,10 +39,10 @@ Learners know passwords should be strong but not how they are attacked at the lo
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 23, all passing |
-| Demo output | 23 lines, identical on every run |
+| Tests | 28, all passing |
+| Demo output | 69 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:30, 1920×1080, narrated in the amy-slow voice |
+| Video | 12:10, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

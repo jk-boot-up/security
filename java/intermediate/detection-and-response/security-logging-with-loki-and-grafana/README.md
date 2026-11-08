@@ -20,7 +20,7 @@ What it shows:
 - **Alerting.** A rule fires when one address has 3 failed logins in 5 minutes. Ana's two do not; four from `203.0.113.9` do, and the alert names the address. A second rule with a typo in a field name stays `inactive/ok` for ever: **test your rules**.
 - **The bill.** Another tenant sees none of the bank's lines; an event ten days old is refused; there is no delete route; Grafana reads the same data through a data source that sends the tenant, and whoever can use that data source sees the logs.
 
-**Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · ASVS V16 Security Logging and Error Handling · CWE-778 (insufficient logging) · NIST CSF 2.0 Detect.
+**Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · OWASP ASVS 5.0 V16 Security Logging and Error Handling · CWE-778 (insufficient logging) · NIST CSF 2.0 Detect.
 
 ## The idea in everyday terms
 

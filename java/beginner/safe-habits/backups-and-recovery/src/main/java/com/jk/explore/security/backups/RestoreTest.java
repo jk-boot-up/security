@@ -24,7 +24,8 @@ final class RestoreTest {
             return new Result(manifestOk, false, 0);
         }
         var lines = Files.readAllLines(orders);
-        boolean shaped = lines.size() > 1 && lines.stream().allMatch(line -> line.split(",", -1).length == 3);
+        boolean shaped = lines.size() > 1
+                && lines.stream().allMatch(line -> line.split(",", -1).length == 3);
         return new Result(manifestOk, shaped, shaped ? lines.size() - 1 : 0);
     }
 }

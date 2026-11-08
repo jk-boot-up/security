@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-syft, grype, sbom, cyclonedx, log4j, vulnerability scanning, supply chain, owasp top 10, docker, java
+syft, grype, sbom, cyclonedx, log4j, vulnerability scanning, supply chain, owasp top 10, docker, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ syft, grype, sbom, cyclonedx, log4j, vulnerability scanning, supply chain, owasp
 | --- | --- |
 | Video | `video/sbom-and-provenance-with-syft-and-grype-explained.mp4` |
 | Captions | `video/sbom-and-provenance-with-syft-and-grype-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Secrets and Supply Chain Security in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (98)
-- [ ] tags are at most 500 characters in total — ok (92)
+- [ ] tags are at most 500 characters in total — ok (143)
 - [ ] description is at most 5,000 characters — ok (482)
 - [ ] chapters start at 00:00 and there are at least three

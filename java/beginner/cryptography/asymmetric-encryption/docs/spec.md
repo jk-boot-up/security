@@ -37,10 +37,10 @@ Learners know "public key cryptography" as a phrase but not what the keys are fo
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 24, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 30, all passing |
+| Demo output | 75 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 12:41, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

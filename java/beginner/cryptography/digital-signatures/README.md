@@ -8,7 +8,8 @@ src/main/java/com/jk/explore/security/signatures/
 ├── HmacPublisher.java   The shop's price list tagged with HMAC, as in the hashing-and-integrity project
 ├── PriceList.java       The online store's price list: a version, the last day it may be used, and a price in dollars for each product
 ├── Publisher.java       The shop, which holds the private key and signs each price list it publishes
-├── SignaturesDemo.java  Runs the online store story in five numbered acts and prints exact, repeatable results
+├── SignatureSteps.java  Ed25519 redone by hand, for teaching only, following RFC 8032 (section 5.1): the five steps that Java's {@code Signature.getInstance("Ed25519")} hides
+├── SignaturesDemo.java  Runs the online store story in six numbered acts and prints exact, repeatable results
 ├── Signed.java          A message together with its signature, as the shop publishes it
 ├── Signing.java         Signs and checks messages with Ed25519
 └── Verdict.java         What a checkout service concludes about a published price list
@@ -20,8 +21,9 @@ An HMAC tag proves that a message came from someone with the shared key, but eve
 two jobs. It is made with a **private key**, which only the signer has, and checked with the matching **public key**, which anyone may have. Anyone can check, only the signer can sign. The modern, simple choice
 is **Ed25519**: a 32-byte public key, a 64-byte signature, and no random number needed, because the same key and message always give the same signature.
 
-This project signs an online store's price list. It shows the forgery that HMAC allows, the signature and its three refusals, why a signature should be tied to its purpose, why a perfect signature on an old
-message is still a problem, and what a signature cannot do, which is to say whose public key it is. The code is checked against the published test values of RFC 8032.
+This project signs an online store's price list in six acts. It shows the forgery that HMAC allows, the signature and its three refusals, how the 64 bytes are made, worked out by hand
+in five steps and compared with Java's own signature, why a signature should be tied to its purpose, why a perfect signature on an old message is still a problem, and what a signature
+cannot do, which is to say whose public key it is. The code is checked against the published test values of RFC 8032.
 
 ## The idea in everyday terms
 
@@ -41,15 +43,16 @@ but genuine list, and a public key swapped by an attacker.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. A tag made with a shared key | The warehouse must hold the HMAC key to check tags, so it can make a tag for a list of its own, with the laptop at 12 dollars, and the shop accepts it. |
-| 2. A signature: made with the private key, checked with the public key | The shop's signature is 64 bytes and the same every time; the warehouse checks it with only the public key; a changed list or another key's signature is refused. |
-| 3. What exactly is signed | A price list always becomes the same bytes however it was built; a signature made for a refund order is refused when offered as a price list, because each is tied to its purpose. |
-| 4. A good signature on an old message | A replayed genuine version 1 is accepted by a naive checkout and refused as OLD_VERSION by one that remembers the newest; a list past its expiry is EXPIRED. |
-| 5. The bill: whose key is it, and what if it is stolen? | A checkout given Mallory's public key accepts her forgery; with the real key it refuses it; a stolen private key signs anything; a signature hides nothing; and it is 64 bytes against a 32-byte key. |
+| 1. A tag made with a shared key | The warehouse must hold the HMAC key to check tags, so it can tag a list of its own, with the laptop at 12 dollars, and the shop accepts it. |
+| 2. A signature: the private key signs, the public key checks | The shop's signature is 64 bytes and the same every time; the warehouse checks it with only the public key; a changed list or another key's signature is refused. |
+| 3. How the signature is made, step by step | The 64 bytes are worked out by hand in five steps, R and then S, and come out exactly as Java's own signature; the check S x B = R + k x A needs only the public key. |
+| 4. What exactly is signed | The signed bytes are a label, a zero byte and the list in one fixed order; a signature made for a refund order is refused when offered as a price list. |
+| 5. A good signature on an old message | A replayed genuine version 1 is accepted by a checkout that checks only the signature, and refused as OLD_VERSION by one that remembers the newest; a list past its expiry is EXPIRED. |
+| 6. The bill: whose key is it, and what if it is stolen? | A checkout given Mallory's public key accepts her forgery; with the real key it refuses it; a stolen private key signs anything; a signature hides nothing; and it is 64 bytes against a 32-byte key. |
 
 ## Test
 
@@ -57,7 +60,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-20 tests in `CheckoutTest`, `DemoRunsTest`, `HmacContrastTest`, `PriceListTest`, `Rfc8032Test`, `SigningTest`. Ed25519 is checked against the published test vectors of RFC 8032. Every line the demo prints is checked against `docs/expected-output.txt`; the shop's key is fixed and Ed25519 is deterministic, and the keys that are random in the demo are never printed.
+24 tests in `CheckoutTest`, `DemoRunsTest`, `HmacContrastTest`, `PriceListTest`, `Rfc8032Test`, `SignatureStepsTest`, `SigningTest`. Ed25519 is checked against the published test vectors of RFC 8032, and `SignatureSteps`, which redoes the five steps by hand, is checked to give Java's exact signature. Every line the demo prints is checked against `docs/expected-output.txt`; the shop's key is fixed and Ed25519 is deterministic, and the keys that are random in the demo are never printed.
 
 ## What the simulation got right, and what it left out
 

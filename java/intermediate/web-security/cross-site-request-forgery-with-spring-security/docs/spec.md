@@ -41,7 +41,7 @@ Teams disable or exempt Spring Security's CSRF protection to fix a 403, and do n
 | Tests | 12, all passing |
 | Demo output | 35 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:06, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

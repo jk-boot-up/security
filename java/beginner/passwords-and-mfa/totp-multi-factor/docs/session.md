@@ -14,18 +14,19 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: A password alone | 7 min |
-| 0:17 | Act 2: Enrolling a second factor | 7 min |
-| 0:24 | Act 3: Logging in with a code, and clocks that disagree | 7 min |
-| 0:31 | Act 4: The same code twice | 7 min |
-| 0:38 | Act 5: The bill: what a code cannot do | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: A password alone | 5 min |
+| 0:15 | Act 2: Enrolling: one secret, shared once | 5 min |
+| 0:20 | Act 3: How the code is made, step by step | 5 min |
+| 0:25 | Act 4: Logging in, and clocks that disagree | 5 min |
+| 0:30 | Act 5: The same code twice | 5 min |
+| 0:35 | Act 6: The bill: what a code cannot do | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
-Start with the two-key safe-deposit box. Run the demo one act at a time. After act two, ask the group how the phone and the bank can agree on a code
-without a message between them, and let them name the shared secret and the clock. After act three, ask what the bank loses if it widens the window to 5. In
-act five, ask what a hardware security key does that a code cannot, and let the group discover that it checks which site it is talking to.
+Start with the two-key safe-deposit box. Run the demo one act at a time. After acts two and three, ask the group how the phone and the bank can agree on a code
+without a message between them, and let them name the shared secret and the clock. After act four, ask what the bank loses if it widens the window to 5. In
+act six, ask what a hardware security key does that a code cannot, and let the group discover that it checks which site it is talking to.
 
 ## Exercises
 

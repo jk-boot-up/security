@@ -1,30 +1,62 @@
 ONE. An HTTPS request that is checked.
-  the shop's certificate is trusted by the client and matches the name shop.example.test
-  the request is answered: 200 cart: 2 items, over TLSv1.3
-  security headers present: 5 of 5, including Strict-Transport-Security
-  the client checked three things: that the certificate is one it trusts, that it names the shop, and that it is current
+  THE CERTIFICATE (what the shop presents):
+    subject      CN=shop.example.test
+    issuer       CN=shop.example.test  (itself)
+    names        shop.example.test
+    valid        2026-10-17 to 2126-09-23
+  THE CLIENT'S THREE CHECKS:
+    trusted      the one certificate the client trusts: yes
+    name         asked for shop.example.test
+                 the certificate names shop.example.test: yes
+    current      today is between the two dates: yes
+  THE RESPONSE (over TLSv1.3):
+    200 cart: 2 items
+    security headers 1 + 1 + 1 + 1 + 1 = 5 of 5
 TWO. Plain HTTP only redirects.
-  a request to the plain port gets: 301 moved permanently
-  it points to an https address: true
-  the plain answer carries no HSTS header: true  (browsers ignore HSTS sent over HTTP)
-  the first request itself crossed the network in the clear  <- THE FIRST VISIT IS STILL EXPOSED; HSTS protects the later ones
+  THE REQUEST (to the plain HTTP port):
+    GET http://shop.example.test/cart
+  THE RESPONSE:
+    301 Moved Permanently
+    Location: https://shop.example.test:<https port>/cart
+    Strict-Transport-Security: none (ignored over HTTP)
+  THE NEXT VISIT (the HTTPS answer carries HSTS):
+    Strict-Transport-Security
+      max-age=31536000; includeSubDomains
+    31536000 / 86400 seconds a day = 365 days of HTTPS only
+  the first request still crossed the network in the clear:
+  HSTS protects only the visits after it
 THREE. A cookie that stays on HTTPS.
-  the login sets: session=...; Secure; HttpOnly; SameSite=Lax; Path=/
-  asking again over https, the cookie is sent: cookie received
-  asking over plain http, the cookie is sent: false  (the Secure flag keeps it off plain connections)
-  a cookie without the Secure flag, asked over plain http, is sent: true  <- A LEAK
+  THE COOKIE (the login over HTTPS sets):
+    session=...; Secure; HttpOnly; SameSite=Lax; Path=/
+  THE NEXT REQUESTS (does the browser attach it?):
+    over https   sent      shop says: cookie received
+    over http    not sent  because of Secure
+  BEFORE THE FIX (a shop whose cookie has no Secure):
+    session=...; Path=/
+    over http    sent      <- A LEAK
 FOUR. What the client refuses.
-  a server with the right name and a certificate nobody trusts: refused (SSLHandshakeException)
-  the right certificate, reached under another name: refused (SSLHandshakeException)
-  a client that demands TLS 1.3, and a server that offers only 1.2: refused (SSLHandshakeException)
-  the same server, a client that also allows 1.2: ok (TLSv1.2)
-  allowing the older version is a choice the client makes, and it is what a downgrade attack asks for
+  THE ATTEMPTS:
+    a  shop.example.test, a certificate nobody trusts
+    b  the shop's certificate, reached as evil.example.test
+    c  client: TLS 1.3 only     server: TLS 1.2 only
+    d  client: TLS 1.3 or 1.2   server: TLS 1.2 only
+  THE RESULTS:
+    a  refused (SSLHandshakeException)  not trusted
+    b  refused (SSLHandshakeException)  wrong name
+    c  refused (SSLHandshakeException)  no common version
+    d  ok (TLSv1.2)
+  allowing the older version is the client's choice, and
+  it is exactly what a downgrade attack asks for
 FIVE. Scoring a shop from outside.
-  the careful shop scores 5 of 5
-  the careless shop, the certificate is trusted and matches the host name: yes
-  the careless shop, TLS 1.3 is accepted: no
-  the careless shop, plain HTTP redirects to HTTPS: no
-  the careless shop, HSTS lasts at least a year: no
-  the careless shop, the session cookie is Secure, HttpOnly and SameSite: no
-  the careless shop scores 1 of 5: a valid certificate is only the first item
-  a padlock proves who the server is and that the connection is private; it says nothing about the rest of the setup
+  THE CHECKS (the same five, on both shops):
+                                         careful  careless
+    certificate trusted, names the host  yes      yes
+    TLS 1.3 accepted                     yes      no
+    plain HTTP redirects to HTTPS        yes      no
+    HSTS for at least a year             yes      no
+    cookie Secure, HttpOnly, SameSite    yes      no
+  THE SCORES (one point per check):
+    careful    1 + 1 + 1 + 1 + 1 = 5 of 5
+    careless   1 + 0 + 0 + 0 + 0 = 1 of 5
+  a padlock proves who the server is and that the connection
+  is private; it says nothing about the rest of the setup

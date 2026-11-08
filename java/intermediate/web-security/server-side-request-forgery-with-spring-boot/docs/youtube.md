@@ -8,7 +8,7 @@ SSRF in Spring Boot: RestClient, Resolved Addresses, Redirects and DNS Rebinding
 
 ## Description
 
-SSRF in Spring Boot 4: RestClient, a blocklist that fails, resolving and pinning the address, redirects, DNS rebinding and limits.
+Server-side request forgery, SSRF, in Spring Boot 4, in Java. A staff form that imports a product image from a web address lets Spring's RestClient fetch anything the server can reach: the cloud metadata service, localhost, and the office admin page. Explained with an online store, like a courier who will collect a parcel from any address you write down, including the locked rooms inside the warehouse. We watch a blocklist of names fail against a decimal spelling, a short loopback address and a redirect, then fix it: look the name up once, judge every address it resolves to, connect to the address that was judged, judge every redirect again, and accept only a small image that arrives in time. We finish with the mistake that looks like a fix, checking a name and then looking it up again, and the cost: a second wall of network rules for outgoing traffic.
 
 Source code and notes: github.com/jk-boot-up/security/tree/main/java/intermediate/web-security/server-side-request-forgery-with-spring-boot
 
@@ -16,22 +16,22 @@ Chapters:
 
 ```
 00:00 Introduction
-01:34 The Scenario
-01:57 Act One — Importing an image from a web address
-02:13 Act Two — The server fetches whatever it is told
-02:36 Act Three — A blocklist of names is easy to walk around
-03:02 Act Four — Check the address the connection really uses
-03:27 Act Five — Limits, and why checking and then connecting is not enough
-03:58 What It Costs
-04:25 Who Does What
-04:55 Where You Have Seen It
-05:12 How To Use It
-05:35 Thanks for Watching
+00:54 The Scenario
+01:31 Act One — Importing an image from a web address
+01:47 Act Two — The server fetches whatever it is told
+02:09 Act Three — A blocklist of names is easy to walk around
+02:36 Act Four — Check the address the connection really uses
+03:00 Act Five — Limits, and why checking and then connecting is not enough
+03:32 What It Costs
+04:12 Who Does What
+04:48 Where You Have Seen It
+05:22 How To Use It
+06:00 Thanks for Watching
 ```
 
 ## Tags
 
-ssrf, spring boot, restclient, dns rebinding, java, application security
+ssrf, spring boot, restclient, dns rebinding, java, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ ssrf, spring boot, restclient, dns rebinding, java, application security
 | --- | --- |
 | Video | `video/server-side-request-forgery-with-spring-boot-explained.mp4` |
 | Captions | `video/server-side-request-forgery-with-spring-boot-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Web Security in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (80)
-- [ ] tags are at most 500 characters in total — ok (67)
-- [ ] description is at most 5,000 characters — ok (130)
+- [ ] tags are at most 500 characters in total — ok (118)
+- [ ] description is at most 5,000 characters — ok (864)
 - [ ] chapters start at 00:00 and there are at least three

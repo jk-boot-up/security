@@ -62,6 +62,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `TokenRulesTest` checks 401 and 403, ownership, expiry at the exact second, forged, unsigned and tampered tokens, issuer and audience, role mapping and revocation.
 - `RealmFileTest` checks the realm: PKCE public client, no password grant, exact redirect addresses, audience mapper, short tokens and brute force protection.
 - `KeycloakIntegrationTest` (integration, Docker) logs in to the real Keycloak with PKCE, uses a service account, checks a wrong password and wrong audience, and shows a removed role working until a real token expires.
+- `SignatureStepsTest` checks that the signature check done by hand (signed text, SHA-256 hash, opened signature, compare) always agrees with the library, for good, tampered and forged tokens.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

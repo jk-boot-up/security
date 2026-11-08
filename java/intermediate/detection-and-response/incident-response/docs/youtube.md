@@ -32,7 +32,7 @@ Chapters:
 
 ## Tags
 
-incident response, nist 800-61, containment, eradication, forensics, post-incident review, java, application security
+incident response, nist 800-61, containment, eradication, forensics, post-incident review, java, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +40,16 @@ incident response, nist 800-61, containment, eradication, forensics, post-incide
 | --- | --- |
 | Video | `video/incident-response-explained.mp4` |
 | Captions | `video/incident-response-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Detection and Response in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (66)
-- [ ] tags are at most 500 characters in total — ok (110)
+- [ ] tags are at most 500 characters in total — ok (161)
 - [ ] description is at most 5,000 characters — ok (138)
 - [ ] chapters start at 00:00 and there are at least three

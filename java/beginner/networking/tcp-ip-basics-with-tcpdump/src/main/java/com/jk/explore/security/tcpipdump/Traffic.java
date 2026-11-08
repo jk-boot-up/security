@@ -39,12 +39,16 @@ final class Traffic {
         return packets;
     }
 
-    /** A SYN whose TCP checksum is wrong, as a damaged or carelessly forged packet would be. */
+    /** One more SYN, from 100.64.0.99, as it was sent. */
+    static byte[] lateSyn() {
+        return packet(Address.parse("100.64.0.99"), SHOP, 40099, 443, 7, 0, TcpSegment.SYN, new byte[0]);
+    }
+
+    /** The same SYN as it arrived, with one byte of its TCP checksum changed, as a damaged or carelessly forged packet would be. */
     static byte[] damaged() {
-        int from = Address.parse("100.64.0.99");
-        byte[] segment = new TcpSegment(40099, 443, 7, 0, TcpSegment.SYN, 65535, new byte[0]).encode(from, SHOP);
-        segment[16] ^= 0x55;
-        return new Ipv4Packet(from, SHOP, 64, segment).encode();
+        byte[] packet = lateSyn();
+        packet[Ipv4Packet.HEADER + 16] ^= 0x55;
+        return packet;
     }
 
     static List<byte[]> everything() {

@@ -12,7 +12,8 @@ Write the key in the source code, or in a file next to the program. It works on 
 
 - A demonstration that a hard-coded key is inside the compiled class.
 - A key file with its permissions shown, and the limit of a file in the clear.
-- A PKCS12 keystore that hides the key and its name, refuses a wrong password, and whose recorded protection settings are read from the file.
+- A PKCS12 keystore that hides the key (though not its name), refuses a wrong password, and whose recorded rounds are read from the file, before and after the fix.
+- PBKDF2 worked out by hand, round by round, giving the JDK's exact key.
 - Keys made with PBKDF2 and HKDF, checked against published values.
 - Messages that carry the name of their key, and a rotation in which old messages open until the old key is removed.
 - The same facts printed on every run, though keys, salts and nonces are random.

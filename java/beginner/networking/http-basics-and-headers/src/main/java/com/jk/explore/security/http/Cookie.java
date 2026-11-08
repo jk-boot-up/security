@@ -48,7 +48,7 @@ record Cookie(String name, String value, boolean secure, boolean httpOnly, Strin
             problems.add("no Secure: it is also sent over plain HTTP");
         }
         if (sameSite == null) {
-            problems.add("no SameSite: other sites can trigger requests that carry it");
+            problems.add("no SameSite: other sites can make the browser send it");
         } else if (sameSite.equalsIgnoreCase("None") && !secure) {
             problems.add("SameSite=None without Secure: browsers reject it");
         }

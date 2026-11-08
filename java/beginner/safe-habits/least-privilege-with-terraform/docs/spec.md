@@ -41,9 +41,9 @@ Cloud permissions are easy to write too wide, and hard to see once written.
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 25, all passing |
-| Demo output | 37 lines, identical on every run |
+| Demo output | 83 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:05, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:32, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -58,7 +58,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `HandshakeTest` checks the agreed protocol, the record types, the readable hello, data round trips, every changed byte of a record, untrusted certificates, wrong names, and protocol versions.
+- `HandshakeTest` checks the agreed protocol, the record types, the readable hello, data round trips, every changed byte of a record, the size of a record (header, order, type, padding and tag), the two fingerprints, untrusted certificates, wrong names, and protocol versions.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

@@ -40,6 +40,7 @@ final class Pins {
         }
         byte[] expectedBytes = HexFormat.of().parseHex(expected);
         byte[] actual = HexFormat.of().parseHex(sha256(content));
-        return MessageDigest.isEqual(expectedBytes, actual) ? Result.VERIFIED : Result.MISMATCH;
+        boolean same = MessageDigest.isEqual(expectedBytes, actual);
+        return same ? Result.VERIFIED : Result.MISMATCH;
     }
 }

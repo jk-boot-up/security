@@ -5,22 +5,89 @@ from PIL import Image, ImageDraw
 
 from .theme import (ACCENT, AUTHOR, BG, CLIENT, FOOTER, H, INK, LINE, MONO_B, MUTED, PANEL,
                     SANS, SANS_B, TEXT, W, font)
+from .theme import font as _font
+
+
+# Slides are laid out in 1920x1080 units but drawn S times larger, so text and lines
+# are rendered natively at 4K instead of being stretched up from 1080p.
+S = 2
+
+
+def _pt(v):
+    return v * S
+
+
+def _xy(xy):
+    """Scale a coordinate list: [(x, y), ...], [x0, y0, x1, y1] or (x, y)."""
+    return [tuple(_pt(c) for c in p) if isinstance(p, (tuple, list)) else _pt(p) for p in xy]
+
+
+class Draw:
+    """ImageDraw in 1920x1080 units on an S-times larger image.
+
+    Fonts are measured at their nominal size by the layout code; here each one is
+    swapped for the same face at S times the size, so the text lands where it was
+    laid out but with S times the detail.
+    """
+
+    def __init__(self, img):
+        self._d = ImageDraw.Draw(img)
+
+    def text(self, xy, text, font=None, **kw):
+        for k in ("spacing", "stroke_width"):
+            if k in kw:
+                kw[k] = _pt(kw[k])
+        big = _font(font.path, font.size * S) if font is not None else None
+        self._d.text(tuple(_pt(c) for c in xy), text, font=big, **kw)
+
+    def line(self, xy, fill=None, width=1, **kw):
+        self._d.line(_xy(xy), fill=fill, width=_pt(width), **kw)
+
+    def rectangle(self, xy, fill=None, outline=None, width=1):
+        self._d.rectangle(_xy(xy), fill=fill, outline=outline, width=_pt(width))
+
+    def rounded_rectangle(self, xy, radius=0, fill=None, outline=None, width=1, **kw):
+        self._d.rounded_rectangle(_xy(xy), radius=_pt(radius), fill=fill, outline=outline,
+                                  width=_pt(width), **kw)
+
+    def polygon(self, xy, fill=None, outline=None, width=1):
+        self._d.polygon(_xy(xy), fill=fill, outline=outline, width=_pt(width))
+
+    def regular_polygon(self, circle, sides, rotation=0, fill=None, outline=None, width=1):
+        x, y, r = circle
+        self._d.regular_polygon((_pt(x), _pt(y), _pt(r)), sides, rotation=rotation,
+                                fill=fill, outline=outline, width=_pt(width))
+
+    def arc(self, xy, start, end, fill=None, width=1):
+        self._d.arc(_xy(xy), start, end, fill=fill, width=_pt(width))
+
+    def ellipse(self, xy, fill=None, outline=None, width=1):
+        self._d.ellipse(_xy(xy), fill=fill, outline=outline, width=_pt(width))
 
 
 def base_slide():
-    img = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(img)
+    img = Image.new("RGB", (W * S, H * S), BG)
+    d = Draw(img)
     d.rectangle([0, 0, W, 8], fill=ACCENT)
     return img, d
 
 
 def footer(d, left, right):
-    d.text((70, H - 58), left, font=font(SANS, 24), fill=FOOTER)
-    d.text((W - 70, H - 58), right, font=font(SANS, 24), fill=FOOTER, anchor="ra")
+    d.text((70, H - 60), left, font=font(SANS, 28), fill=MUTED)
+    d.text((W - 70, H - 60), right, font=font(SANS, 28), fill=MUTED, anchor="ra")
 
 
 def title(d, text):
-    d.text((100, 92), text, font=font(SANS_B, 62), fill=TEXT)
+    fnt = fitted_font(SANS_B, text, W - 200, 62, 48)
+    if fnt.getlength(text) <= W - 200:
+        d.text((100, 92), text, font=fnt, fill=TEXT)
+    else:                                       # too long for one line: two balanced lines
+        words = text.split()
+        cut = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
+        top, bottom = " ".join(words[:cut]), " ".join(words[cut:])
+        fnt = fitted_font(SANS_B, max(top, bottom, key=len), W - 200, 52, 36)
+        d.text((100, 52), top, font=fnt, fill=TEXT)
+        d.text((100, 52 + int(fnt.size * 1.3)), bottom, font=fnt, fill=TEXT)
     d.line([(100, 190), (W - 100, 190)], fill=LINE, width=2)
 
 
@@ -86,10 +153,11 @@ def arrow_diag_up(d, x1, y1, x2, y2, colour, width=3):
 
 def gradient(img, top, bottom):
     """A vertical wash, used by the poster and the sign-off card."""
-    g = ImageDraw.Draw(img)
-    for y in range(H):
-        t = y / (H - 1)
-        g.line([(0, y), (W, y)], fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)))
+    g = ImageDraw.Draw(img)                    # full resolution: one line per real pixel row
+    w, h = img.size
+    for y in range(h):
+        t = y / (h - 1)
+        g.line([(0, y), (w, y)], fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)))
 
 
 def pill(d, x, y, w, h, colour, code, note, tag=None):
@@ -115,12 +183,12 @@ def pill(d, x, y, w, h, colour, code, note, tag=None):
     d.text((x + w // 2, y + h - 58), note, font=note_fnt, fill=colour, anchor="ma")
 
 
-def name_pill(d, x, y, author=AUTHOR):
-    """The author's name in a box, sized to the text. x=None centres it."""
-    text = "by " + author
+def name_pill(d, x, y, author=AUTHOR, centre=W // 2, colour=CLIENT, fill=INK, lead="by "):
+    """The author's name in a box, sized to the text. x=None centres it on `centre`."""
+    text = lead + author
     fnt = font(SANS_B, 54)
     w = int(fnt.getlength(text)) + 96
     if x is None:
-        x = (W - w) // 2
-    d.rounded_rectangle([x, y, x + w, y + 104], radius=52, fill=INK, outline=CLIENT, width=4)
-    d.text((x + w // 2, y + 22), text, font=fnt, fill=CLIENT, anchor="ma")
+        x = centre - w // 2
+    d.rounded_rectangle([x, y, x + w, y + 104], radius=52, fill=fill, outline=colour, width=4)
+    d.text((x + w // 2, y + 22), text, font=fnt, fill=colour, anchor="ma")

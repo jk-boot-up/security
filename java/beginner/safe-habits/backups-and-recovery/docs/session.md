@@ -19,7 +19,7 @@ By the end of the session you can:
 | 0:17 | Act 2: Can the backup be trusted? Only a restore test says | 7 min |
 | 0:24 | Act 3: The 3-2-1 rule, and how long to keep backups | 7 min |
 | 0:31 | Act 4: Ransomware, and the copy it cannot change | 7 min |
-| 0:38 | Act 5: How much can be lost, how long it takes, and backups as secrets | 7 min |
+| 0:38 | Act 5: Recovery point, recovery time, and a sealed backup | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

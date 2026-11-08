@@ -10,7 +10,9 @@ src/main/java/com/jk/explore/security/attacks/
 ├── LockScope.java    What a lockout counts failures against: the account as a whole, or each account-and-address pair on its own
 ├── Outcome.java      What the bank's login answered to one attempt
 ├── Reply.java        The bank's answer to one login attempt: the outcome, and the message the person sees
-└── Ticker.java       A clock made of ticks (think of each tick as a second), so lockouts and limits need no waiting and every run is identical
+├── Step.java         One login attempt an attack made, as it was answered: the demo prints these to show an attack tick by tick
+├── Ticker.java       A clock made of ticks (think of each tick as a second), so lockouts and limits need no waiting and every run is identical
+└── Timeline.java     An attack's steps folded into runs of the same answer, such as "ticks 5-14 no guess LOCKED", so that the tick at which a defended attack finally wins can be worked out line by line
 ```
 
 **A bank's login can be guessed at through three kinds of attack, dictionary, spraying and stuffing, and each defence, lockout, rate limit, second factor and breach check, stops one and misses another.**
@@ -50,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. No defences | A dictionary attack finds Dana's password in 14 guesses at tick 13, and spraying three common passwords takes 4 of 10 accounts in 23 guesses. |
-| 2. Lock an account after 5 wrong passwords, for 10 ticks | The dictionary attack on Dana now wins at tick 33 instead of 13, but the spray still takes 4 accounts, because no account fails 5 times. |
-| 3. Allow each address 5 attempts in every 10 ticks | A rate limit per address delays Dana's password to tick 23 and stretches the spray to 43 ticks, but both still succeed. |
-| 4. Credential stuffing: passwords leaked from another site | With lockout and rate limit, 4 of 10 accounts still fall; a second factor on 2 of them cuts that to 2; a breach check cuts it to 0 and forces 4 resets. |
-| 5. The bill: a lock can be used against the customer, and messages can leak | An attacker can lock Dana out, locking per address avoids that but gives 10 addresses 50 guesses, and different error messages reveal which names exist. |
+| 1. No defences | One guess is checked by comparing salted SHA-256 hashes; a dictionary attack then finds Dana's password with guess 14 at tick 13, and spraying three common passwords takes 4 of 10 accounts in 23 guesses. |
+| 2. Lock an account after 5 wrong passwords, for 10 ticks | The lockout turns tick 13 into tick 33: two locks of 10 ticks, during which no guess is used; the spray still takes 4 accounts by tick 23, because no account fails 5 times. |
+| 3. Allow each address 5 attempts in every 10 ticks | A rate limit per address allows 5 guesses in each window of 10 ticks, so Dana's password falls at tick 23 instead of 13, and the spray needs 43 ticks instead of 23. |
+| 4. Credential stuffing: passwords leaked from another site | Ten leaked pairs, each tried once from its own address: with lockout and rate limit Dana, Farah, Joel and Liam fall; a second factor on Dana and Joel stops those two; a breach check stops all four and forces new passwords. |
+| 5. The bill: what the defences cost | An attacker can lock Dana out, locking per account and address avoids that but gives 10 addresses 50 guesses, and different error messages reveal which names exist. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-23 tests in `AttacksTest`, `BankTest`, `DemoRunsTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Time is a tick counter and nothing is random, so every run gives the same result.
+28 tests in `AttacksTest`, `BankTest`, `DemoRunsTest`, `TimelineTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Time is a tick counter and nothing is random, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

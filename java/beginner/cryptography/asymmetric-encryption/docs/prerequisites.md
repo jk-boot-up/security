@@ -7,9 +7,9 @@
 
 ## Explicitly not required
 
-- The mathematics of RSA or elliptic curves
+- The mathematics of elliptic curves (RSA is shown by hand with tiny numbers)
 - Certificates or TLS: they come later in the track
-- Prime numbers: the project never mentions one
+- Number theory: the by-hand examples need only multiplying, powers and remainders
 
 ## What you will need
 

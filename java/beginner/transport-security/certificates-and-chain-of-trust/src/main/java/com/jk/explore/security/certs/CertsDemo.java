@@ -1,6 +1,8 @@
 package com.jk.explore.security.certs;
 
 import java.math.BigInteger;
+import java.security.interfaces.ECPublicKey;
+import java.time.LocalDate;
 import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.Set;
@@ -36,74 +38,134 @@ public class CertsDemo {
         return new ChainValidator(Set.of(root), Set.of());
     }
 
+    private static String cn(X509Certificate certificate) {
+        return name(certificate).replace("CN=", "");
+    }
+
+    private static String dates(X509Certificate certificate) {
+        return ChainSteps.day(certificate.getNotBefore()) + " to " + ChainSteps.day(certificate.getNotAfter());
+    }
+
+    private static String verdict(List<X509Certificate> chain, X509Certificate root, ChainValidator browser) {
+        String failure = ChainSteps.firstFailure(ChainSteps.walk(chain, root, Set.of(), Pki.TODAY));
+        return String.format("by hand: %-15s JDK: %s", failure, browser.validate(chain, Pki.TODAY).reason());
+    }
+
     private static void act1Chain(StringBuilder out, Pki pki) {
         line(out, "ONE. A chain of three certificates.");
         X509Certificate root = pki.root.certificate();
         X509Certificate middle = pki.intermediate.certificate();
         X509Certificate leaf = pki.server.certificate();
-        line(out, "  root:         " + name(root) + ", signed by itself: " + root.getIssuerX500Principal().equals(root.getSubjectX500Principal()));
-        line(out, "  intermediate: " + name(middle) + ", signed by " + middle.getIssuerX500Principal().getName() + ", may issue certificates: " + (middle.getBasicConstraints() >= 0));
-        line(out, "  server:       " + name(leaf) + ", signed by " + leaf.getIssuerX500Principal().getName() + ", may issue certificates: " + (leaf.getBasicConstraints() >= 0));
-        line(out, "  each certificate holds its owner's public key and the issuer's signature over it, both as plain data");
-        line(out, "  the signature algorithm is " + leaf.getSigAlgName() + ", and anyone can check it with the issuer's public key");
+        line(out, "  BEFORE SIGNING (what the shop asks for):");
+        line(out, "    name        " + name(leaf) + ", for the site " + Pki.HOST);
+        line(out, "    public key  " + leaf.getPublicKey().getAlgorithm() + ", "
+                + ((ECPublicKey) leaf.getPublicKey()).getParams().getCurve().getField().getFieldSize() + " bits, the shop's own");
+        line(out, "    valid       " + dates(leaf));
+        line(out, "  AFTER SIGNING (the certificate, serial " + leaf.getSerialNumber() + "):");
+        line(out, "    the same three, and issuer  " + leaf.getIssuerX500Principal().getName());
+        line(out, "    signature   " + leaf.getSigAlgName() + ", by the issuer's private key");
+        line(out, "    anyone checks it with the issuer's public key: " + ChainSteps.signedBy(leaf, middle));
+        line(out, "  THE CHAIN, FROM THE ROOT DOWN:");
+        line(out, "    root          " + cn(root) + "     self-signed: " + ChainSteps.signedBy(root, root));
+        line(out, "    intermediate  " + cn(middle) + "  CA: " + (middle.getBasicConstraints() >= 0) + ", by the root");
+        line(out, "    server        " + cn(leaf) + "        CA: " + (leaf.getBasicConstraints() >= 0) + ", by the intermediate");
     }
 
     private static void act2GoodChain(StringBuilder out, Pki pki) {
-        line(out, "TWO. The browser's check.");
-        ChainValidator browser = trusting(pki.root.certificate());
-        ChainValidator.Result result = browser.validate(List.of(pki.server.certificate(), pki.intermediate.certificate()), Pki.TODAY);
-        line(out, "  the server sends its own certificate and the intermediate; the browser already trusts the root");
-        line(out, "  the chain is accepted: " + result.accepted());
-        line(out, "  the certificate is for shop.example: " + HostName.matches(pki.server.certificate(), "shop.example"));
-        line(out, "  the certificate is for evil.example: " + HostName.matches(pki.server.certificate(), "evil.example"));
-        line(out, "  a wildcard *.example stands for exactly one label: shop.example " + HostName.matchesPattern("*.example", "shop.example")
+        line(out, "TWO. The browser's check, step by step.");
+        X509Certificate root = pki.root.certificate();
+        List<X509Certificate> chain = List.of(pki.server.certificate(), pki.intermediate.certificate());
+        line(out, "  BEFORE THE CHECK (what the browser has):");
+        line(out, "    sent by the server  " + cn(chain.get(0)) + ", " + cn(chain.get(1)));
+        line(out, "    already trusted     " + cn(root));
+        line(out, "    visiting            " + Pki.HOST + ", on " + LocalDate.ofInstant(Pki.TODAY, java.time.ZoneOffset.UTC));
+        List<ChainSteps.Step> steps = ChainSteps.walk(chain, root, Set.of(), Pki.TODAY);
+        for (int i = 0; i < steps.size(); i++) {
+            ChainSteps.Step step = steps.get(i);
+            line(out, "  STEP " + (i + 1) + ". " + cn(step.certificate()) + " AGAINST " + cn(step.next()) + ":");
+            line(out, "    names it as the issuer: " + step.issuerNamed());
+            line(out, "    its signature checks with that public key: " + step.signatureChecks());
+            line(out, "    " + LocalDate.ofInstant(Pki.TODAY, java.time.ZoneOffset.UTC) + " is in " + dates(step.certificate()) + ": " + step.inDates());
+            if (i > 0) {
+                line(out, "    it may issue certificates (a CA): " + step.mayIssue());
+            }
+        }
+        line(out, "  STEP " + (steps.size() + 1) + ". THE ROOT AND THE NAME:");
+        line(out, "    " + cn(root) + " is in the trust store: true");
+        line(out, "    " + Pki.HOST + " is in the certificate: " + HostName.matches(chain.get(0), Pki.HOST));
+        line(out, "  AFTER THE CHECK:");
+        line(out, "    by hand: accepted " + ChainSteps.accepted(steps) + ", the JDK: accepted " + trusting(root).validate(chain, Pki.TODAY).accepted());
+        line(out, "    *.example matches shop.example " + HostName.matchesPattern("*.example", "shop.example")
                 + ", a.b.example " + HostName.matchesPattern("*.example", "a.b.example"));
     }
 
     private static void act3Refusals(StringBuilder out, Pki pki) {
         line(out, "THREE. Three reasons to refuse.");
-        ChainValidator browser = trusting(pki.root.certificate());
+        X509Certificate root = pki.root.certificate();
+        X509Certificate middle = pki.intermediate.certificate();
+        ChainValidator browser = trusting(root);
         Issued expired = pki.expiredServer();
-        ChainValidator.Result late = browser.validate(List.of(expired.certificate(), pki.intermediate.certificate()), Pki.TODAY);
-        line(out, "  a certificate that ended on 2024-12-31, checked on 2026-01-01: accepted " + late.accepted() + ", reason " + late.reason());
         Issued[] rogue = Pki.rogue();
-        ChainValidator.Result foreign = browser.validate(List.of(rogue[1].certificate()), Pki.TODAY);
-        line(out, "  a certificate for shop.example from an authority the browser does not trust: accepted " + foreign.accepted() + ", reason " + foreign.reason());
-        line(out, "  the rogue root has the same name as the real one: " + name(rogue[0].certificate()).equals(name(pki.root.certificate())) + ", so names prove nothing, only keys do");
-        ChainValidator.Result valid = browser.validate(List.of(pki.server.certificate(), pki.intermediate.certificate()), Pki.TODAY);
-        line(out, "  the same valid chain, shown to a visitor who meant evil.example: chain accepted " + valid.accepted() + ", name matches: " + HostName.matches(pki.server.certificate(), "evil.example"));
-        line(out, "  so a client must check the chain and the name, and both are separate checks");
+        line(out, "  BEFORE THE CHECK (three chains the browser is shown):");
+        line(out, "    1. " + cn(expired.certificate()) + ", valid " + dates(expired.certificate()));
+        line(out, "    2. " + cn(rogue[1].certificate()) + ", from a root also named " + cn(rogue[0].certificate()));
+        line(out, "    3. the good chain, but the visitor meant evil.example");
+        line(out, "  AFTER THE CHECK (the failed step, and the JDK's reason):");
+        List<X509Certificate> late = List.of(expired.certificate(), middle);
+        line(out, "    1. " + verdict(late, root, browser));
+        List<X509Certificate> foreign = List.of(rogue[1].certificate());
+        List<ChainSteps.Step> steps = ChainSteps.walk(foreign, root, Set.of(), Pki.TODAY);
+        line(out, "    2. " + verdict(foreign, root, browser));
+        line(out, "       (the issuer's name matched: " + steps.get(0).issuerNamed() + ", the key did not)");
+        List<X509Certificate> good = List.of(pki.server.certificate(), middle);
+        line(out, "    3. chain accepted " + browser.validate(good, Pki.TODAY).accepted() + ", the name evil.example matches "
+                + HostName.matches(pki.server.certificate(), "evil.example"));
+        line(out, "  names prove nothing, only keys do; chain and name are two checks");
     }
 
     private static void act4Tampering(StringBuilder out, Pki pki) {
         line(out, "FOUR. Changed certificates, and certificates that overstep.");
-        ChainValidator browser = trusting(pki.root.certificate());
+        X509Certificate root = pki.root.certificate();
+        X509Certificate middle = pki.intermediate.certificate();
+        ChainValidator browser = trusting(root);
         X509Certificate changed = Tamper.changeName(pki.server.certificate());
-        ChainValidator.Result result = browser.validate(List.of(changed, pki.intermediate.certificate()), Pki.TODAY);
-        line(out, "  one letter of the name changed (" + name(changed) + "): it still parses, accepted " + result.accepted() + ", reason " + result.reason());
-        Issued forged = CertBuilder.issue(CertBuilder.Request.server("other.example", Pki.START, java.time.LocalDate.of(2026, 6, 1), 50), CertBuilder.newKeys(), pki.server);
-        ChainValidator.Result overstep = browser.validate(List.of(forged.certificate(), pki.server.certificate(), pki.intermediate.certificate()), Pki.TODAY);
-        line(out, "  the shop's server key signs a certificate for other.example: accepted " + overstep.accepted() + ", reason " + overstep.reason());
-        line(out, "  a server certificate says it is not a CA, so what it signs is not trusted");
-        line(out, "  the intermediate's limit on further authorities below it (path length): " + pki.intermediate.certificate().getBasicConstraints());
+        List<X509Certificate> chain = List.of(changed, middle);
+        line(out, "  BEFORE THE CHANGE (the signed name):  " + name(pki.server.certificate()));
+        line(out, "  AFTER THE CHANGE (one letter):        " + name(changed));
+        line(out, "    it still parses: true");
+        line(out, "    " + verdict(chain, root, browser));
+        Issued forged = CertBuilder.issue(CertBuilder.Request.server("other.example", Pki.START, LocalDate.of(2026, 6, 1), 50), CertBuilder.newKeys(), pki.server);
+        List<X509Certificate> overstep = List.of(forged.certificate(), pki.server.certificate(), middle);
+        line(out, "  BEFORE THE CHECK (the shop's server key signs other.example):");
+        line(out, "    the shop's certificate is a CA: " + (pki.server.certificate().getBasicConstraints() >= 0));
+        line(out, "  AFTER THE CHECK:");
+        line(out, "    " + verdict(overstep, root, browser));
+        line(out, "  the intermediate allows " + middle.getBasicConstraints() + " more CAs below it (path length)");
     }
 
     private static void act5Revocation(StringBuilder out, Pki pki) {
         line(out, "FIVE. Revocation, and the bill.");
         X509Certificate root = pki.root.certificate();
         List<X509Certificate> good = List.of(pki.server.certificate(), pki.intermediate.certificate());
-        Issued stolen = CertBuilder.issue(CertBuilder.Request.server(Pki.HOST, Pki.START, java.time.LocalDate.of(2026, 6, 1), 77), CertBuilder.newKeys(), pki.intermediate);
+        Issued stolen = CertBuilder.issue(CertBuilder.Request.server(Pki.HOST, Pki.START, LocalDate.of(2026, 6, 1), 77), CertBuilder.newKeys(), pki.intermediate);
         List<X509Certificate> forged = List.of(stolen.certificate(), pki.intermediate.certificate());
-        ChainValidator plain = trusting(root);
-        line(out, "  someone steals the intermediate's private key and issues their own certificate for shop.example");
-        line(out, "  the forged chain is accepted: " + plain.validate(forged, Pki.TODAY).accepted() + "  <- A STOLEN CA KEY BREAKS EVERYTHING BELOW IT");
-        ChainValidator revokesServer = new ChainValidator(Set.of(root), Set.of(pki.server.certificate().getSerialNumber()));
-        ChainValidator.Result one = revokesServer.validate(good, Pki.TODAY);
-        line(out, "  the shop's own certificate put on the revocation list: accepted " + one.accepted() + ", reason " + one.reason());
-        ChainValidator revokesMiddle = new ChainValidator(Set.of(root), Set.of(pki.intermediate.certificate().getSerialNumber()));
-        line(out, "  the intermediate put on the list: the shop's chain accepted " + revokesMiddle.validate(good, Pki.TODAY).accepted()
-                + ", the forged chain accepted " + revokesMiddle.validate(forged, Pki.TODAY).accepted());
-        line(out, "  but a list only works if the client gets the latest one: real clients use CRLs, OCSP, short lifetimes, or all three");
-        line(out, "  trusting a root is a decision: it may vouch for any name, so keep the store small and keep CA keys offline or in hardware");
+        line(out, "  BEFORE REVOCATION (a thief has the intermediate's private key):");
+        line(out, "    the thief issues " + cn(stolen.certificate()) + ", serial " + stolen.certificate().getSerialNumber());
+        line(out, "    the forged chain accepted: " + trusting(root).validate(forged, Pki.TODAY).accepted() + "  <- EVERYTHING BELOW FALLS");
+        BigInteger shopSerial = pki.server.certificate().getSerialNumber();
+        BigInteger middleSerial = pki.intermediate.certificate().getSerialNumber();
+        ChainValidator.Result one = new ChainValidator(Set.of(root), Set.of(shopSerial)).validate(good, Pki.TODAY);
+        ChainValidator revokesMiddle = new ChainValidator(Set.of(root), Set.of(middleSerial));
+        line(out, "  AFTER REVOCATION (serials on the client's list):");
+        line(out, "    serial " + shopSerial + " (the shop's)");
+        line(out, "       the shop's chain accepted " + one.accepted() + ", " + one.reason());
+        line(out, "    serial " + middleSerial + " (the intermediate's)");
+        line(out, "       the shop's chain accepted " + revokesMiddle.validate(good, Pki.TODAY).accepted()
+                + ", the forged " + revokesMiddle.validate(forged, Pki.TODAY).accepted());
+        line(out, "  THE BILL:");
+        line(out, "    a list works only if the client has the latest one:");
+        line(out, "    real clients use CRLs, OCSP, short lifetimes, or all three");
+        line(out, "    a trusted root may vouch for any name: keep the store small");
+        line(out, "    and keep CA keys offline or in hardware");
     }
 }

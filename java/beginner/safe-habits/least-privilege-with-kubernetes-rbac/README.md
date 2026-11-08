@@ -33,11 +33,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The nightly job that was given cluster-admin | A stolen cluster-admin token reaches 56 of 56 things; the scoped exporter reaches 2, one named config map is readable, and secrets are not. |
-| 2. The wildcard trap: read everything | A role that allows get and list on all resources sounds harmless, but it can read secrets; naming resources keeps a rule meaning what it said. |
-| 3. Ways to become more powerful | The deploy pipeline has 4 escalation paths: create pods, create role bindings, bind roles and escalate roles; the exporter has none. |
-| 4. A cluster-wide role through a namespaced binding | The support agent holds a ClusterRole through a RoleBinding, so it works in shop and not in warehouse, while a ClusterRoleBinding ignores namespaces. |
-| 5. A linter for the habits that cause incidents | The linter finds 6 problems in the shop manifests: a cluster-admin binding, a wildcard, two escalation verbs and two auto-mounted tokens. |
+| 1. The nightly job that was given cluster-admin | The namespace has 7 verbs x 8 resources = 56 things a token could do; a stolen cluster-admin token reaches 56 of 56, the scoped exporter 2 of 56 plus one named config map, and no secrets. |
+| 2. The wildcard trap: read everything | The role report-reader says get and list on *; it sounds read-only and harmless, but it reads every secret, and reaches 16 of 56: 2 verbs x 8 resources. |
+| 3. Ways to become more powerful | The deployer role cannot read secrets, yet has 4 escalation paths: create pods (a pod mounts any secret), create role bindings, bind and escalate; the exporter has none. |
+| 4. A cluster-wide role through a namespaced binding | shop-viewer is a ClusterRole; the support agent holds it through a RoleBinding in shop, so it may list pods in shop but not in warehouse; a ClusterRoleBinding reaches warehouse too. |
+| 5. A linter for the habits that cause incidents | The linter reads the shop's manifests, 5 roles, 5 bindings and 6 service accounts, and finds 6 problems: cluster-admin, a wildcard, two escalation verbs and two tokens mounted into every pod. |
 
 ## Test
 

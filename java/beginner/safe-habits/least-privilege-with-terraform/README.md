@@ -40,11 +40,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Policies written as code | The account offers 25 things to do; the wildcard policy allows all 25, the nightly export needs 3, and a deploy policy that looks small also allows 3. |
-| 2. How a request is matched | The exporter may read a report file and list the reports bucket, but not the secret file, and not the bucket as if it were a file; action names ignore case, and anything not allowed is denied. |
-| 3. A deny beats every allow | Admin with a deny on secrets can do 20 of 25 against 25 without it; the secret file is explicitly denied, and the order of statements does not matter. |
-| 4. A permissions boundary | The wildcard policy alone allows 25 of 25 and under the boundary 8 of 25; the boundary alone grants 0; admin with a deny under the boundary is also 8. |
-| 5. A linter, and the way to more power | The linter flags the wildcard policies and finds iam:PassRole on every role in the deployer policy, which counts as only 3 of 25 and is still dangerous. |
+| 1. Policies written as code | The account offers 25 things: an action on a resource. The wildcard policy reaches 25 of 25; the exporter's three statements reach 3 of 25, only the nightly export. |
+| 2. How a request is matched | Six requests against the exporter's S3 statements: a report file and the reports bucket are allowed; a secret file, a list on a file, and a read of the bucket itself are denied by default; action names ignore case. |
+| 3. A deny beats every allow | Allow * on * plus a deny on the secrets: the secret file and the key are EXPLICIT_DENY, a report is ALLOW, the order of statements does not matter, and the count falls from 25 to only 20. |
+| 4. A permissions boundary | The wildcard policy alone reaches 25 of 25; under the read-only boundary 8 of 25; the boundary alone 0 of 25, because a boundary grants nothing. |
+| 5. A linter, and the way to more power | The linter flags star actions and star resources, and ESCALATION in the deployer: it reaches only 3 of 25, yet iam:PassRole on * plus lambda:CreateFunction runs code as any role. |
 
 ## Test
 

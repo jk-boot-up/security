@@ -64,6 +64,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `BankTest` checks each defence on its own: locks and when they end, limits per window, second factor, breach check and messages.
 - `AttacksTest` pins the numbers: tick 13, 33 and 23 for the dictionary attack, and 23 and 43 ticks for the spray.
+- `TimelineTest` checks the tick-by-tick runs behind tick 33 and tick 23, and the salted SHA-256 hash act one prints.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

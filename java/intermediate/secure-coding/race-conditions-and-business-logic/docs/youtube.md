@@ -32,7 +32,7 @@ Chapters:
 
 ## Tags
 
-race condition, toctou, business logic, idempotency key, compare and set, deadlock, owasp top 10, java, application security
+race condition, toctou, business logic, idempotency key, compare and set, deadlock, owasp top 10, java, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +40,16 @@ race condition, toctou, business logic, idempotency key, compare and set, deadlo
 | --- | --- |
 | Video | `video/race-conditions-and-business-logic-explained.mp4` |
 | Captions | `video/race-conditions-and-business-logic-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Secure Coding in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (60)
-- [ ] tags are at most 500 characters in total — ok (116)
+- [ ] tags are at most 500 characters in total — ok (167)
 - [ ] description is at most 5,000 characters — ok (825)
 - [ ] chapters start at 00:00 and there are at least three

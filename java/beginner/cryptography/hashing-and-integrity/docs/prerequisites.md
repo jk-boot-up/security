@@ -7,7 +7,7 @@
 
 ## Explicitly not required
 
-- How SHA-256 or HMAC work inside: they are used from the JDK as black boxes
+- How SHA-256 works inside: it is used from the JDK as a black box (HMAC is worked out by hand on top of it)
 - Mathematics beyond counting bits
 - A database or a network
 

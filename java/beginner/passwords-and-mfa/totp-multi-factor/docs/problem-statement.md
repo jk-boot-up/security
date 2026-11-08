@@ -14,6 +14,7 @@ intercepted or redirected by a SIM swap.
 
 - HOTP and TOTP written from the standard library, checked against the published values of RFC 4226 and RFC 6238.
 - Base32 for the secret, checked against RFC 4648.
+- The code worked out step by step (counter, HMAC, offset, six digits), checked against the library code.
 - A bank that asks for a code after the password, with a window for clocks that are a little out.
 - Replay protection that makes a code work once.
 - Recovery codes that work once.

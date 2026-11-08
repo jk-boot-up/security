@@ -44,9 +44,9 @@ Most access-control bugs in Spring applications are configuration mistakes that 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 30, all passing |
-| Demo output | 45 lines, identical on every run |
+| Demo output | 75 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:21, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:25, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

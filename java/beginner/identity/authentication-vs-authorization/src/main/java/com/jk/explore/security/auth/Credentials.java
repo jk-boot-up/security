@@ -15,7 +15,7 @@ import javax.crypto.spec.PBEKeySpec;
  */
 public class Credentials {
 
-    private static final int ITERATIONS = 10_000;
+    static final int ITERATIONS = 10_000;
 
     private final Map<String, byte[]> hashes = new HashMap<>();
 
@@ -32,9 +32,21 @@ public class Credentials {
         return stored != null && MessageDigest.isEqual(stored, attempt);
     }
 
-    private static byte[] hash(String username, String password) {
+    /** The hash kept for an account: 32 bytes, or null if there is no such account. */
+    public byte[] storedHash(String username) {
+        byte[] stored = hashes.get(username);
+        return stored == null ? null : stored.clone();
+    }
+
+    /** The salt mixed into each hash. Derived from the username so the demo is repeatable; real salts are random. */
+    static String salt(String username) {
+        return "demo-salt:" + username;
+    }
+
+    /** PBKDF2: the password and the salt, hashed 10,000 times with HMAC-SHA256, gives 256 bits. */
+    static byte[] hash(String username, String password) {
         try {
-            byte[] salt = ("demo-salt:" + username).getBytes(StandardCharsets.UTF_8);
+            byte[] salt = salt(username).getBytes(StandardCharsets.UTF_8);
             PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, ITERATIONS, 256);
             return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
         } catch (GeneralSecurityException e) {

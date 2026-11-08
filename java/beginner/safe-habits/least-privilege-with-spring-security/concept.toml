@@ -66,117 +66,203 @@ test_note = "The store runs on a free loopback port and the demo prints only sta
 
 [[act]]
 title = "Deny by default: every path needs a rule"
-summary = "No credentials gets 401, alice gets 200 for orders and 403 for reports, and an admin asking for a path nobody wrote a rule for also gets 403."
+summary = "With no credentials or a wrong password the answer is 401; Alice may read orders (200) but not reports (403); Dave, an admin, gets 403 on a path nobody wrote a rule for, because the chain ends with denyAll."
 detail = """
-With no credentials, a request for orders gets 401: who are you? Alice, from support, with a wrong password also gets 401. With the right one she gets orders, and 403 for reports, because she is known but not allowed. Dave, an admin, asks for a path nobody wrote a rule for, and gets 403 too.
-The last rule is `anyRequest().denyAll()`, so a forgotten endpoint stays closed.
+The rule chain in the Shop class is checked from top to bottom, and the first rule that matches the request decides. GET /orders needs orders:read, GET /reports needs reports:read, and so on. The last rule, anyRequest().denyAll(), matches everything else and says no.
+Five requests: with no credentials the answer is 401 (who are you?), and with a wrong password still 401. Alice in support may read the orders, 200, but not the reports, 403: she is known, but not allowed. Dave, an admin, asks for /admin/debug, a path nobody wrote a rule for, and gets 403, so a forgotten endpoint stays closed even for an admin.
+"""
+figure = "rule_walk"
+figure_title = "A path nobody wrote a rule for"
+figure_speech = """
+First demo: deny by default. [[slnc 400]] At the top left, in blue, the request. [[slnc 300]] Dave, the admin, asks for slash admin slash debug. [[slnc 300]] A page somebody added, and nobody wrote a rule for. [[slnc 600]]
+Below it, the rules, checked from top to bottom. [[slnc 300]] Get orders needs orders read. [[slnc 300]] Does not match. [[slnc 300]] Get reports. [[slnc 200]] Get secrets. [[slnc 200]] The staff pages. [[slnc 200]] Payments. [[slnc 200]] Refunds. [[slnc 300]] None of them matches this path. [[slnc 500]] The last rule, in red, says anything else: deny all. [[slnc 300]] It matches everything, so it decides. [[slnc 600]]
+On the right, the response: four oh three. [[slnc 300]] Even for an admin, no rule means no. [[slnc 600]]
+If the last rule said authenticated instead, any login could reach a page that someone forgot to protect.
 """
 speech = """
-First demo: deny by default. [[slnc 400]] With no credentials, the answer is four oh one. Who are you? [[slnc 600]]
-Alice, from support, can read orders. [[slnc 300]] She cannot read reports. That is four oh three. Known, but not allowed. [[slnc 600]]
-An admin asks for a path that nobody wrote a rule for. [[slnc 300]] The answer is four oh three. No rule means no, even for an admin. [[slnc 600]]
-The last rule is deny all, so a forgotten endpoint stays closed.
+Here is the real output. [[slnc 400]] First, the rules, in the order the chain checks them, ending with deny all.
+[[page]]
+Then five requests in one section, and the five responses in another, with the same numbers. [[slnc 500]] No credentials: four oh one. [[slnc 300]] A wrong password: four oh one again. [[slnc 300]] Alice reads the orders: two hundred. [[slnc 300]] Alice reads the reports: four oh three. [[slnc 300]] And Dave, on a path with no rule: four oh three. [[slnc 500]] Four oh one means not signed in. [[slnc 300]] Four oh three means signed in, but not allowed.
 """
 rows = { rules = "active ok" }
 console = [
-    ["no credentials, GET /orders: 401  <- WHO ARE YOU?", "muted"],
-    ["alice (support) GET /orders: 200", "ok"],
-    ["alice (support) GET /reports: 403  <- KNOWN, BUT NOT ALLOWED", "amber"],
-    ["dave (admin) GET /admin/debug, a path nobody wrote a rule for: 403  <- NO RULE MEANS NO, EVEN FOR AN ADMIN", "ok"],
-    ["the last rule is anyRequest().denyAll(), so a forgotten endpoint stays closed", "muted"],
+    ["THE RULES (in Shop.chain, checked top to bottom):", "code"],
+    ["  GET /orders       needs orders:read", "muted"],
+    ["  GET /reports      needs reports:read", "muted"],
+    ["  GET /secrets      needs secrets:read", "muted"],
+    ["  GET /staff/**     needs the role SUPPORT", "muted"],
+    ["  PUT /payments/**  needs payments:write, or a grant", "muted"],
+    ["  /refunds/**       signed in; the methods decide", "muted"],
+    ["  anything else     denyAll", "muted"],
+    ["---", ""],
+    ["THE REQUESTS:", "code"],
+    ["  1  no credentials         GET /orders", "muted"],
+    ["  2  alice, wrong password  GET /orders", "muted"],
+    ["  3  alice (support)        GET /orders", "muted"],
+    ["  4  alice (support)        GET /reports", "muted"],
+    ["  5  dave (admin)           GET /admin/debug", "muted"],
+    ["THE RESPONSES:", "code"],
+    ["  1  401  who are you?", "amber"],
+    ["  2  401  wrong password, so still unknown", "amber"],
+    ["  3  200  she holds orders:read", "ok"],
+    ["  4  403  known, but no reports:read", "bad"],
+    ["  5  403  no rule matches, so denyAll  <- EVEN FOR AN ADMIN", "bad"],
+    ["401: not signed in.  403: signed in, but not allowed.", "bad"],
 ]
 
 [[act]]
 title = "Method security: the rule sits next to the code"
-summary = "Bob cannot create a refund, alice can; bob cannot read alice's refund, but the method ran before the answer was withheld, which is what PostAuthorize does."
+summary = "Bob gets 403 creating a refund, so create() never runs; Alice creates R-1; Alice and Carol may read it, Bob may not, but view() ran for Bob before his 403, because @PostAuthorize judges the result."
 detail = """
-Bob, from the warehouse, tries to create a refund and gets 403: he has no refunds:create. Alice creates refund R-1. She can read her own, and carol, an approver, can read any. Bob cannot read someone else's request. But the method ran for bob before the answer was withheld,
-because `@PostAuthorize` judges the result. `@PreAuthorize` stops a call before it runs, so a method with side effects needs that one.
+Two rules sit on the methods of the Refunds class. create() has @PreAuthorize, which checks before the method runs: it needs refunds:create. view() has @PostAuthorize, which runs the method first and then checks the result: the caller must be the requester, or hold refunds:approve.
+Bob in the warehouse gets 403 when he creates a refund, and create() never runs. Alice creates R-1. Alice may read her own request, and Carol may read any as an approver. Bob gets 403 on R-1, but the method had already run for him. So a method with side effects needs @PreAuthorize.
+"""
+figure = "pre_post"
+figure_title = "Before the method, or after it"
+figure_speech = """
+Second demo: rules on the methods. [[slnc 400]] There are two kinds, and they work at different times. [[slnc 600]]
+At the top, in red, pre authorize. [[slnc 300]] It sits on the create method, and needs refunds create. [[slnc 400]] Bob, from the warehouse, tries to create a refund. [[slnc 300]] The rule is checked first. [[slnc 300]] He does not have it, so the call stops. [[slnc 300]] Create never runs, and the response is four oh three. [[slnc 700]]
+Below, in amber, post authorize. [[slnc 300]] It sits on the view method. [[slnc 300]] Only the person who asked, or an approver, may see a refund. [[slnc 400]] Bob asks for Alice's refund. [[slnc 300]] This time the method runs first. [[slnc 300]] Then the rule looks at the result, and withholds it. [[slnc 300]] Four oh three. [[slnc 600]]
+Bob saw nothing. [[slnc 300]] But the method did run. [[slnc 300]] So never put a side effect, such as sending an email or changing data, in a method guarded by post authorize.
 """
 speech = """
-Second demo: method security. [[slnc 400]] The rule sits next to the code it guards. [[slnc 600]]
-Bob, from the warehouse, cannot create a refund. [[slnc 300]] Alice can. [[slnc 600]]
-Alice can read her own refund. [[slnc 300]] Carol, who approves refunds, can read any. [[slnc 300]] Bob cannot. [[slnc 600]]
-But here is the catch. [[slnc 300]] For bob, the method ran first, and the answer was withheld afterwards. [[slnc 300]] That is what post authorize does. [[slnc 600]]
-Pre authorize stops a call before it runs. [[slnc 300]] So a method with side effects needs pre authorize.
+The output prints the two rules first. [[slnc 400]] Then five requests: Bob creates, Alice creates, and three people try to read refund R one.
+[[page]]
+Then the five responses. [[slnc 300]] Four oh three for Bob, so create never ran. [[slnc 300]] Two hundred for Alice, and the new refund is R one. [[slnc 300]] Two hundred for Alice and for Carol. [[slnc 300]] Four oh three for Bob. [[slnc 500]] And the last line answers the question: did the view method run for Bob before his four oh three? [[slnc 300]] True.
 """
 rows = { methods = "active ok" }
 console = [
-    ["bob (warehouse) POST /refunds: 403  <- NO refunds:create", "ok"],
-    ["alice (support) POST /refunds: 200, the new refund is R-1", "muted"],
-    ["alice GET /refunds/R-1: 200, her own request", "ok"],
-    ["carol (finance) GET /refunds/R-1: 200, an approver may read any", "ok"],
-    ["bob GET /refunds/R-1: 403, someone else's request", "ok"],
-    ["the method ran for bob before the answer was withheld: true  <- @PostAuthorize JUDGES THE RESULT, SO KEEP SIDE EFFECTS OUT OF SUCH METHODS", "amber"],
+    ["THE RULES ON THE METHODS (in Refunds):", "code"],
+    ["  create()  @PreAuthorize   needs refunds:create", "muted"],
+    ["  view()    @PostAuthorize  requester, or refunds:approve", "muted"],
+    ["THE REQUESTS:", "code"],
+    ["  1  bob (warehouse)  POST /refunds", "muted"],
+    ["  2  alice (support)  POST /refunds", "muted"],
+    ["  3  alice            GET /refunds/R-1", "muted"],
+    ["  4  carol (finance)  GET /refunds/R-1", "muted"],
+    ["  5  bob              GET /refunds/R-1", "muted"],
+    ["---", ""],
+    ["THE RESPONSES:", "code"],
+    ["  1  403  no refunds:create, so create() never ran", "bad"],
+    ["  2  200  the new refund is R-1", "ok"],
+    ["  3  200  her own request", "ok"],
+    ["  4  200  an approver may read any", "ok"],
+    ["  5  403  someone else's request", "bad"],
+    ["did view() run for bob before his 403? true", "muted"],
+    ["<- @PostAuthorize RUNS FIRST: NO SIDE EFFECTS", "amber"],
 ]
 
 [[act]]
 title = "Separation of duties: two people for a refund"
-summary = "Alice cannot approve her own refund, dave the admin cannot approve his own, carol approves alice's, and dave may approve alice's other request."
+summary = "Approving needs refunds:approve and a different person: Alice gets 403 on her own R-1, Dave the admin gets 403 on his own R-2, Carol approves R-1 and Dave approves R-3, which Alice created."
 detail = """
-Alice cannot approve her own refund: she has no refunds:approve. Dave, an admin, creates refund R-2 and tries to approve it himself, and is refused: admin power does not remove the rule. Carol approves R-1. Alice creates R-3 and Dave approves it, because an admin may approve someone
-else's request. The rule is a bean that the annotation calls, in one place, and no role can switch it off.
+The rule on approve() has two halves: hasAuthority('refunds:approve'), and @refundRules.differentPerson(#id, authentication), a small bean that checks that the approver is not the person who asked.
+Alice approving her own R-1 gets 403, as she has no refunds:approve. Dave, an admin, creates R-2 and approving it himself gets 403: he holds every permission, but he is the same person. Carol approves R-1, and Dave approves R-3, which Alice created. No role can switch the rule off.
+"""
+figure = "refund_steps"
+figure_title = "Two people for a refund: the requests and the responses"
+figure_speech = """
+Third demo: separation of duties. [[slnc 400]] At the top, the rule on the approve method. [[slnc 300]] It has two halves. [[slnc 300]] You need the permission to approve. [[slnc 300]] And a small bean, refund rules, checks that you are a different person from the one who asked. [[slnc 600]]
+On the left, four requests. [[slnc 300]] On the right, the responses. [[slnc 500]]
+One. Alice approves her own refund. [[slnc 300]] Four oh three: she cannot approve at all. [[slnc 400]]
+Two. Dave, the admin, creates refund R two, and approves it himself. [[slnc 300]] He has every permission. [[slnc 300]] Still four oh three: same person. [[slnc 400]]
+Three. Carol, in finance, approves Alice's refund. [[slnc 300]] Two hundred. [[slnc 400]]
+Four. Dave approves refund R three, which Alice created. [[slnc 300]] Two hundred: it is someone else's request. [[slnc 600]]
+The rule lives in one place, and no role can switch it off.
 """
 speech = """
-Third demo: separation of duties. [[slnc 400]] Two people are needed for a refund. [[slnc 600]]
-Alice cannot approve her own. [[slnc 600]]
-Dave, the admin, creates a refund, and tries to approve it himself. [[slnc 300]] Refused. [[slnc 300]] Admin power does not remove the rule. [[slnc 600]]
-Carol approves alice's refund. [[slnc 300]] And dave may approve another request that alice made. [[slnc 600]]
-The rule is in one place, and no role can switch it off.
+Here is the output. [[slnc 400]] The rule, in its two halves. [[slnc 300]] Then the four requests, and the four responses. [[slnc 500]] Four oh three. [[slnc 200]] Four oh three. [[slnc 200]] Approved by Carol. [[slnc 200]] Approved by Dave. [[slnc 500]] The only refunds approved are the ones where two different people were involved.
 """
 rows = { duties = "active ok" }
 console = [
-    ["alice approves her own refund R-1: 403  <- NO refunds:approve", "ok"],
-    ["dave (admin) creates refund R-2 and then approves it himself: 403  <- ADMIN POWER DOES NOT REMOVE THE RULE", "ok"],
-    ["carol (finance) approves R-1: approved by carol", "ok"],
-    ["alice creates R-3 and dave approves it: approved by dave  <- AN ADMIN MAY APPROVE SOMEONE ELSE'S REQUEST", "muted"],
-    ["the rule is in one place, a bean that the annotation calls, and no role can switch it off", "muted"],
+    ["THE RULE ON approve() (in Refunds):", "code"],
+    ["  hasAuthority('refunds:approve')", "muted"],
+    ["  and @refundRules.differentPerson(#id, authentication)", "muted"],
+    ["THE REQUESTS:", "code"],
+    ["  1  alice (support)  approves her own R-1", "muted"],
+    ["  2  dave (admin)     creates R-2, then approves it", "muted"],
+    ["  3  carol (finance)  approves R-1, alice's", "muted"],
+    ["  4  dave (admin)     approves R-3, which alice created", "muted"],
+    ["THE RESPONSES:", "code"],
+    ["  1  403  no refunds:approve", "bad"],
+    ["  2  403  same person  <- ADMIN POWER DOES NOT HELP", "bad"],
+    ["  3  200  approved by carol", "ok"],
+    ["  4  200  approved by dave: someone else's request", "ok"],
+    ["the rule is one bean the annotation calls: no role turns it off", "muted"],
 ]
 
 [[act]]
 title = "A role hierarchy, and what a stolen credential can reach"
-summary = "An admin includes support, finance does not; a stolen admin token reaches 15 of 15 actions, a stolen exporter token reaches 2 of 15."
+summary = "ADMIN includes SUPPORT, so Dave reaches the staff queue and Carol and the exporter do not; a stolen token for the export running as Dave reaches 15 of 15, the exporter service account 2 of 15."
 detail = """
-With a role hierarchy, an admin includes support, so the staff queue lets alice and dave in and keeps carol from finance and the exporter out. Then the number that matters. The nightly order export ran as dave because that was quick: a stolen token reaches 15 of 15 actions.
-The same job as the exporter service account reaches 2 of 15. Alice, bob and carol reach 3 each. The numbers come from asking Spring Security's own authorization manager about each action.
+A role hierarchy says that ADMIN includes SUPPORT, FINANCE and WAREHOUSE, so a rule that needs the role SUPPORT also lets an admin in. GET /staff/queue answers 200 to Alice (SUPPORT) and Dave (ADMIN), and 403 to Carol (FINANCE) and the exporter.
+The nightly order export once ran as Dave, because that was quick: a stolen token reaches 15 of 15 actions. As the exporter service account, which holds only orders:read and reports:read, it reaches 2 of 15: it can read the orders, 200, and not the secrets, 403. Each count comes from asking Spring Security's own authorization manager about every action.
+"""
+figure = "blast"
+figure_title = "The role hierarchy, and one stolen token"
+figure_speech = """
+Fourth demo: a role hierarchy, and the blast radius. [[slnc 400]] At the top, the hierarchy. [[slnc 300]] Admin includes support, finance, and warehouse. [[slnc 500]] The staff queue needs the role support. [[slnc 300]] Alice, in support: two hundred. [[slnc 300]] Dave, the admin: two hundred, because admin includes support. [[slnc 300]] Carol and the exporter: four oh three. [[slnc 700]]
+Below, the blast radius: everything one stolen token can reach. [[slnc 300]] Each square is one of the store's fifteen actions. [[slnc 500]] Before the fix, in red, the nightly export runs as Dave, because that was quick. [[slnc 300]] All fifteen squares are filled. [[slnc 500]] After the fix, in green, it runs as its own service account. [[slnc 300]] It holds orders read, and reports read. [[slnc 300]] Two of fifteen. [[slnc 300]] It can read the orders, and it cannot reach the secrets. [[slnc 600]]
+The job works the same. [[slnc 300]] Only the damage from a stolen token has changed.
 """
 speech = """
-Fourth demo: the role hierarchy, and the blast radius. [[slnc 400]] With a hierarchy, an admin includes support. [[slnc 300]] A finance account does not, and neither does the exporter. [[slnc 600]]
-Now the number that matters. [[slnc 300]] The nightly export ran as the admin, because that was quick. [[slnc 300]] A stolen token reaches fifteen of fifteen actions. Everything. [[slnc 600]]
-The same job, as a scoped service account, reaches two. [[slnc 600]]
-The numbers come from asking Spring Security about each action.
+The output prints the hierarchy, and the four answers from the staff queue. [[slnc 500]] Then before the fix: fifteen of fifteen. [[slnc 300]] After the fix: what the account holds, two of fifteen, and two real requests to prove it. [[slnc 500]] The others reach three each. [[slnc 300]] Each count asks Spring Security itself.
 """
 rows = { hierarchy = "active ok", radius = "active wrong" }
 console = [
-    ["the staff queue: alice 200, dave (admin includes support) 200, carol (finance) 403, exporter 403", "muted"],
-    ["the nightly order export runs as dave, because that was quick: a stolen token reaches 15 of 15  <- EVERYTHING", "bad"],
-    ["the same job as the exporter service account: a stolen token reaches 2 of 15", "ok"],
-    ["alice reaches 3 of 15, bob 3, carol 3", "ok"],
-    ["the exporter can read orders: 200, and cannot reach the secrets: 403", "ok"],
+    ["THE HIERARCHY: ADMIN includes SUPPORT, FINANCE and WAREHOUSE", "code"],
+    ["GET /staff/queue NEEDS THE ROLE SUPPORT:", "code"],
+    ["  alice (SUPPORT)      200", "ok"],
+    ["  dave (ADMIN)         200  ADMIN includes SUPPORT", "ok"],
+    ["  carol (FINANCE)      403", "bad"],
+    ["  exporter (EXPORTER)  403", "bad"],
+    ["BEFORE THE FIX (the nightly export runs as dave, the admin):", "bad"],
+    ["  a stolen token reaches 15 of 15  <- EVERYTHING", "bad"],
+    ["AFTER THE FIX (the exporter service account):", "ok"],
+    ["  it holds orders:read reports:read", "muted"],
+    ["  a stolen token reaches 2 of 15", "muted"],
+    ["  GET /orders: 200, GET /secrets: 403", "muted"],
+    ["the others: alice 3 of 15, bob 3, carol 3", "muted"],
+    ["each count asks Spring Security's own authorization manager", "muted"],
 ]
 
 [[act]]
 title = "Access that expires by itself"
-summary = "Carol is granted payments:write for ticks 10 to 12 and gets 403 at tick 9, 200 at ticks 10 and 12, and 403 at tick 13; alice never had it."
+summary = "Carol is granted payments:write from tick 10 to tick 12; PUT /payments/P-1 answers 403 at tick 9, 200 at ticks 10 and 12, 403 at tick 13, and 403 for Alice, who never had a grant."
 detail = """
-Carol, in finance, is granted payments:write for ticks 10 to 12, for a month-end fix. At tick 9 the answer is 403, at ticks 10 and 12 it is 200, and at tick 13 it is 403 again. Nobody had to remember to remove it. Alice, who never had a grant, gets 403 even inside the window.
-The rule is a custom AuthorizationManager that asks an injected clock, so the demo and the tests control time.
+Carol in finance gets payments:write for a month-end fix, from tick 10 to tick 12, both included (a tick is one step of the demo's simulated clock). The rule for PUT /payments/** is a custom AuthorizationManager, GrantAuthorization, that allows the request if the caller holds payments:write or has a grant that is active right now.
+PUT /payments/P-1 answers 403 at tick 9, 200 at ticks 10 and 12, and 403 at tick 13. Alice, who never had a grant, gets 403 at tick 11. The clock is injected, so the demo and the tests control time.
+"""
+figure = "timeline"
+figure_title = "A grant that ends by itself"
+figure_speech = """
+Fifth demo: access that expires. [[slnc 400]] Along the line is the demo's clock. [[slnc 300]] Each step is called a tick. [[slnc 600]]
+At the top, in blue, the grant. [[slnc 300]] Carol, in finance, may write payments for a month end fix. [[slnc 300]] From tick ten, to tick twelve, both included. [[slnc 300]] The green bar shows when she holds it. [[slnc 600]]
+Below, in amber, five requests to change payment P one, and their responses. [[slnc 400]] At tick nine, before the grant: four oh three. [[slnc 300]] At tick ten: two hundred. [[slnc 300]] At tick twelve: still two hundred. [[slnc 300]] At tick thirteen: four oh three again. [[slnc 400]] And Alice, at tick eleven, in the middle of the grant: four oh three. [[slnc 300]] The grant was for Carol only. [[slnc 600]]
+Nobody had to remember to take it back.
 """
 speech = """
-Fifth demo: access that expires by itself. [[slnc 400]] Carol, in finance, is granted the right to write payments, for a short window, for a month end fix. [[slnc 600]]
-Before the window, refused. [[slnc 300]] Inside it, allowed. [[slnc 300]] After it, refused again. [[slnc 600]]
-Nobody had to remember to take it back. [[slnc 600]]
-And alice, who never had a grant, is refused even inside the window.
+The output shows the grant, then the requests with their responses, one per line: the tick, who asks, the status, and why. [[slnc 500]] The rule is a custom authorization manager that asks an injected clock, so the tests can control time.
 """
 rows = { grants = "active ok" }
 console = [
-    ["carol (finance) is granted payments:write for ticks 10 to 12, for a month-end fix", "muted"],
-    ["at tick 9 PUT /payments/P-1: 403", "ok"],
-    ["at tick 10 PUT /payments/P-1: 200", "amber"],
-    ["at tick 12 PUT /payments/P-1: 200", "amber"],
-    ["at tick 13 PUT /payments/P-1: 403", "ok"],
-    ["alice, who never had a grant, at tick 11: 403", "ok"],
+    ["THE GRANT (for a month-end fix):", "code"],
+    ["  carol (finance) gets payments:write", "muted"],
+    ["  from tick 10 to tick 12, both included", "muted"],
+    ["THE REQUESTS AND RESPONSES (PUT /payments/P-1):", "code"],
+    ["  tick 9   carol  403  before the grant", "bad"],
+    ["  tick 10  carol  200  inside the grant", "ok"],
+    ["  tick 12  carol  200  inside the grant", "ok"],
+    ["  tick 13  carol  403  expired by itself", "bad"],
+    ["  tick 11  alice  403  never had a grant", "bad"],
+    ["GrantAuthorization asks a clock the tests can set", "muted"],
 ]
+
+[highlight]
+console_green = ["AFTER"]
+console_rose = ["BEFORE"]
+console_amber = ["THE RESPONSES", "THE REQUESTS AND RESPONSES", "<- @PostAuthorize"]
+console_cyan = ["THE RULES", "THE RULE ON", "THE REQUESTS", "THE HIERARCHY", "THE GRANT", "GET /staff/queue NEEDS"]
 
 [animation]
 subtitle = "An online store uses Spring Security to give each account only what its job needs."
@@ -455,6 +541,19 @@ body = ["Authority: one exact action, like orders:read", "Role: the name of a jo
 narration = """Before the demos, the words. [[slnc 500]] An authority is one exact action, like orders colon read. [[slnc 500]] A role is the name of a job. [[slnc 500]] A role hierarchy says that an admin includes other jobs. [[slnc 500]] The blast radius is what a stolen token can reach. [[slnc 500]] And separation of duties means that two people are needed for one risky thing."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "04-request-path"
+kind = "figure"
+title = "Where Spring Security says no"
+body = "request_path"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] A request to the store passes three gates before any of our code runs. [[slnc 600]] Gate one, in amber: who are you? [[slnc 300]] A request with no credentials stops here, with four oh one. [[slnc 600]] Gate two: is there a rule for this path, and does it allow you? [[slnc 300]] Alice is signed in, but she has no permission to read reports. [[slnc 300]] Four oh three. [[slnc 600]] Gate three: a rule written on the Java method itself. [[slnc 300]] Bob, from the warehouse, tries to create a refund, and has no permission to. [[slnc 300]] Four oh three, and the method never runs. [[slnc 600]] Only a request that passes every gate reaches the code, like Alice reading the orders. [[slnc 300]] Two hundred. [[slnc 500]] So four oh one means not signed in. [[slnc 300]] And four oh three means signed in, but not allowed."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -466,13 +565,6 @@ kind = "bullets"
 title = "From Open to Least Privilege"
 body = ["authenticated() last: any login gets in", "denyAll() last: only listed paths", "Roles only: coarse", "Exact authorities: small", "Expiring grants: smallest in time"]
 narration = """Let's put the steps side by side. [[slnc 400]] If the last rule says authenticated, any login can reach anything not listed. [[slnc 500]] If the last rule says deny all, only listed paths are open. [[slnc 500]] Roles alone are coarse. [[slnc 500]] Exact authorities are small. [[slnc 500]] And grants that expire are smallest in time."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Shop: the rule chain and the accounts", "Refunds: guarded methods", "RefundRules: a different person", "Grants and GrantAuthorization: expiring access", "BlastRadius: what a token reaches"]
-narration = """Here is who does what in the code. [[slnc 400]] The shop class holds the rule chain and the accounts. [[slnc 500]] The refunds class holds the methods that are guarded. [[slnc 500]] The refund rules class checks that the approver is a different person. [[slnc 500]] The grants classes hold access that expires. [[slnc 300]] And the blast radius class counts what a stolen token reaches."""
 
 [[scene]]
 key = "11-recognise"
@@ -487,6 +579,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["End every chain with deny", "Exact authorities; roles name jobs", "Separation of duties in code, not roles", "Measure what a stolen token reaches", "Prefer grants that expire"]
 narration = """So, how do you use it? [[slnc 400]] End every rule chain with deny. [[slnc 500]] Give exact authorities, and use roles only to name jobs. [[slnc 500]] Put separation of duties in code that roles cannot bypass. [[slnc 500]] Measure what a stolen token reaches. [[slnc 500]] And prefer grants that expire."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -572,3 +670,115 @@ threat = "A time-limited grant is extended or never expires"
 where = "`Grants`, `GrantAuthorization`"
 control = "The window is checked on every request against an injected clock"
 residual = "Whoever can write the grant store or change the clock can grant anything, so both are protected and audited"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Spring Security does the checking. [[slnc 300]] Our classes only say what the rules are. [[slnc 300]] Here is what each one does."""
+
+[[class]]
+name = "Shop"
+what = "the accounts, the role hierarchy and the rule chain"
+[[class.part]]
+title = "the rule chain ends with denyAll"
+code = """
+.authorizeHttpRequests(a -> a
+        .requestMatchers(HttpMethod.GET, "/orders").hasAuthority("orders:read")
+...
+        .requestMatchers("/refunds", "/refunds/**").authenticated()
+        .anyRequest().denyAll());
+"""
+speech = """The shop class builds the security filter chain. [[slnc 300]] Each line matches a method and a path, and says what it needs. [[slnc 300]] The refunds only need a login here, because their methods carry the real rules. [[slnc 300]] And the last line denies anything that is not listed."""
+[[class.part]]
+title = "admin includes the other jobs"
+code = """
+return RoleHierarchyImpl.withDefaultRolePrefix()
+        .role("ADMIN").implies("FINANCE")
+        .role("ADMIN").implies("SUPPORT")
+        .role("ADMIN").implies("WAREHOUSE")
+        .build();
+"""
+speech = """The role hierarchy says that an admin implies finance, support, and warehouse. [[slnc 300]] That is why Dave could open the staff queue, which needs the role support."""
+
+[[class]]
+name = "Refunds"
+what = "the refund methods, each guarded by an annotation"
+[[class.part]]
+title = "before, or after, the method runs"
+code = """
+@PreAuthorize("hasAuthority('refunds:create')")
+public Refund create() {
+...
+@PostAuthorize("returnObject.requester() == authentication.name or hasAuthority('refunds:approve')")
+public Refund view(String id) {
+"""
+speech = """Each method carries its own rule. [[slnc 300]] Create needs refunds create, checked before it runs. [[slnc 300]] View runs first, and then post authorize looks at the refund it returned: the requester, or an approver."""
+[[class.part]]
+title = "two halves for approve"
+code = """
+@PreAuthorize("hasAuthority('refunds:approve') and @refundRules.differentPerson(#id, authentication)")
+public Refund approve(String id) {
+"""
+speech = """Approve needs both halves. [[slnc 300]] The permission to approve. [[slnc 300]] And the refund rules bean, called by name, must say this is a different person."""
+
+[[class]]
+name = "RefundRules"
+what = "separation of duties, as a bean the annotation calls"
+[[class.part]]
+title = "not the person who asked"
+code = """
+public boolean differentPerson(String id, Authentication authentication) {
+    String requester = refunds.requesterOf(id);
+    return requester != null && !requester.equals(authentication.getName());
+"""
+speech = """Refund rules answers one question. [[slnc 300]] Is the person approving different from the person who asked? [[slnc 300]] No role appears here, so no role can switch it off."""
+
+[[class]]
+name = "GrantAuthorization"
+what = "a custom rule: the permission, or a grant that is active now"
+[[class.part]]
+title = "held, or granted right now"
+code = """
+boolean held = who.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .anyMatch(permission::equals);
+return new AuthorizationDecision(held || grants.active(who.getName(), permission));
+"""
+speech = """Grant authorization is our own authorization manager. [[slnc 300]] It allows the request if the caller holds the permission, or has a grant that is active at this moment. [[slnc 300]] Grants asks the injected clock what time it is."""
+
+[[class]]
+name = "BlastRadius"
+what = "counts what a stolen token reaches"
+[[class.part]]
+title = "ask Spring Security about every action"
+code = """
+for (String permission : Catalogue.PERMISSIONS) {
+    var rule = AuthorityAuthorizationManager.hasAuthority(permission);
+    if (rule.authorize(() -> token, null).isGranted()) {
+        count++;
+"""
+speech = """Blast radius builds the token an account would carry. [[slnc 300]] Then it asks Spring Security, for each of the fifteen actions, whether that token is allowed. [[slnc 300]] The count is the blast radius."""
+
+[[acronym]]
+short = "HTTP"
+long = "HyperText Transfer Protocol: how browsers and servers talk"
+say = "H T T P is HyperText Transfer Protocol: the way a browser or a program talks to the store."
+[[acronym]]
+short = "GET, POST, PUT"
+long = "HTTP methods: read, create, replace"
+say = "GET, POST and PUT are H T T P methods. GET reads, POST creates, and PUT replaces something, such as a payment."
+[[acronym]]
+short = "200, 401, 403"
+long = "HTTP status codes: OK, who are you?, not allowed"
+say = "Two hundred means O K. Four oh one means the server does not know who you are. Four oh three means it knows, and says no."
+[[acronym]]
+short = "R-1, R-2, R-3, P-1"
+long = "refunds 1, 2 and 3, and payment 1, in the demo"
+say = "R one, R two and R three are the numbers of the refunds in the store. P one is payment one."
+[[acronym]]
+short = "@Pre, @PostAuthorize"
+long = "annotations: check before, or after, the method runs"
+say = "Pre authorize and post authorize are Java annotations: labels on a method. Pre checks before the method runs. Post checks after it has run."
+[[acronym]]
+short = "*"
+long = "star, a wildcard: /payments/** means every path below"
+say = "And a star is a wildcard. Slash payments, star star, means every path under payments."

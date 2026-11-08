@@ -54,6 +54,10 @@ final class GuardedStore implements Store {
         return table.routes().stream().filter(r -> policy.rule(r).isEmpty()).toList();
     }
 
+    java.util.Map<Route, Policy.Rule> rules() {
+        return policy.rules();
+    }
+
     List<String> denials() {
         return policy.denials();
     }

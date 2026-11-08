@@ -105,6 +105,11 @@ public class Bank {
 
     private String hash(String username, String password) {
         hashesComputed++;
+        return hashOf(username, password);
+    }
+
+    /** What the bank stores and compares: SHA-256 of "demo-salt:" + name + ":" + password, as 64 hex characters. */
+    public static String hashOf(String username, String password) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(("demo-salt:" + username + ":" + password).getBytes(StandardCharsets.UTF_8));

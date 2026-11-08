@@ -41,7 +41,7 @@ Developers join customer text to paths and addresses, and save what customers se
 | Tests | 11, all passing |
 | Demo output | 42 lines, identical on every run |
 | Acts | 6 |
-| Video | 07:22, 1920×1080, narrated in the amy-slow voice |
+| Video | 07:17, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

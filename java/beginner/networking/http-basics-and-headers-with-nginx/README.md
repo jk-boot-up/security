@@ -38,11 +38,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. nginx in front of the shop, as it comes | Out of the box a request scores 0 of 5 on the security headers and the Server header shows the exact nginx version. |
-| 2. add_header, and the word always | Without always the home page scores 5 of 5 but the 404 page scores 0; with always both score 5, and server_tokens off hides the version. |
-| 3. The inheritance trap | A location that adds its own Cache-Control drops all five server-level headers and scores 0 of 5; repeating them there scores 5 of 5. |
-| 4. Limits, and requests that are ambiguous | A body over 1k gets 413, a header line of 4000 characters gets 400, and both Content-Length with Transfer-Encoding and two different Content-Lengths get 400. |
-| 5. Hiding what the application gives away, and the bill | A proxy passes X-Powered-By and X-AspNet-Version along unless proxy_hide_header removes them; hiding is a speed bump, and the configuration needs tests. |
+| 1. nginx in front of the shop, as it comes | GET / to nginx with its default settings answers 200 with Server: nginx/1.31.7 and none of the five security headers: 0 + 0 + 0 + 0 + 0 = 0 of 5. |
+| 2. add_header, and the word always | The five headers added without always: GET / scores 1 + 1 + 1 + 1 + 1 = 5 of 5 but the 404 page 0 + 0 + 0 + 0 + 0 = 0 of 5; with always both score 5 of 5, and server_tokens off leaves Server: nginx. |
+| 3. The inheritance trap | The five headers are set once for the server, so GET / scores 5 of 5; /account adds its own Cache-Control header and scores 0 + 0 + 0 + 0 + 0 = 0 of 5; with the five repeated inside /account it scores 5 of 5. |
+| 4. Limits, and requests that are ambiguous | With client_max_body_size 1k and large_client_header_buffers 2 1k (1k = 1024 bytes): a 100-byte body gets 200, a 2000-byte body 413, a 4007-character header line 400; Content-Length with Transfer-Encoding, and two different Content-Lengths, get 400. |
+| 5. Hiding what the application gives away, and the bill | Through nginx the application gives away Server: nginx/1.31.7, X-Powered-By: PHP/5.6.40 and X-AspNet-Version: 4.0.30319; with proxy_hide_header and server_tokens off only Server: nginx is left. |
 
 ## Test
 

@@ -24,6 +24,7 @@ Learners know "sign it" but not what that does that a keyed hash does not, what 
 | The shop | `Publisher` |
 | A service that checks | `Checkout` and `Verdict` |
 | The shared-key contrast | `HmacPublisher` |
+| The signature worked out by hand | `SignatureSteps` |
 | Entry point | `SignaturesDemo` |
 
 ## Requirements
@@ -39,10 +40,10 @@ Learners know "sign it" but not what that does that a keyed hash does not, what 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 24, all passing |
-| Demo output | 29 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:06, 1920×1080, narrated in the amy-slow voice |
+| Tests | 28, all passing |
+| Demo output | 73 lines, identical on every run |
+| Acts | 6 |
+| Video | 12:50, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

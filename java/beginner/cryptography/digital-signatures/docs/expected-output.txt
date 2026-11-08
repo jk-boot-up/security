@@ -1,29 +1,73 @@
 ONE. A tag made with a shared key.
-  the shop tags its price list with HMAC: 2efbd273904d2215
-  the warehouse must be able to check the tag, so it holds the same key
-  the warehouse tags a list of its own, with the laptop at 12 dollars: accepted  <- ANYONE WHO CAN CHECK CAN FORGE
-TWO. A signature: made with the private key, checked with the public key.
-  the shop signs its price list: 64 bytes, beginning a83b53e9ba4d832c
-  signing it again gives the same bytes: true  <- NO RANDOM NUMBER IS NEEDED
-  the warehouse holds only the public key and checks it: OK
-  the laptop is changed to 12 dollars, the signature kept: BAD_SIGNATURE
-  Mallory signs her own list with her own key: BAD_SIGNATURE
-  the warehouse can check but cannot make one: no key it holds can sign for the shop
-THREE. What exactly is signed.
-  two lists with the same products, built in a different order, give the same bytes: true
-  the shop signs the same bytes for another purpose, a refund order, with the label shop.refund.v1
-  that signature, checked as a refund order: true
-  that signature, offered as a price list: refused  <- A SIGNATURE IS TIED TO ITS PURPOSE
-  the message and the label are separated by a zero byte, so one cannot run into the other
-FOUR. A good signature on an old message.
-  the shop published version 1 (a laptop at 1000), then version 2 (at 1200)
-  an attacker replays the old, genuinely signed, version 1 on day 50: OK  <- THE SIGNATURE IS PERFECT, THE LIST IS OLD
-  a checkout that remembers the newest version: OLD_VERSION
-  a list that was only good until day 40, offered on day 50: EXPIRED
-  the version and the expiry are inside what is signed, so nobody can change them
-FIVE. The bill: whose key is it, and what if it is stolen?
-  Mallory gives the checkout her public key and says it is the shop's: OK  <- THE CHECK IS ONLY AS GOOD AS THE KEY
-  with the shop's real key in the checkout: BAD_SIGNATURE
-  if the shop's private key is stolen, the thief's list is accepted: OK  <- UNTIL THE KEY IS REVOKED
-  a signature hides nothing: the price list is readable by anyone, signed or not
-  sizes: a signature is 64 bytes, a raw public key 32, and the same key encoded 44
+  BEFORE TAGGING (the inputs):
+    price list   version=2 validUntilDay=100 laptop=1200 mouse=25
+    shared key   demo-shared-key-not-for-real-use
+  AFTER TAGGING (HMAC-SHA-256, 32 bytes):
+    tag          2efbd273 904d2215 d4e8e1e8 d8923643 ...
+  THE ATTACK (the warehouse holds the same key):
+    its list     version=3 validUntilDay=100 laptop=12 mouse=25
+    its tag      604f02b9 a152735b b1be7697 7a64a598 ...
+    the shop's check: accepted  <- ANYONE WHO CAN CHECK CAN FORGE
+TWO. A signature: the private key signs, the public key checks.
+  BEFORE SIGNING (the inputs):
+    label        shop.price-list.v1
+    price list   version=2 validUntilDay=100 laptop=1200 mouse=25
+    private key  9d61b19d effd5a60 ...  (only the shop)
+  AFTER SIGNING (the signature, 64 bytes):
+    bytes  1-16  a83b53e9 ba4d832c fa721a3f e058732d
+    bytes 17-32  4b03fa25 4e645137 f1d2ba54 f8738246
+    bytes 33-48  193b6f5a b8906deb cc2f3a23 1634677d
+    bytes 49-64  153d4060 e5c326ed 7505e6ff 72882702
+    signed again, the same bytes: true  <- NO RANDOM NUMBER
+  CHECKING (the warehouse holds only the public key):
+    public key   d75a9801 82b10ab7 ...  (anyone)
+    the real list:                    OK
+    laptop changed to 12, same sig:   BAD_SIGNATURE
+    Mallory's list, signed by her:    BAD_SIGNATURE
+    the warehouse can check, but has no key that signs
+THREE. How the signature is made, step by step.
+  STEP 1. HASH THE PRIVATE KEY (SHA-512), CUT IN TWO
+    secret a     307c8386 4f2833cb 427a2ef1 c00a013c ...
+    prefix       9b4f0afe 280b746a 778684e7 54425020 ...
+    A = a x B    d75a9801 82b10ab7 d54bfed3 c964073a ...
+  STEP 2. r = SHA-512(prefix + message) mod L
+    r            407edecf b2e451e3 de457d5f d71dce50 ...
+  STEP 3. R = r x B: the first 32 bytes of the signature
+    R            a83b53e9 ba4d832c fa721a3f e058732d ...
+  STEP 4. k = SHA-512(R + A + message) mod L
+    k            21d7070c 464ff9d1 e299cbea bc5b58ae ...
+  STEP 5. S = (r + k x a) mod L: the last 32 bytes
+    S            193b6f5a b8906deb cc2f3a23 1634677d ...
+    R + S is Java's own signature: true
+  CHECKING (public key only): S x B = R + k x A
+    the real list:  true
+    mouse=24:       false
+FOUR. What exactly is signed.
+  BEFORE SIGNING (the signed bytes = label + 00 + list):
+    label     shop.price-list.v1
+    zero byte 00
+    list      version=2 validUntilDay=100 laptop=1200 mouse=25
+    around 00 742e7631 | 00 | 76657273
+    built in another order, the same bytes: true
+  AFTER SIGNING FOR ANOTHER PURPOSE (label shop.refund.v1):
+    checked as a refund order: true
+    offered as a price list:   refused  <- TIED TO ITS PURPOSE
+FIVE. A good signature on an old message.
+  BEFORE (both genuinely signed by the shop):
+    version 1    version=1 validUntilDay=100 laptop=1000 mouse=20
+    version 2    version=2 validUntilDay=100 laptop=1200 mouse=25
+  THE ATTACK (version 1 replayed on day 50):
+    signature checked only: OK  <- PERFECT SIGNATURE, OLD LIST
+  AFTER THE FIX (version and expiry are checked):
+    a checkout that has seen version 2: OLD_VERSION
+    valid until day 40, offered on day 50: EXPIRED
+    both are inside the signed bytes, so nobody can change them
+SIX. The bill: whose key is it, and what if it is stolen?
+  THE ATTACK (Mallory's key, said to be the shop's):
+    Mallory's list: OK  <- ONLY AS GOOD AS THE KEY
+  AFTER THE FIX (the shop's real public key):
+    Mallory's list: BAD_SIGNATURE
+  WHAT A SIGNATURE CANNOT DO:
+    stop a stolen private key: OK  <- UNTIL IT IS REVOKED
+    hide anything: the price list is readable by anyone
+    bytes: signature 64, public key 32, encoded key 44

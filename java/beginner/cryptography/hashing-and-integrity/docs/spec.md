@@ -21,6 +21,7 @@ Learners know "hash" and "checksum" but not what each can prove, and so use them
 | Checksum | `Crc32Checksum` |
 | Hash | `Sha256` |
 | Keyed hash | `Hmac` |
+| HMAC worked out by hand | `HmacSteps` |
 | Hash kept beside the data | `InvoiceStore` |
 | Tagged invoices | `SignedInvoices` and its `Encoding` |
 | Entry point | `IntegrityDemo` |
@@ -38,10 +39,10 @@ Learners know "hash" and "checksum" but not what each can prove, and so use them
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 25, all passing |
-| Demo output | 32 lines, identical on every run |
-| Acts | 5 |
-| Video | 10:33, 1920×1080, narrated in the amy-slow voice |
+| Tests | 29, all passing |
+| Demo output | 83 lines, identical on every run |
+| Acts | 6 |
+| Video | 14:09, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

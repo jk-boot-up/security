@@ -96,6 +96,28 @@ class ResolverTest {
         assertTrue(result.idRepeated());
         assertEquals("203.0.113.10", Address.text(result.address()));
         assertTrue(result.nameReadableOnTheWire());
+        assertTrue(result.seenOnThePath().contains("shop.example.com"));
+    }
+
+    @Test
+    void keyedIdAndPortAreTheStepsShownByDerive() {
+        TransactionIds.Keyed second = TransactionIds.derive("test-secret", 2);
+        byte[] h = second.hash();
+        assertEquals(((h[0] & 0xff) << 8) | (h[1] & 0xff), second.id());
+        long four = ((h[2] & 0xffL) << 24) | ((h[3] & 0xff) << 16) | ((h[4] & 0xff) << 8) | (h[5] & 0xff);
+        assertEquals(1024 + four % 64512, second.port());
+        TransactionIds keyed = TransactionIds.keyed("test-secret");
+        keyed.nextId();
+        assertEquals(second.id(), keyed.nextId());
+        assertEquals(second.port(), keyed.nextPort());
+    }
+
+    @Test
+    void expiryIsNowPlusTheCappedTtl() {
+        Resolver resolver = resolver(3600);
+        Resolver.Pending pending = resolver.ask(NAME, 0).orElseThrow();
+        answer(resolver, pending, pending.id(), pending.port(), 86400, 1);
+        assertEquals(3600, resolver.expiresAt(NAME).orElseThrow());
     }
 
     @Test

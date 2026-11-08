@@ -41,11 +41,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. nginx ends the TLS for the shop | A Java client that trusts the demo root gets 200 over TLS 1.3 with HTTP/2, five of five security headers, and the application behind nginx is told the request was https. |
-| 2. Which TLS versions the shop allows | With TLS 1.3 only, a client limited to TLS 1.2 is refused; allowing TLS 1.2 with three strong ciphers lets it in, and TLS 1.3 clients still get 1.3. |
-| 3. The plain port, the redirect and HSTS | The plain port answers 301 to the same address on https and sends no HSTS; the HTTPS answer carries a two-year HSTS, which protects every visit after the first. |
-| 4. Who the client trusts, and who the server trusts | The client refuses an unknown root, a wrong name and an impostor certificate; with ssl_verify_client on, nginx refuses a client without a certificate and sets the client's identity itself. |
-| 5. The proxy trap, a config check and a score | Passing on the client's X-Forwarded-Proto makes the application believe a plain request is secure; nginx -t catches a missing certificate; the careful config scores 7 of 7 and a copied one 1 of 7. |
+| 1. nginx ends the TLS for the shop | nginx listens on 443 with http2, the certificate /pki/shop.crt and TLSv1.3 only, and passes requests to the app on http://127.0.0.1:8081; a client that trusts the demo root gets 200 over TLSv1.3 with HTTP/2, 1 + 1 + 1 + 1 + 1 = 5 of 5 headers and Server: nginx, and the app is told proto=https. |
+| 2. Which TLS versions the shop allows | With ssl_protocols TLSv1.3 a TLS 1.2-only client is refused and a TLS 1.3 client gets TLSv1.3; with TLSv1.2 TLSv1.3 and three ECDHE-ECDSA ciphers the TLS 1.2 client gets TLSv1.2 and the TLS 1.3 client still gets TLSv1.3. |
+| 3. The plain port, the redirect and HSTS | GET http://shop.example.test/orders?id=7 answers 301 to https://shop.example.test/orders?id=7 with no HSTS; the HTTPS answer carries max-age=63072000; includeSubDomains, 63072000 / 86400 = 730 days. |
+| 4. Who the client trusts, and who the server trusts | The JDK's own roots, the address 127.0.0.1 and an impostor signed by nobody trusted are refused; the demo root and the right name are accepted. With ssl_verify_client on, no certificate is refused, Ana's gets 200 and the app is told client=CN=Ana the customer, even when she forges X-Client-DN: CN=Admin. |
+| 5. The proxy trap, a config check and a score | A plain request forging X-Forwarded-Proto: https fools the app (proto=https) when nginx copies the header, and not (proto=http) when nginx sets it from $scheme; nginx -t passes the careful configuration and refuses a missing certificate; the careful configuration scores 7 of 7 TLS habits, a copied one 1 of 7. |
 
 ## Test
 

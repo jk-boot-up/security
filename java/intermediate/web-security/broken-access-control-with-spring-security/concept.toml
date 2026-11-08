@@ -77,122 +77,198 @@ test_note = "Every test starts a real Spring Boot server on a free loopback port
 
 [[act]]
 title = "A Spring store with three common mistakes"
-summary = "A sign-in rule where ownership was needed, a pattern that misses /admin/users/ben, and permitAll() at the end let seven of nine attacks through."
+summary = "The filter chain says /orders/** needs a sign-in, /admin/users needs ADMIN, and anyRequest().permitAll(): ana reads ben's order, a signed-out visitor reads the report, and DELETE /admin/users/ben slips past the /admin/users pattern."
 detail = """
-The first store's rules are: /account and /orders/** need a sign-in, /admin/users needs the admin role, and anyRequest().permitAll() covers the rest. Ana reads her own order 1001 and gets 200, and ben's order 1002 and also gets 200:
-the rule said signed in, not whose order. Someone signed out reads /admin/reports and gets 200: permitAll let through a route nobody listed. Ana gets 403 for GET /admin/users, but 200 for DELETE /admin/users/ben, because the
-pattern /admin/users does not cover /admin/users/ben, and ben's account is gone. Of the plain project's nine attacks, seven succeed; the one handler written carefully refuses ana with 403. The page hid the admin links from ana, which protected nothing.
+The naive store's filter chain has three rules, in order: /account and /orders/** need authenticated(), /admin/users needs hasRole("ADMIN"), and anyRequest() is permitAll().
+Ana's GET /orders/1001 answers 200, and so does GET /orders/1002, ben's order: the rule said signed in, not whose order. Signed out, GET /admin/reports answers 200, because permitAll() let through a route nobody listed. GET /admin/users answers 403, but DELETE /admin/users/ben answers 200: the pattern /admin/users does not cover /admin/users/ben.
+The result: ben's account is gone, 7 of the plain project's 9 attacks succeed, and only DELETE /orders/{id}, written carefully, refuses ana with 403. The page still hides the admin links.
+"""
+figure = "naive_rules"
+figure_title = "Three rules, and what they let through"
+figure_speech = """
+First demo: a Spring store with three common mistakes. [[slnc 400]] On the left, the rules as written, in the order Spring checks them. [[slnc 300]] Orders need a sign in. [[slnc 300]] The users page needs the admin role. [[slnc 300]] And anything else is permitted. [[slnc 700]]
+On the right, five requests, and the rule each one matched. [[slnc 500]] Ana's own order: two hundred. [[slnc 300]] Ben's order matches the same rule, signed in, so it answers two hundred too. [[slnc 500]] The sales report matches no rule above the last one. [[slnc 300]] Permit all lets it through, to someone signed out. [[slnc 500]] Listing users is refused. [[slnc 300]] But delete slash admin slash users slash ben is not the path slash admin slash users. [[slnc 300]] It falls through to permit all, and ben is deleted. [[slnc 700]]
+Each rule did exactly what it said.
 """
 speech = """
-First demo: a Spring store with three common mistakes. [[slnc 400]] Its rules say: orders need a sign in, the user list needs an admin, and everything else is permitted. [[slnc 600]]
-Ana reads ben's order. [[slnc 300]] Two hundred. [[slnc 300]] The rule said signed in, not whose order. [[slnc 600]]
-Someone signed out reads the sales report. [[slnc 300]] Two hundred. [[slnc 300]] Permit all let through a route nobody listed. [[slnc 600]]
-Ana is refused the user list, but deleting ben's account works. [[slnc 300]] The pattern for the list does not cover the path below it. [[slnc 600]]
-Seven of the nine attacks succeed, against a real Spring Security configuration.
+Here is the real output. [[slnc 400]] The rules as written, then five requests. [[slnc 300]] Two hundred, two hundred, two hundred, four oh three, and two hundred.
+[[page]]
+The result. [[slnc 300]] Ben's account is gone. [[slnc 300]] Seven of the nine attacks from the plain project succeed. [[slnc 300]] Only the delete order route, written carefully, refuses ana. [[slnc 300]] And the page still hides the admin links.
 """
-rows = { chain = "active wrong" }
+rows = { naive = "active wrong" }
 console = [
-    ["its rules: /account and /orders/** need a sign-in, /admin/users needs ADMIN, and anyRequest().permitAll() for the rest", "muted"],
-    ["ana reads ben's order 1002: 200  <- THE RULE SAID SIGNED IN, NOT WHOSE ORDER", "bad"],
-    ["someone signed out reads /admin/reports: 200  <- permitAll() LET THROUGH A ROUTE NOBODY LISTED", "bad"],
-    ["ana: GET /admin/users 403, DELETE /admin/users/ben 200  <- THE PATTERN /admin/users DOES NOT COVER /admin/users/ben", "bad"],
-    ["ben's account still exists: false", "bad"],
-    ["the nine attacks of the plain project: 7 of 9 succeed; the one handler written carefully refused ana: 403", "amber"],
+    ["THE RULES AS WRITTEN (the filter chain, in order):", "code"],
+    ["  /account, /orders/**   authenticated()", "muted"],
+    ["  /admin/users           hasRole(\"ADMIN\")", "muted"],
+    ["  anyRequest()           permitAll()", "muted"],
+    ["THE REQUESTS (who, method, path, status):", "code"],
+    ["  ana    GET    /orders/1001       200", "muted"],
+    ["  ana    GET    /orders/1002       200  <- NOT HER ORDER", "bad"],
+    ["  nobody GET    /admin/reports     200  <- permitAll()", "bad"],
+    ["  ana    GET    /admin/users       403", "muted"],
+    ["  ana    DELETE /admin/users/ben   200  <- NOT /admin/users", "bad"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  ben's account still exists: false", "muted"],
+    ["  the nine attacks of the plain project: 7 of 9 succeed", "muted"],
+    ["  DELETE /orders/{id}, written carefully, refused ana: 403", "ok"],
+    ["  the page ana sees: links shown: orders, account", "muted"],
+    ["  (the admin links are hidden)", "muted"],
 ]
 
 [[act]]
 title = "Deny by default in the filter chain"
-summary = "One rule per method and path, with denyAll() last: signed out gets 401, the wrong role 403, and a method or path with no rule 403, even for an admin."
+summary = "Every route gets its own rule by method and path, and anyRequest().denyAll() comes last: signed out answers 401, the wrong role 403, and a method or path nobody wrote, such as PUT /orders/1001 or /admin/debug, 403 even for the admin."
 detail = """
-The guarded store builds its filter chain from one list of rules, one per method and path, and anyRequest().denyAll() is the last rule. Someone signed out reading /admin/reports gets 401; ana gets 403 for the report, the refund,
-the user list and the account deletion. A PUT that nobody wrote a rule for gets 403, and so does dave the admin asking for /admin/debug, a path nobody wrote. But the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is.
+The fixed filter chain gives every route its own rule, by method and path, and anyRequest().denyAll() is the last rule.
+Signed out, GET /admin/reports now answers 401: who are you? Ana gets 403 for the report, the refund, listing users and DELETE /admin/users/ben. PUT /orders/1001, a method nobody wrote a rule for, answers 403, and so does /admin/debug, a path nobody wrote, even for dave the admin: no rule, no access.
+But the rule for GET /orders/{id} can only say signed in. A URL rule cannot know whose order 1002 is.
+"""
+figure = "deny_all"
+figure_title = "Every route has a rule, and the last rule is denyAll()"
+figure_speech = """
+Second demo: deny by default. [[slnc 400]] On the left, the new rule list. [[slnc 300]] One rule per route, by method and path. [[slnc 300]] And at the bottom, in red, the catch all: deny all. [[slnc 700]]
+On the right, seven requests. [[slnc 300]] Five of them match a rule, and fail it. [[slnc 300]] Signed out gets four oh one: who are you? [[slnc 300]] Ana, a customer, gets four oh three. [[slnc 600]] The last two match no rule at all. [[slnc 300]] A put on an order, and a debug page. [[slnc 300]] They fall to deny all, and even dave, the admin, is refused. [[slnc 700]]
+No rule, no access. [[slnc 300]] But one gap is left: a URL rule cannot tell whose order it is.
 """
 speech = """
-Second demo: deny by default. [[slnc 400]] Every route has a rule, by method and path, and the last rule denies everything else. [[slnc 600]]
-Signed out, the sales report answers four oh one. [[slnc 300]] Ana gets four oh three for the report, the refund, the user list and the deletion. [[slnc 600]]
-A method nobody wrote a rule for is refused. [[slnc 300]] Even the admin is refused a path nobody wrote. [[slnc 600]]
-But a URL rule can only say signed in. [[slnc 300]] It cannot know whose order is behind the number.
+Here is the output. [[slnc 400]] Every route has its own rule, and deny all is last. [[slnc 400]] Then seven requests. [[slnc 300]] Four oh one for someone signed out, and four oh three for everything else, including the put and the debug page that no rule mentions. [[slnc 500]] And the gap: the rule for an order can only say signed in. [[slnc 300]] It cannot know whose order it is.
 """
 rows = { chain = "active ok" }
 console = [
-    ["every route has a rule by method and path, and anyRequest().denyAll() is the last rule", "muted"],
-    ["someone signed out reads /admin/reports: 401  <- WHO ARE YOU?", "ok"],
-    ["ana reads /admin/reports: 403; ana refunds order 1002: 403", "ok"],
-    ["ana: GET /admin/users 403, DELETE /admin/users/ben 403", "ok"],
-    ["ana sends PUT /orders/1001, a method nobody wrote a rule for: 403  <- NO RULE, NO ACCESS", "ok"],
-    ["but the rule for GET /orders/{id} can only say signed in: a URL rule cannot know whose order 1002 is", "amber"],
+    ["THE RULES AS WRITTEN (by method and path):", "code"],
+    ["  every route has its own rule", "muted"],
+    ["  anyRequest().denyAll() is the last rule", "muted"],
+    ["THE REQUESTS (who, method, path, status):", "code"],
+    ["  nobody GET    /admin/reports     401  <- WHO ARE YOU?", "amber"],
+    ["  ana    GET    /admin/reports     403", "muted"],
+    ["  ana    POST   /admin/refunds     403", "muted"],
+    ["  ana    GET    /admin/users       403", "muted"],
+    ["  ana    DELETE /admin/users/ben   403", "muted"],
+    ["  ana    PUT    /orders/1001       403  <- NO RULE, NO ACCESS", "amber"],
+    ["  dave   GET    /admin/debug       403  <- NO RULE, NO ACCESS", "amber"],
+    ["WHAT A URL RULE CANNOT DO:", "code"],
+    ["  GET /orders/{id} can only say: signed in", "muted"],
+    ["  it cannot know whose order 1002 is", "muted"],
 ]
 
 [[act]]
 title = "The object-level check, in the query"
-summary = "findByIdAndOwner makes ben's order 404 for ana in all four object attacks; @PostAuthorize instead answers 403 after the lookup has run; 0 of 9 attacks succeed, 6 of 6 honest requests work."
+summary = "The lookup is findByIdAndOwner(id, ana), so ben's order is simply not found: 404 for all four order attacks. The same check with @PostAuthorize answers 403, which confirms the order exists, after the lookup already ran. 0 of 9 attacks, 6 of 6 honest requests."
 detail = """
-Ana's four attempts on ben's orders, reading order 1002, reading his gift order from a leaked link, sending it to her address and cancelling it, all answer 404: the lookup is findByIdAndOwner(id, ana), so ben's order is not found, like a missing order.
-Sam from support reads order 1002 with 200, because staff may read any order. The same check written with @PostAuthorize instead answers ana's gift link with 403, and the lookup ran: the 403 confirms the order exists, and the work was already done. Ben opens his own link with 200.
-Against the guarded store, 0 of the 9 attacks succeed, and all 6 honest requests still work.
+After the fix, the four attacks on ben's orders answer 404. The lookup is findByIdAndOwner(id, ana), so ben's order is not found, exactly like a missing order. Sam from support reads order 1002 with 200, because staff may read any order.
+The same check written with @PostAuthorize runs after the method: ana opens ben's gift link and gets 403, and the lookup had already run. A 403 confirms that the order exists, and the work was already done. Ben opens his own gift link with 200.
+In total, 0 of 9 attacks succeed, and 6 of 6 honest requests still work.
+"""
+figure = "query_vs_post"
+figure_title = "Two ways to check the owner: in the query, or after it"
+figure_speech = """
+Third demo: the object level check. [[slnc 400]] Two ways to check that ana owns order one thousand and two. [[slnc 700]]
+At the top, in the query. [[slnc 300]] The lookup asks for order one thousand and two, owned by ana. [[slnc 300]] There is no such row. [[slnc 300]] So the answer is four oh four, exactly like a missing order. [[slnc 300]] Ana learns nothing. [[slnc 700]]
+At the bottom, after the method, with post authorize. [[slnc 300]] The lookup asks only for order one thousand and two. [[slnc 300]] It finds ben's order, and loads it. [[slnc 300]] Only then is the owner compared, and the answer is four oh three. [[slnc 300]] Forbidden tells ana the order exists. [[slnc 300]] And the work was already done. [[slnc 700]]
+Put the owner in the query, when you can.
 """
 speech = """
-Third demo: the object level check, in the query. [[slnc 400]] Ana's four attempts on ben's orders all answer four oh four. [[slnc 600]]
-The lookup asks for the order with this number and this owner, so ben's order is simply not found. [[slnc 300]] Exactly like a missing one. [[slnc 600]]
-Support staff may still read any order. [[slnc 600]]
-The same check written as a post authorize rule answers four oh three, after the lookup has run. [[slnc 300]] That confirms the order exists, and the work is already done. [[slnc 600]]
-None of the nine attacks succeed now. [[slnc 300]] All six honest requests still work.
+Here is the output. [[slnc 400]] The four attacks on ben's orders: four oh four, all four. [[slnc 400]] Why four oh four? [[slnc 300]] The lookup includes the owner, so ben's order is not found. [[slnc 300]] Sam from support still reads it, because staff may read any order.
+[[page]]
+The same check with post authorize: four oh three, and the lookup had already run. [[slnc 400]] Ben still opens his own link. [[slnc 400]] In total: none of the nine attacks succeed, and all six honest requests still work.
 """
-rows = { objects = "active ok" }
+rows = { query = "active ok" }
 console = [
-    ["ana reads ben's order 1002: 404; his gift order: 404; moves it: 404; cancels it: 404", "ok"],
-    ["the lookup is findByIdAndOwner(id, ana), so ben's order is not found: 404, like a missing order", "ok"],
-    ["sam from support reads order 1002: 200, staff may read any order", "muted"],
-    ["with @PostAuthorize instead: ana opens ben's gift link: 403, and the lookup ran: true  <- 403 CONFIRMS THE ORDER EXISTS", "amber"],
-    ["attacks that succeed: 0 of 9; honest requests that still work: 6 of 6", "ok"],
+    ["THE ATTACKS ON ORDERS (after the fix):", "code"],
+    ["  ana reads ben's order 1002            404", "ok"],
+    ["  ana opens ben's leaked gift link      404", "ok"],
+    ["  ana sends ben's order to her address  404", "ok"],
+    ["  ana cancels ben's order 1002          404", "ok"],
+    ["WHY 404 (the lookup is findByIdAndOwner(id, ana)):", "code"],
+    ["  ben's order is not found, like a missing order", "muted"],
+    ["  sam from support reads order 1002: 200, staff read any", "muted"],
+    ["---", ""],
+    ["THE SAME CHECK WITH @PostAuthorize (after the lookup):", "amber"],
+    ["  ana opens ben's gift link: 403  <- CONFIRMS IT EXISTS", "amber"],
+    ["  the lookup had already run: true", "muted"],
+    ["  ben opens his own gift link: 200", "muted"],
+    ["THE TOTAL (all nine attacks, six honest requests):", "code"],
+    ["  attacks that succeed: 0 of 9", "muted"],
+    ["  honest requests that still work: 6 of 6", "muted"],
 ]
 
 [[act]]
 title = "Method security, and a log of every refusal"
-summary = "@PreAuthorize on the refund service refuses a nightly job running as ana with no URL in between; 22 refusals are logged with who and what, and none contains a password or header."
+summary = "RefundService.refund carries @PreAuthorize(\"hasAnyRole('SUPPORT', 'ADMIN')\"): a nightly job running as ana is refused with no URL in between, as sam it is recorded; 22 refusals are logged, with no password or Authorization header."
 detail = """
-RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"), so the rule travels with the method. A nightly job running as ana that calls the refund service directly, with no URL in between, is refused; the same job running as sam is recorded.
-By now 22 refusals are logged, such as "DENY someone signed out GET /admin/reports", "DENY ana DELETE /admin/users/ben", "DENY ana GET /orders/{id}: order 1002 is not theirs" and "DENY ana RefundService.refund". No password or Authorization header appears in the log.
-The filter chain and method security publish an AuthorizationDeniedEvent for their refusals; the store logs its object-level refusals itself.
+RefundService.refund carries @PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')"), so the rule travels with the method. A nightly job calls the refund service directly, with no URL and no filter chain in between. Running as ana, a CUSTOMER, it is refused; running as sam, from SUPPORT, it is recorded.
+22 refusals have been logged so far, for example DENY someone signed out GET /admin/reports, DENY ana DELETE /admin/users/ben, DENY ana GET /orders/{id}: order 1002 is not theirs, and DENY ana RefundService.refund. No password or Authorization header appears in the log.
+Spring publishes an AuthorizationDeniedEvent for each refusal of the filter chain and of method security; the store logs the object-level refusals itself.
+"""
+figure = "method_rule"
+figure_title = "A rule on the method holds without any URL"
+figure_speech = """
+Fourth demo: method security. [[slnc 400]] On the left, a nightly job. [[slnc 300]] It does not send an H T T P request. [[slnc 300]] It calls the refund service directly, so the filter chain never sees it. [[slnc 700]]
+In the middle, the refund method. [[slnc 300]] Its rule is written on the method itself: support or admin only. [[slnc 600]] Running as ana, a customer: refused. [[slnc 300]] Running as sam, from support: the refund is recorded. [[slnc 700]]
+On the right, the log. [[slnc 300]] Every refusal, from the filter chain, the method rule, and the query, is one line. [[slnc 300]] Who asked, and what for. [[slnc 300]] Never a password.
 """
 speech = """
-Fourth demo: method security, and a log. [[slnc 400]] The refund service carries its own rule: support or admin only. [[slnc 600]]
-A nightly job running as ana calls the service directly, with no web address in between. [[slnc 300]] It is refused. [[slnc 300]] The same job running as sam works. [[slnc 600]]
-Every refusal so far is logged, twenty two of them, with who asked and for what. [[slnc 300]] No password and no credentials header appears in the log. [[slnc 600]]
-Spring Security publishes an event for each refusal it makes, and the store logs the refusals it makes itself.
+Here is the output. [[slnc 400]] The rule on the method. [[slnc 300]] Then a nightly job calls it directly. [[slnc 300]] As ana: refused. [[slnc 300]] As sam: recorded.
+[[page]]
+Twenty two refusals are logged so far. [[slnc 300]] Here are four, one from each kind of check. [[slnc 300]] No password or authorization header appears. [[slnc 400]] Spring writes an event for each refusal it makes, and the store logs the object level ones itself.
 """
-rows = { methods = "active ok", log = "active ok" }
+rows = { method = "active ok", log = "active ok" }
 console = [
-    ["a nightly job running as ana calls the refund service directly, with no URL in between: refused", "ok"],
-    ["the same job running as sam: recorded", "muted"],
-    ["refusals logged so far: 22, for example:", "muted"],
+    ["THE RULE ON THE METHOD (it travels with the method):", "code"],
+    ["  RefundService.refund carries", "muted"],
+    ["  @PreAuthorize(\"hasAnyRole('SUPPORT', 'ADMIN')\")", "muted"],
+    ["A NIGHTLY JOB CALLS IT DIRECTLY (no URL in between):", "code"],
+    ["  running as ana (CUSTOMER): refused", "ok"],
+    ["  running as sam (SUPPORT): recorded", "muted"],
+    ["---", ""],
+    ["THE LOG (22 refusals so far, four of them):", "code"],
+    ["  DENY someone signed out GET /admin/reports", "muted"],
     ["  DENY ana DELETE /admin/users/ben", "muted"],
     ["  DENY ana GET /orders/{id}: order 1002 is not theirs", "muted"],
     ["  DENY ana RefundService.refund", "muted"],
-    ["a password or an Authorization header appears in the log: false", "ok"],
+    ["  a password or Authorization header in it: false", "muted"],
+    ["WHO WRITES THE LOG:", "code"],
+    ["  Spring: an AuthorizationDeniedEvent for each refusal", "muted"],
+    ["  the store: the object-level refusals", "muted"],
 ]
 
 [[act]]
 title = "The route inventory, and the bill"
-summary = "The inventory reads 11 routes from Spring MVC's handler mapping and reports GET /admin/export, added without a rule, which even the admin is refused."
+summary = "The inventory reads 11 routes from Spring MVC's handler mapping; a new GET /admin/export without a rule fails the build and is refused even to the admin; the bill is rules in two places and the owner in every query."
 detail = """
-The route inventory reads every route the controllers serve from Spring MVC's own handler mapping: 11. A developer has added GET /admin/export and forgot its rule, so the routes without a rule are [GET /admin/export], and the route inventory test fails the build.
-Until it has one, even dave the admin is refused with 403, denied by default. The bill: rules now live in two places, the route list and the method annotations, and the inventory test keeps the first complete; and every object-level check needs the owner in the query,
-with @PostAuthorize as a fallback for when it cannot be there.
+The route inventory reads every route the controllers serve from Spring MVC's handler mapping: 11. A developer adds GET /admin/export and forgets its rule; the inventory lists [GET /admin/export] and the build fails. Until it has a rule, even dave the admin is refused with 403: denied by default.
+The bill: rules now live in two places, the route list and the method annotations, and the inventory test keeps the route list complete. Every object check needs the owner in the query, and @PostAuthorize is a fallback for when it cannot be there.
+"""
+figure = "spring_inventory"
+figure_title = "Spring lists the routes; a test checks each has a rule"
+figure_speech = """
+Fifth demo: keeping it right. [[slnc 400]] On the left, the routes that Spring itself knows about. [[slnc 300]] It reads them from the handler mapping, so a route cannot hide. [[slnc 300]] Eleven of them. [[slnc 700]]
+Each is checked against the rule list. [[slnc 300]] Ten have a rule. [[slnc 300]] The new export route has none, in red. [[slnc 300]] The test fails, and the build stops. [[slnc 600]] Until someone writes its rule, deny all refuses it, even for the admin. [[slnc 700]]
+On the right, the bill. [[slnc 300]] Two places to keep rules, and a test that keeps one of them complete.
 """
 speech = """
-Fifth demo: the route inventory, and the bill. [[slnc 400]] A test reads every route the controllers serve, straight from Spring's own handler mapping. [[slnc 300]] Eleven routes. [[slnc 600]]
-A developer adds an export route and forgets its rule. [[slnc 300]] The test names it, and fails the build. [[slnc 300]] Until it has a rule, even the admin is refused. [[slnc 600]]
-And the bill. [[slnc 300]] Rules now live in two places, the route list and the method annotations. [[slnc 300]] And every ownership check needs the owner in the query, with post authorize only as a fallback.
+Here is the output. [[slnc 400]] Spring serves eleven routes. [[slnc 300]] The new export route has no rule, so the build fails. [[slnc 300]] And the admin is refused: deny by default. [[slnc 500]] The bill. [[slnc 300]] Rules live in two places, the route list and the annotations. [[slnc 300]] Every object check needs the owner in the query. [[slnc 300]] And post authorize is the fallback, when it cannot be there.
 """
 rows = { inventory = "active ok" }
 console = [
-    ["routes the controllers serve, read from Spring MVC's handler mapping: 11", "muted"],
-    ["a developer has added GET /admin/export and forgot its rule; routes without a rule: [GET /admin/export]  <- THE ROUTE INVENTORY TEST FAILS THE BUILD", "bad"],
-    ["until it has one, even dave the admin is refused: 403, denied by default", "ok"],
-    ["the bill: rules now live in two places, the route list and the method annotations", "amber"],
-    ["every object-level check needs the owner in the query, and @PostAuthorize is a fallback", "amber"],
+    ["THE ROUTE INVENTORY (read from Spring MVC's handler mapping):", "code"],
+    ["  routes the controllers serve: 11", "muted"],
+    ["  a developer adds GET /admin/export, and forgets its rule", "muted"],
+    ["  routes without a rule: [GET /admin/export]  <- BUILD FAILS", "amber"],
+    ["  dave the admin asks for it: 403, denied by default", "muted"],
+    ["THE BILL:", "code"],
+    ["  rules live in two places: route list and annotations", "muted"],
+    ["  the inventory test keeps the route list complete", "muted"],
+    ["  every object check needs the owner in the query", "muted"],
+    ["  @PostAuthorize is a fallback when it cannot be there", "muted"],
 ]
+
+[highlight]
+console_green = ["AFTER", "THE ATTACKS ON ORDERS", "THE TOTAL"]
+console_rose = ["BEFORE"]
+console_amber = ["THE REQUESTS", "THE LOG", "THE ROUTE INVENTORY", "THE RESULT", "WHAT A URL RULE"]
+console_cyan = ["THE RULES AS WRITTEN", "WHY 404", "THE SAME CHECK", "THE RULE ON THE METHOD", "A NIGHTLY JOB", "WHO WRITES", "THE BILL"]
 
 [animation]
 subtitle = "A real Spring Boot store is broken by three configuration mistakes, then fixed with deny by default, ownership in the query and method security."
@@ -470,6 +546,19 @@ body = ["Filter chain: rules by route", "denyAll(): refuse what no rule allows",
 narration = """Before the demos, the words. [[slnc 500]] The filter chain holds the rules for each route. [[slnc 500]] Deny all, as the last rule, refuses whatever no rule allows. [[slnc 500]] The object level asks whose record it is. [[slnc 500]] Method security puts rules on the service methods themselves. [[slnc 500]] And a route inventory checks that every route has a rule."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "04-three-checks"
+kind = "figure"
+title = "Three places Spring can refuse a request"
+body = "spring_layers"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] In this store, a request can be refused in three places. [[slnc 700]] First, the filter chain. [[slnc 300]] It sees the method and the path, before any controller runs. [[slnc 300]] It answers four oh one for someone signed out, and four oh three for the wrong role, or for a route with no rule at all. [[slnc 700]] Second, method security. [[slnc 300]] A rule written on a service method, such as the refund. [[slnc 300]] It holds even when no URL is involved. [[slnc 700]] Third, the query. [[slnc 300]] The order is looked up together with its owner. [[slnc 300]] Someone else's order is simply not found, so the answer is four oh four. [[slnc 700]] A URL rule cannot know whose order it is. [[slnc 300]] That is why the third check is needed."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -481,13 +570,6 @@ kind = "bullets"
 title = "Three Walls"
 body = ["The filter chain: may this person use this route?", "The query: is this record theirs?", "Method security: may this caller do this, from anywhere?", "", "Each catches what the others cannot."]
 narration = """Let's put the walls side by side. [[slnc 400]] The filter chain asks whether this person may use this route. [[slnc 500]] The query asks whether this record is theirs. [[slnc 500]] Method security asks whether this caller may do this, wherever the call comes from. [[slnc 600]] Each one catches what the others cannot see."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["AccessRules: one list of route rules", "GuardedSecurity: the chain, denyAll() last", "OrderAccess and Orders: ownership", "RefundService: @PreAuthorize", "RouteInventory and DenialLog"]
-narration = """Here is who does what in the code. [[slnc 400]] The access rules class is one list of route rules. [[slnc 500]] The guarded security class builds the filter chain from it, with deny all last. [[slnc 500]] The order access and orders classes decide ownership in the lookup. [[slnc 500]] The refund service carries its own rule. [[slnc 300]] And the route inventory and the denial log keep everything visible."""
 
 [[scene]]
 key = "11-recognise"
@@ -502,6 +584,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["End the chain with denyAll()", "One rule per method and path", "Owner in the query", "@PreAuthorize on services", "Fail the build on a route without a rule"]
 narration = """So, how do you use it? [[slnc 400]] End every filter chain with deny all. [[slnc 500]] Write one rule per method and path, from one list. [[slnc 500]] Put the owner in the query. [[slnc 500]] Put rules that must hold everywhere on the service methods. [[slnc 500]] And fail the build when a route has no rule."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -599,3 +687,102 @@ threat = "Attacks go unnoticed, or credentials end up in the logs"
 where = "`DenialLog`"
 control = "Every refusal is logged with who and what, from AuthorizationDeniedEvent and from the store; no credentials or headers are logged"
 residual = "Someone must read the log and alert on it: the detection module"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The same Spring Boot store runs with two security configurations. [[slnc 300]] Here are the parts that matter."""
+
+[[class]]
+name = "NaiveSecurity"
+what = "the first filter chain: three rules, permitAll() last"
+[[class.part]]
+title = "rules that say too little"
+code = """
+.requestMatchers("/account", "/orders/**").authenticated()
+.requestMatchers("/admin/users").hasRole("ADMIN")
+.anyRequest().permitAll());
+"""
+speech = """The naive chain has three rules. [[slnc 300]] Signed in for orders. [[slnc 300]] Admin for exactly slash admin slash users. [[slnc 300]] And permit all for everything else, which is where the forgotten routes land."""
+
+[[class]]
+name = "GuardedSecurity"
+what = "the fixed filter chain: a rule per route, denyAll() last"
+[[class.part]]
+title = "deny by default"
+code = """
+AccessRules.apply(registry);
+registry.anyRequest().denyAll();
+"""
+speech = """The fixed chain adds one rule per route, by method and path, from one list. [[slnc 300]] And the last rule is deny all. [[slnc 300]] A route nobody wrote a rule for is refused."""
+
+[[class]]
+name = "OrderAccess"
+what = "whose order it is: in the query, or after it"
+[[class.part]]
+title = "the owner in the query"
+code = """
+Optional<Order> found = anyOrder ? orders.findById(id) : orders.findByIdAndOwner(id, who.getName());
+"""
+speech = """Staff look up any order. [[slnc 300]] A customer's lookup includes their own name. [[slnc 300]] Someone else's order is never found, so it answers four oh four."""
+[[class.part]]
+title = "the fallback: after the method"
+code = """
+@PostAuthorize("returnObject == null or returnObject.owner == authentication.name")
+public Order byLink(String id) {
+"""
+speech = """Post authorize checks the result after the method ran. [[slnc 300]] It works, but the lookup already happened, and the four oh three tells the caller that the order exists."""
+
+[[class]]
+name = "RefundService"
+what = "a rule that travels with the method"
+[[class.part]]
+title = "method security"
+code = """
+@PreAuthorize("hasAnyRole('SUPPORT', 'ADMIN')")
+public void refund(String orderId) {
+"""
+speech = """Pre authorize is checked before the refund runs, whoever calls it: a controller, a nightly job, or a test."""
+
+[[class]]
+name = "RouteInventory"
+what = "every route Spring serves, and the ones without a rule"
+[[class.part]]
+title = "the inventory test's question"
+code = """
+static List<String> withoutRule(ApplicationContext context) {
+    return routes(context).stream().filter(r -> {
+"""
+speech = """The inventory reads every route from Spring's own handler mapping, and keeps those that no rule covers. [[slnc 300]] The test fails while that list is not empty."""
+
+[[acronym]]
+short = "URL"
+long = "Uniform Resource Locator: the address of a request, such as /orders/1002"
+say = "U R L stands for uniform resource locator: the address a request is sent to, such as slash orders slash one thousand and two."
+[[acronym]]
+short = "MVC"
+long = "Model-View-Controller: Spring's web layer that maps requests to controllers"
+say = "M V C is model view controller. Spring M V C is the part of Spring that sends each request to a controller method."
+[[acronym]]
+short = "IDOR"
+long = "Insecure Direct Object Reference: reaching an object by changing its id"
+say = "I D O R is an insecure direct object reference: reaching someone else's object, just by changing its id."
+[[acronym]]
+short = "OWASP"
+long = "Open Worldwide Application Security Project"
+say = "O W A S P is the Open Worldwide Application Security Project, which publishes the top ten web risks."
+[[acronym]]
+short = "API, HTTP"
+long = "Application Programming Interface; HyperText Transfer Protocol"
+say = "An A P I is an application programming interface: the requests a program accepts. H T T P is the protocol that carries them."
+[[acronym]]
+short = "GET, POST, PUT, DELETE"
+long = "HTTP methods: read, send, replace, remove"
+say = "Get, post, put and delete are H T T P methods: read, send, replace and remove."
+[[acronym]]
+short = "200, 401, 403, 404"
+long = "HTTP status codes: OK, sign in first, forbidden, not found"
+say = "And the status codes. Two hundred means O K. Four oh one means sign in first. Four oh three means forbidden. Four oh four means not found."
+[[acronym]]
+short = "BOLA, BFLA"
+long = "Broken Object Level Authorization; Broken Function Level Authorization"
+say = "B O L A is broken object level authorization: someone else's object. B F L A is broken function level authorization: a higher role's function."

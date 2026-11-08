@@ -63,6 +63,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `DerTest` checks the encodings against published object identifier encodings and length rules.
 - `ChainTest` checks parsing, a good chain, expiry, not-yet-valid, an unknown root with a matching name, a missing intermediate, a changed certificate, overstepping, path length, revocation and a stolen authority key.
 - `HostNameTest` checks exact names, case and one-label wildcards.
+- `ChainStepsTest` checks that the chain check by hand reaches the JDK's verdict, and names the failed step, for every chain in the demo.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

@@ -64,7 +64,7 @@ final class HeaderAudit {
         }
         String lower = value.toLowerCase(Locale.ROOT);
         if (lower.contains("unsafe-inline") || lower.contains("unsafe-eval")) {
-            return new Finding("Content-Security-Policy", false, "allows unsafe-inline or unsafe-eval");
+            return new Finding("Content-Security-Policy", false, "allows unsafe-inline/eval");
         }
         List<String> scripts = sources(lower, "script-src");
         if (scripts == null) {

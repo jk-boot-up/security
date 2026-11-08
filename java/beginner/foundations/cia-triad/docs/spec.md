@@ -20,13 +20,13 @@ Learners meet security as a list of unrelated tools. The triad gives them one wa
 | --- | --- |
 | The insecure system | `NaiveStore` |
 | The controlled system | `SecureStore` |
-| Integrity seal | `Seal` |
+| Integrity seal | `Seal`, worked out by hand in `SealSteps` |
 | Availability control | `RateLimiter` with `TickServer` |
 | Entry point | `CiaDemo` |
 
 ## Requirements
 
-1. The demo prints five numbered acts and the output equals `docs/expected-output.txt`.
+1. The demo prints seven numbered acts and the output equals `docs/expected-output.txt`.
 2. Support never receives the address or the amount through `SecureStore.read`.
 3. A stored order that no longer matches its seal is never returned.
 4. One client cannot take more than its share of the server in one tick.
@@ -37,10 +37,10 @@ Learners meet security as a list of unrelated tools. The triad gives them one wa
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 23 lines, identical on every run |
-| Acts | 5 |
-| Video | 10:17, 1920×1080, narrated in the amy-slow voice |
+| Tests | 20, all passing |
+| Demo output | 81 lines, identical on every run |
+| Acts | 7 |
+| Video | 20:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

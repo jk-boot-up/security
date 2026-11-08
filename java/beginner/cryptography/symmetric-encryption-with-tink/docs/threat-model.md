@@ -60,6 +60,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
+- `TinkLayoutTest` shows Tink opens the hand-built message and that a real Tink message is rebuilt byte for byte from its parts.
 - `TinkAeadTest` checks nonce freshness, the five-byte start, the 33-byte overhead, and refusal for changed, moved and wrongly keyed messages.
 - `KeysetTest` checks rotation, removal of an old key, the encrypted keyset file and the missing ECB template.
 - `DemoRunsTest` compares the whole demo with the golden output.

@@ -27,7 +27,7 @@ Learners treat a login as the whole of access control. The project shows exactly
 
 ## Requirements
 
-1. The demo prints five numbered acts and the output equals `docs/expected-output.txt`.
+1. The demo prints seven numbered acts and the output equals `docs/expected-output.txt`.
 2. A request without a live session is answered 401, never 403.
 3. A request from a known user who is not allowed is answered 403, never 401.
 4. A session older than its lifetime is not recognised.
@@ -38,10 +38,10 @@ Learners treat a login as the whole of access control. The project shows exactly
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 31, all passing |
-| Demo output | 28 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:20, 1920×1080, narrated in the amy-slow voice |
+| Tests | 38, all passing |
+| Demo output | 85 lines, identical on every run |
+| Acts | 7 |
+| Video | 19:30, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

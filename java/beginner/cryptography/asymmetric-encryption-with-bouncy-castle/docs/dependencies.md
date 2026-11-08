@@ -12,21 +12,21 @@ the part that handles certificates, PEM, CMS and PKCS#8. It builds on bcprov.
 
 ## What OpenSSL is
 
-a widely used cryptography toolkit and command-line program. The demo runs `openssl cms -decrypt` as an independent check. It is optional: without it, act four says it was skipped.
+a widely used cryptography toolkit and command-line program. The demo runs `openssl cms -decrypt` as an independent check. It is optional: without it, act five says it was skipped.
 
 ## Why this project uses them
 
-The plain project shows the maths with the JDK alone. Real systems exchange keys and messages as files and in standard formats, which the JDK does not read or write. This project shows what a library adds for those formats, and uses a different program to prove the result is a standard and not a private convention.
+The plain project shows the maths with the JDK alone. Real systems exchange keys and messages as files and in standard formats, which the JDK only partly reads and does not write. This project shows what a library adds for those formats, and uses a different program to prove the result is a standard and not a private convention.
 
 ## What to install
 
-A JDK, and for act four and the integration tests, OpenSSL 3 on the PATH. Gradle downloads the Java libraries, and the versions are pinned:
+A JDK, and for act five and the integration tests, OpenSSL 3 on the PATH. Gradle downloads the Java libraries, and the versions are pinned:
 
 | Tool | Version |
 | --- | --- |
 | Bouncy Castle (bcprov-jdk18on) | 1.86 |
 | Bouncy Castle PKIX (bcpkix-jdk18on) | 1.86 |
-| OpenSSL (optional, for act four) | 3.x |
+| OpenSSL (optional, for act five) | 3.x |
 | Java | 25 |
 | JUnit | 6.1.3 |
 
@@ -34,4 +34,4 @@ A JDK, and for act four and the integration tests, OpenSSL 3 on the PATH. Gradle
 
 - About 7 MB of library for a handful of format functions.
 - A global provider registration that affects every library in the program.
-- Act four and the integration tests need OpenSSL installed.
+- Act five and the integration tests need OpenSSL installed.

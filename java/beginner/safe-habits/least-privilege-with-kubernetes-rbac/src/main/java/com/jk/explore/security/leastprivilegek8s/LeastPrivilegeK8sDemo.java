@@ -43,62 +43,109 @@ public class LeastPrivilegeK8sDemo {
         out.append(text).append('\n');
     }
 
+    private static String pad(String text, int width) {
+        return String.format("%-" + width + "s", text);
+    }
+
+    /** One rule as a person would read it: "get, list on pods named export-settings". */
+    private static String rule(Manifests.Rule rule) {
+        String names = rule.resourceNames().isEmpty() ? "" : " named " + String.join(", ", rule.resourceNames());
+        return String.join(", ", rule.verbs()) + " on " + String.join(", ", rule.resources()) + names;
+    }
+
+    private static void rules(StringBuilder out, Rbac rbac, String account) {
+        for (Manifests.Role role : rbac.rolesOf(user(account))) {
+            int n = 1;
+            for (Manifests.Rule r : role.rules()) {
+                line(out, "    rule " + n++ + "  " + rule(r));
+            }
+        }
+    }
+
     private static void act1ClusterAdmin(StringBuilder out, Rbac rbac) {
         line(out, "ONE. The nightly export job that was given cluster-admin.");
-        line(out, "  the shop's namespace has " + Rbac.universe() + " things a token could be used for: " + Rbac.VERBS.size() + " verbs on " + Rbac.RESOURCES.size() + " kinds of object");
+        line(out, "  THE NAMESPACE shop (what a token could be used for):");
+        line(out, "    " + Rbac.VERBS.size() + " verbs      " + String.join(" ", Rbac.VERBS));
+        line(out, "    " + Rbac.RESOURCES.size() + " resources  " + String.join(" ", Rbac.RESOURCES.subList(0, 5)));
+        line(out, "                 " + String.join(" ", Rbac.RESOURCES.subList(5, Rbac.RESOURCES.size())));
+        line(out, "    " + Rbac.VERBS.size() + " x " + Rbac.RESOURCES.size() + " = " + Rbac.universe() + " things");
         int admin = rbac.blastRadius(user("nightly-export-admin"), NAMESPACE);
         int exporter = rbac.blastRadius(user("exporter"), NAMESPACE);
-        line(out, "  if the nightly-export-admin token is stolen it reaches " + admin + " of " + Rbac.universe() + "  <- THE WHOLE NAMESPACE, AND THE WHOLE CLUSTER");
-        line(out, "  if the exporter token is stolen it reaches " + exporter + " of " + Rbac.universe() + ": get and list pods (one named config map is also readable, and is not counted)");
-        line(out, "  the exporter can read the config map export-settings: " + rbac.can(user("exporter"), "get", "configmaps", NAMESPACE, "export-settings"));
-        line(out, "  the exporter can read another config map, payment-keys: " + rbac.can(user("exporter"), "get", "configmaps", NAMESPACE, "payment-keys"));
-        line(out, "  the exporter can read secrets: " + rbac.can(user("exporter"), "get", "secrets", NAMESPACE));
+        line(out, "  BEFORE THE FIX (nightly-export-admin, bound to cluster-admin):");
+        line(out, "    a stolen token reaches " + admin + " of " + Rbac.universe() + "  <- THE WHOLE CLUSTER");
+        line(out, "  AFTER THE FIX (exporter, with the role order-exporter):");
+        rules(out, rbac, "exporter");
+        line(out, "    a stolen token reaches " + exporter + " of " + Rbac.universe() + ", plus one named config map");
+        line(out, "  THE CHECKS (can the exporter ...?):");
+        line(out, "    get configmap export-settings  " + rbac.can(user("exporter"), "get", "configmaps", NAMESPACE, "export-settings"));
+        line(out, "    get configmap payment-keys     " + rbac.can(user("exporter"), "get", "configmaps", NAMESPACE, "payment-keys"));
+        line(out, "    get secrets                    " + rbac.can(user("exporter"), "get", "secrets", NAMESPACE));
     }
 
     private static void act2WildcardTrap(StringBuilder out, Rbac rbac) {
         line(out, "TWO. The wildcard trap: \"read everything\".");
         String reporter = user("reporter");
-        line(out, "  the reporter's role says get and list on all resources, which sounds read-only and harmless");
-        line(out, "  the reporter can read secrets: " + rbac.can(reporter, "get", "secrets", NAMESPACE) + "  <- EVERY PASSWORD AND KEY IN THE NAMESPACE");
-        line(out, "  the reporter can change anything: " + rbac.can(reporter, "update", "deployments", NAMESPACE));
-        line(out, "  the reporter reaches " + rbac.blastRadius(reporter, NAMESPACE) + " of " + Rbac.universe() + ", but \"everything\" includes things that did not exist when the role was written");
-        line(out, "  a rule that names its resources keeps meaning what it said, and a rule with resourceNames names the objects as well");
+        line(out, "  THE ROLE AS WRITTEN (report-reader, held by reporter):");
+        rules(out, rbac, "reporter");
+        line(out, "    \"read everything\": it sounds read-only and harmless");
+        line(out, "  WHAT IT REALLY ALLOWS:");
+        line(out, "    get secrets         " + rbac.can(reporter, "get", "secrets", NAMESPACE) + "  <- EVERY PASSWORD AND KEY");
+        line(out, "    update deployments  " + rbac.can(reporter, "update", "deployments", NAMESPACE));
+        int verbs = rbac.rolesOf(reporter).get(0).rules().get(0).verbs().size();
+        line(out, "    reaches " + rbac.blastRadius(reporter, NAMESPACE) + " of " + Rbac.universe() + ": " + verbs + " verbs x "
+                + Rbac.RESOURCES.size() + " resources");
+        line(out, "  * also covers kinds added after the role was written;");
+        line(out, "  name the resources, and use resourceNames for one object");
     }
 
     private static void act3Escalation(StringBuilder out, Rbac rbac) {
         line(out, "THREE. Ways to become more powerful than you were given.");
-        for (String name : List.of("exporter", "ci-deployer")) {
-            List<String> paths = rbac.escalationPaths(user(name), NAMESPACE);
-            line(out, "  " + name + ": " + paths.size() + " escalation paths");
-            for (String path : paths) {
-                line(out, "    can " + path);
-            }
+        line(out, "  THE ROLE (deployer, held by ci-deployer):");
+        rules(out, rbac, "ci-deployer");
+        List<String> none = rbac.escalationPaths(user("exporter"), NAMESPACE);
+        List<String> paths = rbac.escalationPaths(user("ci-deployer"), NAMESPACE);
+        line(out, "  THE ESCALATION PATHS (exporter " + none.size() + ", ci-deployer " + paths.size() + "):");
+        for (String path : paths) {
+            line(out, "    " + path);
         }
-        line(out, "  the deploy pipeline can read secrets directly: " + rbac.can(user("ci-deployer"), "get", "secrets", NAMESPACE)
-                + ", and it can create a pod that mounts them: " + rbac.can(user("ci-deployer"), "create", "pods", NAMESPACE));
-        line(out, "  so \"create pods\" is as powerful as \"read secrets\", and \"bind\" or \"escalate\" is as powerful as owning the namespace");
+        line(out, "  ci-deployer: get secrets " + rbac.can(user("ci-deployer"), "get", "secrets", NAMESPACE)
+                + ", but create pods " + rbac.can(user("ci-deployer"), "create", "pods", NAMESPACE));
+        line(out, "  a pod can mount the secrets  <- CREATE PODS = READ SECRETS");
+        line(out, "  and bind or escalate = owning the namespace");
     }
 
     private static void act4Scope(StringBuilder out, Rbac rbac) {
         line(out, "FOUR. A cluster-wide role through a namespaced binding.");
         String agent = user("support-agent");
-        line(out, "  the role shop-viewer is a ClusterRole, and the support agent holds it through a RoleBinding in the shop namespace");
-        line(out, "  the support agent can list pods in shop: " + rbac.can(agent, "list", "pods", "shop"));
-        line(out, "  the support agent can list pods in warehouse: " + rbac.can(agent, "list", "pods", "warehouse"));
-        line(out, "  the support agent can delete pods in shop: " + rbac.can(agent, "delete", "pods", "shop"));
+        line(out, "  THE ROLE AND THE BINDING:");
+        line(out, "    shop-viewer is a ClusterRole: it has no namespace");
+        rules(out, rbac, "support-agent");
+        line(out, "    support-agent holds it by a RoleBinding in shop");
+        line(out, "  THE CHECKS (can support-agent ...?):");
+        line(out, "    list pods in shop        " + rbac.can(agent, "list", "pods", "shop"));
+        line(out, "    list pods in warehouse   " + rbac.can(agent, "list", "pods", "warehouse"));
+        line(out, "    delete pods in shop      " + rbac.can(agent, "delete", "pods", "shop"));
         String admin = user("nightly-export-admin");
-        line(out, "  the cluster-admin job can list pods in warehouse: " + rbac.can(admin, "list", "pods", "warehouse") + "  <- A CLUSTER BINDING IGNORES NAMESPACES");
-        line(out, "  the binding decides the reach, not the role: a role can be shared, a binding is where the scope is set");
+        line(out, "  BY CONTRAST, A ClusterRoleBinding (nightly-export-admin):");
+        line(out, "    list pods in warehouse   " + rbac.can(admin, "list", "pods", "warehouse")
+                + "  <- IGNORES NAMESPACES");
+        line(out, "  the binding sets the scope, not the role");
     }
 
     private static void act5Linter(StringBuilder out, Manifests manifests) {
         line(out, "FIVE. A linter for the habits that cause incidents.");
+        line(out, "  THE MANIFESTS (infra/rbac/shop.yaml):");
+        line(out, "    " + manifests.roles().size() + " roles, " + manifests.bindings().size() + " bindings, "
+                + manifests.accounts().size() + " service accounts");
         List<Linter.Finding> findings = Linter.check(manifests);
-        line(out, "  findings in the shop manifests: " + findings.size());
+        line(out, "  THE FINDINGS (" + findings.size() + "):");
         for (Linter.Finding finding : findings) {
-            line(out, "    " + finding);
+            line(out, "    " + pad(finding.object(), 25) + finding.problem());
         }
-        line(out, "  a linter finds wildcards and cluster-admin, not a role that is too wide but spelled out in full");
-        line(out, "  ask the cluster too: kubectl auth can-i --list --as=system:serviceaccount:shop:exporter -n shop");
+        line(out, "  a linter finds wildcards and cluster-admin,");
+        line(out, "  not a role that is too wide but spelled out in full");
+        line(out, "  ask the cluster too:");
+        line(out, "    kubectl auth can-i --list -n shop \\");
+        line(out, "      --as=system:serviceaccount:shop:exporter");
     }
 }

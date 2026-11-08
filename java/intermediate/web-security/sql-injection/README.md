@@ -45,10 +45,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A search that works | An honest search for kettle finds the two listed kettles. |
-| 2. A quote turns text into code | A quote and a comment reveal the unlisted Prototype Toaster, a UNION leaks the e-mail addresses of customers, and a second statement is refused only by luck. |
-| 3. Parameters keep text as text | With a fixed statement, a parameter and a sort list, the same attacks find nothing and the honest search still works. |
-| 4. Few rights limit the damage | If the statement is still built by pasting, a search user that may read only products gets permission denied for the users table. |
+| 1. A search that works | The products table holds four products, one of them not for sale; the customer types kettle and price; the statement as built finds the Blue Kettle and the Red Kettle. |
+| 2. A quote turns text into code | zzz' OR listed = 0 -- reveals the unlisted Prototype Toaster; a UNION with the users table lists customers' e-mail addresses; a second statement after ; is refused only because this engine runs one statement per call. |
+| 3. Parameters keep text as text | The fixed statement has a ? for the words and a sort column from a list of two: kettle still finds two kettles, both attacks find nothing, and the bad sort value falls back to ORDER BY name. |
+| 4. Few rights limit the damage | If a statement is still built by pasting, a search user that may read only products gets permission denied for the users table; the quote attack still shows the toaster, because only parameters fix the flaw. |
 
 ## Test
 

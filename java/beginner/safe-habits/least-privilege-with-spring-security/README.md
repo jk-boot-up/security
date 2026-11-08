@@ -42,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Deny by default: every path needs a rule | No credentials gets 401, alice gets 200 for orders and 403 for reports, and an admin asking for a path nobody wrote a rule for also gets 403. |
-| 2. Method security: the rule sits next to the code | Bob cannot create a refund, alice can; bob cannot read alice's refund, but the method ran before the answer was withheld, which is what PostAuthorize does. |
-| 3. Separation of duties: two people for a refund | Alice cannot approve her own refund, dave the admin cannot approve his own, carol approves alice's, and dave may approve alice's other request. |
-| 4. A role hierarchy, and what a stolen credential can reach | An admin includes support, finance does not; a stolen admin token reaches 15 of 15 actions, a stolen exporter token reaches 2 of 15. |
-| 5. Access that expires by itself | Carol is granted payments:write for ticks 10 to 12 and gets 403 at tick 9, 200 at ticks 10 and 12, and 403 at tick 13; alice never had it. |
+| 1. Deny by default: every path needs a rule | With no credentials or a wrong password the answer is 401; Alice may read orders (200) but not reports (403); Dave, an admin, gets 403 on a path nobody wrote a rule for, because the chain ends with denyAll. |
+| 2. Method security: the rule sits next to the code | Bob gets 403 creating a refund, so create() never runs; Alice creates R-1; Alice and Carol may read it, Bob may not, but view() ran for Bob before his 403, because @PostAuthorize judges the result. |
+| 3. Separation of duties: two people for a refund | Approving needs refunds:approve and a different person: Alice gets 403 on her own R-1, Dave the admin gets 403 on his own R-2, Carol approves R-1 and Dave approves R-3, which Alice created. |
+| 4. A role hierarchy, and what a stolen credential can reach | ADMIN includes SUPPORT, so Dave reaches the staff queue and Carol and the exporter do not; a stolen token for the export running as Dave reaches 15 of 15, the exporter service account 2 of 15. |
+| 5. Access that expires by itself | Carol is granted payments:write from tick 10 to tick 12; PUT /payments/P-1 answers 403 at tick 9, 200 at ticks 10 and 12, 403 at tick 13, and 403 for Alice, who never had a grant. |
 
 ## Test
 

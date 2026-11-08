@@ -38,11 +38,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. TLS from an SSL bundle | TLS 1.3 only, from properties and a bundle; a client built from a bundle trusting the demo root gets 200 over TLS 1.3, and a wrong name, TLS 1.2 only, or the JDK's default trust is refused. |
-| 2. Redirect, HSTS and secure cookies | The plain HTTP port answers 302 to an https address with an empty body and no HSTS; the HTTPS answer carries HSTS, and the session cookie is Secure, HttpOnly and SameSite=Strict and is never sent over plain HTTP. |
-| 3. Renewing a certificate without a restart | With reload-on-update the bundle watches its keystore file; replacing the file changes the served certificate, matched by fingerprint, and clients that trust the root need no change. |
-| 4. Mutual TLS: the server checks the client too | With client-auth need, Ana's client with a certificate signed by the demo root is identified; a client with no certificate, or one signed by nobody, is refused. |
-| 5. What Spring leaves to you | The actuator is not on the class path and gives 404, an error page does not leak its message, no Server header names the software; but configuration is silent when wrong and the private key is a file. |
+| 1. TLS from an SSL bundle | Three properties (server.ssl.bundle=shop, the keystore location, enabled-protocols=TLSv1.3) give a server whose certificate CN=shop.example.test is issued by CN=Demo Root CA; the trusted client gets 200 over TLSv1.3, while another name, a TLS 1.2-only client and the JDK's default trust are refused. |
+| 2. Redirect, HSTS and secure cookies | GET http://shop.example.test/products gets 302 to https with an empty body and no HSTS; the HTTPS answer carries max-age=31536000 (31536000 / 86400 = 365 days) and a JSESSIONID cookie with Path=/; Secure; HttpOnly; SameSite=Strict, sent over https and not over http. |
+| 3. Renewing a certificate without a restart | With reload-on-update=true, the file on disk and the certificate served are both A; shop.p12 is replaced by the renewed file and, without a restart, both become B (CN=shop.example.test, issued by CN=Demo Root CA), and a client that trusts the root still connects: ok (200). |
+| 4. Mutual TLS: the server checks the client too | With server.ssl.client-auth=need and a trust store in the shop bundle, Ana's certificate CN=Ana the customer, issued by CN=Demo Root CA, gets 200 and the server sees CN=Ana the customer; a client with no certificate and Mallory's self-issued one are refused. |
+| 5. What Spring leaves to you | /actuator/health answers 404 because the actuator is not on the class path, the failing /boom page answers 500 without the password in its body, and /products has no Server header; a wrong property fails silently, and the private key is a file to protect, rotate and renew. |
 
 ## Test
 

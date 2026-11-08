@@ -18,6 +18,8 @@ Learners can do RSA with the JDK but cannot read, write or exchange the files th
 
 | Role | Class |
 | --- | --- |
+| Base64 by hand | `Base64Steps` |
+| Opening the envelope by hand | `EnvelopeSteps` |
 | PEM files | `Pem` |
 | The certificate | `Certificates` |
 | The CMS envelope | `CmsEnvelope` |
@@ -38,10 +40,10 @@ Learners can do RSA with the JDK but cannot read, write or exchange the files th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 20, all passing |
-| Demo output | 26 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:24, 1920×1080, narrated in the amy-slow voice |
+| Tests | 27, all passing |
+| Demo output | 74 lines, identical on every run |
+| Acts | 6 |
+| Video | 12:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

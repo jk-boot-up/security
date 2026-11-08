@@ -3,6 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/attacksnginx/
 ├── Attacker.java          Sends login attempts to the nginx login, one after another as fast as it can, and counts the answers
+├── LeakyBucket.java       nginx's limit_req rule, redone by hand so its steps can be seen
 ├── Nginx.java             One nginx container with a given configuration, started for a demo and stopped afterwards
 ├── NginxAttacksDemo.java  Runs the online bank story in five numbered acts against real nginx containers and prints repeatable results
 ├── NginxConfig.java       Writes the nginx configuration for one version of the login
@@ -56,7 +57,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
+18 tests in `LeakyBucketTest`, `NginxConfigTest`, `NginxContainerTest`, `ReferenceConfigTest`. The unit tests (`./gradlew test`) check the generated nginx configurations, and that `LeakyBucket`, nginx's rule redone by hand, gives the counts the real nginx gave in the golden output; they need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration.
 
 ## What the simulation got right, and what it left out
 

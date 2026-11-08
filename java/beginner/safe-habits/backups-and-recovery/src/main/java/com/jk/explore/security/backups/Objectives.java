@@ -10,7 +10,8 @@ final class Objectives {
     private Objectives() {
     }
 
-    static Outcome outcome(long lastBackup, long failure, long detected, long restoreMinutes, long ordersPerHour) {
+    static Outcome outcome(long lastBackup, long failure, long detected,
+                           long restoreMinutes, long ordersPerHour) {
         long rpo = failure - lastBackup;
         long rto = detected + restoreMinutes - failure;
         return new Outcome(rpo, rto, rpo * ordersPerHour / 60);

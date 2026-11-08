@@ -37,11 +37,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The same page, with and without header writers | With headers switched off the store scores 0 of 5; the hardened store scores 4 of 5, because Strict-Transport-Security is left out on plain HTTP on purpose. |
-| 2. The same page behind a proxy that ends HTTPS | With X-Forwarded-Proto: https the hardened store scores 5 of 5 and sends Strict-Transport-Security; trusting that header is safe only if nobody but the proxy can reach the store. |
-| 3. The cookie that carries the cart's session | The default session cookie has 2 problems, no Secure and no SameSite; three properties give the hardened store a cookie with none. |
-| 4. A line break inside a header | The search text with a line break and a second header is refused by the container with status 500, no X-Echo and no second header; a header name with a space gets 400. |
-| 5. Limits on the size of a request | A 4000-character header is accepted by the default store with 200 and refused by the hardened store, whose limit is 1KB, with 400. |
+| 1. The same page, with and without header writers | The same GET /products to both stores over plain HTTP: the bare store sends none of the five headers (0 + 0 + 0 + 0 + 0 = 0 of 5), the hardened store sends four (0 + 1 + 1 + 1 + 1 = 4 of 5), because Strict-Transport-Security is left out on plain HTTP on purpose. |
+| 2. The same page behind a proxy that ends HTTPS | The proxy adds X-Forwarded-Proto: https; the hardened store now sends Strict-Transport-Security max-age=31536000 (31536000 / 86400 = 365 days) and scores 1 + 1 + 1 + 1 + 1 = 5 of 5. Trusting that header is safe only if nobody but the proxy can reach the store. |
+| 3. The cookie that carries the cart's session | The default session cookie JSESSIONID comes with Path=/; HttpOnly and has 2 problems, no Secure and no SameSite; three cookie properties give the hardened store Path=/; Secure; HttpOnly; SameSite=Strict and 0 problems. |
+| 4. A line break inside a header | The search text shoes is echoed in X-Echo with status 200; shoes\r\nSet-Cookie: evil=1 is refused by the container with status 500, no X-Echo and no second Set-Cookie; a header name with a space gets status 400. |
+| 5. Limits on the size of a request | One header of 11 + 4000 + 2 = 4013 bytes, in a request of 4078 bytes: the default store, with a limit of 8192 bytes, answers 200; the hardened store, limit 1KB = 1024 bytes, answers 400. |
 
 ## Test
 
@@ -49,7 +49,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-18 tests in `CookieAndAuditTest`, `DemoRunsTest`, `MockMvcHeadersTest`, `RealServerTest`. Real servers are started on free ports and closed after every test, and the demo prints only facts that do not depend on ports, dates or session ids, so the golden output is the same on every run.
+22 tests in `CookieAndAuditTest`, `CspCheckTest`, `DemoRunsTest`, `MockMvcHeadersTest`, `RealServerTest`. Real servers are started on free ports and closed after every test, and the demo prints only facts that do not depend on ports, dates or session ids, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

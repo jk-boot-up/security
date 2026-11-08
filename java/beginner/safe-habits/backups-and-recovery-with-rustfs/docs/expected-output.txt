@@ -1,40 +1,77 @@
 ONE. Versioning: an overwrite does not destroy the old data.
-  the shop stores orders.csv, then ransomware overwrites it with scrambled bytes
-  versions kept for orders.csv: 2
-  what a normal read returns now is the scrambled file: true
-  the original is still there as an older version: true
-  restore = write the older version back as the newest: true
-  the scrambled version is still in the history as evidence: true
-  a plain delete only adds a delete marker (1): reading the key now fails, the data is not gone: true
-  but an attacker with delete rights on versions can still remove every version, which is what the next act stops
-TWO. Object Lock: nobody can delete a locked version, not even the root account.
-  a backup is stored with COMPLIANCE retention for a day
-  delete that version: refused (403 AccessDenied)
-  delete it asking to bypass governance: refused (403 AccessDenied)
-  shorten the retention: refused (403 AccessDenied)
-  a plain delete is allowed but only adds a marker: allowed
-  the locked version is still readable: true
-  GOVERNANCE is softer. Delete that version: refused (403 AccessDenied)
-  with the special bypass permission it can be lifted: allowed
-  COMPLIANCE cannot be lifted by anyone until the date, so choose it with care
-THREE. The backup job gets its own identity that can only add objects.
-  the backup job writes a backup: allowed
-  it tries to read one back: refused (403 AccessDenied)
-  it tries to list versions: refused (403 AccessDenied)
-  it tries to delete: refused (403 AccessDenied)
-  it tries to delete a version: refused (403 AccessDenied)
-  it tries to write to the orders bucket: refused (403 AccessDenied)
-  so a thief who steals the backup job's key can add data but cannot read, change history or destroy backups
-  it can still add junk, so the quota and the alerts on unusual uploads matter
-FOUR. A checksum catches a backup damaged on the way.
-  upload with the SHA-256 of the data: allowed
-  upload bytes whose SHA-256 does not match the one sent: refused (400 BadDigest)
-  what was stored for the good upload hashes to the same value: true
-  the damaged upload left nothing behind: true
-  the store checks bytes in transit and at upload; a restore test is still needed to know the backup is usable
+  THE BUCKET
+    shop-orders, versioning on
+  THE WRITES TO orders.csv
+    1  the shop's orders, 40 bytes
+    2  ransomware's scrambled bytes, 25 bytes
+  THE HISTORY
+    versions kept              2
+    a normal read is 2         true
+    version 1 is original      true
+  THE RESTORE: COPY VERSION 1 BACK AS VERSION 3
+    a normal read is original  true
+    versions kept              3
+    2 kept as evidence         true
+  A PLAIN DELETE
+    delete markers added       1
+    a normal read              refused (404 NoSuchKey)
+    version 1 still there      true
+    <- WHOEVER CAN DELETE VERSIONS CAN STILL ERASE ALL
+TWO. Object Lock: nobody can delete a locked version.
+  THE BUCKET
+    shop-backups, object lock on
+  THE LOCKS
+    backup-full.tar  COMPLIANCE  until now + 1 day
+    backup-soft.tar  GOVERNANCE  until now + 1 day
+  THE ROOT ACCOUNT TRIES THE COMPLIANCE VERSION
+    delete the version         refused (403 AccessDenied)
+    delete, bypass governance  refused (403 AccessDenied)
+    shorten the retention      refused (403 AccessDenied)
+    plain delete, a marker     allowed
+    the version still reads    true
+  THE ROOT ACCOUNT TRIES THE GOVERNANCE VERSION
+    delete the version         refused (403 AccessDenied)
+    delete, bypass governance  allowed
+    <- COMPLIANCE: NOBODY UNTIL THE DATE. CHOOSE WITH CARE
+THREE. The backup job gets an identity that can only add objects.
+  THE POLICY OF backup-writer
+    Effect    Allow
+    Action    s3:PutObject
+    Resource  arn:aws:s3:::shop-backups/*
+  THE REQUESTS AND THE ANSWERS
+    put nightly.tar            allowed
+    get nightly.tar            refused (403 AccessDenied)
+    list its versions          refused (403 AccessDenied)
+    delete it                  refused (403 AccessDenied)
+    delete a version           refused (403 AccessDenied)
+    put into shop-orders       refused (403 AccessDenied)
+    <- A STOLEN KEY CAN ADD, NOT READ OR DESTROY
+    it can add junk: set a quota, alert on odd uploads
+FOUR. A checksum catches a damaged backup.
+  THE CHECKSUMS (SHA-256 IN BASE64)
+    the backup   Du5R0k8IE/PhcdlE4tmKtfFjDbpcvgZLRF3U08cDIys=
+    other bytes  U4p0HGInM6/hR4Gek52CzAce376z60ntcBpVl1rCiLM=
+  THE UPLOADS
+    checked.tar  the backup, with its own checksum
+    damaged.tar  the backup, with other bytes' checksum
+  THE ANSWERS
+    checked.tar                allowed
+    damaged.tar                refused (400 BadDigest)
+  WHAT IS STORED
+    checked.tar, same hash     true
+    damaged.tar, versions      0
+    <- INTACT IS NOT USABLE: STILL RUN A RESTORE TEST
 FIVE. Keeping history without keeping it for ever, and the cost.
-  a lifecycle rule on the orders bucket: 1 rule, expire-old-versions, removes old versions 30 days after they are replaced
-  every version is stored in full, so storage grows with every overwrite until the rule removes them
-  a COMPLIANCE lock cannot be undone, so a mistaken retention date is paid for in storage
-  the root account is the real key: whoever holds it can change policies and users, so keep it out of daily use
-  object lock stops the API from deleting backups; it does not stop someone from deleting the disks, so keep a copy somewhere else too
+  THE LIFECYCLE RULE ON shop-orders
+    rules 1, id expire-old-versions, Enabled
+    an old version is removed 30 days after it is replaced
+  THE COST, WORKED OUT
+    orders.csv of 2 MB, overwritten every hour
+    old versions kept: 24 x 30 days = 720
+    storage: 720 x 2 MB = 1440 MB for one 2 MB file
+  THE LIMITS
+    a COMPLIANCE date set wrong is paid for in storage
+    the root account can change every policy:
+      keep it out of daily use
+    a lock stops the API, not someone deleting the disks:
+      keep a copy somewhere else too

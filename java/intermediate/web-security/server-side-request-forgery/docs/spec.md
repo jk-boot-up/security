@@ -40,7 +40,7 @@ Developers fetch addresses on behalf of customers and trust the text of the addr
 | Tests | 12, all passing |
 | Demo output | 31 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:08, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:21, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

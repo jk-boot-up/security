@@ -1,25 +1,76 @@
-ONE. Recording traffic to a capture file.
-  a customer's purchase is 5 packets, 234 bytes
-  in a pcap file it is 24 bytes of file header, then 16 bytes of header and the packet bytes for each packet: 338 bytes
-  tcpdump, Wireshark and the Python script all read the same file
+ONE. Recording a purchase to a capture file.
+  BEFORE RECORDING (the packets of one purchase):
+    packet 1  [S]   40 bytes = IP 20 + TCP 20 + data 0
+    packet 2  [S.]  40 bytes = IP 20 + TCP 20 + data 0
+    packet 3  [.]   40 bytes = IP 20 + TCP 20 + data 0
+    packet 4  [P.]  74 bytes = IP 20 + TCP 20 + data 34
+    packet 5  [.]   40 bytes = IP 20 + TCP 20 + data 0
+    5 packets, 234 bytes
+  AFTER RECORDING (the pcap file):
+    file header     24 bytes
+    record headers  5 x 16 = 80 bytes
+    packet bytes    234 bytes
+    capture.pcap    24 + 80 + 234 = 338 bytes
+  tcpdump, Wireshark and the Python script all read this file
 TWO. Reading it back, in the style of tcpdump.
-  IP 198.51.100.7.51000 > 203.0.113.10.443: Flags [S], seq 1000, win 65535, length 0
-  IP 203.0.113.10.443 > 198.51.100.7.51000: Flags [S.], seq 7000, ack 1001, win 65535, length 0
-  IP 198.51.100.7.51000 > 203.0.113.10.443: Flags [.], ack 7001, win 65535, length 0
-  IP 198.51.100.7.51000 > 203.0.113.10.443: Flags [P.], seq 1001:1035, ack 7001, win 65535, length 34
-  IP 203.0.113.10.443 > 198.51.100.7.51000: Flags [.], ack 1035, win 65535, length 0
-  S is SYN, a dot is ACK, P is PSH: the handshake is the first three lines, and the order is the fourth
+  WHAT TCPDUMP PRINTS (one packet, two lines):
+    IP 198.51.100.7.51000 > 203.0.113.10.443:
+       Flags [S], seq 1000, win 65535, length 0
+    IP 203.0.113.10.443 > 198.51.100.7.51000:
+       Flags [S.], seq 7000, ack 1001, win 65535, length 0
+    IP 198.51.100.7.51000 > 203.0.113.10.443:
+       Flags [.], ack 7001, win 65535, length 0
+    IP 198.51.100.7.51000 > 203.0.113.10.443:
+       Flags [P.], seq 1001:1035, ack 7001, win 65535, length 34
+    IP 203.0.113.10.443 > 198.51.100.7.51000:
+       Flags [.], ack 1035, win 65535, length 0
+  S is SYN, a dot is ACK, P is PSH
+  HOW THE NUMBERS FOLLOW:
+    packet 2  ack 1001 = seq 1000 + 1
+    packet 3  ack 7001 = seq 7000 + 1
+    packet 5  ack 1035 = seq 1001 + 34 bytes of data
+  a SYN counts as one byte
 THREE. Finding a SYN flood in a capture.
-  the capture has 14 packets: the purchase, then 8 SYNs from addresses that never answer, then one more
-  sources that sent a SYN and never finished the handshake: 9
-  the real customer is among them: false
-  the first of them is 100.64.0.1 and they are all from the same network, which is what a flood often looks like
-FOUR. Finding a damaged packet.
-  packets whose checksum does not match: 1
-  tcpdump without -v shows it like any other; with -v it marks the checksum incorrect
-  a capture shows what arrived, damaged or forged, which is why it is the first thing to look at
-FIVE. What a capture reveals.
-  the capture contains the card number: true  <- A CAPTURE FILE IS AS SENSITIVE AS THE TRAFFIC
-  so protect capture files like passwords, and capture only what the investigation needs
-  live capture needs root, so analyse recorded files without it, on a copy
-  encryption with TLS is what makes a capture useless to a thief
+  THE CAPTURE (14 packets):
+    the purchase         5 packets
+    a burst of SYNs      8 packets
+    one more SYN         1 packet
+  THE FINDING (who started a handshake, who finished it):
+    finished        198.51.100.7
+    never finished  9 sources
+      100.64.0.1   100.64.0.2   100.64.0.3
+      100.64.0.4   100.64.0.5   100.64.0.6
+      100.64.0.7   100.64.0.8   100.64.0.99
+    the real customer is among them: false
+  a flood is told by handshakes that never finish
+FOUR. How a checksum is made, step by step.
+  the packet: the SYN from 100.64.0.99, as it was sent
+  STEP 1. SPLIT INTO 16-BIT WORDS (checksum field 0000):
+    pseudo-header  6440 0063 cb00 710a 0006 0014
+    TCP header     9ca3 01bb 0000 0007 0000 0000
+                   5002 ffff 0000 0000
+  STEP 2. ADD THEM UP:
+    sum            38f2d
+  STEP 3. FOLD THE CARRY BACK IN:
+    8f2d + 3 = 8f30
+  STEP 4. FLIP EVERY BIT:
+    checksum       70cf
+  the checksum the packet carries: 70cf, the same: true
+FIVE. Finding a damaged packet.
+  BEFORE THE DAMAGE (the SYN as it was sent):
+    checksum in the packet  70cf
+    worked out again        70cf  match: true
+  AFTER THE DAMAGE (the same SYN as it arrived):
+    checksum in the packet  25cf
+    worked out again        70cf  match: false
+  packets in the capture whose checksum does not match: 1
+  tcpdump -v marks it incorrect; plain tcpdump does not
+SIX. What a capture reveals.
+  WHAT THE CUSTOMER SENT (the order, without TLS):
+    card=4111111111111111&order=A-1001
+  WHAT THE CAPTURE HOLDS (packet 4, bytes 40 to 73):
+    card=4111111111111111&order=A-1001
+    the capture contains the card number: true
+  A CAPTURE FILE IS AS SENSITIVE AS THE TRAFFIC
+  protect it like a password; capture only what you need
+  with TLS, a thief would see only scrambled bytes here

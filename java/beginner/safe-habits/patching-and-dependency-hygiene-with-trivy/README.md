@@ -40,11 +40,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Pinning exactly what the build uses | Gradle's lock file records the exact version of every library, five entries, one of which arrived as a dependency of another. |
-| 2. A bill of materials a scanner can read | The code writes a CycloneDX 1.6 file of five libraries with package URLs, checks them against the lock file, and refuses a package URL that disagrees with its version. |
-| 3. What the scanner reported | The real Trivy found 16 problems in 4 libraries, 3 critical, and the code's own range checks agree on Log4Shell and the Commons Text problem. |
-| 4. What to fix first, and to which version | Critical problems come first, and one upgrade per library fixes everything that has a fix: log4j-core to 2.25.4 and snakeyaml to 2.0, which crosses a major version. |
-| 5. Checking what is downloaded, and automating the updates | Gradle's verification file pins six checksums and the build refuses a changed one; Dependabot and Renovate configurations open the update pull requests. |
+| 1. Pinning exactly what the build uses | Gradle's lock file records 5 exact versions; the store asked for 4, and commons-lang3 came on its own with commons-text; without the lock, a range such as 1.+ can change any day. |
+| 2. A bill of materials a scanner can read | Each lock file line becomes a CycloneDX 1.6 component with a package URL, pkg:maven/org.yaml/snakeyaml@1.26; the SBOM matches the lock file and the committed file, and a mismatched purl is refused. |
+| 3. What the scanner reported | Trivy 0.76.0 scanned the SBOM and reported 16 problems in 4 libraries: 3 critical, 3 high, 10 medium; the store's own code agrees on two well-known CVEs. |
+| 4. What to fix first, and to which version | The five most serious come first; log4j-core's fixes run from 2.15.0 to 2.25.4, and the highest fixes all 7; one move per library, and snakeyaml 1.26 to 2.0 is a new major version. |
+| 5. Checking what is downloaded, and automating the updates | Gradle's verification-metadata.xml pins the SHA-256 of 6 files; in a copy with one checksum changed, 1 file differs and Gradle refuses to build; Dependabot and Renovate open one pull request per update. |
 
 ## Test
 

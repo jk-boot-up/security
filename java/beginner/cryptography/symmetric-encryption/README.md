@@ -10,7 +10,8 @@ src/main/java/com/jk/explore/security/symmetric/
 ├── RandomNonces.java    Real nonces: 12 random bytes from the system's secure random generator
 ├── RepeatedNonce.java   A "nonce source" that gives the same nonce every time: the mistake this project warns about
 ├── Sealed.java          An encrypted message: the nonce that was used, and the cipher text with its 16-byte authentication tag at the end
-└── SymmetricDemo.java   Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── SymmetricDemo.java   Runs the online bank story in eight numbered acts and prints exact, repeatable results, byte by byte
+└── TagSteps.java        Works out a GCM tag by hand, one step at a time, so the steps can be printed
 ```
 
 **AES-GCM hides data and notices any change to it, but only when every message gets a nonce that is never reused, and the key is kept somewhere safe.**
@@ -21,7 +22,7 @@ cipher. In **ECB** mode, each block is scrambled on its own, so identical blocks
 mode fixes this, and does more: it is an **authenticated** encryption, adding a tag so that any change to the message is noticed when it is opened. It needs a
 **nonce**, a number used once, for every message, and the one rule that matters most is that a nonce must never be reused with the same key.
 
-This project encrypts an online bank's account statements five ways: not at all, in ECB, in GCM, in GCM with a reused nonce, and then GCM with its costs. The numbers
+This project encrypts an online bank's account statements in eight steps: plain text, ECB, one line sealed with GCM, how its tag is made, the same line sealed again, opening it, a reused nonce, and the costs. Every value is printed, byte by byte. The numbers
 are exact, and the code checks AES and GCM against published test values.
 
 ## The idea in everyday terms
@@ -34,7 +35,7 @@ compare the two boxes and work out one from the other.
 ## The scenario
 
 An online bank stores customers' account statements. A statement has eight lines of 16 bytes: a salary, five payments of the same rent, and a food bill.
-The disk the statements sit on may be stolen, and the files may be changed by someone who can reach them. The bank tries plain text, AES in ECB mode, AES-GCM, GCM
+The disk the statements sit on may be stolen, and the files may be changed by someone who can reach them. The bank tries plain text, AES in ECB mode, AES-GCM one line at a time, GCM
 with a nonce that repeats, and finally looks at what GCM costs.
 
 ## Run
@@ -43,15 +44,18 @@ with a nonce that repeats, and finally looks at what GCM costs.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 8 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
 | 1. A statement stored as it is | A stolen disk shows the whole statement, 8 lines, all readable. |
-| 2. AES in ECB mode: every block on its own | In ECB the 8 blocks give only 3 different cipher blocks, so an attacker sees that 5 of the 8 lines are the same payment. |
-| 3. AES-GCM: hiding and checking | With a new nonce each time, the same line seals to different cipher texts; a flipped bit, a message moved to another account, and a wrong key are all refused. |
-| 4. The one mistake: using a nonce twice | Two messages sealed with the same key and nonce XOR to the XOR of their plain texts, so an attacker who knows one recovers the other, with no key. |
-| 5. The bill: sizes, nonces, and the key | Sealing adds 28 bytes and the length still shows, random nonces run out near 4,294,967,296 messages, and a lost key means lost data. |
+| 2. AES in ECB mode: every block on its own | In ECB the 8 lines give only 3 different cipher blocks, so an attacker sees that 5 of the 8 lines are the same payment. |
+| 3. AES-GCM, step by step: sealing one line | GCM takes a key, a nonce, the account and the line, and gives a cipher text and a 16-byte tag; the bank stores 44 bytes. |
+| 4. How the tag is made, step by step | The tag is worked out in four steps from the key, the nonce, the account and the cipher text, and comes out exactly as GCM's own tag. |
+| 5. The same line, sealed again | The same line sealed with nonce 1 and nonce 2 gives two cipher texts with nothing in common. |
+| 6. Opening it, and three changes | Opened with the right key and account, the line comes back; a flipped bit, another account and another key are all refused. |
+| 7. The one mistake: using a nonce twice | Two messages sealed with the same key and nonce XOR to the XOR of their plain texts, so an attacker who knows one recovers the other, with no key. |
+| 8. The bill: sizes, nonces, and the key | Sealing adds 28 bytes and the length still shows, random nonces limit one key to 4,294,967,296 messages, and a lost key means lost data. |
 
 ## Test
 
@@ -59,7 +63,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `DemoRunsTest`, `EcbTest`, `GcmBoxTest`, `NonceReuseTest`, `StandardVectorsTest`. AES and GCM are checked against published values (FIPS 197, and test cases one and two of the original GCM specification). Every line the demo prints is checked against `docs/expected-output.txt`, and the key and nonces are fixed, so every run gives the same result.
+24 tests in `DemoRunsTest`, `EcbTest`, `GcmBoxTest`, `NonceReuseTest`, `StandardVectorsTest`, `TagStepsTest`. AES and GCM are checked against published values (FIPS 197, and test cases one and two of the original GCM specification). Every line the demo prints is checked against `docs/expected-output.txt`, and the key and nonces are fixed, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 
@@ -124,7 +128,7 @@ The tag is checked first; only a message that passes is decrypted and returned.
 ## What it costs
 
 - **A nonce must never repeat under one key.** Reusing one lets an attacker who knows one message recover another, and in GCM it can also reveal the key used for authentication.
-- **Random nonces run out.** With 12-byte random nonces, a repeat becomes likely near 2 to the power 32, about 4.3 billion messages, so the key must be replaced before that.
+- **Random nonces run out.** With 12-byte random nonces, NIST limits one key to 2 to the power 32, about 4.3 billion messages, to keep the chance of a repeated nonce negligible, so the key must be replaced before that.
 - **Encryption does not hide the length.** A 5-byte message and a 500-byte one are told apart by their sizes, which is 28 bytes more than the message in each case.
 - **The key must live somewhere.** A key kept next to the data protects nothing, and a key that is lost takes every message with it.
 - **A shared key has no identity.** Anyone who can open a message can also make one. A signature, in a later project, tells makers apart.

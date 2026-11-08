@@ -36,10 +36,10 @@ Learners know HTTPS is safe but not why, and cannot say what it protects against
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 28 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 69 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:21, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:11, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

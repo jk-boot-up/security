@@ -1,28 +1,69 @@
 ONE. A sniffer on the wire, without and with TLS.
-  without TLS the order is sent as it is, and the sniffer sees the card number: true
-  with TLS the sniffer sees a record of type 23 (application data) and the card number: false
-  the record is not larger than the order plus a few dozen bytes of header, padding and tag: true
+  BEFORE TLS (the order, as the sniffer sees it):
+    card=4111111111111111&order=A-1001
+    34 bytes, the card number readable: true  <- READABLE
+  AFTER TLS (one record of 72 bytes, as the sniffer sees it):
+    header    17 03 03 00 43  (in the clear)
+    the rest  67 bytes, encrypted
+    the card number readable: false
+  HOW THE 72 BYTES ARE MADE:
+    17        type 23, application data
+    03 03     version, written as TLS 1.2 for old boxes
+    00 43     length: 67 bytes follow the header
+    67 bytes  34 order + 1 type + 16 padding + 16 tag
 TWO. The handshake.
-  the client speaks first, with a handshake record (type 22) called ClientHello
-  the ClientHello is not encrypted, because no key exists yet, so the sniffer reads the name of the site: true
-  the server answers with a handshake record (type 22) called ServerHello, which chooses the protocol and cipher
-  after the ServerHello the rest of the handshake is encrypted: the certificate is hidden from the sniffer: true
-  agreed protocol: TLSv1.3
-  agreed cipher suite: TLS_AES_256_GCM_SHA384
-  both sides now share keys that were never sent over the wire
+  BEFORE THE KEYS (the two hellos, in the clear):
+    client sends  ClientHello, record type 22
+    the site name shop.example.test readable: true
+    server sends  ServerHello, record type 22
+    chosen        TLSv1.3, TLS_AES_256_GCM_SHA384
+  AFTER THE KEYS (the rest of the handshake, encrypted):
+    record types from the client  22 20 23
+    record types from the server  22 20 23 23
+    the certificate readable: false  <- ENCRYPTED
+    the keys themselves were never sent
+  WHAT THE RECORD TYPES MEAN:
+    22  handshake, in the clear
+    20  change cipher spec, kept only for old boxes
+    23  encrypted: the rest of the handshake, then data
+  THE CIPHER SUITE, PART BY PART:
+    TLS        the protocol
+    AES 256    the cipher, with a 256-bit key
+    GCM        the mode: encrypts and adds a tag
+    SHA384     the hash that makes the keys
 THREE. Who is on the other end.
-  the shop's own certificate, name shop.example.test: handshake works: true
-  an impostor with the same name but a certificate the client does not trust: handshake works: false  <- THE CLIENT REFUSES
-  the shop's real certificate, but the client asked for another.example.test: handshake works: false  <- THE NAME MUST MATCH
-  a certificate proves a key belongs to a name, because someone the client trusts vouched for it
+  BEFORE THE HANDSHAKE (what the client knows):
+    asks for  shop.example.test
+    trusts    one certificate, SHA-256 0ded3842d38b01a7
+  AFTER THE HANDSHAKE (three servers answer):
+    1. the shop, certificate 0ded3842d38b01a7
+       works: true
+    2. an impostor, same name, certificate b72122451fcf2531
+       works: false  <- NOT TRUSTED
+    3. the shop, but the client asked for other.example.test
+       works: false  <- THE NAME MUST MATCH
+  a name alone proves nothing: the client must trust the certificate
 FOUR. Protecting the data.
-  the server opens an untouched record and gets the order back: true
-  the same order in two connections gives different bytes on the wire, because each has fresh keys: true
-  one changed bit in a record: refused  <- TLS PROTECTS INTEGRITY AS WELL AS SECRECY
-  the keys of each connection are made fresh from temporary key pairs, so a stolen server key cannot open recorded traffic
+  BEFORE SENDING (the order):
+    card=4111111111111111&order=A-1001
+  AFTER SENDING (the record, in two connections):
+    the same bytes on the wire both times: false  <- FRESH KEYS
+    the server opens it, and gets the order back: true
+  BEFORE THE CHECK (an attacker flips one bit):
+    byte 36 of 72, xor 01
+  AFTER THE CHECK (the server checks the tag):
+    refused, (bad_record_mac) Tag mismatch  <- CHANGE SEEN
+  fresh keys come from temporary key pairs, made per connection,
+  so a stolen server key cannot open recorded traffic
 FIVE. Settings, and the bill.
-  a client that only offers TLS 1.0: handshake works: false  <- OLD VERSIONS ARE SWITCHED OFF
-  a client that offers only TLS 1.2: handshake works: true, agreed protocol: TLSv1.2
-  the same client against a server that requires TLS 1.3: handshake works: false
-  the bill: certificates must be obtained and renewed, the handshake costs a round trip and some computing, and the keys must be kept safe
-  TLS protects the connection between two ends, not what the ends do with the data, and the name of the site and the sizes of messages still show
+  BEFORE TIGHTENING (a default server):
+    client offers TLSv1    works: false  <- OLD VERSIONS ARE OFF
+    client offers TLSv1.2  works: true, agreed TLSv1.2
+  AFTER TIGHTENING (the server requires TLS 1.3):
+    client offers TLSv1.2  works: false
+    client offers TLSv1.3  works: true, agreed TLSv1.3
+  THE BILL:
+    certificates must be obtained, renewed and kept safe
+    the handshake costs a round trip and some computing
+    TLS protects the connection, not the ends
+    the site name and the message sizes still show

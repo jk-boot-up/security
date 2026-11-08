@@ -26,7 +26,7 @@ What it shows:
 - **Audit.** **39** requests, **39** records, **0 of 22** tokens in the log.
 - **Lifetime.** A token stays valid after its session ends (**200**) until it expires; a session check refuses it (**401**) for one more call per request; a **4 second** lifetime bounds the window.
 
-**Maps to:** NIST SP 800-207 (zero trust architecture) · OWASP ASVS V3 and V4 · RFC 7519 (JWT) and RFC 8725 (JWT best practices) · CIS Controls 6 and 8 · ISO/IEC 27001:2022 A.8.2 and A.8.15.
+**Maps to:** NIST SP 800-207 (zero trust architecture) · OWASP ASVS 5.0 V8 Authorization and V9 Self-contained Tokens · RFC 7519 (JWT) and RFC 8725 (JWT best practices) · CIS Controls 6 and 8 · ISO/IEC 27001:2022 A.8.2 and A.8.15.
 
 ## The idea in everyday terms
 

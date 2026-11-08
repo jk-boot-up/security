@@ -60,7 +60,8 @@ final class Rbac {
     static boolean allows(Rule rule, String verb, String resource, String objectName) {
         boolean verbOk = rule.verbs().contains("*") || rule.verbs().contains(verb);
         boolean resourceOk = rule.resources().contains("*") || rule.resources().contains(resource);
-        boolean nameOk = rule.resourceNames().isEmpty() || (objectName != null && rule.resourceNames().contains(objectName));
+        boolean nameOk = rule.resourceNames().isEmpty()
+                || (objectName != null && rule.resourceNames().contains(objectName));
         return verbOk && resourceOk && nameOk;
     }
 
@@ -77,6 +78,14 @@ final class Rbac {
         return count;
     }
 
+    /** The roles bound to this identity, through any binding. */
+    List<Role> rolesOf(String user) {
+        return manifests.bindings().stream()
+                .filter(binding -> bindsUser(binding, user))
+                .flatMap(binding -> resolve(binding).stream())
+                .toList();
+    }
+
     static int universe() {
         return VERBS.size() * RESOURCES.size();
     }
@@ -88,7 +97,7 @@ final class Rbac {
             paths.add("read secrets");
         }
         if (can(user, "create", "pods", namespace)) {
-            paths.add("create pods, which can mount any secret or service account token in the namespace");
+            paths.add("create pods, which can mount any secret or token");
         }
         if (can(user, "create", "pods/exec", namespace)) {
             paths.add("run commands inside pods");

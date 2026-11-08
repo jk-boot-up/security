@@ -1,25 +1,76 @@
 ONE. The same page, with and without Spring Security's header writers.
-  a customer asks for /products over plain HTTP on this machine
-  the store with headers switched off scores 0 of 5 (missing or weak: Strict-Transport-Security, Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-  the hardened store scores 4 of 5 (missing or weak: Strict-Transport-Security)
-  the framework leaves out Strict-Transport-Security on plain HTTP on purpose: a browser must ignore it there, so sending it would only mislead
+  THE REQUEST (the same to both stores, over plain HTTP):
+    GET /products HTTP/1.1
+  THE RESPONSE OF THE BARE STORE (status 200):
+    Strict-Transport-Security  missing
+    Content-Security-Policy    missing
+    X-Content-Type-Options     missing
+    X-Frame-Options            missing
+    Referrer-Policy            missing
+  THE RESPONSE OF THE HARDENED STORE (status 200):
+    Strict-Transport-Security  missing
+    Content-Security-Policy    default-src 'self';
+                               frame-ancestors 'none'
+    X-Content-Type-Options     nosniff
+    X-Frame-Options            DENY
+    Referrer-Policy            strict-origin-when-cross-origin
+  THE AUDIT (one point per header, in the order above):
+    bare store       0 + 0 + 0 + 0 + 0 = 0 of 5
+    hardened store   0 + 1 + 1 + 1 + 1 = 4 of 5
+  Strict-Transport-Security is left out on plain HTTP on purpose:
+  a browser must ignore it there, so sending it would only mislead
 TWO. The same page behind a proxy that ends HTTPS.
-  the proxy adds X-Forwarded-Proto: https, and the hardened store scores 5 of 5
-  Strict-Transport-Security: max-age=31536000 ; includeSubDomains
-  Content-Security-Policy: default-src 'self'; frame-ancestors 'none'
-  this trust in a forwarded header is safe only because the store listens on the loopback interface and only the proxy can reach it
+  THE REQUEST (as the proxy passes it on to the hardened store):
+    GET /products HTTP/1.1
+    X-Forwarded-Proto: https      <- added by the proxy
+  THE RESPONSE (status 200):
+    Strict-Transport-Security  max-age=31536000 ; includeSubDomains
+    Content-Security-Policy    default-src 'self';
+                               frame-ancestors 'none'
+    X-Content-Type-Options     nosniff
+    X-Frame-Options            DENY
+    Referrer-Policy            strict-origin-when-cross-origin
+  THE AUDIT:
+    hardened store   1 + 1 + 1 + 1 + 1 = 5 of 5
+    max-age 31536000 / 86400 seconds a day = 365 days
+  trusting X-Forwarded-Proto is safe only because the store
+  listens on the loopback interface and only the proxy reaches it
 THREE. The cookie that carries the cart's session.
-  default store: cookie JSESSIONID, problems: 2
-    - no Secure: it is also sent over plain HTTP
-    - no SameSite: other sites can trigger requests that carry it
-  hardened store: cookie JSESSIONID, problems: 0
-  three properties turn the safe attributes on: cookie.http-only, cookie.secure and cookie.same-site
+  THE COOKIES (the Set-Cookie header each store sends for /cart):
+    default   JSESSIONID=<32 random characters>
+              Path=/; HttpOnly
+    hardened  JSESSIONID=<32 random characters>
+              Path=/; Secure; HttpOnly; SameSite=Strict
+  THE VERDICT (what is wrong, if it carries a login):
+    default   2 problems
+      - no Secure: it is also sent over plain HTTP
+      - no SameSite: other sites can trigger requests that carry it
+    hardened  0 problems
+  THE FIX (three properties of the hardened store):
+    server.servlet.session.cookie.http-only=true
+    server.servlet.session.cookie.secure=true
+    server.servlet.session.cookie.same-site=strict
 FOUR. A line break inside a header.
-  the customer's search text, with a line break and a second header, is put in X-Echo
-  the answer contains a second header with the attacker's cookie: false
-  the server refused to write a header with a line break: status 500, and no X-Echo header at all: true
-  a request with a space in a header name gets status 400
-  the container turns the attack into an error, and the code must still never write customer text into a header unchecked
+  THE SEARCH TEXT (the store puts it in the X-Echo header):
+    normal   shoes
+    attack   shoes\r\nSet-Cookie: evil=1
+  THE RESPONSES:
+    normal   status 200, X-Echo: shoes
+    attack   status 500, X-Echo header: none
+             second Set-Cookie: none
+  THE REQUEST (raw bytes, with a space inside a header name):
+    Bad Header: x
+  THE RESPONSE:
+    status 400
+  the container turns both into errors, and the code must still
+  never write customer text into a header unchecked
 FIVE. Limits on the size of a request.
-  a request with a 4000-character header: default store answers 200, hardened store (limit 1KB) answers 400
-  a small limit keeps one customer from making the server read and hold megabytes, and the limit must still be high enough for real cookies
+  THE REQUEST (one header made of 4000 letters a):
+    X-Padding: aaaa...aaaa\r\n   11 + 4000 + 2 = 4013 bytes
+    the whole request                           4078 bytes
+  THE RESPONSES (each store has its own header limit):
+    default store    limit 8192 bytes   status 200
+    hardened store   limit 1024 bytes   status 400
+  a small limit stops one customer from making the server
+  hold megabytes, but it must stay high enough for the
+  real cookies of real customers

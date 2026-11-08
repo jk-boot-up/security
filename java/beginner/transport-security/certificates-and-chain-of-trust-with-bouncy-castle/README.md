@@ -8,6 +8,7 @@ src/main/java/com/jk/explore/security/certsbc/
 ├── Crls.java            A certificate revocation list: the issuer's signed statement of which of its certificates should no longer be trusted
 ├── HostName.java        Does the certificate vouch for this host name?
 ├── Issued.java          A certificate together with the key pair of its subject
+├── NameRule.java        The name constraint worked out by hand: an authority limited to a domain may certify that name, or a name that ends with a dot and the domain
 ├── Pem.java             PEM is the text form every tool reads: a line saying what it is, the DER bytes in base 64, and a closing line
 ├── Pki.java             The online store's certificates, built fresh for each run: a root, an intermediate limited to the store's names, and the server certificate for shop.example
 └── SigningRequest.java  How a shop gets a certificate without ever handing over its private key: it signs a request (PKCS#10) with that key, naming itself and carrying its public key
@@ -41,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A chain built with Bouncy Castle | A root, an intermediate and a server certificate are built from named calls, with authority flags, key usages and key identifiers that link each to its parent. |
-| 2. A limit the authority carries in its own certificate | The intermediate may only certify shop.example and names below it; a certificate for another name from the same intermediate is refused with INVALID_NAME. |
-| 3. A revocation list signed by the issuer | A signed list naming the shop's serial makes the chain REVOKED; a list signed by someone else, or no list, leaves the status undetermined and the chain refused. |
-| 4. Asking for a certificate without handing over the private key | The shop signs a request with its own key; the authority checks the signature and its policy, certifies only names under shop.example, and the certificate holds the shop's public key. |
-| 5. A stolen authority key, and the bill | A forged chain from a stolen intermediate key is accepted until the root revokes the intermediate; then both the forged and the real chains are refused and the shop needs a new certificate. |
+| 1. A chain built with Bouncy Castle | The builders are asked for a root (a CA, 1 more below), an intermediate (a CA, 0 below, only names under shop.example) and a server certificate (not a CA); read back, the intermediate's key usage bits are 000001100 and the server's 100000000, and each certificate names its parent's key identifier. |
+| 2. A limit the authority carries in its own certificate | The intermediate's rule is shop.example; by hand, shop.example and api.shop.example pass, other.example and evilshop.example do not; the JDK accepts shop.example and api.shop.example and refuses other.example with INVALID_NAME. |
+| 3. A revocation list signed by the issuer | The intermediate's empty list accepts the chain; with 1 entry, serial 3, KEY_COMPROMISE, signed by the intermediate and not the root, the chain is refused (REVOKED); a stranger's list or no list gives UNDETERMINED_REVOCATION_STATUS. |
+| 4. Asking for a certificate without handing over the private key | The shop signs a request naming [shop.example] with its own EC key; the signature proves possession, but not after one letter changes; the authority's policy signs shop.example (serial 10, the shop's own key) and refuses bank.example as outside shop.example. |
+| 5. A stolen authority key, and the bill | A thief with the intermediate's private key signs shop.example, serial 77, and the forged chain is accepted; after the root's list names serial 2, CA_COMPROMISE, both the forged and the shop's real chain are refused. |
 
 ## Test
 
@@ -53,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-32 tests in `ChainTest`, `DemoRunsTest`, `HostNameTest`, `ListAndRequestTest`, `OpenSsl`, `OpenSslInteropTest`. Chains are validated on a fixed date. Keys are random, so the demo and its tests check only facts that do not depend on them. The ordinary tests need only a JDK; the integration tests (tagged openssl) run the real OpenSSL 3 as an independent check.
+34 tests in `ChainTest`, `DemoRunsTest`, `HostNameTest`, `ListAndRequestTest`, `NameRuleTest`, `OpenSsl`, `OpenSslInteropTest`. Chains are validated on a fixed date. Keys are random, so the demo and its tests check only facts that do not depend on them. The ordinary tests need only a JDK; the integration tests (tagged openssl) run the real OpenSSL 3 as an independent check.
 
 ## What the simulation got right, and what it left out
 

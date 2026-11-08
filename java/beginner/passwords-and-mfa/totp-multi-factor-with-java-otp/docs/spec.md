@@ -19,6 +19,7 @@ Learners who move from the hand-written version to a library need to know where 
 | Role | Class |
 | --- | --- |
 | The codes | `java-otp`'s `TimeBasedOneTimePasswordGenerator` |
+| The code by hand, for teaching | `TotpSteps` |
 | The bank's check | `OtpService` |
 | The provisioning link | `OtpAuthUri` |
 | Test keys | `Secrets` |
@@ -37,10 +38,10 @@ Learners who move from the hand-written version to a library need to know where 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 31, all passing |
-| Demo output | 24 lines, identical on every run |
-| Acts | 5 |
-| Video | 08:38, 1920×1080, narrated in the amy-slow voice |
+| Tests | 39, all passing |
+| Demo output | 64 lines, identical on every run |
+| Acts | 6 |
+| Video | 13:19, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

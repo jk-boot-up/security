@@ -21,6 +21,7 @@ Learners see TLS working between two programs they wrote and do not know whether
 | A TLS server | `TlsServer` |
 | A checking TLS client | `TlsClient` |
 | PEM files | `Pem` |
+| Base64 by hand | `Base64Steps` |
 | Test certificates | `TestCertificates` |
 | In-memory engines | `Connection`, `Wire` |
 | Entry point | `TlsOpenSslDemo` |
@@ -39,10 +40,10 @@ Learners see TLS working between two programs they wrote and do not know whether
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 16, all passing |
-| Demo output | 31 lines, identical on every run |
+| Tests | 19, all passing |
+| Demo output | 66 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:21, 1920×1080, narrated in the amy-slow voice |
+| Video | 13:54, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

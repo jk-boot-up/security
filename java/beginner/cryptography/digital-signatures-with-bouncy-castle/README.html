@@ -32,6 +32,7 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── OpenSsl.java           Calls a real OpenSSL 3 command-line tool, a different program written by different people, to check what this code wrote
 ├── PemSignatures.java     PEM armor for signatures and public keys: Base64 text between BEGIN and END lines, so they can be pasted into email or a ticket
 ├── Providers.java         Registers Bouncy Castle as a security provider
+├── SignatureSteps.java    An ECDSA signature on P-256, made and checked step by step with plain arithmetic, so each value can be printed
 └── SignaturesBcDemo.java  Runs the online bank story in five numbered acts, with Bouncy Castle, and prints facts that do not depend on random keys
 </code></pre>
 <p><strong>Bouncy Castle adds the standard signed formats and curves the JDK leaves out, CMS SignedData, deterministic ECDSA, Ed448 and JWS, and OpenSSL can check what it writes, but a valid signature proves only that a key signed, not who owns the key.</strong></p>
@@ -44,7 +45,7 @@ and this project proves that by asking <strong>OpenSSL</strong> to verify what B
 <p>Think of a notary's stamp. The stamp has a standard shape that every office knows how to check, and the notary's register says when the stamp was applied. A good stamp proves that the notary's stamp was used on exactly this paper. It does not prove that the notary is who they say they are,
 and the date is the notary's own writing, unless a trusted clock office adds its own stamp.</p>
 <h2>The scenario</h2>
-<p>An online bank signs customer statements. The demo signs a statement in the standard CMS format, attached and detached, then looks at ECDSA nonces, reproduces the published values for Ed25519 and Ed448, builds a compact JWS token, and wraps a signed message in PEM text.</p>
+<p>An online bank signs customer statements. The demo signs a statement in the standard CMS format, attached and detached, then makes an ECDSA signature by hand, step by step, shows what a reused nonce gives away, reproduces the published values for Ed25519 and Ed448, builds a compact JWS token, and wraps a signed message in PEM text.</p>
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
 </code></pre>
@@ -59,32 +60,32 @@ and the date is the notary's own writing, unless a trusted clock office adds its
 <tbody>
 <tr>
 <td>1. A standard signed message: CMS SignedData</td>
-<td>The statement is signed with an ECDSA key and verifies both attached and detached; a changed statement, a changed bit and another certificate are refused; the signing time is only the signer's claim.</td>
+<td>The statement's SHA-256 goes into the signed attributes of a CMS message with the bank's certificate; attached and detached verify, and a changed statement, a changed bit and another certificate are refused.</td>
 </tr>
 <tr>
-<td>2. ECDSA: the nonce that must never repeat</td>
-<td>Deterministic signing repeats and matches RFC 6979, randomized signing differs each time, and two signatures with the same nonce reveal the private key.</td>
+<td>2. How an ECDSA signature is made, step by step</td>
+<td>The statement is signed by hand in four steps, h, k, r and s, with real numbers; the public key gives back r, so it verifies; the result equals Bouncy Castle's and RFC 6979's.</td>
 </tr>
 <tr>
-<td>3. EdDSA: Ed25519 and Ed448</td>
-<td>Ed25519 gives 64-byte and Ed448 114-byte signatures that match RFC 8032, the same bytes every time, and one flipped bit is refused.</td>
+<td>3. The nonce that must never repeat</td>
+<td>Two payments signed with one k share the same r, and two lines of arithmetic give back k and the bank's private key; a deterministic k or Ed25519 and Ed448 remove the risk.</td>
 </tr>
 <tr>
 <td>4. A compact signed token: JWS</td>
-<td>The RFC 8037 example token is reproduced exactly, detached works, and a token claiming alg none or carrying another payload is refused because the verifier decides the algorithm.</td>
+<td>The RFC 8037 example is rebuilt by hand: header and payload in base64url, an Ed25519 signature over both, joined by dots; alg none and a swapped payload are refused because the verifier fixes the algorithm.</td>
 </tr>
 <tr>
 <td>5. Text armor, and the bill</td>
-<td>A signed message as PEM text round-trips, but a valid signature does not say who owns the key, the signing time is a claim, and the private key still needs a home.</td>
+<td>PEM turns the binary signed message into Base64 text between BEGIN CMS and END CMS lines that reads back to the same bytes; a valid signature still does not say who owns the key, when it was signed, or where the key lives.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>24 tests in <code>CmsAndJwsTest</code>, <code>DemoRunsTest</code>, <code>OpenSslInteropTest</code>, <code>VectorsTest</code>. Ed25519 and Ed448 are checked against RFC 8032, deterministic ECDSA against RFC 6979 appendix A.2.5, and the JWS against RFC 8037. The ordinary tests need only a JDK; the integration tests (tagged openssl) run a real OpenSSL 3 as an independent check.</p>
+<p>28 tests in <code>CmsAndJwsTest</code>, <code>DemoRunsTest</code>, <code>OpenSslInteropTest</code>, <code>SignatureStepsTest</code>, <code>VectorsTest</code>. Ed25519 and Ed448 are checked against RFC 8032, deterministic ECDSA against RFC 6979 appendix A.2.5, and the JWS against RFC 8037. The ordinary tests need only a JDK; the integration tests (tagged openssl) run a real OpenSSL 3 as an independent check.</p>
 <h2>What the simulation got right, and what it left out</h2>
-<p>The keys are random, so the demo prints only facts that do not depend on them. Ed25519, Ed448 and deterministic ECDSA have published values, which are reproduced exactly. OpenSSL is used only by the integration tests, so the demo and ordinary tests need only a JDK.</p>
+<p>The CMS keys are random, so for CMS the demo prints only facts that do not depend on them; the ECDSA steps use the published RFC 6979 test key, so their numbers are printed in full. Ed25519, Ed448 and deterministic ECDSA have published values, which are reproduced exactly. OpenSSL is used only by the integration tests, so the demo and ordinary tests need only a JDK.</p>
 <h2>Technologies and versions</h2>
 <p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
 <table>
@@ -211,7 +212,7 @@ and the date is the notary's own writing, unless a trusted clock office adds its
 <h2>Where you have already met this</h2>
 <ul>
 <li>Signed PDFs and S/MIME email, which are CMS SignedData.</li>
-<li>Java's <code>jarsigner</code> and Android's APK signing.</li>
+<li>Java's <code>jarsigner</code>, and Android's original (v1) APK signing scheme.</li>
 <li>JWT and JWS tokens in web logins, and <code>alg: none</code> in vulnerability reports.</li>
 <li><code>openssl dgst -sign</code> and <code>openssl cms -sign</code> in scripts.</li>
 </ul>

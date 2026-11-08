@@ -8,44 +8,40 @@ A shop should store only a slow, salted hash of each password: the hash hides th
 
 ### 1. Passwords stored as they are
 
-The first version stores each password exactly as the customer typed it. The table is
-stolen, and the thief reads 5 of 5 passwords at once. Ana's row says welcome1. There is
-nothing to crack and no work to do. And because many people reuse passwords, the damage
-spreads to their other accounts.
+The first version stores each password exactly as the customer typed it. Before storing, Ana typed welcome1; after storing,
+her row says welcome1. The table is stolen, and the thief reads 5 of 5 passwords at once. There is nothing to crack and no
+work to do. And because many people reuse passwords, the damage spreads to their other accounts.
 
 ### 2. A fast hash, with no salt
 
-The second version stores a SHA-256 hash of each password. A hash is a one-way scramble:
-the thief cannot read the password from it. But the scramble is the same every time. Ana and
-Ben both chose welcome1, and both rows begin fcc3a23f, so anyone can see they match. The attacker hashes
-eight common passwords once and looks each stolen value up in that table. Four accounts fall at
-once: Ana, Ben, Carol and Erin. Only Dave's long random password is safe.
+The second version stores a SHA-256 hash of each password: 32 bytes that cannot be turned back into the password. Before
+hashing, Ana and Ben both typed welcome1. After hashing, both rows hold the same 32 bytes, beginning fcc3a23f, so anyone can see
+they match. The attacker hashes eight common passwords once and looks each stolen value up in that table. Four accounts fall:
+Ana, Ben, Carol and Erin. Only Dave's long random password is safe, and there was no guessing for each account.
 
 ### 3. A fast hash, with a salt for each account
 
-The third version adds a salt: a few extra bytes, different for every account, mixed into
-the password before it is hashed and stored beside the hash. Ana's value now begins 82ae9429
-and Ben's begins 51cd9c7f, even though their passwords are the same, so nobody can see that they
-match. The table made in advance no longer fits any account, because each account has its own
-salt. The attacker must guess for each account separately. But the hash is still fast. The
-same four accounts fall after 24 guesses, which is 24 steps of work.
+The third version adds a salt: 16 bytes, different for every account. Before hashing, Ana's salt a5a5a5a5 a5a5a5a5 a5a5a5a5 00000001
+is joined with her password welcome1 (77656c63 6f6d6531) into 24 bytes. After hashing, SHA-256 gives 82ae9429 63612d26 ...,
+and the row stores the salt, a $, and the hash. The salt is not a secret. Ben has the same password but his salt ends 00000002,
+so his hash begins 51cd9c7f: nobody can see they match, and a table made in advance fits no account. But the hash is still fast.
+The same four accounts fall after 24 guesses, which is 24 steps of work.
 
 ### 4. A slow hash, with a salt for each account
 
-The fourth version uses PBKDF2, which repeats the scramble many thousands of times. Here, 100,000
-rounds. Each stored text has four parts: the algorithm, the number of rounds, the salt and the
-hash. A right password logs in and a wrong one does not. The same attack, the same 24 guesses, now costs
-2,400,000 steps, because each guess costs 100,000 times more than a fast hash. That is the point of a
-slow hash. But it cannot rescue a password that is on the attacker's list. The same four accounts still
-fall. Dave's survives, as before. A slow hash makes guessing expensive, not impossible.
+The fourth version uses PBKDF2 with 100,000 rounds. Before hashing: the password, the salt and the number of rounds. After
+hashing, the stored text has four parts: pbkdf2-sha256, 100000, the salt and the 32-byte hash ce26f863 557480dd .... The program
+then makes the hash by hand. Round 1 is an HMAC-SHA-256, keyed with the password, of the salt followed by 00000001: 9c08e776 ....
+Every next round is an HMAC of the round before, so no round can be skipped. The hash is all 100,000 rounds XORed together, and
+it is exactly the hash PBKDF2 gave. The same attack, the same 24 guesses, now costs 2,400,000 steps. But the four weak passwords
+are on the attacker's list, so they still fall. A slow hash makes guessing expensive, not impossible.
 
-### 5. The bill: every login pays, and old hashes must be upgraded
+### 5. The bill: login costs, and upgrades
 
-The slow hash costs the shop too. One login costs 100,000 steps, and 1,000 wrong logins cost 100,000,000 steps, so
-the login itself can become a target; rate limits are needed. The second cost is time. Erin's account was
-made years ago with only 10,000 rounds, while Ana's uses 100,000. At Erin's next correct login, the shop
-quietly stores a new hash with 100,000 rounds. The next login reports no upgrade needed. The shop can
-only upgrade a hash when it holds the password, which is at login, so accounts that never log in stay weak.
+The slow hash costs the shop too. One login costs 100,000 steps, and 1,000 wrong logins cost 100,000,000 steps, so the login
+itself can become a target and attempts must be limited. Before the upgrade, Erin's account, made years ago, uses 10,000 rounds
+while Ana's uses 100,000. Erin logs in with the right password, so the shop knows it for a moment and stores a new hash: after the
+upgrade, Erin's uses 100,000 rounds, and her next login is simply OK. Accounts that never log in stay weak.
 
 ## The verdict
 

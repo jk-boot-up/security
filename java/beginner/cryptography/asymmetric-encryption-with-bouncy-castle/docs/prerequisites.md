@@ -4,7 +4,7 @@
 
 - Java basics
 - The plain asymmetric-encryption project, or at least what a public and a private key are
-- OpenSSL 3 on the PATH, for act four and the integration tests (optional for the rest)
+- OpenSSL 3 on the PATH, for act five and the integration tests (optional for the rest)
 
 ## Explicitly not required
 
@@ -30,5 +30,5 @@ Pinned in the project's build files, and the latest stable releases when the pro
 | org.bouncycastle:bcpkix-jdk18on | 1.86 | Bouncy Castle PKIX: PEM, X.509 certificates and CMS |
 | org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
-| OpenSSL (command-line tool) | 3.x | the independent check that opens the CMS envelope; needed for act four and the integration tests |
+| OpenSSL (command-line tool) | 3.x | the independent check that opens the CMS envelope; needed for act five and the integration tests |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |

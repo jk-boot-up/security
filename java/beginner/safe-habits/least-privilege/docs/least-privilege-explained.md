@@ -8,27 +8,32 @@ Give each person and program only the permissions its work needs, deny everythin
 
 ### 1. Roles and permissions, and deny by default
 
-The online store has 15 things that can be done, such as orders:read and refunds:approve. The admin role allows all 15, and the support, warehouse and finance roles allow 3 each. When support asks for refunds:approve, nothing allows it, so it is denied by default.
-And an admin with an explicit deny on secrets who asks for secrets:read is denied explicitly: a deny beats any allow.
+The online store has 15 things that can be done, written as resource:action, such as orders:read and refunds:approve. The admin role allows all 15 with the single statement allow *, and the support, warehouse and finance roles allow 3 each.
+A request is checked statement by statement. When support asks for refunds:approve, none of its three statements matches, so it is denied by default.
+When an admin who also has deny secrets:* asks for secrets:read, allow * matches, but deny secrets:* matches too, and a deny beats any allow: denied explicitly.
 
 ### 2. Blast radius: what a stolen credential can reach
 
-The nightly order export runs as an admin because that was quick: a stolen token reaches all 15. The same job with only the exporter role reaches 2 of 15. An admin account with an explicit deny on secrets reaches 13.
-The job needs only orders:read and reports:read, so everything else it was given is risk without benefit.
+The nightly order export needs only orders:read and reports:read. Before the fix it runs as an admin, because that was quick, and a stolen token reaches all 15 permissions: 13 of them the job never needs.
+After the fix the same job has only the exporter role, and a stolen token reaches 2 of 15, both needed. Another admin account with an explicit deny on secrets reaches 13 of 15.
+Whatever the job does not need is risk without benefit.
 
 ### 3. Separation of duties: two people for a refund
 
-Alice in support creates refund R-1, and cannot approve it. Dave, an admin, creates R-2 and is refused when he tries to approve it himself: admin power does not remove the rule. Carol in finance approves R-1.
+The rule: approving a refund needs refunds:approve, and the approver may not be the person who created it. Alice in support creates refund R-1 and cannot approve it, because support has no refunds:approve.
+Dave, an admin, creates R-2 and is refused when he approves it himself: SAME_PERSON, so admin power does not remove the rule. Carol in finance approves R-1.
 Nobody could move money alone, so one stolen account is not enough.
 
 ### 4. Access that expires by itself
 
-Carol in finance is granted payments:write for ticks 10 to 12, for a month-end fix. At tick 9 she cannot write payments, at ticks 10 and 12 she can, and at tick 13 she cannot again. The grant is gone and nobody had to remember to remove it.
+Carol in finance gets payments:write for a month-end fix, from tick 10 until tick 13 (a tick is one step of the demo's simulated clock, and tick 13 is the first without the grant).
+At tick 9 she cannot write payments, at ticks 10 and 12 she can, and at tick 13 she cannot again. The grant is gone and nobody had to remember to remove it.
 
 ### 5. Privilege creep, and the operating system
 
-On day 200, of 5 permissions held, 2 were not used in the last 90 days: Bob's orders:read, never used, and Carol's payments:read, last used on day 100. Those are candidates for removal. At the operating system level, an export file with permissions rw-r--r-- is readable by others;
-with rw------- it is not, and its folder is rwx------. The Java SecurityManager that once limited code inside one program has been removed, so the limits that remain are outside the program: separate operating system users, containers and separate processes.
+Privilege creep is permission that piles up and is never taken away. On day 200 the audit looks at 5 permissions held, and when each was last used. Unused means last used before day 200 - 90 = 110: Bob's orders:read, never used, and Carol's payments:read, last used on day 100. Those 2 are candidates for removal.
+At the operating system level, the export file is first written with permissions rw-r--r--: the owner can read and write, and the group and everyone else can read. Locked to rw------- only the owner can, and its folder is rwx------.
+The Java SecurityManager that once limited code inside one program is permanently disabled since JDK 24, so the limits that remain are outside the program: separate operating system users, containers and separate processes.
 
 ## The verdict
 

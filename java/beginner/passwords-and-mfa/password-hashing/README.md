@@ -12,6 +12,7 @@ src/main/java/com/jk/explore/security/hashing/
 ├── PasswordHasher.java  Turns a password into the text that is stored, and checks a login attempt against it
 ├── Pbkdf2Hasher.java    A slow, salted hash: PBKDF2 with HMAC-SHA-256, repeated {@code iterations} times
 ├── PlainText.java       The worst way to store a password: as it is
+├── RoundSteps.java      Redoes PBKDF2 with HMAC-SHA-256 by hand, to show what "100000 rounds" means
 ├── SaltSource.java      Where salts come from: a salt is a few extra bytes, different for every account, mixed into the hash
 ├── SaltedSha256.java    A fast hash with a different salt for every account
 ├── SecureSalts.java     Real salts: random bytes from the system's secure random generator
@@ -59,11 +60,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Passwords stored as they are | The database is stolen and all 5 passwords are readable; there is nothing to crack. |
-| 2. A fast hash, with no salt | Ana and Ben have the same stored value; a table of 8 common passwords, hashed once, cracks 4 of 5 accounts with no guessing per account. |
-| 3. A fast hash, with a salt for each account | Ana and Ben's stored values now differ and the table trick fails, but cracking still takes only 24 guesses and 24 steps. |
-| 4. A slow hash, with a salt for each account | PBKDF2 with 100,000 rounds makes each guess cost 100,000 times more: the same 24 guesses take 2,400,000 steps, yet the 4 weak passwords still fall. |
-| 5. The bill: every login pays, and old hashes must be upgraded | One login costs 100,000 steps, 1,000 wrong logins cost 100,000,000; an account with 10,000 rounds is upgraded to 100,000 at its next login. |
+| 1. Passwords stored as they are | The row holds the password itself; the table is stolen and all 5 passwords are readable, with nothing to crack. |
+| 2. A fast hash, with no salt | Ana and Ben's identical passwords give identical 32-byte SHA-256 hashes; a table of 8 common passwords, hashed once, cracks 4 of 5 accounts. |
+| 3. A fast hash, with a salt for each account | Ana's 16-byte salt and her password are joined into 24 bytes and hashed; Ben's salt differs, so his hash differs, but 24 guesses still crack 4 of 5. |
+| 4. A slow hash, with a salt for each account | PBKDF2 hashes 100,000 rounds, each an HMAC of the round before, and XORs them all; the same 24 guesses now cost 2,400,000 steps, yet the 4 weak passwords still fall. |
+| 5. The bill: login costs, and upgrades | One login costs 100,000 steps and 1,000 wrong logins 100,000,000; Erin's old 10,000-round hash is upgraded to 100,000 at her next login. |
 
 ## Test
 
@@ -71,7 +72,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-20 tests in `AccountStoreTest`, `AttackerTest`, `DemoRunsTest`, `HashersTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Salts are a counter and work is counted in steps, so every run gives the same result.
+22 tests in `AccountStoreTest`, `AttackerTest`, `DemoRunsTest`, `HashersTest`, `RoundStepsTest`. Every line the demo prints is checked against `docs/expected-output.txt`. Salts are a counter and work is counted in steps, so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

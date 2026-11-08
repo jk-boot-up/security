@@ -35,19 +35,20 @@ final class HttpsChecklist {
                 certificateOk = false;
             }
         }
-        checks.add(new Check("the certificate is trusted and matches the host name", certificateOk));
-        checks.add(new Check("TLS 1.3 is accepted", tls13));
+        checks.add(new Check("certificate trusted, names the host", certificateOk));
+        checks.add(new Check("TLS 1.3 accepted", tls13));
 
         boolean redirects = false;
         try {
             HttpResponse<String> response = new ShopClient(trust).get(plain + "/cart");
-            redirects = response.statusCode() == 301 && response.headers().firstValue("Location").orElse("").startsWith("https://");
+            redirects = response.statusCode() == 301
+                    && response.headers().firstValue("Location").orElse("").startsWith("https://");
         } catch (IOException ignored) {
             redirects = false;
         }
         checks.add(new Check("plain HTTP redirects to HTTPS", redirects));
 
-        checks.add(new Check("HSTS lasts at least a year", secure != null
+        checks.add(new Check("HSTS for at least a year", secure != null
                 && HeaderAudit.audit(flatten(secure)).stream().anyMatch(f -> f.header().equals("Strict-Transport-Security") && f.passed())));
 
         boolean cookieOk = false;
@@ -55,12 +56,13 @@ final class HttpsChecklist {
             try {
                 HttpResponse<String> login = new ShopClient(trust).get(https + "/login");
                 String cookie = login.headers().firstValue("Set-Cookie").orElse("");
-                cookieOk = cookie.contains("Secure") && cookie.contains("HttpOnly") && cookie.contains("SameSite=");
+                cookieOk = cookie.contains("Secure") && cookie.contains("HttpOnly")
+                        && cookie.contains("SameSite=");
             } catch (IOException ignored) {
                 cookieOk = false;
             }
         }
-        checks.add(new Check("the session cookie is Secure, HttpOnly and SameSite", cookieOk));
+        checks.add(new Check("cookie Secure, HttpOnly, SameSite", cookieOk));
         return checks;
     }
 

@@ -62,6 +62,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `ChainTest` checks the extensions, key identifiers, expiry, an untrusted root, name constraints, the path length limit and a changed certificate.
 - `ListAndRequestTest` checks revocation, list signatures, missing and foreign lists, stale lists, requests, the authority's policy and PEM.
 - `OpenSslInteropTest` (integration) checks that OpenSSL verifies the chain, shows the extensions, enforces the name constraint, reads the lists and request, and that an OpenSSL authority can sign a Java request.
+- `NameRuleTest` checks that the name rule by hand agrees with the JDK's PKIX check, and that the dot matters.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

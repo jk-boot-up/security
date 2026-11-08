@@ -38,11 +38,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Roles and permissions, and deny by default | The store has 15 things that can be done; admin allows all 15 and support, warehouse and finance allow 3 each; what nothing allows is denied, and an explicit deny beats any allow. |
-| 2. Blast radius: what a stolen credential can reach | A nightly export that runs as admin reaches 15 of 15 if its token is stolen; with only the exporter role, 2 of 15; an admin with an explicit deny on secrets reaches 13. |
-| 3. Separation of duties: two people for a refund | Alice creates a refund but cannot approve; Dave, an admin, creates one and is refused when he approves it himself; Carol approves Alice's. |
-| 4. Access that expires by itself | Carol is granted payments:write for ticks 10 to 12; she can write at ticks 10 and 12, not at 9 or 13, and nobody has to remember to remove it. |
-| 5. Privilege creep, and the operating system | Of 5 permissions held, 2 were not used in 90 days; a file is made readable by others and then owner-only, rw------- in a rwx------ folder; the SecurityManager is gone. |
+| 1. Roles and permissions, and deny by default | The store has 15 things that can be done; admin allows all 15 and support, warehouse and finance allow 3 each; a request nothing allows is denied by default, and an explicit deny beats any allow. |
+| 2. Blast radius: what a stolen credential can reach | The nightly export needs 2 permissions; running as admin, a stolen token reaches 15 of 15, 13 of them never needed; with only the exporter role it reaches 2 of 15; an admin with an explicit deny on secrets reaches 13. |
+| 3. Separation of duties: two people for a refund | Alice creates refund R-1 but cannot approve; Dave, an admin, creates R-2 and is refused when he approves it himself; Carol in finance approves R-1. |
+| 4. Access that expires by itself | Carol is granted payments:write from tick 10 until tick 13; she can write at ticks 10 and 12, not at 9 or 13, and nobody has to remember to remove it. |
+| 5. Privilege creep, and the operating system | Of 5 permissions held, 2 were not used in the last 90 days and are candidates for removal; an export file goes from rw-r--r-- to rw-------, in a rwx------ folder; the SecurityManager is permanently disabled. |
 
 ## Test
 

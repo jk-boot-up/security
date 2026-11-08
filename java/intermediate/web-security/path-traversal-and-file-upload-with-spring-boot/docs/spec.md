@@ -42,7 +42,7 @@ Servers use names and paths from requests as if they were their own.
 | Tests | 11, all passing |
 | Demo output | 47 lines, identical on every run |
 | Acts | 6 |
-| Video | 06:57, 1920×1080, narrated in the amy-slow voice |
+| Video | 06:55, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

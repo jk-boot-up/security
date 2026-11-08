@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-siem, log normalization, log correlation, syslog, time zones, dead letter queue, security monitoring, soc, detection engineering, java
+siem, log normalization, log correlation, syslog, time zones, dead letter queue, security monitoring, soc, detection engineering, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ siem, log normalization, log correlation, syslog, time zones, dead letter queue,
 | --- | --- |
 | Video | `video/siem-basics-explained.mp4` |
 | Captions | `video/siem-basics-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Detection Engineering in Java - Without Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (70)
-- [ ] tags are at most 500 characters in total — ok (125)
+- [ ] tags are at most 500 characters in total — ok (176)
 - [ ] description is at most 5,000 characters — ok (256)
 - [ ] chapters start at 00:00 and there are at least three

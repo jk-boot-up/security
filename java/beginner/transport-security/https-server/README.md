@@ -37,11 +37,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. An HTTPS request that is checked | The client trusts the shop's certificate, which names shop.example.test; the request returns 200 over TLS 1.3 with all five security headers. |
-| 2. Plain HTTP only redirects | The plain port answers 301 to an https address and sends no HSTS; the first request itself still crossed the network in the clear. |
-| 3. A cookie that stays on HTTPS | The login cookie is Secure, HttpOnly and SameSite=Lax, so it is sent over HTTPS and not over plain HTTP; the same cookie without Secure leaks. |
-| 4. What the client refuses | The client refuses a certificate nobody trusts, the right certificate under another name, and a TLS 1.2 server when it demands 1.3; it accepts 1.2 only when it allows it. |
-| 5. Scoring a shop from outside | A five-point checklist gives the careful shop 5 of 5 and the careless shop 1 of 5: its certificate is valid and nothing else is right. |
+| 1. An HTTPS request that is checked | The shop presents a certificate for CN=shop.example.test, valid 2026-10-17 to 2126-09-23; the client checks it is trusted, names shop.example.test and is current, then gets 200 cart: 2 items over TLSv1.3 with 1 + 1 + 1 + 1 + 1 = 5 of 5 security headers. |
+| 2. Plain HTTP only redirects | GET http://shop.example.test/cart gets 301 Moved Permanently with Location: https://shop.example.test:<https port>/cart and no HSTS; the HTTPS answer carries max-age=31536000, 31536000 / 86400 = 365 days of HTTPS only. |
+| 3. A cookie that stays on HTTPS | The login sets session=...; Secure; HttpOnly; SameSite=Lax; Path=/: the browser sends it over https and not over http. A shop whose cookie is session=...; Path=/ has it sent over plain http: a leak. |
+| 4. What the client refuses | A certificate nobody trusts, the right certificate under another name, and a TLS 1.3-only client against a TLS 1.2-only server are refused with SSLHandshakeException; a client that also allows 1.2 connects over TLSv1.2. |
+| 5. Scoring a shop from outside | Five checks from outside: the careful shop scores 1 + 1 + 1 + 1 + 1 = 5 of 5; the careless shop has a trusted certificate but nothing else, 1 + 0 + 0 + 0 + 0 = 1 of 5. |
 
 ## Test
 
@@ -49,7 +49,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `DemoRunsTest`, `HttpsTest`. Everything runs on this machine, on random ports that are not printed. The certificates are fixed test files and the name resolves through the project's own hosts file, so the golden output is the same on every run.
+17 tests in `CspCheckTest`, `DemoRunsTest`, `HttpsTest`. Everything runs on this machine, on random ports that are not printed. The certificates are fixed test files and the name resolves through the project's own hosts file, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

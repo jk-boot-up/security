@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-service mesh, linkerd, mtls, workload identity, serviceaccount, authorization policy, zero trust, kubernetes, kind, certificate rotation
+service mesh, linkerd, mtls, workload identity, serviceaccount, authorization policy, zero trust, kubernetes, kind, certificate rotation, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ service mesh, linkerd, mtls, workload identity, serviceaccount, authorization po
 | --- | --- |
 | Video | `video/service-mesh-mtls-explained.mp4` |
 | Captions | `video/service-mesh-mtls-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Service Identity and Zero Trust in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (79)
-- [ ] tags are at most 500 characters in total — ok (127)
+- [ ] tags are at most 500 characters in total — ok (178)
 - [ ] description is at most 5,000 characters — ok (286)
 - [ ] chapters start at 00:00 and there are at least three

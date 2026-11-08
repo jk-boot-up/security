@@ -18,21 +18,38 @@ Chapters:
 00:00 Introduction
 01:04 The Scenario
 01:25 The Words
-01:53 Act One — A Spring store with three common mistakes
-02:43 Act Two — Deny by default in the filter chain
-03:23 Act Three — The object-level check, in the query
-04:10 Act Four — Method security, and a log of every refusal
-04:55 Act Five — The route inventory, and the bill
-05:38 Three Walls
-06:02 Who Does What
-06:34 Where You Have Seen It
-07:01 How To Use It
-07:25 Thanks for Watching
+01:53 What the Letters Stand For
+03:00 What the Letters Stand For (continued)
+03:29 Three places Spring can refuse a request
+04:30 Three rules, and what they let through
+05:35 Act One — A Spring store with three common mistakes
+05:48 Act One — A Spring store with three common mistakes
+06:06 Every route has a rule, and the last rule is denyAll()
+07:00 Act Two — Deny by default in the filter chain
+07:29 Two ways to check the owner: in the query, or after it
+08:26 Act Three — The object-level check, in the query
+08:46 Act Three — The object-level check, in the query
+09:04 A rule on the method holds without any URL
+09:54 Act Four — Method security, and a log of every refusal
+10:07 Act Four — Method security, and a log of every refusal
+10:27 Spring lists the routes; a test checks each has a rule
+11:12 Act Five — The route inventory, and the bill
+11:42 Three Walls
+12:07 Where You Have Seen It
+12:35 How To Use It
+12:59 The Java Classes
+13:10 NaiveSecurity — rules that say too little
+13:27 GuardedSecurity — deny by default
+13:41 OrderAccess — the owner in the query
+13:54 OrderAccess — the fallback: after the method
+14:07 RefundService — method security
+14:17 RouteInventory — the inventory test's question
+14:29 Thanks for Watching
 ```
 
 ## Tags
 
-spring security, broken access control, idor, bola, owasp top 10, authorization, spring boot, java, application security
+spring security, broken access control, idor, bola, owasp top 10, authorization, spring boot, java, application security, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +57,16 @@ spring security, broken access control, idor, bola, owasp top 10, authorization,
 | --- | --- |
 | Video | `video/broken-access-control-with-spring-security-explained.mp4` |
 | Captions | `video/broken-access-control-with-spring-security-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Web Security in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (95)
-- [ ] tags are at most 500 characters in total — ok (112)
+- [ ] tags are at most 500 characters in total — ok (163)
 - [ ] description is at most 5,000 characters — ok (727)
 - [ ] chapters start at 00:00 and there are at least three

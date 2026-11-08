@@ -40,9 +40,9 @@ Teams know the principle and still give the export job admin rights, because the
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 12, all passing |
-| Demo output | 36 lines, identical on every run |
+| Demo output | 81 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:01, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:47, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -15,4 +15,5 @@ Send the encryption key first, over the same network. The eavesdropper copies it
 - Hybrid encryption of a statement far longer than RSA can lock.
 - X25519 key agreement with HKDF, checked against the RFC test values.
 - A man in the middle who swaps a public key, to show what these methods leave open.
-- The same facts printed on every run, though every key is random.
+- RSA and key agreement worked out by hand with tiny numbers, proved equal to what Java computes.
+- The same output on every run, though the RSA keys are random.

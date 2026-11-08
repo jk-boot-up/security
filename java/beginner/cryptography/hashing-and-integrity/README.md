@@ -5,7 +5,8 @@ src/main/java/com/jk/explore/security/integrity/
 ├── Crc32Checksum.java   A cyclic redundancy check: a short number that changes when data is damaged by accident, such as a flipped bit on a disk or a noisy line
 ├── Hex.java             Small helpers for turning bytes into text and comparing them
 ├── Hmac.java            HMAC-SHA-256: a hash that needs a secret key
-├── IntegrityDemo.java   Runs the online store story in five numbered acts and prints exact, repeatable results
+├── HmacSteps.java       HMAC-SHA-256 worked out by hand, with nothing but SHA-256 and XOR, so every step can be shown
+├── IntegrityDemo.java   Runs the online store story in six numbered acts and prints exact, repeatable results
 ├── Invoice.java         One invoice of the online store: its number, the customer, the item and the amount in dollars
 ├── InvoiceStore.java    Stores invoices, each with a plain SHA-256 hash of its text kept right beside it
 ├── Sha256.java          SHA-256: a cryptographic hash
@@ -44,15 +45,16 @@ then a hash published somewhere else, and finally HMAC. After each, the attacker
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. A checksum for accidents | A flipped bit changes the CRC-32 from a7c21715 to d0c52783, but an attacker who changes the amount just stores the new CRC, 5e22dd78, and the check passes. |
-| 2. A cryptographic hash: SHA-256 | Any input gives 64 hex digits; changing one digit of the amount changes 62 of the 64 digits, 134 of 256 bits, about half. |
-| 3. A hash kept beside the data | A hash stored next to the invoice fails when only the invoice is changed, but passes when the attacker changes both; a hash published on another channel catches a tampered download. |
-| 4. A keyed hash: HMAC-SHA-256 | The order service tags the invoice with HMAC; the invoice with its tag is OK, and a changed invoice with the old tag, a plain SHA-256 tag, or a tag made with a guessed key are all refused. |
-| 5. The bill: boundaries, repeats, and a shared key | Joined fields let a boundary move without changing the tag, a valid tag can be sent twice, and the warehouse that can check a tag can also make one. |
+| 1. A checksum for accidents | A flipped bit changes the CRC-32 from a7c21715 to d0c52783 and is detected, but an attacker who changes the amount to 12 stores the new CRC, 5e22dd78, and the check passes. |
+| 2. A cryptographic hash: SHA-256 | Two invoices one digit apart give SHA-256 hashes that differ in 62 of their 64 hex digits, 134 of 256 bits: about half. |
+| 3. A hash kept beside the data | A hash stored next to the invoice catches a change to the invoice alone, but not an attacker who rewrites both; a hash published on the shop's own site catches a tampered download. |
+| 4. A keyed hash: HMAC-SHA-256 | The key and the invoice's bytes give a 32-byte tag; the invoice with its tag is OK, and a changed invoice with the old tag, a plain SHA-256 tag and a tag made with a guessed key are all refused. |
+| 5. How the tag is made, step by step | HMAC is two SHA-256 hashes with the key mixed in before each: inner key = key xor 36s, inner hash = SHA-256(inner key + bytes), outer key = key xor 5cs, tag = SHA-256(outer key + inner hash), exactly Java's tag. |
+| 6. The bill: boundaries, repeats, and a shared key | Joined fields let a boundary move without changing the tag, a valid tag can be sent twice, and the warehouse that can check a tag can also make one. |
 
 ## Test
 
@@ -60,14 +62,14 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-25 tests in `DemoRunsTest`, `HashesTest`, `InvoiceStoreTest`, `SignedInvoicesTest`. CRC-32, SHA-256 and HMAC-SHA-256 are each checked against published standard values (the CRC-32 check value, the SHA-256 vectors, and RFC 4231 test cases one and two). Every line the demo prints is checked against `docs/expected-output.txt`.
+29 tests in `DemoRunsTest`, `HashesTest`, `HmacStepsTest`, `InvoiceStoreTest`, `SignedInvoicesTest`. CRC-32, SHA-256 and HMAC-SHA-256 are each checked against published standard values (the CRC-32 check value, the SHA-256 vectors, and RFC 4231 test cases one and two). `HmacStepsTest` proves the by-hand HMAC gives exactly the JDK's tag. Every line the demo prints is checked against `docs/expected-output.txt`.
 
 ## What the simulation got right, and what it left out
 
 The key is a fixed demo value in the code: a real system keeps it in a secrets store and rotates it. The attacker is a few lines
 of code that change a stored value, standing in for anyone who can reach a database or sit on a network. The "mirror" and
 the "trusted site" are two strings. CRC-32, SHA-256 and HMAC are the JDK's own, and the demo checks each against the published
-test values, so the point of the project is how they are used, not how they are built.
+test values, so the point of the project is how they are used. Only HMAC is also redone by hand, in `HmacSteps`, to show how the tag is made.
 
 ## Technologies and versions
 

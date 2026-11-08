@@ -18,7 +18,7 @@ Learners use authenticator apps daily but do not know how a code can be the same
 
 | Role | Class |
 | --- | --- |
-| The code | `Hotp`, `Totp`, `Base32` |
+| The code | `Hotp`, `Totp`, `Base32`, and `CodeSteps`, which shows each step |
 | The phone | `Authenticator` |
 | The bank | `MfaServer` and `Verdict` |
 | Where secrets come from | `SecretSource`, `SecureSecrets`, `DemoSecrets` |
@@ -38,10 +38,10 @@ Learners use authenticator apps daily but do not know how a code can be the same
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 52, all passing |
-| Demo output | 24 lines, identical on every run |
-| Acts | 5 |
-| Video | 10:01, 1920×1080, narrated in the amy-slow voice |
+| Tests | 55, all passing |
+| Demo output | 77 lines, identical on every run |
+| Acts | 6 |
+| Video | 15:27, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

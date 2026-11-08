@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> SAML single sign-on in Java: signed assertions, self-signed responses and XML signature wrapping.
+> SAML single sign-on in Java with real XML signatures (RSA-SHA256, enveloped, exclusive canonicalization): a shop that signs customers in through their bank, a provider that trusts the key inside the message and accepts a self-signed admin, XML signature wrapping that gets a pinned-key provider to check one assertion and read another, and a strict provider that pins the key, reads only what the signature covers, and checks expiry, audience, the request, replay and DOCTYPEs.

@@ -13,7 +13,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  */
 public class FastSaltedSha256Encoder implements PasswordEncoder {
 
-    private final SecureRandom random = new SecureRandom();
+    private final SecureRandom random;
+
+    public FastSaltedSha256Encoder() {
+        this(new SecureRandom());
+    }
+
+    /** The demo passes {@link RepeatableSalts}, so the values it prints never change. */
+    public FastSaltedSha256Encoder(SecureRandom random) {
+        this.random = random;
+    }
 
     @Override
     public String encode(CharSequence rawPassword) {

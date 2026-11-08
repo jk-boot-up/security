@@ -24,7 +24,7 @@ It is powerful and it has a price, which is what this project measures:
 - **Pinning choices soften the price:** pin an issuing CA's key (changes rarely), or the leaf plus a **backup pin** for a key that is generated, kept offline and not yet in use. A **report-only** mode shows what would break before it does.
 - **Pins set by the server** (the old `Public-Key-Pins` header, HPKP) let anyone who controls one response, or a site that loses its own keys, lock visitors out for up to a year. Browsers removed the feature for that reason.
 
-**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · RFC 8470 and Certificate Transparency as the modern alternatives.
+**Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · Certificate Transparency (RFC 9162) as the modern alternative.
 
 ## The idea in everyday terms
 

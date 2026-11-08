@@ -30,7 +30,7 @@ What it shows:
 - **Limits and revocation.** One account gets **40 of 40** payments through a limit of 5 when the store resets, against **5 of 40**; a revoked certificate is approved **6 of 6** when the responder is down or slow, against **0 of 6**.
 - **Alerts.** The first version raises **0** alerts; the hardened version raises one after **3** failed probes, and none for a slow close that costs nothing. Scoreboard: **2 of 20** hypotheses held against **20 of 20**.
 
-**Maps to:** NIST SP 800-53 SI-13, SC-24 (fail in known state), AU-5 (response to audit processing failures), CP-10 · OWASP ASVS V7 and V11 · MITRE ATT&CK T1562 (impair defenses) · Principles of Chaos Engineering.
+**Maps to:** NIST SP 800-53 SI-13, SC-24 (fail in known state), AU-5 (response to audit processing failures), CP-10 · OWASP ASVS 5.0 V16 Security Logging and Error Handling · MITRE ATT&CK T1562 (impair defenses) · Principles of Chaos Engineering.
 
 ## The idea in everyday terms
 

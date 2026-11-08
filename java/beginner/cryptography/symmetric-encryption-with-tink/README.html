@@ -27,7 +27,8 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── CountingAead.java  Wraps an Aead and counts how often it is used: stands for the calls a real key management service would be asked to make
 ├── DemoKeysets.java   Keysets with fixed contents, so the demo prints the same text on every run
 ├── EnvelopeAead.java  Envelope encryption: each message gets its own fresh 256-bit data key and is sealed with it using Tink's AES-GCM; the data key is then wrapped by a master {@link Aead}, which in a real system lives in a key management service or a hardware module, and the wrapped key travels with the message
-└── TinkDemo.java      Runs the online bank story in five numbered acts, with Google's Tink, and prints exact, repeatable results
+├── TinkDemo.java      Runs the online bank story in six numbered acts, with Google's Tink, and prints exact, repeatable results
+└── TinkLayout.java    A Tink AES-GCM message built by hand with the JDK, to show its layout: a version byte, the 4-byte key id, the 12-byte nonce, the cipher text and the 16-byte tag
 </code></pre>
 <p><strong>Google's Tink library gives one safe call for encryption, picks the nonce and the layout for you, keeps keys in a keyset that can be rotated, and leaves out the unsafe choices, but the keyset still needs a safe place to live.</strong></p>
 <p>The plain version of this lesson used AES-GCM straight from the JDK, and showed how many things the caller must get right: the
@@ -35,7 +36,7 @@ mode, the nonce, the format of the stored message, and the key. <strong>Tink</st
 <strong>Aead</strong> primitive has two calls, <code>encrypt</code> and <code>decrypt</code>, and nothing else to configure: it chooses a fresh nonce every time, lays out the
 message, and refuses to offer unsafe modes. Its keys live in a <strong>keyset</strong>, a list of keys of which one is <em>primary</em>. New messages use the primary key, and every key in the
 keyset can still open its old messages. That makes <strong>rotation</strong> simple: add a new key, make it primary, and later remove the old one.</p>
-<p>The demo runs the same online bank as the plain project, with the same statement line, in five acts: one call and no nonce, any change refused,
+<p>The demo runs the same online bank as the plain project, with the same statement line, in six acts: one call and no nonce, a message taken apart by hand, any change refused,
 rotating the key, keeping the keys safe with envelope encryption, and what Tink does not do for you.</p>
 <h2>The idea in everyday terms</h2>
 <p>Think of a lock box maker who is also a careful advisor. You do not choose the lock, the combination or the seal. The maker fits a fresh combination to
@@ -48,7 +49,7 @@ what remains the bank's job.</p>
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
 </code></pre>
-<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<p>The demo tells the story in 6 acts, each printing exact numbers that the tests check:</p>
 <table>
 <thead>
 <tr>
@@ -59,34 +60,39 @@ what remains the bank's job.</p>
 <tbody>
 <tr>
 <td>1. One call, and no nonce to look after</td>
-<td>Sealing the same line twice gives different bytes, the message starts with 01000003e9 (version 1, key id 1001), and 16 bytes become 49.</td>
+<td>The same line sealed twice gives two different 49-byte messages that both start 01000003e9; the caller never sees a nonce.</td>
 </tr>
 <tr>
-<td>2. Any change is refused</td>
-<td>A flipped bit, a message moved to another account, and a different key of the same id are all refused.</td>
+<td>2. Inside one Tink message, worked out by hand</td>
+<td>The 49 bytes, built by hand with a fixed nonce: version 01, key id 000003e9, 12-byte nonce, 16-byte cipher text and 16-byte tag; Tink opens it.</td>
 </tr>
 <tr>
-<td>3. Replacing the key without losing the data</td>
-<td>Adding a new primary key gives a keyset of 2 keys; old messages still open, new messages use the new key id, and removing the old key makes old messages unreadable.</td>
+<td>3. Any change is refused</td>
+<td>A changed last byte, a move to another account, and another key with the same id 1001 are all refused, because the tag no longer fits.</td>
 </tr>
 <tr>
-<td>4. Keys that stay at home: envelope encryption</td>
-<td>Each message gets its own data key, wrapped by a master key that is used once per message, 3 times for 3 messages of any size; a different master key is refused, and the master key's bytes are never stored.</td>
+<td>4. Replacing the key without losing the data</td>
+<td>Adding key 1002 as primary gives a keyset of 2 keys; old messages still open, new ones start 01000003ea, and removing key 1001 makes old messages unreadable.</td>
 </tr>
 <tr>
-<td>5. The bill: what Tink decides for you, and what it does not</td>
-<td>Tink offers authenticated templates and no ECB one, but the format is its own, it adds a library, the master key needs a home, and lengths still show.</td>
+<td>5. Keys that stay at home: envelope encryption</td>
+<td>Each message gets its own data key, wrapped by the master key: 16 bytes become 113 = 4 + 65 + 44; the master key is used once per message and its bytes are never stored.</td>
+</tr>
+<tr>
+<td>6. The bill: what Tink decides, and what it does not</td>
+<td>Tink offers authenticated templates and no ECB one, but every message is 33 bytes longer, the format is Tink's own, it adds a library, and the master key needs a home.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>18 tests in <code>DemoRunsTest</code>, <code>KeysetTest</code>, <code>TinkAeadTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves.</p>
+<p>22 tests in <code>DemoRunsTest</code>, <code>KeysetTest</code>, <code>TinkAeadTest</code>, <code>TinkLayoutTest</code>. Every line the demo prints is checked against <code>docs/expected-output.txt</code>. Tink's nonces are random, so the demo and the tests check lengths, equality and key ids, never the random bytes themselves; the one message with fixed bytes is built by hand by <code>TinkLayout</code>.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>The keyset is built from fixed key bytes so every run prints the same text, and its Base64 form is in the source. A real keyset is made with <code>generateNew</code>,
 which picks a random key and a random key id, and must never be written in the clear. The master key stands in for a key management service, and the envelope is written with Tink's primitives. Tink's nonces are random,
-so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. Tink 1.24 deprecates its
+so the demo prints facts that do not depend on them: whether two messages are equal, their length, and the five-byte start that names the key. To show the bytes
+themselves, <code>TinkLayout</code> builds one message by hand with the JDK's AES-GCM and a fixed nonce, and a test shows Tink opens it and rebuilds a real Tink message byte for byte. Tink 1.24 deprecates its
 functions for storing a keyset, so the demo never stores one.</p>
 <h2>Technologies and versions</h2>
 <p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>

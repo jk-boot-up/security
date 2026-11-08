@@ -32,7 +32,7 @@ Chapters:
 
 ## Tags
 
-runtime security, falco, kubernetes security, container security, linux audit, ebpf, intrusion detection, kind, devsecops, java
+runtime security, falco, kubernetes security, container security, linux audit, ebpf, intrusion detection, kind, devsecops, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -40,16 +40,16 @@ runtime security, falco, kubernetes security, container security, linux audit, e
 | --- | --- |
 | Video | `video/runtime-security-explained.mp4` |
 | Captions | `video/runtime-security-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Kubernetes and Container Security in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (87)
-- [ ] tags are at most 500 characters in total — ok (118)
+- [ ] tags are at most 500 characters in total — ok (169)
 - [ ] description is at most 5,000 characters — ok (268)
 - [ ] chapters start at 00:00 and there are at least three

@@ -41,10 +41,9 @@ interface TransactionIds {
 
             @Override
             public int nextId() {
-                counter++;
-                int[] values = mac(secret, counter);
-                port = LOWEST_PORT + Math.floorMod(values[1], PORTS);
-                return values[0] & 0xffff;
+                Keyed next = derive(secret, ++counter);
+                port = next.port();
+                return next.id();
             }
 
             @Override
@@ -54,12 +53,20 @@ interface TransactionIds {
         };
     }
 
-    private static int[] mac(String secret, long counter) {
+    /** One keyed id and port, with the hash they come from, so the steps can be shown. */
+    record Keyed(byte[] hash, int id, int port) {
+    }
+
+    /** id = the first 2 bytes of HMAC-SHA-256(secret, counter); port = 1024 + (the next 4 bytes mod 64512). */
+    static Keyed derive(String secret, long counter) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            ByteBuffer out = ByteBuffer.wrap(mac.doFinal(ByteBuffer.allocate(8).putLong(counter).array()));
-            return new int[] {out.getInt(), out.getInt()};
+            byte[] hash = mac.doFinal(ByteBuffer.allocate(8).putLong(counter).array());
+            ByteBuffer in = ByteBuffer.wrap(hash);
+            int id = Short.toUnsignedInt(in.getShort());
+            int port = LOWEST_PORT + (int) (Integer.toUnsignedLong(in.getInt()) % PORTS);
+            return new Keyed(hash, id, port);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }

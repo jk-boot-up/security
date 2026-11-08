@@ -37,6 +37,7 @@ class Settings:
     true_peak: float = -1.5
     loudness_range: float = 11.0
     audio_bitrate: str = "192k"
+    crf: int = 18                # x264 quality: lower is sharper and larger
     caption_chars: int = 84
     pause_scale: float = 1.5     # multiplies every [[slnc N]] pause
     version: str = ""            # named alternative build, e.g. amy-slow

@@ -1,16 +1,67 @@
-== 1. The search page works for honest customers ==
-search 'kettle' -> [Blue Kettle, Red Kettle]
-
-== 2. A quote turns the customer's text into SQL ==
-search "zzz' OR listed = 0 --" -> [Prototype Toaster]
-search "zzz' UNION SELECT email, password_hash FROM users --" -> [ana@shop.example, ben@shop.example]
-sort "price; DROP TABLE products" -> refused: unexpected ';' (one statement only)
-
-== 3. Parameters keep text as text ==
-search 'kettle' -> [Blue Kettle, Red Kettle]
-search "zzz' OR listed = 0 --" -> [no results]
-search "zzz' UNION SELECT email, password_hash FROM users --" -> [no results]
-sort "price; DROP TABLE products" -> [Blue Kettle, Red Kettle]
-
-== 4. A database user with few rights limits the damage of a mistake ==
-search "zzz' UNION SELECT email, password_hash FROM users --" -> refused: permission denied for table users
+ONE. The search page works for honest customers.
+  THE TABLE products (name, price in cents, listed):
+    Blue Kettle         2500  1
+    Red Kettle          2900  1
+    Copper Pan          4200  1
+    Prototype Toaster   9900  0  <- NOT FOR SALE
+  THE INPUT (search box, sort box):
+    kettle    price
+  THE STATEMENT AS BUILT (the input pasted in):
+    SELECT name, price FROM products
+    WHERE name LIKE '%kettle%' AND listed = 1
+    ORDER BY price
+  THE RESULT:
+    [Blue Kettle, Red Kettle]
+TWO. A quote turns the customer's text into SQL.
+  THE INPUT (search box, sort box):
+    zzz' OR listed = 0 --    name
+  THE STATEMENT AS BUILT (the input pasted in):
+    SELECT name, price FROM products
+    WHERE name LIKE '%zzz' OR listed = 0
+    --%' AND listed = 1 ORDER BY name
+  THE RESULT:
+    [Prototype Toaster]  <- AN UNLISTED PRODUCT
+  THE INPUT (search box, sort box):
+    zzz' UNION SELECT email, password_hash FROM users --    name
+  THE STATEMENT AS BUILT (the input pasted in):
+    SELECT name, price FROM products
+    WHERE name LIKE '%zzz'
+    UNION SELECT email, password_hash FROM users
+    --%' AND listed = 1 ORDER BY name
+  THE RESULT:
+    [ana@shop.example, ben@shop.example]  <- CUSTOMERS' E-MAILS
+  THE INPUT (search box, sort box):
+    kettle    price; DROP TABLE products
+  THE STATEMENT AS BUILT (the input pasted in):
+    SELECT name, price FROM products
+    WHERE name LIKE '%kettle%' AND listed = 1
+    ORDER BY price; DROP TABLE products
+  THE RESULT:
+    refused: unexpected ';' (one statement only)
+  stopped by luck: this engine runs one statement per call
+THREE. Parameters keep text as text.
+  THE STATEMENT (fixed text; the words travel separately):
+    SELECT name, price FROM products
+    WHERE name LIKE ? AND listed = 1
+    ORDER BY <name or price, from a list>
+  THE INPUTS AND RESULTS (each input is the value of ?):
+    kettle
+      -> [Blue Kettle, Red Kettle]
+    zzz' OR listed = 0 --
+      -> [no results]
+    zzz' UNION SELECT email, password_hash FROM users --
+      -> [no results]
+  THE SORT BOX (a column name cannot be a ?):
+    price; DROP TABLE products is not on the list
+      -> ORDER BY name, the default
+      -> [Blue Kettle, Red Kettle]
+FOUR. A database user with few rights limits the damage of a mistake.
+  THE TWO DATABASE USERS (the tables each may read):
+    admin   products, users, orders
+    search  products
+  THE UNION ATTACK, STILL PASTED IN:
+    as admin   [ana@shop.example, ben@shop.example]
+    as search  refused: permission denied for table users
+  THE QUOTE ATTACK, AS search:
+    [Prototype Toaster]  <- STILL WORKS
+  few rights limit the damage; only parameters fix the flaw

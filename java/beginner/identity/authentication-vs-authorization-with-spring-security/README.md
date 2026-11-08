@@ -2,8 +2,10 @@
 
 ```
 src/main/java/com/jk/explore/security/authspring/
+├── BasicHeader.java              How HTTP Basic carries a login: the username and password joined by a colon, then written in Base64
 ├── CommonConfig.java             What every version of the shop shares: the controller, the ownership rules and the four accounts
 ├── CountingPasswordEncoder.java  BCrypt, which is slow on purpose, with a counter of how many passwords were checked
+├── HashSteps.java                BCrypt by hand
 ├── LayeredConfig.java            Version three with a second layer: a rule on the address itself, so an endpoint that forgot its annotation is still guarded
 ├── LoginOnlyConfig.java          Version two: authentication only
 ├── OpenConfig.java               Version one: Spring Security is present, but every request is permitted
@@ -11,7 +13,7 @@ src/main/java/com/jk/explore/security/authspring/
 ├── PolicyConfig.java             Version three: authentication, then authorization
 ├── Shop.java                     One running copy of the shop: a Spring application context holding Spring Security's filter chain, driven by MockMvc, so requests go through the real chain without opening a network port
 ├── ShopController.java           The store's order endpoints
-└── SpringAuthDemo.java           Runs the online store story in five numbered acts, with Spring Security, and prints exact, repeatable results
+└── SpringAuthDemo.java           Runs the online store story in seven numbered acts, with Spring Security, and prints exact, repeatable results
 ```
 
 **Spring Security answers who is asking with a login filter and a password encoder, and what they may do with rules on the endpoints, and a forgotten rule is still an open door.**
@@ -25,8 +27,9 @@ checks them against a stored BCrypt hash. If nobody is known, the chain answers
 person may do, and a refusal is a 403.
 
 The demo runs the real filter chain through Spring's `MockMvc`, so there is no web
-server and no network port. The online store, its four people and the five acts
-are the same as in the plain project, so the two can be compared side by side.
+server and no network port. The online store, its four people and the story
+are the same as in the plain project. Seven acts show each request apart from its response, and two of
+them take the login apart: how the HTTP Basic header is written, and how BCrypt stores and checks a password.
 
 ## The idea in everyday terms
 
@@ -51,15 +54,17 @@ and HTTP Basic checks the password on every single request.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Spring Security present, but every request permitted | With the filter chain set to permit everything, anyone can refund and view any order. |
-| 2. Authentication: HTTP Basic, passwords stored as BCrypt | No credentials or a wrong password get a 401; the right password gets 200; stored passwords start with the BCrypt marker. |
-| 3. Authenticated is not the same as authorized | With the login rule and nothing else, a customer can refund orders and read other people's orders. |
-| 4. Authorization: @PreAuthorize rules on the endpoints | Rules on the methods decide: no credentials get 401, a customer who may not gets 403, support and admins get what their role allows. |
-| 5. The bill: a forgotten rule, and a password check on every request | An endpoint without its annotation is open to every signed-in user; a rule on the address closes it; HTTP Basic checks the password on all 3 requests. |
+| 1. Spring Security present, everything permitted | With the filter chain set to permit everything, a request with no login refunds and views order O-1: 200 OK both times. |
+| 2. Authentication: HTTP Basic and BCrypt | No login or a wrong password gets 401; the right password gets 200; the password is checked once per request that carries one. |
+| 3. The login on the wire: the HTTP Basic header | ben:ben-pass, 12 bytes, becomes YmVuOmJlbi1wYXNz in Base64, three bytes to four letters at a time, and anyone can decode it back. |
+| 4. The password check, step by step: BCrypt | The stored line is version $2a$, cost 04, a 22-letter salt and a 31-letter hash; a login hashes the typed password again with that salt and compares. |
+| 5. Authenticated is not the same as authorized | With the login rule and nothing else, ben, a customer, refunds order O-1 and reads ana's order: 200 OK both times. |
+| 6. Authorization: @PreAuthorize rules on the endpoints | Rules on the methods decide: no login gets 401, a customer who may not gets 403, support and admins get what their role allows. |
+| 7. The bill: a forgotten rule, a check every time | HTTP Basic checks the password on all 3 of sam's requests; an export endpoint without its annotation is open to ben until a rule on the address closes it. |
 
 ## Test
 
@@ -67,7 +72,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `BillTest`, `DemoRunsTest`, `FilterChainTest`. Every line the demo prints is checked against `docs/expected-output.txt`, the filter chain runs in the same JVM with no network, and BCrypt hashes are only compared, never printed in full, so every run gives the same result.
+21 tests in `BasicHeaderTest`, `BillTest`, `DemoRunsTest`, `FilterChainTest`, `HashStepsTest`. Every line the demo prints is checked against `docs/expected-output.txt`, the filter chain runs in the same JVM with no network, and the one BCrypt line that is printed uses a fixed demo salt (real use takes a random one), so every run gives the same result.
 
 ## What the simulation got right, and what it left out
 

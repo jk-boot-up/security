@@ -31,7 +31,7 @@ Chapters:
 
 ## Tags
 
-zero trust, identity-aware proxy, keycloak, opa, rego, jwt, audit log, token revocation, policy as code, java
+zero trust, identity-aware proxy, keycloak, opa, rego, jwt, audit log, token revocation, policy as code, java, Jayasekhar Konduru, github.com/jk-boot-up/security/
 
 ## Files
 
@@ -39,16 +39,16 @@ zero trust, identity-aware proxy, keycloak, opa, rego, jwt, audit log, token rev
 | --- | --- |
 | Video | `video/zero-trust-access-explained.mp4` |
 | Captions | `video/zero-trust-access-explained.srt` |
-| Thumbnail | `docs/thumbnail.png` (1280×720) |
+| Thumbnail | `docs/thumbnail-security-photo-cyan-theme.png` (1280×720) |
 
 ## Settings
 
-Public with instant Premiere; not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Security Foundations in Java - Without Tools. Never announce a next video.
+Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload/ytquality.sh`); not made for kids; no paid promotion; altered content: No; category Science & Technology; language English; playlist: Service Identity and Zero Trust in Java - With Tools. Never announce a next video.
 
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
 - [ ] title is at most 100 characters — ok (83)
-- [ ] tags are at most 500 characters in total — ok (100)
+- [ ] tags are at most 500 characters in total — ok (151)
 - [ ] description is at most 5,000 characters — ok (280)
 - [ ] chapters start at 00:00 and there are at least three

@@ -37,10 +37,10 @@ Learners meet security as an endless list of things to fix. A ranked register gi
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 32 lines, identical on every run |
+| Tests | 19, all passing |
+| Demo output | 70 lines, identical on every run |
 | Acts | 5 |
-| Video | 10:06, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

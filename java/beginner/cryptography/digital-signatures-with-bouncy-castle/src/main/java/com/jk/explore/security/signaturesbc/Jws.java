@@ -15,7 +15,7 @@ final class Jws {
     private Jws() {
     }
 
-    private static String b64(byte[] bytes) {
+    static String b64(byte[] bytes) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 

@@ -23,6 +23,7 @@ Learners know passwords should be hashed but not why a plain hash is not enough.
 | The accounts table | `AccountStore` |
 | The attacker | `Attacker` and `Cracked` |
 | Counting work | `WorkMeter` |
+| The rounds by hand | `RoundSteps` |
 | Entry point | `HashingDemo` |
 
 ## Requirements
@@ -38,10 +39,10 @@ Learners know passwords should be hashed but not why a plain hash is not enough.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 20, all passing |
-| Demo output | 26 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 74 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:54, 1920×1080, narrated in the amy-slow voice |
+| Video | 12:24, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -72,7 +72,7 @@ the demo chooses a rate so slow that the whole run takes a few seconds and the c
 five a second, and need more care. The demo cannot send requests from different real addresses, so the difference between the
 connection address and a client-written header is shown by changing the header only.
 """
-test_note = "The unit tests (`./gradlew test`) check the generated nginx configurations and need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration."
+test_note = "The unit tests (`./gradlew test`) check the generated nginx configurations, and that `LeakyBucket`, nginx's rule redone by hand, gives the counts the real nginx gave in the golden output; they need no Docker. The tests that start real containers, including the golden-output comparison, are tagged `docker` and run with `./gradlew integrationTest`. The demo's comparison with its golden output runs with the integration tests, because the demo needs Docker: run `./gradlew integrationTest` after changing the demo or its narration."
 
 [[act]]
 title = "nginx in front of the login, with no limit"
@@ -82,14 +82,24 @@ nginx sits in front of the login, which is a stub that says 401 to every passwor
 passes every request through. Twenty guesses at Dana's account are all answered: 20 answered, 0 refused. Anyone
 can keep guessing for as long as they like.
 """
+figure = "no_limit"
+figure_title = "No limit: every guess reaches the login"
+figure_speech = """
+First demo: nginx in front of the login, with no limit. [[slnc 400]] nginx is a web server that often sits in front of an application. [[slnc 600]]
+At the top, in green, the requests. [[slnc 300]] Twenty guesses at Dana's login, one straight after another. [[slnc 500]]
+In the middle, nginx, with no limit. [[slnc 300]] It passes every request to the login. [[slnc 500]]
+At the bottom, in red, the responses. [[slnc 300]] All twenty are four oh one, which means wrong password. [[slnc 300]] The login stub says that to every password. [[slnc 300]] None is a four twenty nine. [[slnc 600]]
+So every guess reaches the password check. [[slnc 300]] Anyone can keep guessing, for as long as they like.
+"""
 speech = """
-First demo: nginx in front of the login, with no limit. [[slnc 400]] nginx is a web server that very often sits in front of an application. [[slnc 300]] The login behind it is a stub, which says four oh one to every password. [[slnc 600]]
-The attacker sends twenty guesses at Dana's account. [[slnc 300]] All twenty are answered. [[slnc 300]] Nothing refused. [[slnc 600]]
-Anyone can keep guessing, for as long as they like.
+Here is the real output of the program. [[slnc 400]] Twenty guesses at Dana's login. [[slnc 300]] Twenty answered. [[slnc 300]] Zero refused with four twenty nine. [[slnc 500]]
+And the program's own note: anyone can keep guessing.
 """
 rows = { nginx = "active wrong" }
 console = [
-    ["20 guesses at dana's login: 20 answered, 0 refused with 429  <- ANYONE CAN KEEP GUESSING", "bad"],
+    ["20 guesses at dana's login:", "bad"],
+    ["  20 answered, 0 refused with 429", "bad"],
+    ["  <- ANYONE CAN KEEP GUESSING", "bad"],
 ]
 
 [[act]]
@@ -97,19 +107,31 @@ title = "limit_req on the client's address: 1r/m, burst 5"
 summary = "Keyed on the connection address, the limit lets 6 guesses through, 1 plus the burst of 5, and refuses the other 14 with a 429."
 detail = """
 The configuration now has a zone that counts requests per client address, at one request a minute, and the login
-location uses it with a burst of five. The first request is allowed. The burst lets five more through at once. That is six answered. The
-remaining fourteen get 429. The rate is deliberately slow, so the count does not depend on how fast the demo runs.
+location uses it with a burst of five. nginx keeps one number for each key, the excess: a key seen for the first time starts at 0,
+and every guess let in adds 1, while the rate takes 1 away per minute. A guess that would take the excess over the burst is refused.
+So guess 1 is let in at 0, guesses 2 to 6 take it to 5, and guess 7 would make 6: that is six answered, and the remaining fourteen
+get 429. `LeakyBucket` redoes this rule by hand, and its test gives the same counts as the real nginx. The rate is deliberately slow,
+so the count does not depend on how fast the demo runs.
+"""
+figure = "bucket_steps"
+figure_title = "How the limit decides, guess by guess"
+figure_speech = """
+Second demo: a limit on the client's address. [[slnc 400]] The rate is one request a minute, with a burst of five. [[slnc 400]] Why do exactly six get through? [[slnc 600]]
+At the top, in green, the requests. [[slnc 300]] Twenty guesses from one address, so one key. [[slnc 500]]
+Under them, the count nginx keeps for that key, called the excess. [[slnc 300]] Guess one is the first for this key, so the count starts at zero, and it is let in. [[slnc 400]] Each guess after that adds one. [[slnc 300]] Guess six brings it to five. [[slnc 400]] The rate takes one away per minute, which is almost nothing in a second. [[slnc 500]]
+Guess seven would make six. [[slnc 300]] Six is more than the burst of five, so it is refused, and not counted. [[slnc 300]] The same for every guess after it. [[slnc 600]]
+At the bottom, in red, the responses. [[slnc 300]] Six four oh ones, then fourteen four twenty nines. [[slnc 300]] One, plus the burst of five.
 """
 speech = """
-Second demo: a limit on the client's address. [[slnc 400]] nginx keeps a count of requests for each address, in a zone. [[slnc 300]] The rate is one a minute, with a burst of five. [[slnc 600]]
-The first request is allowed. [[slnc 300]] The burst lets five more through at once. [[slnc 300]] That is six answered. [[slnc 600]]
-The other fourteen are turned away with a four twenty nine, which means, too many requests. [[slnc 600]]
-The rate is deliberately slow, so the count does not depend on how fast the demo runs.
+The program prints the same counts. [[slnc 400]] Six answered. [[slnc 300]] Fourteen refused with four twenty nine. [[slnc 500]]
+The first six get through, one plus the burst of five. [[slnc 300]] The rest are turned away.
 """
 rows = { nginx = "active ok", zone = "active ok" }
 console = [
-    ["20 guesses at dana's login: 6 answered, 14 refused with 429", "ok"],
-    ["the first 6 get through (1 plus the burst of 5), the rest are turned away", "ok"],
+    ["20 guesses at dana's login:", "ok"],
+    ["  6 answered, 14 refused with 429", "ok"],
+    ["the first 6 get through (1 plus the burst of 5),", "ok"],
+    ["  the rest are turned away", "ok"],
 ]
 
 [[act]]
@@ -117,18 +139,29 @@ title = "The same limit, but counted on the X-Forwarded-For header"
 summary = "Keyed on a header the client writes, the attacker sends a different value each time and all 20 guesses are answered."
 detail = """
 Many setups sit behind a proxy and take the client's address from the `X-Forwarded-For` header. Here the zone is
-keyed on that header, and the attacker simply sends a different value with every guess. Each value has its own,
-empty bucket, so all 20 guesses are answered: 20 answered, 0 refused. The limit is in place and does nothing, because
+keyed on that header, and the attacker simply sends a different value with every guess, 10.0.0.0 to 10.0.0.19. Each value has its own,
+empty count, so all 20 guesses are answered: 20 answered, 0 refused. The limit is in place and does nothing, because
 the attacker chose the key.
 """
-speech = """
+figure = "header_key"
+figure_title = "Keyed on a header: the attacker picks the key"
+figure_speech = """
 Third demo: the same limit, counted on a header. [[slnc 400]] Many setups sit behind a proxy, and take the client's address from a header called X Forwarded For. [[slnc 600]]
-Here the zone is keyed on that header. [[slnc 300]] And the attacker sends a different value, with every guess. [[slnc 300]] Each value gets its own, empty bucket. [[slnc 600]]
-All twenty guesses are answered. [[slnc 300]] The limit is in place, and does nothing. [[slnc 300]] The attacker chose the key.
+At the top, in green, the requests. [[slnc 300]] The attacker writes that header itself. [[slnc 300]] Ten dot zero dot zero dot zero for the first guess, then dot one, dot two, and so on, a new value every time. [[slnc 500]]
+The key is now that header. [[slnc 300]] Twenty different values give twenty different counts. [[slnc 300]] Each one starts at zero. [[slnc 500]]
+At the bottom, in red, the responses. [[slnc 300]] Twenty four oh ones. [[slnc 300]] Nothing refused. [[slnc 600]]
+The limit is in place, and does nothing. [[slnc 300]] The attacker chose the key.
+"""
+speech = """
+The output agrees. [[slnc 400]] Twenty guesses, each with a different X Forwarded For value. [[slnc 300]] Twenty answered, zero refused. [[slnc 500]]
+The attacker chose its own key.
 """
 rows = { header = "active wrong", zone = "active wrong" }
 console = [
-    ["20 guesses, each with a different X-Forwarded-For value: 20 answered, 0 refused with 429  <- THE ATTACKER CHOSE ITS OWN KEY", "bad"],
+    ["20 guesses, each with a different", "bad"],
+    ["  X-Forwarded-For value:", "bad"],
+    ["  20 answered, 0 refused with 429", "bad"],
+    ["  <- THE ATTACKER CHOSE ITS OWN KEY", "bad"],
 ]
 
 [[act]]
@@ -139,14 +172,23 @@ The zone is keyed on the address of the connection itself, which the client cann
 as before, and nginx ignores them. The result is back to 6 answered and 14 refused. Behind a trusted proxy, the real client
 address must be taken from a header that only that proxy sets, and the proxy must overwrite whatever the client sent.
 """
-speech = """
+figure = "real_address"
+figure_title = "Keyed on the real address: the header is ignored"
+figure_speech = """
 Fourth demo: the same limit, counted on the real connection address. [[slnc 400]] The client cannot choose that one. [[slnc 600]]
-The attacker sends the same different header values as before. [[slnc 300]] nginx ignores them. [[slnc 300]] Six answered. [[slnc 300]] Fourteen refused. [[slnc 600]]
+At the top, the requests. [[slnc 300]] The attacker sends the same twenty header values as before. [[slnc 300]] They are grey now, because nginx does not look at them. [[slnc 500]]
+The key is the address of the connection. [[slnc 300]] One attacker, one address, so one count. [[slnc 500]]
+At the bottom, the responses. [[slnc 300]] Six four oh ones, and fourteen four twenty nines, just like the second demo. [[slnc 600]]
 Behind a trusted proxy, the real address must come from a header that only that proxy sets. [[slnc 300]] And the proxy must overwrite whatever the client sent.
+"""
+speech = """
+The output: twenty guesses with different header values. [[slnc 300]] Six answered, fourteen refused. [[slnc 500]]
+The header is ignored, so changing it buys nothing.
 """
 rows = { nginx = "active ok", zone = "active ok", header = "active ok" }
 console = [
-    ["20 guesses with different X-Forwarded-For values: 6 answered, 14 refused with 429", "ok"],
+    ["20 guesses with different X-Forwarded-For values:", "ok"],
+    ["  6 answered, 14 refused with 429", "ok"],
     ["the header is ignored, so changing it buys nothing", "ok"],
 ]
 
@@ -155,22 +197,35 @@ title = "The bill: a limit per username"
 summary = "Keyed on the username, the limit holds an attack on Dana to 6 but also turns Dana away, and a spray of 20 usernames is never limited."
 detail = """
 A limit per username seems natural: protect each account. An attack on Dana is held to 6 answered and 14 refused.
-But the bucket for Dana is now full, and when Dana herself tries from another address, she gets 429: the
-limit locks the owner out too. And a spray, with one guess at each of 20 usernames, fills no bucket at all: 20 answered, 0 refused.
+But the count for Dana is now full, and when Dana herself tries from another address, 203.0.113.7, she gets 429: the
+limit locks the owner out too. And a spray, with one guess at each of 20 usernames, customer0 to customer19, fills no count at all: 20 answered, 0 refused.
 A per-username limit is a lockout with the same two weaknesses as in the plain project. It belongs beside a limit per address, not in place of it.
 """
+figure = "username_key"
+figure_title = "Keyed on the username: the owner pays"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] Now the key is the username, so each account has its own count. [[slnc 600]]
+On the left, one account. [[slnc 300]] The requests: twenty guesses at Dana. [[slnc 300]] The responses: six answered, fourteen refused. [[slnc 400]] Then Dana herself logs in, from another address. [[slnc 300]] Her count is full, so she gets a four twenty nine. [[slnc 300]] The limit locks the owner out. [[slnc 600]]
+On the right, a spray. [[slnc 300]] The requests: one guess at each of twenty usernames, customer zero to customer nineteen. [[slnc 300]] Twenty counts, each with only one in it. [[slnc 400]] The responses: twenty answered, nothing refused. [[slnc 600]]
+So a limit per username belongs beside a limit per address. [[slnc 300]] Not instead of it.
+"""
 speech = """
-Fifth demo: the bill. [[slnc 400]] A limit per username seems natural. [[slnc 300]] Protect each account. [[slnc 600]]
-An attack on Dana is held to six answered, and fourteen refused. [[slnc 300]] But Dana's bucket is now full. [[slnc 300]] When Dana herself tries, from another address, she is turned away too. [[slnc 600]]
-And a spray, with one guess at each of twenty usernames, fills no bucket at all. [[slnc 300]] All twenty are answered. [[slnc 600]]
-A limit per username is a lockout, with the same two weaknesses as before. [[slnc 300]] It belongs beside a limit per address. [[slnc 300]] Not instead of it.
+The program shows the same. [[slnc 400]] Twenty guesses at Dana: six answered, fourteen refused. [[slnc 300]] Dana herself: four twenty nine. [[slnc 500]]
+One guess at each of twenty usernames: twenty answered, zero refused. [[slnc 300]] A spray never reaches the limit.
 """
 rows = { zone = "active amber", nginx = "active amber" }
 console = [
     ["20 guesses at dana: 6 answered, 14 refused with 429", "ok"],
-    ["dana herself tries from another address: 429  <- THE LIMIT LOCKS THE OWNER OUT TOO", "bad"],
-    ["one guess at each of 20 usernames: 20 answered, 0 refused with 429  <- A SPRAY NEVER REACHES THE LIMIT", "bad"],
+    ["dana herself tries from another address: 429", "bad"],
+    ["  <- THE LIMIT LOCKS THE OWNER OUT TOO", "bad"],
+    ["one guess at each of 20 usernames:", "bad"],
+    ["  20 answered, 0 refused with 429", "bad"],
+    ["  <- A SPRAY NEVER REACHES THE LIMIT", "bad"],
 ]
+
+[highlight]
+console_rose = ["<- "]
+console_green = ["the first 6", "the header is ignored"]
 
 [animation]
 subtitle = "A real nginx in front of a bank's login: what it counts decides whether a rate limit works."
@@ -283,7 +338,7 @@ nongoals = [
 problem = """
 Learners know a rate limit is good but not that what it counts decides whether it works.
 """
-roles = [["The configuration", "`NginxConfig`"], ["The container", "`Nginx`"], ["The attacker", "`Attacker` and `Tally`"], ["Entry point", "`NginxAttacksDemo`"]]
+roles = [["The configuration", "`NginxConfig`"], ["The container", "`Nginx`"], ["The attacker", "`Attacker` and `Tally`"], ["The rule by hand", "`LeakyBucket`"], ["Entry point", "`NginxAttacksDemo`"]]
 requirements = [
     "The unit tests need no Docker; the container tests are tagged `docker`.",
     "Every nginx configuration is generated from `NginxConfig`, and `infra/nginx-limit-by-address.conf` equals its output.",
@@ -322,6 +377,7 @@ nodes = [
     { id = "attacker", label = "Attacker", sub = ["attempt(user, forwardedFor)", "run(count, user, forwardedFor)"], col = 2, row = 0, colour = "red" },
     { id = "tally", label = "Tally", sub = ["answered", "refused"], col = 2, row = 1, colour = "client" },
     { id = "demo", label = "NginxAttacksDemo", sub = ["run()"], col = 1, row = 1, colour = "client" },
+    { id = "bucket", label = "LeakyBucket", sub = ["allow(key, millis)", "excess(key)", "nginx's rule by hand"], col = 0, row = 1, colour = "amber" },
 ]
 edges = [
     { from = "demo", to = "config", label = "builds" },
@@ -425,21 +481,34 @@ after = { code = "key = $binary_remote_addr", note = "the real address decides",
 key = "01-poster"
 kind = "poster"
 title = "Password Attacks and Defences with nginx"
-narration = """Hello, and welcome. [[slnc 400]] This video explains rate limiting a login with nginx, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A rate limit turns away requests that arrive too fast. [[slnc 300]] nginx is a web server that often sits in front of an application, and can do this before the request reaches the application. [[slnc 300]] It counts requests for each key, and answers four twenty nine, too many requests, when a key is over its limit. [[slnc 600]] Think of a door guard at a bank. [[slnc 300]] The guard allows each visitor six entries an hour. [[slnc 300]] If the guard recognises visitors by their face, a thief is held to six. [[slnc 300]] If the guard asks for a name and trusts the answer, the thief gives a new name every time, and walks in twenty times. [[slnc 300]] The rule was fine. [[slnc 300]] What the guard counted was wrong. [[slnc 700]] In this video, the domain is an online bank. [[slnc 300]] Its login runs behind a real nginx, inside a Docker container. [[slnc 500]] By the end, you will hear what a limit counts, which counts work, and which do not."""
+narration = """Hello, and welcome. [[slnc 400]] This video explains rate limiting a login with nginx, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A rate limit turns away requests that arrive too fast. [[slnc 300]] nginx is a web server that often sits in front of an application, and can do this before the request reaches it. [[slnc 300]] It keeps a count for each key, and when a key is over its limit, it answers with an H T T P status, four twenty nine, too many requests. [[slnc 300]] H T T P is the Hypertext Transfer Protocol, the language of the web. [[slnc 600]] Think of a door guard at a bank, who allows each visitor six entries an hour. [[slnc 300]] If the guard recognises faces, a thief is held to six. [[slnc 300]] If the guard trusts the name a visitor gives, the thief gives a new name every time, and walks in twenty times. [[slnc 300]] The rule was fine. [[slnc 300]] What the guard counted was wrong. [[slnc 700]] In this video, the domain is an online bank, whose login runs behind a real nginx, inside a Docker container."""
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
 body = ["An online bank's login, behind nginx.", "", "Twenty guesses at Dana's account.", "Sent as fast as one machine can.", "", "Five ways to count them."]
-narration = """Here is the scenario. [[slnc 400]] An online bank's login sits behind nginx. [[slnc 500]] Twenty guesses at Dana's account arrive from one machine, as fast as it can send them. [[slnc 500]] The login itself is a stub, that says four oh one to every password. [[slnc 300]] So only the limit decides what the attacker sees. [[slnc 600]] The bank tries five ways of counting."""
+narration = """Here is the scenario. [[slnc 400]] An online bank's login sits behind nginx. [[slnc 500]] Twenty guesses at Dana's account arrive from one machine, as fast as it can send them. [[slnc 500]] The login itself is a stub, that says four oh one, wrong password, to every guess. [[slnc 300]] So only the limit decides what the attacker sees. [[slnc 600]] The bank tries five ways of counting."""
 
 [[scene]]
 key = "03-words"
 kind = "bullets"
 title = "The Words"
-body = ["limit_req: nginx's rate limit", "Zone: a count of requests for each key", "Key: what the count is kept for", "Burst: extra requests allowed at once", "429: too many requests"]
-narration = """Before the demos, the words. [[slnc 500]] Limit req is nginx's rate limit. [[slnc 500]] A zone is a count of requests for each key. [[slnc 500]] The key is what the count is kept for. [[slnc 300]] An address, a header, or a username. [[slnc 500]] The burst is how many extra requests are allowed at once. [[slnc 500]] And four twenty nine is the answer that means, too many requests."""
+body = ["limit_req: nginx's rate limit", "Key: what the count is kept for", "Excess: the count for one key", "Burst: extra requests allowed at once", "429: too many requests"]
+narration = """Before the demos, the words. [[slnc 500]] Limit req is nginx's rate limit. [[slnc 500]] The key is what the count is kept for. [[slnc 300]] An address, a header, or a username. [[slnc 500]] The excess is the count nginx keeps for one key. [[slnc 500]] The burst is how many extra requests are allowed at once. [[slnc 500]] And four twenty nine is the answer that means, too many requests."""
+
+[[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "04-keys"
+kind = "figure"
+title = "One request, three possible keys"
+body = "key_choice"
+narration = """Let's start with one real request. [[slnc 400]] On the left, in green, the request. [[slnc 300]] A guess at Dana's login, sent with the H T T P method POST, to slash login, with user equals Dana. [[slnc 300]] It also carries a header, X Forwarded For, ten dot zero dot zero dot seven, which the attacker wrote. [[slnc 600]] On the right, three things nginx could count. [[slnc 400]] The connection's own I P address, which the network decides. [[slnc 300]] The header, which the client writes. [[slnc 300]] And the username, which the client names. [[slnc 600]] Below, in red, the response. [[slnc 300]] nginx keeps one count for each value of the key. [[slnc 300]] With room left, the request is passed on, and the login says four oh one. [[slnc 300]] With no room left, nginx itself says four twenty nine. [[slnc 600]] The rule is the same in every demo. [[slnc 300]] Only the key changes."""
 
 [[scene]]
 key = "acts"
@@ -448,39 +517,31 @@ title = "Acts"
 narration = "unused"
 
 [[scene]]
-key = "09-keys"
-kind = "bullets"
-title = "Choosing the Key"
-body = ["Real connection address: the client cannot choose it", "A client-written header: the client chooses it", "Username: locks the owner, misses a spray", "", "Layer them. Take the address from your own proxy."]
-narration = """Let's put the keys side by side. [[slnc 400]] The real connection address is a good key, because the client cannot choose it. [[slnc 500]] A header the client writes is a bad key, because the client chooses it. [[slnc 500]] The username locks the owner out, and misses a spray. [[slnc 600]] So, count the real address, and add a gentle limit per username only with care. [[slnc 300]] And behind a proxy, take the address from a header that only your own proxy sets."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["NginxConfig: writes the configuration", "Nginx: starts and stops the container", "Attacker: sends guesses, counts answers", "Tally: answered and refused", "Login stub: always says 401"]
-narration = """Here is who does what in the code. [[slnc 400]] Nginx config writes the configuration for each act. [[slnc 500]] Nginx starts a container with that configuration, and stops it afterwards. [[slnc 500]] The attacker sends guesses, and counts the answers. [[slnc 500]] The tally holds how many were answered and how many refused. [[slnc 300]] And the login stub inside nginx says four oh one to every password."""
-
-[[scene]]
 key = "11-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["A 429 Too Many Requests page", "limit_req_zone in a config", "Rate limits in API documentation", "Never trust X-Forwarded-For"]
-narration = """You have probably met these already. [[slnc 400]] A page that says too many requests, with a note to try again later, is a four twenty nine. [[slnc 500]] The lines limit req zone and limit req appear in many nginx configurations. [[slnc 500]] Many programming interfaces document their rate limits. [[slnc 500]] And the advice, never trust X Forwarded For, is the third demo."""
+narration = """You have probably met these already. [[slnc 400]] A page that says too many requests, try again later, is a four twenty nine. [[slnc 500]] The lines limit req zone and limit req appear in many nginx configurations. [[slnc 500]] Many A P Is document their rate limits. [[slnc 500]] And the advice, never trust X Forwarded For, is the third demo."""
 
 [[scene]]
 key = "12-verdict"
 kind = "bullets"
 title = "How To Use It"
-body = ["Limit at the front door", "Key: the real connection address", "Overwrite X-Forwarded-For at your own proxy", "Keep lockout, second factor, breach check"]
-narration = """So, how do you use it? [[slnc 400]] Put a rate limit at the front door. [[slnc 500]] Key it on the real connection address. [[slnc 500]] Make your own proxy overwrite the forwarded header, instead of passing on what the client sent. [[slnc 500]] And keep the lockout, the second factor, and the breach check behind it, from the earlier video."""
+body = ["Limit at the front door", "Key: the real connection address", "Overwrite X-Forwarded-For at your own proxy", "Per-username only beside it, with care", "Keep lockout, second factor, breach check"]
+narration = """So, how do you use it? [[slnc 400]] Put a rate limit at the front door. [[slnc 500]] Key it on the real connection address, which the client cannot choose. [[slnc 500]] Make your own proxy overwrite the forwarded header, instead of passing on what the client sent. [[slnc 500]] Add a limit per username only beside it, knowing it can lock the owner out. [[slnc 500]] And keep the lockout, the second factor, and the breach check behind it, from the earlier video."""
 
 [[scene]]
-key = "13-outro"
+key = "13-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
+key = "14-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Change the burst to two", "and predict the counts first."]
-narration = """That's rate limiting a login with nginx. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rate limit is only as good as the key it counts, and a key the attacker can choose is no limit at all. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It needs a Java development kit, and a running Docker. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the burst to two, and predict the counts before you run the demo. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+narration = """That's rate limiting a login with nginx. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rate limit is only as good as the key it counts, and a key the attacker can choose is no limit at all. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It needs a J D K, and a running Docker. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Change the burst to two, and predict the counts before you run the demo. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
 
 [threatmodel]
 scope = """
@@ -517,6 +578,7 @@ out_of_scope = [
 ]
 tests = [
     "`NginxConfigTest` checks the generated configurations, including the key, the burst and that `limit_req` sits beside `proxy_pass`.",
+    "`LeakyBucketTest` checks that the hand-made rule gives the counts of the golden output: 1 plus the burst for one key, every guess for a new key each time.",
     "`ReferenceConfigTest` checks that `infra/nginx-limit-by-address.conf` is what the code generates.",
     "`NginxContainerTest` (tagged `docker`) starts real containers and checks the counts for all five keys and the golden output.",
 ]
@@ -571,3 +633,111 @@ threat = "The login is reachable without passing the limit"
 where = "the port of the login stub"
 control = "The stub listens inside the container only; the demo publishes only port 80"
 residual = "In a real system the application must not be directly reachable from outside nginx"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Five small classes. [[slnc 300]] Here is what each one does."""
+
+[[class]]
+name = "NginxAttacksDemo"
+what = "runs the five acts"
+[[class.part]]
+title = "one act: start nginx, then attack"
+code = """
+try (Nginx nginx = Nginx.start(
+        NginxConfig.text(NginxConfig.Key.FORWARDED_HEADER, RATE, BURST))) {
+    Tally t = new Attacker(nginx.port())
+            .run(ATTEMPTS, i -> "dana", i -> "10.0.0." + i);   // new header each time
+"""
+speech = """Nginx attacks demo runs the five acts. [[slnc 300]] Each act starts a fresh nginx with one key, here the forwarded header. [[slnc 300]] Then the attacker sends twenty guesses, with a new header value every time."""
+
+[[class]]
+name = "NginxConfig"
+what = "writes nginx's configuration for one key"
+[[class.part]]
+title = "the key, and the two limit lines"
+code = """
+ADDRESS("$binary_remote_addr"),
+...
+FORWARDED_HEADER("$http_x_forwarded_for"),
+...
+USERNAME("$arg_user");
+...
+conf.append("  limit_req_zone ").append(key.variable())
+        .append(" zone=login:1m rate=").append(rate).append(";\\n");
+...
+conf.append("      limit_req zone=login burst=").append(burst).append(" nodelay;\\n");
+conf.append("      limit_req_status 429;\\n");
+"""
+speech = """Nginx config writes the configuration. [[slnc 300]] Each key names the nginx variable that is counted: the connection address, the header, or the user in the request. [[slnc 300]] The zone line sets the key and the rate. [[slnc 300]] The limit line sets the burst, and answers four twenty nine."""
+
+[[class]]
+name = "Nginx"
+what = "one real nginx, in a Docker container"
+[[class.part]]
+title = "start a pinned image with that file"
+code = """
+public static final String IMAGE = "nginx:1.31.7-alpine";
+...
+run(List.of("docker", "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::80",
+        "-v", conf + ":/etc/nginx/nginx.conf:ro", IMAGE));
+"""
+speech = """Nginx starts a real container, from an image pinned to one exact version. [[slnc 300]] The generated file is mounted as nginx's configuration, and the container is stopped after the act."""
+
+[[class]]
+name = "Attacker"
+what = "sends the guesses, counts 401 and 429"
+[[class.part]]
+title = "one guess, and the count"
+code = """
+if (forwardedFor != null) {
+    request.header("X-Forwarded-For", forwardedFor);   // the attacker writes it
+}
+...
+if (status == 401) {
+    answered++;
+} else if (status == 429) {
+    refused++;
+"""
+speech = """The attacker sends each guess as an H T T P POST. [[slnc 300]] It writes the forwarded header itself, when an act asks for one. [[slnc 300]] Four oh one counts as answered, four twenty nine as refused, and the tally holds both numbers."""
+
+[[class]]
+name = "LeakyBucket"
+what = "nginx's rule, redone by hand"
+[[class.part]]
+title = "the excess for one key"
+code = """
+long now = 0;                                         // a new key starts empty
+if (before != null) {
+    long drained = perMinute * 1000 * (millis - lastMillis.get(key)) / 60_000;
+    now = Math.max(0, before - drained) + 1000;      // drain, then add this guess
+}
+if (now > burst * 1000) {
+    return false;                                     // over the burst: 429
+"""
+speech = """Leaky bucket redoes nginx's rule by hand, counting in thousandths, as nginx does. [[slnc 300]] A new key starts at zero. [[slnc 300]] Each guess drains what the rate allows, then adds one. [[slnc 300]] Over the burst is refused. [[slnc 300]] Its test gives the same counts as the real nginx."""
+
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol"
+say = "H T T P is the Hypertext Transfer Protocol: how browsers and servers talk. Four oh one and four twenty nine are H T T P status codes."
+[[acronym]]
+short = "POST"
+long = "an HTTP method: send data to the server"
+say = "POST is the H T T P method that sends data, such as a password, to the server."
+[[acronym]]
+short = "IP"
+long = "Internet Protocol (an IP address)"
+say = "I P is the Internet Protocol. An I P address is the number that says where a connection comes from."
+[[acronym]]
+short = "1r/m"
+long = "1 request per minute (nginx's rate)"
+say = "One r slash m is how nginx writes a rate of one request per minute."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is an Application Programming Interface: a service that programs call."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit"
+say = "J D K is the Java Development Kit, which compiles and runs the Java code."

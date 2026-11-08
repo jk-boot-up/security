@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Recording traffic to a capture file | 7 min |
-| 0:17 | Act 2: Reading it back, in the style of tcpdump | 7 min |
-| 0:24 | Act 3: Finding a SYN flood in a capture | 7 min |
-| 0:31 | Act 4: Finding a damaged packet | 7 min |
-| 0:38 | Act 5: What a capture reveals | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: Recording a purchase to a capture file | 5 min |
+| 0:15 | Act 2: Reading it back, in the style of tcpdump | 5 min |
+| 0:20 | Act 3: Finding a SYN flood in a capture | 5 min |
+| 0:25 | Act 4: How a checksum is made, step by step | 5 min |
+| 0:30 | Act 5: Finding a damaged packet | 5 min |
+| 0:35 | Act 6: What a capture reveals | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

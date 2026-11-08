@@ -57,7 +57,10 @@ public class Store implements AutoCloseable {
     }
 
     public void createBucket(String bucket, boolean objectLock) {
-        s3.createBucket(CreateBucketRequest.builder().bucket(bucket).objectLockEnabledForBucket(objectLock).build());
+        s3.createBucket(CreateBucketRequest.builder()
+                .bucket(bucket)
+                .objectLockEnabledForBucket(objectLock)
+                .build());
     }
 
     public void enableVersioning(String bucket) {
@@ -84,7 +87,10 @@ public class Store implements AutoCloseable {
     }
 
     public byte[] getVersion(String bucket, String key, String versionId) {
-        return s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).versionId(versionId).build()).asByteArray();
+        return s3.getObjectAsBytes(GetObjectRequest.builder()
+                .bucket(bucket).key(key)
+                .versionId(versionId)
+                .build()).asByteArray();
     }
 
     /** Deletes the key: on a versioned bucket this only adds a delete marker. */
@@ -93,14 +99,23 @@ public class Store implements AutoCloseable {
     }
 
     public void deleteVersion(String bucket, String key, String versionId, boolean bypassGovernance) {
-        s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).versionId(versionId)
-                .bypassGovernanceRetention(bypassGovernance).build());
+        s3.deleteObject(DeleteObjectRequest.builder()
+                .bucket(bucket).key(key)
+                .versionId(versionId)
+                .bypassGovernanceRetention(bypassGovernance)
+                .build());
     }
 
-    public void retain(String bucket, String key, String versionId, ObjectLockRetentionMode mode, Instant until, boolean bypassGovernance) {
-        s3.putObjectRetention(PutObjectRetentionRequest.builder().bucket(bucket).key(key).versionId(versionId)
-                .retention(ObjectLockRetention.builder().mode(mode).retainUntilDate(until).build())
-                .bypassGovernanceRetention(bypassGovernance).build());
+    public void retain(String bucket, String key, String versionId,
+                       ObjectLockRetentionMode mode, Instant until, boolean bypassGovernance) {
+        s3.putObjectRetention(PutObjectRetentionRequest.builder()
+                .bucket(bucket).key(key).versionId(versionId)
+                .retention(ObjectLockRetention.builder()
+                        .mode(mode)
+                        .retainUntilDate(until)
+                        .build())
+                .bypassGovernanceRetention(bypassGovernance)
+                .build());
     }
 
     /** The version ids of a key, newest first, with delete markers counted as versions. */
@@ -118,9 +133,14 @@ public class Store implements AutoCloseable {
     }
 
     public void expireOldVersionsAfter(String bucket, int days) {
-        LifecycleRule rule = LifecycleRule.builder().id("expire-old-versions").status(ExpirationStatus.ENABLED)
+        LifecycleRule rule = LifecycleRule.builder()
+                .id("expire-old-versions")
+                .status(ExpirationStatus.ENABLED)
                 .filter(LifecycleRuleFilter.builder().prefix("").build())
-                .noncurrentVersionExpiration(NoncurrentVersionExpiration.builder().noncurrentDays(days).build()).build();
+                .noncurrentVersionExpiration(NoncurrentVersionExpiration.builder()
+                        .noncurrentDays(days)
+                        .build())
+                .build();
         s3.putBucketLifecycleConfiguration(PutBucketLifecycleConfigurationRequest.builder().bucket(bucket)
                 .lifecycleConfiguration(BucketLifecycleConfiguration.builder().rules(rule).build()).build());
     }

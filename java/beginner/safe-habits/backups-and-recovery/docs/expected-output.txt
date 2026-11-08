@@ -1,39 +1,101 @@
 ONE. Full and incremental backups, with a manifest.
-  day 1, a full backup: 3 files stored
-  day 2, an incremental backup: 2 files stored (orders changed, refunds new)
-  day 3, an incremental backup: 1 file stored
-  the manifest of day 3 lists 4 files, each with its SHA-256
-  restoring day 3 takes the newest copy of each file from the chain; problems found: 0
-  incremental backups are small and quick, and a restore needs the whole chain
+  THE SHOP'S FILES ON DAY 1
+    customers.csv  inventory.csv  orders.csv
+  THE CHANGES
+    day 2: orders.csv gets order 1003, refunds.csv is new
+    day 3: customers.csv gets the customer cy
+  THE BACKUPS
+    day    kind         files stored
+    day 1  full         customers inventory orders
+    day 2  incremental  orders refunds
+    day 3  incremental  customers
+  THE MANIFEST OF DAY 3 (SHA-256, FIRST 16 HEX DIGITS)
+    da47b517e1d0996b  customers.csv
+    0c7ea4b599c766f4  inventory.csv
+    ebbb696c63ad1e89  orders.csv
+    3820f80438acff9e  refunds.csv
+  THE RESTORE OF DAY 3
+    customers.csv  from day 3
+    inventory.csv  from day 1
+    orders.csv     from day 2
+    refunds.csv    from day 2
+    problems against the manifest: 0
+    a restore needs the whole chain: day 1, 2 and 3
 TWO. Can the backup be trusted? Only a restore test says.
-  one byte of a stored file is changed: files found changed 1, and the manifest names it
-  a stored file is deleted: files found missing 1
-  a backup job skipped the orders file because it was in use; the manifest checks out: true
-  the restore test asks for a usable orders file: false  <- A BACKUP NOBODY RESTORED IS A HOPE
-  a good backup passes the restore test: true, with 3 orders
+  THE DAMAGE TO THE STORED BACKUP
+    one byte of orders.csv in day 2 is changed
+    inventory.csv in day 1 is deleted
+  WHAT THE MANIFEST CHECK FINDS
+    changed: orders.csv
+    missing: inventory.csv
+  THE TWO BACKUPS TESTED
+    partial: the job skipped orders.csv, it was in use
+    good:    every file copied
+  THE RESTORE TEST RESULTS
+    backup   manifest  orders file  orders  passed
+    partial  ok        missing      0       false
+    good     ok        usable       3       true
+    <- A BACKUP NOBODY RESTORED IS A HOPE
 THREE. The 3-2-1 rule, and how long to keep backups.
-  a copy in another folder of the same server: three copies false, two media false, one off site false, one unchangeable false: 0 of 4
-  the server, a NAS and an off-site locked bucket: three copies true, two media true, one off site true, one unchangeable true: 4 of 4
-  400 daily snapshots, keeping 7 daily, 4 weekly and 12 monthly: 21 kept, 379 pruned
-  the oldest kept is 2025-03-01: a year of history in 21 snapshots instead of 400
-  keeping less than the law or the business needs is a risk too, and so is keeping personal data for ever
+  BEFORE THE FIX: TWO COPIES ON ONE SERVER
+    shop server                ssd
+    same server, other folder  ssd
+    3 copies false, 2 media false
+    1 off site false, 1 locked false: 0 of 4
+  AFTER THE FIX: THREE PLACES
+    shop server                ssd
+    office NAS                 disk
+    bucket, other region       object store, off site, locked
+    3 copies true, 2 media true
+    1 off site true, 1 locked true: 4 of 4
+  THE SNAPSHOTS
+    400 daily, 2025-01-01 to 2026-02-04
+  THE POLICY
+    keep 7 daily, 4 weekly (Sundays), 12 monthly (1st)
+  WHAT IS KEPT
+    daily    7  2026-01-29 to 2026-02-04
+    weekly   4  2026-01-11 to 2026-02-01
+    monthly 12  2025-03-01 to 2026-02-01
+    7 + 4 + 12 - 2 in two lists = 21 kept, 379 pruned
+    oldest kept 2025-03-01: a year in 21 snapshots
 FOUR. Ransomware, and the copy it cannot change.
-  ransomware runs on the shop server and encrypts 3 files in place
-  the orders file still reads as before: false
-  the backup folder was mounted and writable, so it is encrypted too: 3 files  <- THE BACKUP WENT WITH THE DATA
-  a store that only adds versions took the attacker's writes as new versions: 2 versions of the orders file
-  restoring the version from before the attack gives every original file back: true
-  files marked read-only: encrypted 0, blocked 3
-  but the same user can make them writable again: encrypted 3  <- REAL PROTECTION COMES FROM A COPY THE SHOP'S OWN ACCOUNT CANNOT CHANGE
-FIVE. How much can be lost, how long it takes, and backups as secrets.
-  nightly backup at 02:00, failure at 15:30, noticed at 15:50, restore takes 95 minutes
-  recovery point: 13:30 of work lost, about 162 orders at 12 an hour
-  recovery time: 01:55 until the shop is back
-  with an hourly backup the recovery point is 00:30 and about 6 orders; the recovery time is the same
-  a backup holds every customer's data, so it is sealed with AES-256-GCM
-  the archive shows a customer name: false
-  the right key opens it: true
-  another key: refused
-  the same archive offered as the next night's: refused, because its name is sealed in with it
-  the key file has permissions rw-------, and lives apart from the backups
-  a lost key is a lost backup, so the key needs its own safe copy
+  THE COPIES BEFORE THE ATTACK
+    shop server        3 files  writable
+    mounted backup     3 files  writable
+    versioned store    3 files  only adds, at time 100
+    read-only folder   3 files  r--------
+  THE ATTACK
+    at time 200 it encrypts every file it can write
+  AFTER THE ATTACK
+    shop server        3 encrypted, orders.csv lost
+    mounted backup     3 encrypted  <- WENT WITH THE DATA
+    versioned store    2 versions: time 100 and 200
+    read-only folder   0 encrypted, 3 blocked
+  WHAT CAN BE RESTORED
+    versioned store, version before 200: all back true
+    read-only folder, after the same user runs chmod u+w:
+      3 encrypted  <- THE SHOP'S ACCOUNT COULD UNLOCK IT
+FIVE. Recovery point, recovery time, and a sealed backup.
+  THE TIMELINE
+    02:00  the last nightly backup
+    15:30  the order database fails
+    15:50  someone notices
+    95 minutes for the restore, 12 orders an hour
+  THE RECOVERY POINT (RPO): THE WORK LOST
+    15:30 - 02:00 = 13:30, 13.5 h x 12 = 162 orders lost
+  THE RECOVERY TIME (RTO): UNTIL THE SHOP IS BACK
+    15:50 + 95 min = 17:25, 17:25 - 15:30 = 01:55
+  WITH AN HOURLY BACKUP, THE LAST AT 15:00
+    RPO 15:30 - 15:00 = 00:30, 0.5 h x 12 = 6 orders lost
+    RTO 01:55, the same: backups do not speed restores
+  THE ARCHIVE TO SEAL
+    3 files, with customer names such as Ana
+    name nightly-day-30, a random 256-bit key
+    AES-256-GCM, the name bound in as associated data
+  THE SEALED ARCHIVE
+    shows the name Ana     false
+    the right key          opens, 3 files
+    another key            refused
+    named nightly-day-31   refused, the name is sealed in
+    the key file           rw-------, kept apart
+    <- A LOST KEY IS A LOST BACKUP: THE KEY NEEDS ITS OWN COPY

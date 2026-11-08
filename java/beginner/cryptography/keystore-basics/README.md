@@ -8,7 +8,8 @@ src/main/java/com/jk/explore/security/keystore/
 ├── KeyFile.java        Keeping the key in a file outside the program
 ├── KeystoreDemo.java   Runs the online bank story in five numbered acts and prints exact, repeatable results
 ├── KeystoreVault.java  A PKCS12 keystore holding AES keys under aliases
-└── Messages.java       Messages sealed with AES-256-GCM under a key from the vault
+├── Messages.java       Messages sealed with AES-256-GCM under a key from the vault
+└── Pbkdf2Steps.java    PBKDF2 with HMAC-SHA-256 worked out by hand, for one 32-byte key, so the rounds can be seen
 ```
 
 **A strong cipher is only as safe as the key's home: not in the code, not in a file anyone can read, but in an encrypted keystore, with separate keys for separate purposes, and a plan for replacing them.**
@@ -41,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A key written in the source code | The key's text is found inside the compiled class file, so anyone with the program has the key; it is also in the repository and every build, and changing it means shipping the program again. |
+| 1. A key written in the source code | The key's text, written in the source, is found byte for byte inside the compiled class file, so anyone with the program has the key; it is also in the repository and every build, and a new key means shipping the program again. |
 | 2. A key in a file outside the program | A key file with default permissions rw-r--r-- is readable by others; owner-only rw------- is not; but either way the file holds the key in the clear. |
-| 3. A PKCS12 keystore: an encrypted file of keys | The keystore shows neither the key nor its name, opens only with the password, refuses a wrong one, and records 10,000 rounds of protection, with a raised setting reaching only one place. |
-| 4. Making keys from other secrets | PBKDF2 with 600,000 rounds turns a password and a salt into a 32-byte key, the same each time, different for another salt; HKDF makes a separate key for each purpose from one master key. |
-| 5. Replacing a key, and the bill | A second key is added and new messages name it while old ones name the first; both open until the first is removed, and then the old message is refused; the keystore needs a password, and its default rounds are low. |
+| 3. A PKCS12 keystore: an encrypted file of keys | The keystore hides the key but not its name, opens only with the password and refuses a wrong one; the file records 10,000 rounds twice, and a setting raised at save reaches only the integrity check, not the key's lock. |
+| 4. Making keys from other secrets | PBKDF2 turns a password and a salt into a 32-byte key in 600,000 rounds of HMAC-SHA-256, worked out by hand to the JDK's exact key; another salt gives another key, and HKDF makes a separate key for each purpose from one master key. |
+| 5. Replacing a key, and the bill | Each stored message starts with the name of its key; with statements-v2 added both old and new messages open, after statements-v1 is removed the old one is refused; the keystore needs a password, a backup, and more rounds. |
 
 ## Test
 
@@ -53,12 +54,12 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-25 tests in `DemoRunsTest`, `DerivationTest`, `HardCodedAndFileTest`, `KeystoreVaultTest`, `MessagesTest`. PBKDF2 and HKDF are checked against published values (the PBKDF2-HMAC-SHA-256 values for one and two rounds, and RFC 5869 test case one). Keys, salts and nonces are random, so the demo and its test check only facts that do not depend on them, and the golden output is the same on every run.
+29 tests in `DemoRunsTest`, `DerivationTest`, `HardCodedAndFileTest`, `KeystoreVaultTest`, `MessagesTest`, `Pbkdf2StepsTest`. PBKDF2 and HKDF are checked against published values (the PBKDF2-HMAC-SHA-256 values for one and two rounds, and RFC 5869 test case one), and `Pbkdf2Steps` must give the JDK's exact key. Keystore salts and nonces are random, so the demo and its test check only facts that do not depend on them, and the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 
-The keystore is a PKCS12 file in a temporary folder, and the keys, salts and nonces are random, so the demo prints only facts that do not depend on them: whether bytes appear in a file,
-whether an operation is refused, and which numbers the file records. A key management service or a hardware module is described, not run. PBKDF2 is checked against published test values, and HKDF
+The keystore is a PKCS12 file in a temporary folder, and its salts and the messages' nonces are random, so for those the demo prints only facts that do not depend on them: whether bytes appear in a file,
+whether an operation is refused, and which numbers the file records. The derived keys come from fixed demo passwords, salts and master keys, so their bytes are printed, and the PBKDF2 rounds are also worked out by hand. A key management service or a hardware module is described, not run. PBKDF2 is checked against published test values, and HKDF
 against RFC 5869. File permissions are the POSIX ones that macOS and Linux use.
 
 ## Technologies and versions
@@ -118,7 +119,7 @@ The key's name comes first, so any message can be opened by looking up the key t
 
 - **The keystore needs a password, and the password needs a home.** Keystores move the problem to a smaller secret, which is the point, and it is still a secret that must be kept somewhere, ideally outside the application, in a key management service or a hardware module.
 - **A lost keystore is lost data.** Without the file and its password, every message sealed under its keys is gone, so the file and its password need separate, tested backups.
-- **Defaults can be weaker than you expect.** The file in the demo records 10,000 rounds of key derivation for its protection, against 600,000 recommended for PBKDF2 today. Raising the setting reached only one place in the file, so what the file records has to be checked, and the password has to be strong.
+- **Defaults can be weaker than you expect.** The file in the demo records 10,000 rounds of key derivation for its protection, against 600,000 recommended for PBKDF2 today. Raising the setting at save reached only the integrity check, because the key was locked when it was put, so set the rounds when the key is put, check what the file records, and choose a strong password.
 - **Replacing a key needs a plan.** Old messages must be sealed again with the new key before the old key is removed, or they are lost.
 - **Keys in memory can still be read.** A keystore protects keys at rest. Once opened, the key is in the program's memory, where a heap dump or a debugger can find it.
 

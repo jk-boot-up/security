@@ -24,6 +24,14 @@ class RiskTest {
     }
 
     @Test
+    void eachRatingNamesTheScoresItCovers() {
+        assertEquals("0 to 5", Rating.LOW.range());
+        assertEquals("6 to 12", Rating.MEDIUM.range());
+        assertEquals("13 to 25", Rating.HIGH.range());
+        assertEquals(Rating.HIGH, Rating.of(25));
+    }
+
+    @Test
     void scoresOutsideZeroToFiveAreRejected() {
         assertThrows(IllegalArgumentException.class, () -> new Risk("R", "t", "v", "a", 6, 1));
         assertThrows(IllegalArgumentException.class, () -> new Risk("R", "t", "v", "a", 1, -1));

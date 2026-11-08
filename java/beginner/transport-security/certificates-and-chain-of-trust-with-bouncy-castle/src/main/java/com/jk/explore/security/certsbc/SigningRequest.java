@@ -117,7 +117,7 @@ final class SigningRequest {
             throw new RefusedException("the request names nothing");
         }
         for (String name : names) {
-            if (!name.equals(domain) && !name.endsWith("." + domain)) {
+            if (!NameRule.permits(domain, name)) {
                 throw new RefusedException(name + " is outside " + domain);
             }
         }

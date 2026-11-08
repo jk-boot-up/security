@@ -14,11 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The first version, with no controls | 7 min |
-| 0:17 | Act 2: Confidentiality: each role sees what it needs | 7 min |
-| 0:24 | Act 3: Integrity: a change behind the application is caught | 7 min |
-| 0:31 | Act 4: Availability: one client cannot use up the server | 7 min |
-| 0:38 | Act 5: The bill: strict controls get in the way of emergencies | 7 min |
+| 0:10 | Act 1: The first version, with no controls | 5 min |
+| 0:15 | Act 2: Confidentiality: each role sees only what it needs | 5 min |
+| 0:20 | Act 3: Integrity: every order is saved with a seal | 5 min |
+| 0:25 | Act 4: How the seal is made, step by step | 5 min |
+| 0:30 | Act 5: A change behind the application is caught | 5 min |
+| 0:35 | Act 6: Availability: one client cannot use up the whole server | 5 min |
+| 0:40 | Act 7: The bill: strict controls get in the way of emergencies | 5 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
@@ -26,7 +28,7 @@ By the end of the session you can:
 Start with the vault analogy and ask the group to name one thing that could go
 wrong with a vault for each of the three promises. Then run the demo one act at
 a time. After each act, pause and ask which promise just failed or was restored,
-before reading the label. In act five, ask the group whether they would allow
+before reading the label. In act seven, ask the group whether they would allow
 the emergency exception, and what they would want to know about each use.
 
 ## Exercises

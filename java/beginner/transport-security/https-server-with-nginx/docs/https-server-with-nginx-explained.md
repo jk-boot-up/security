@@ -8,30 +8,31 @@ nginx can end TLS at the front door of a site with a short list of settings, but
 
 ### 1. nginx ends the TLS for the shop
 
-A Java client that trusts the demo root asks https://shop.example.test/ and gets 200 over TLS 1.3. HTTP/2 was agreed during the handshake. The five security headers score 5 of 5, and the Server header says just nginx, with no version. Behind nginx the application, on a plain local port,
-answered: app saw proto=https. nginx told it what it saw.
+The HTTPS server block of nginx, in short: listen 443 ssl; http2 on; ssl_certificate /pki/shop.crt; ssl_protocols TLSv1.3; and proxy_pass http://127.0.0.1:8081, the application on a plain local port. A Java client that trusts the demo root asks GET https://shop.example.test/.
+The response is 200 over TLSv1.3, with HTTP/2 agreed in the handshake, the five security headers (1 + 1 + 1 + 1 + 1 = 5 of 5) and Server: nginx with no version. The app behind nginx answers app saw proto=https client=: it was told by nginx that the customer used HTTPS.
 
 ### 2. Which TLS versions the shop allows
 
-nginx set to TLS 1.3 only refuses a client limited to TLS 1.2, and a TLS 1.3 client gets TLS 1.3. With TLS 1.2 allowed as well, with three strong ciphers, the TLS 1.2 client gets TLS 1.2, and a TLS 1.3 client on the same server still gets TLS 1.3.
+Two configurations. Strict: ssl_protocols TLSv1.3;. Compat: ssl_protocols TLSv1.2 TLSv1.3; with three ciphers for TLS 1.2, ECDHE-ECDSA-AES128-GCM-SHA256, ECDHE-ECDSA-AES256-GCM-SHA384 and ECDHE-ECDSA-CHACHA20-POLY1305.
+Each cipher name lists its parts: ECDHE agrees a fresh key, ECDSA signs with the certificate's key, AES128-GCM (or AES256-GCM, or CHACHA20-POLY1305) encrypts, and SHA256 or SHA384 is the hash. A client that offers only TLS 1.2 is refused by the strict server and gets TLSv1.2 from the compat one; a TLS 1.3 client gets TLSv1.3 from both.
 Allow TLS 1.2 only while customers still need it, and keep the list of ciphers short.
 
 ### 3. The plain port, the redirect and HSTS
 
-A request to http://shop.example.test/orders?id=7 gets 301 and a Location of the same address on https. The plain answer carries no HSTS, because a browser ignores HSTS sent over plain HTTP. The HTTPS answer carries max-age=63072000, two years.
-The very first visit is still plain, so HSTS protects every visit after it, and preloading protects the first.
+A request to the plain port, GET http://shop.example.test/orders?id=7, answers 301 with Location: https://shop.example.test/orders?id=7, the same path and query on HTTPS, and no Strict-Transport-Security, which a browser ignores over plain HTTP.
+The HTTPS answer carries Strict-Transport-Security: max-age=63072000; includeSubDomains, and 63072000 / 86400 seconds a day = 730 days, two years. The very first visit is still plain: HSTS protects every visit after it, and preloading protects the first.
 
 ### 4. Who the client trusts, and who the server trusts
 
-The JDK's own list of trusted roots does not know the demo root, so it refuses. With the demo root trusted and the right name, the connection is accepted. Connecting by the address 127.0.0.1 is refused, because the name in the certificate must match.
-A server with the right name and a certificate signed by nobody trusted is refused. With ssl_verify_client on, a client with no certificate is refused, and with Ana's certificate the answer is 200 and the application is told Ana's name.
-When Ana adds a header claiming to be the admin, nginx overwrites it, because it sets that header itself.
+The client checks the server: (a) with the JDK's own trusted roots: refused, the demo root is not in the JDK's list; (b) with the demo root trusted and the name shop.example.test: accepted; (c) the same, connecting by the address 127.0.0.1: refused, the certificate names shop.example.test;
+(d) an impostor with the right name, signed by nobody trusted: refused. Then the server checks the client, with ssl_verify_client on: (e) no certificate: refused; (f) Ana's certificate: 200, and the app is told proto=https client=CN=Ana the customer;
+(g) Ana's certificate and a forged X-Client-DN: CN=Admin header: 200, and the app is still told client=CN=Ana the customer, because nginx sets X-Client-DN itself and drops Ana's.
 
 ### 5. The proxy trap, a config check and a score
 
-If nginx passes on the client's own X-Forwarded-Proto, a plain request that claims https makes the application believe the connection is secure. When nginx sets the header from what it saw, the application is told http.
-nginx -t accepts the careful configuration and refuses one whose certificate file is missing, before any customer sees it. The careful configuration scores 7 of 7 on the TLS habits and a typical copied configuration scores 1 of 7.
-OCSP stapling is for certificates from a public authority and needs the server to reach it, so it is described and not run here.
+A plain HTTP request sends GET /app with a forged X-Forwarded-Proto: https. When nginx copies the client's header, the app is told proto=https and is fooled into believing the connection is secure; when nginx sets the header from $scheme, what it saw itself, the app is told proto=http.
+nginx -t checks a configuration before any customer sees it: the careful one gives syntax ok, and one whose certificate file is missing is refused. Seven TLS habits are scored: modern protocols only, HSTS on every answer, plain port redirects, session tickets off, version hidden, HTTP/2, and the app told what nginx saw.
+The careful configuration scores 1 + 1 + 1 + 1 + 1 + 1 + 1 = 7 of 7; a typical copied one scores 0 + 0 + 0 + 0 + 1 + 0 + 0 = 1 of 7. OCSP stapling needs a public authority, so it is described and not run.
 
 ## The verdict
 

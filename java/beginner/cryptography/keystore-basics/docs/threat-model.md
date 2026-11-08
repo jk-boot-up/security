@@ -41,7 +41,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 | --- | --- | --- | --- | --- | --- |
 | T1 | Information disclosure | A key written in the code is read from the program, the repository or a build | `HardCodedKey` | Keep keys out of the code and repositories | A key that was ever committed must be treated as leaked and replaced |
 | T2 | Information disclosure | A key file is read by another user or from a backup | `KeyFile` | Owner-only permissions | The file still holds the key in the clear, so backups and the owner's account must be protected too |
-| T3 | Information disclosure | A stolen keystore file is attacked offline by guessing its password | `KeystoreVault` | The file is encrypted and integrity-protected by a key made from the password, and a wrong password is refused | The file records only 10,000 rounds by default, so a strong password matters, and raised settings must be checked in the file |
+| T3 | Information disclosure | A stolen keystore file is attacked offline by guessing its password | `KeystoreVault` | The file is encrypted and integrity-protected by a key made from the password, and a wrong password is refused | The file records only 10,000 rounds by default, so a strong password matters; set the rounds when the key is put, and check the file |
 | T4 | Tampering | A keystore file is changed | `KeystoreVault.open` | The file carries an integrity code, so a changed file is refused | A deleted or replaced file is still a loss of keys, so keep a backup |
 | T5 | Information disclosure | An opened key is read from the program's memory | the running program | None here | A key service or hardware module keeps keys out of the program's memory |
 | T6 | Denial of service | A key is removed before old messages are sealed again, and the data is lost | `KeystoreVault.remove`, `Messages.open` | Messages name their key, so the problem is visible, and old messages are sealed again first | A runbook and a backup are still needed, because nothing stops the removal |
@@ -61,8 +61,9 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `HardCodedAndFileTest` checks the key is found in the class file, and the permissions of key files.
-- `KeystoreVaultTest` checks round trips, hidden keys and names, wrong passwords, changed files and the rounds a file records.
+- `KeystoreVaultTest` checks round trips, hidden keys and names, wrong passwords, changed files, and the rounds a file records, before and after the fix.
 - `DerivationTest` checks PBKDF2 and HKDF against published values, and separate keys for separate purposes.
+- `Pbkdf2StepsTest` checks the rounds worked out by hand against published values and the JDK's key.
 - `MessagesTest` checks key names in messages, rotation, removal and refusals.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
