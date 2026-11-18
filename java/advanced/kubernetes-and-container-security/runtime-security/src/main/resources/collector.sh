@@ -2,6 +2,9 @@
 # It switches on Linux audit for three kinds of syscall and copies the records that belong to a
 # Kubernetes container (found by the container's cgroup) to /events.log.
 apk add -q audit
+# Top priority for this shell and everything it starts (auditd, the copy loop): on a busy machine the loop must
+# still read a record while its process is alive, or /proc/<pid>/cgroup is gone and the record is lost.
+renice -n -20 -p $$ >/dev/null 2>&1 || true
 auditctl -D >/dev/null 2>&1
 auditctl -b 8192 >/dev/null
 auditctl -e 1 >/dev/null

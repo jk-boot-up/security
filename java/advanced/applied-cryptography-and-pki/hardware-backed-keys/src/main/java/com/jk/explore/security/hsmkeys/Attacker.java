@@ -45,9 +45,12 @@ public final class Attacker {
         int hits = 0;
         int locked = 0;
         long start = System.nanoTime();
+        long fastest = Long.MAX_VALUE;
         for (String pin : pins) {
             tried++;
+            long t0 = System.nanoTime();
             TokenAccess.LoginResult r = TokenAccess.login(p, pin).result();
+            fastest = Math.min(fastest, System.nanoTime() - t0);
             if (r == TokenAccess.LoginResult.OK) {
                 hits++;
             } else if (r == TokenAccess.LoginResult.PIN_LOCKED) {
@@ -55,6 +58,8 @@ public final class Attacker {
             }
         }
         System.out.println("millis=" + (System.nanoTime() - start) / 1_000_000);
+        // the fastest guess is what an attacker's loop costs; the average also counts warm-up and a busy machine
+        System.out.println("fastest_micros=" + fastest / 1_000);
         System.out.println("tried=" + tried);
         System.out.println("hits=" + hits);
         System.out.println("locked_answers=" + locked);

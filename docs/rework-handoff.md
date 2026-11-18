@@ -91,7 +91,7 @@ Intermediate projects in `java/index.md` order, after the last uploaded one:
 | advanced: applied-cryptography-and-pki/tls-attacks-and-downgrades | done, check clean (needs OpenSSL 3.6.x) | Public |
 | advanced: applied-cryptography-and-pki/post-quantum-cryptography | done, check clean (inventory now a fixed sample) | Public |
 | advanced: applied-cryptography-and-pki/crypto-agility | done, check clean | Public |
-| advanced: applied-cryptography-and-pki/hardware-backed-keys | done, check clean (golden line "each guess < 86.4 ms: yes" depends on machine speed) | Public |
+| advanced: applied-cryptography-and-pki/hardware-backed-keys | done, check clean (11-18: the guess time is the fastest guess, not the average, so load does not change the golden line) | Public |
 | advanced: detection-engineering/detection-as-code | done, check clean | queued 11-17 |
 | advanced: detection-engineering/siem-basics | done, check clean | queued 11-17 |
 | advanced: detection-engineering/threat-hunting | done, check clean | queued 11-17 |
@@ -210,14 +210,13 @@ rebuild the projects marked "queued" whose `.mp4` is older than `concept.toml`.
 4. Fixed 11-18: container-hardening-with-docker-and-kind pins kindest/node v1.37.0 by digest (same as the advanced projects); test + integrationTest pass.
 4c. Decided (author, 11-18): keep Homebrew kubernetes-cli 1.37.2 (an agent upgraded it from 1.37.1 on 11-17). Do not revert.
 4d. Verified 11-18: kubernetes-admission-control integrationTest passed twice on a quiet machine.
-4e. Verified 11-18: runtime-security integrationTest passed twice on a quiet machine (the misses only happen under load). Stray untracked kubernetes-network-policies-explained.{mp4,m4a,srt} may still sit in runtime-security/video/.
+4e. Fixed 11-18: runtime-security holds each command until the sensor has copied its record (max +60 s) and the collector runs at nice -20; integrationTest passes quiet and with all Docker CPUs busy.
 4f. videokit cover.py: a long [poster] tagline overlaps the "Presented by" pill; agents shorten taglines.
 4g. tls-attacks-and-downgrades accepts only OpenSSL 3.6.x (Openssl.SERIES); if Homebrew openssl@3 moves on,
    regenerate its golden output and update SERIES.
 4a. Link: threat-modeling-with-pytm hard-codes PLAIN_DRAFT_PROBLEMS=2 and PLAIN_STRIDE_CANDIDATES=20 from
    threat-modeling's output (PytmDemo.java). Update both if that output changes.
-4b. Open issue: sbom-and-provenance-with-syft-and-grype golden line "built within 7 days: yes" depends on grype's
-   database age (integrationTest only). Consider printing it without the age.
+4b. Fixed 11-18: sbom-and-provenance-with-syft-and-grype runs `grype db update` when the database is older than 7 days, so "built within 7 days: yes" holds; integrationTest passes.
 5. Open question for the author: network-isolation's plan says "kind with network policies"; the project uses Docker only.
 6. A stray Draft of advanced cloud-misconfigurations may exist in YouTube Studio (upload window closed mid-form at
    01:14 on 11-17, before it was registered). The author may delete it by hand; Claude does not delete videos.

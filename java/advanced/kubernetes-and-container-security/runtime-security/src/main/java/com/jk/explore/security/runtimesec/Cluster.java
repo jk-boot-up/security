@@ -68,6 +68,11 @@ public final class Cluster implements AutoCloseable {
 
     /** Runs a command in a pod with the given text on its standard input, then keeps the input open for holdMillis so a short command is still running when the sensor looks for it. */
     Sh.Result execWithInput(String pod, String input, long holdMillis, String... command) throws IOException, InterruptedException {
+        return execWithInput(pod, input, holdMillis, () -> true, command);
+    }
+
+    /** As above, and after holdMillis keeps the input open until seen answers true (at most a minute more), so on a busy machine the command is still running when the sensor catches up. */
+    Sh.Result execWithInput(String pod, String input, long holdMillis, java.util.concurrent.Callable<Boolean> seen, String... command) throws IOException, InterruptedException {
         List<String> args = new ArrayList<>(List.of("kubectl", "--kubeconfig", kubeconfig.toString(), "-n", Pods.NAMESPACE, "exec", "-i", pod, "--"));
         args.addAll(List.of(command));
         Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
@@ -75,6 +80,10 @@ public final class Cluster implements AutoCloseable {
             in.write(input.getBytes(StandardCharsets.UTF_8));
             in.flush();
             Thread.sleep(holdMillis);
+            long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+            while (!seenSafely(seen) && System.nanoTime() < until) {
+                Thread.sleep(500);
+            }
         }
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (!p.waitFor(120, TimeUnit.SECONDS)) {
@@ -108,6 +117,14 @@ public final class Cluster implements AutoCloseable {
             Sh.run("kind", "delete", "cluster", "--name", name, "--kubeconfig", kubeconfig.toString());
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean seenSafely(java.util.concurrent.Callable<Boolean> seen) {
+        try {
+            return seen.call();
+        } catch (Exception e) {
+            return false;
         }
     }
 }

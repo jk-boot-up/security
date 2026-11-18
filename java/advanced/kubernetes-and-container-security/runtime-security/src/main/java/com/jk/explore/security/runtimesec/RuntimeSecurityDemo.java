@@ -1,5 +1,6 @@
 package com.jk.explore.security.runtimesec;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -98,8 +99,8 @@ public class RuntimeSecurityDemo {
                 String.format("%-32s %s", "tee /var/log/payments/audit.log", "a write to its log"),
                 String.format("%-32s %s", "nc ledger-db 5432", "a call to the ledger"));
         lab.cluster.exec(Pods.API, "wget", "-q", "-O", "/dev/null", "http://localhost:8080/");
-        lab.cluster.execWithInput(Pods.API, "settled payment\n", HOLD, "tee", "/var/log/payments/audit.log");
-        lab.cluster.execWithInput(Pods.API, "", HOLD, "nc", "-w", "2", Pods.LEDGER, "5432");
+        held(lab, Pods.API, "settled payment\n", "tee", "/var/log/payments/audit.log");
+        held(lab, Pods.API, "", "nc", "-w", "2", Pods.LEDGER, "5432");
         Set<String> kinds = lab.seenFrom(Pods.API);
         section("WHAT THE SENSOR SAW (audit records of the pod):",
                 List.of("exec", "write", "connect").stream().map(k -> kv(k, yesNo(kinds.contains(k)))).toList());
@@ -116,7 +117,7 @@ public class RuntimeSecurityDemo {
         act("THREE. A shell in the container.");
         section("THE ACTION (someone with kubectl exec rights):",
                 "kubectl exec -i " + Pods.API + " -- sh", "then types: id -u");
-        Sh.Result id = lab.cluster.execWithInput(Pods.API, "id -u\n", HOLD, "sh");
+        Sh.Result id = held(lab, Pods.API, "id -u\n", "sh");
         section("WHAT THE SHELL ANSWERED:", kv("id -u", id.output().trim() + " (the root user)"));
         section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
         section("WHY:", kv("exec", "a process named sh started"),
@@ -127,13 +128,13 @@ public class RuntimeSecurityDemo {
     private void write(Lab lab) throws Exception {
         act("FOUR. A write where the service never writes.");
         section("THE ACTION (in " + Pods.API + "):", "tee /usr/bin/miner   a program, written to /usr/bin");
-        lab.cluster.execWithInput(Pods.API, "#!/bin/sh\n", HOLD, "tee", "/usr/bin/miner");
+        held(lab, Pods.API, "#!/bin/sh\n", "tee", "/usr/bin/miner");
         section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
         section("WHY:", kv("path", "/usr/bin/miner"),
                 kv("allowed", String.join(", ", lab.baseline.writablePrefixes())),
                 kv("starts", "with none of them, so it is an alert"));
         section("THE SAME ACTION (in " + Pods.API_RO + ", read-only root):", "tee /usr/bin/miner");
-        Sh.Result ro = lab.cluster.execWithInput(Pods.API_RO, "#!/bin/sh\n", HOLD, "tee", "/usr/bin/miner");
+        Sh.Result ro = held(lab, Pods.API_RO, "#!/bin/sh\n", "tee", "/usr/bin/miner");
         section("WHAT THE KERNEL ANSWERED:", ro.ok() ? "written" : "refused: " + ro.output().lines()
                 .filter(l -> l.contains("Read-only")).findFirst().map(l -> l.substring(l.lastIndexOf(':') + 1).strip()).orElse("an error"));
         Set<Alert> refused = lab.newAlerts();
@@ -144,7 +145,7 @@ public class RuntimeSecurityDemo {
     private void connect(Lab lab) throws Exception {
         act("FIVE. A connection the service never makes.");
         section("THE ACTION (in " + Pods.API + "):", "nc <the outside server> 4444   a server outside the cluster");
-        lab.cluster.execWithInput(Pods.API, "", HOLD, "nc", "-w", "2", lab.outsideIp, "4444");
+        held(lab, Pods.API, "", "nc", "-w", "2", lab.outsideIp, "4444");
         section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
         Event e = lab.lastConnect(Pods.API, 4444);
         if (e == null) {
@@ -154,5 +155,26 @@ public class RuntimeSecurityDemo {
         List<String> how = new ArrayList<>(Audit.explain(Audit.saddr(lab.sensor.log(), e.id())));
         how.add(kv("baseline", lab.baseline.allowedIps().size() + " addresses; this one is not among them"));
         section("HOW THE RECORD IS READ:", how);
+    }
+
+    /** The key of the record each command must leave: tee writes, nc connects, sh starts. */
+    private static String keyOf(String program) {
+        return switch (program) {
+            case "tee" -> "write";
+            case "nc" -> "connect";
+            default -> "exec";
+        };
+    }
+
+    /** Runs a command with input, holding it until the sensor has copied a record of it (see Cluster.execWithInput). */
+    private static Sh.Result held(Lab lab, String pod, String input, String... command) throws IOException, InterruptedException {
+        String comm = "comm=\"" + command[0] + "\"";
+        String key = "key=\"" + keyOf(command[0]) + "\"";
+        long before = records(lab, comm, key);
+        return lab.cluster.execWithInput(pod, input, HOLD, () -> records(lab, comm, key) > before, command);
+    }
+
+    private static long records(Lab lab, String comm, String key) throws IOException, InterruptedException {
+        return lab.sensor.log().lines().filter(l -> l.contains(" CG=") && l.contains(comm) && l.contains(key)).count();
     }
 }

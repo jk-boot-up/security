@@ -31,6 +31,7 @@ public class SbomScanDemo {
         String current = lab.build(Lab.NEW, Lab.NEW, null);
         String renamed = lab.build("renamed", Lab.OLD, "blob.dat");
         Sbom sbom = Sbom.of(old);
+        ensureFreshDatabase();
         Scan scan = Scan.ofImage(old);
         act1WhatItAnswers(out, lab, sbom);
         act2Scan(out, lab, sbom, scan);
@@ -198,6 +199,13 @@ public class SbomScanDemo {
     }
 
     /** Whether grype's advisory database was built in the last seven days, so the scan is current. */
+    /** Downloads grype's advisory database when it is older than seven days, so the scan and its database line never depend on its age. */
+    private static void ensureFreshDatabase() throws IOException, InterruptedException {
+        if (!databaseFresh()) {
+            Lab.run(List.of("grype", "db", "update"));
+        }
+    }
+
     private static boolean databaseFresh() throws IOException, InterruptedException {
         Matcher m = Pattern.compile("Built:\\s+(\\S+)").matcher(Lab.run(List.of("grype", "db", "status")));
         return m.find() && Duration.between(Instant.parse(m.group(1)), Instant.now()).toDays() <= 7;

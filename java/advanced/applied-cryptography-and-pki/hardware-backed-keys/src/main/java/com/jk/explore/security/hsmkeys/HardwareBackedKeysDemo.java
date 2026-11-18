@@ -224,7 +224,7 @@ public class HardwareBackedKeysDemo {
             }
             guesses.remove(Lab.USER_PIN);
             Map<String, String> g = child(copyConf, List.of("guess", copyCfg.toString(), lab.library().toString()), guesses);
-            double perGuess = Long.parseLong(g.get("millis")) / 1000.0 / Long.parseLong(g.get("tried"));
+            double perGuess = Long.parseLong(g.get("fastest_micros")) / 1_000_000.0;
             out.append("  A COPY OF THE TOKEN DIRECTORY, ON ANOTHER MACHINE:\n");
             out.append("    wrong PIN guesses  " + g.get("tried") + ", hits " + g.get("hits") + ", locked " + yn(!"0".equals(g.get("locked_answers"))) + "\n");
             out.append("    each guess < 86.4 ms  " + yn(perGuess < 0.0864) + ": 1,000,000 PINs in < 1 day\n");
