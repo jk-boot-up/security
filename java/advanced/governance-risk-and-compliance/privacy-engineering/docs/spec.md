@@ -39,10 +39,10 @@ Privacy is promised in a policy while the data is collected without a purpose, s
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 29 lines, identical on every run |
+| Tests | 14, all passing |
+| Demo output | 113 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:57, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:22, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

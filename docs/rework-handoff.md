@@ -13,7 +13,7 @@ at a time. Upload only when the author says so (see Rules).
 
 ## State
 
-- 11-18: every advanced project is Public except the last two (table). Machine was rebooted; old scratchpad queue/watcher are gone.
+- 11-18: all 151 projects reworked and Public. Rework complete.
 - YouTube (`docs/youtube-links.json`): 139 registered, all Public (2026-11-17 19:12): 41 beginner, 76 intermediate, 22 advanced.
 - Git (11-18): `53c4f09f` pushed to `advanced_security_projects` and fast-forwarded to origin `main`. Only privacy-engineering (agent working) is uncommitted.
 - The learning path is now `java/index.md` (renamed 11-18). `java/playlists-youtube.md` is the playlist tree (playlist ids in `docs/youtube-playlists.json`, written by make_progress.py). A new playlist needs its id added there.
@@ -103,7 +103,7 @@ Intermediate projects in `java/index.md` order, after the last uploaded one:
 | advanced: governance-risk-and-compliance/risk-management | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/controls-and-evidence | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/security-architecture-review | done, check clean | Public 11-18 |
-| advanced: governance-risk-and-compliance/privacy-engineering | done, check clean | build queued 11-18 |
+| advanced: governance-risk-and-compliance/privacy-engineering | done, check clean | Public 11-18 |
 
 Then, not started: nothing; every project has an agent or is done in
 `java/index.md` order. Advanced agents also read docs/advanced-plan.md. The upload watcher covers advanced
