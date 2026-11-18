@@ -225,6 +225,4 @@ rebuild the projects marked "queued" whose `.mp4` is older than `concept.toml`.
 5. Open question for the author: network-isolation's plan says "kind with network policies"; the project uses Docker only.
 6. A stray Draft of advanced cloud-misconfigurations may exist in YouTube Studio (upload window closed mid-form at
    01:14 on 11-17, before it was registered). The author may delete it by hand; Claude does not delete videos.
-7. Open issue for the author: the slide footer says "Security Basics" at every level
-   (`tools/conceptkit/conceptkit/generate.py:504`). It should probably name the level. Ask before changing it,
-   because a change alters every rebuilt video.
+7. Decided (author, 11-18): keep the slide footer "Security Basics" at every level. Do not change it or raise it again.
