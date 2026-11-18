@@ -357,7 +357,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 | ---: | --- | --- | --- | --- | --- |
 | 148 | [risk-management](advanced/governance-risk-and-compliance/risk-management) | Plain | Quantify a bank's risk register with ranges and a Monte Carlo simulation, choose controls within a budget, and check the residual risk against an appetite | Java, Monte Carlo simulation | [Watch](https://youtu.be/hhyJrtVGLM4) |
 | 149 | [controls-and-evidence](advanced/governance-risk-and-compliance/controls-and-evidence) | With tools | Map a bank's controls to NIST CSF 2.0 and ISO 27001, collect evidence from test results, and see which controls are passing, failing, stale or missing | Java, JUnit reports | [Watch](https://youtu.be/iS0ujT-JFTg) |
-| 150 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | With tools | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs | - |
+| 150 | [security-architecture-review](advanced/governance-risk-and-compliance/security-architecture-review) | With tools | Review a bank's design written in the Structurizr DSL with rules over trust zones, flows, data stores and decision records, and see what no rule can find | Structurizr DSL, ADRs | [Watch](https://youtu.be/4kTVlkBQkGI) |
 | 151 | [privacy-engineering](advanced/governance-risk-and-compliance/privacy-engineering) | With tools | Minimize, pseudonymize, retain and erase a bank's customer data in PostgreSQL, measure who can still be picked out, and find the copies that an erasure request misses | Java, PostgreSQL | - |
 
 ## Other pages

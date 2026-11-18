@@ -16,17 +16,41 @@ Chapters:
 
 ```
 00:00 Introduction
-01:46 The Scenario
-02:08 Act One — The design as drawn
-02:23 Act Two — Rules over the design
-02:33 Act Three — One more rule
-02:46 Act Four — The reviewed design
-02:58 Act Five — The bill
-03:08 What It Costs
-03:41 Who Does What
-04:02 Where You Have Seen It
-04:23 How To Use It
-04:43 Thanks for Watching
+00:45 The Scenario
+01:15 The Words
+02:02 What the Letters Stand For
+03:02 How one rule reads one flow
+04:14 The first design: parts, zones and flows
+05:27 Act One — The design as drawn
+05:45 Act One — The design as drawn
+06:06 Act One — The design as drawn
+06:26 Ten planted weaknesses, and what the first rules report
+07:26 Act Two — Rules over the design
+07:34 Act Two — Rules over the design
+07:40 Act Two — Rules over the design
+08:08 Act Two — Rules over the design
+08:24 Act Two — Rules over the design
+08:33 The flow inside one zone, and the score
+09:37 Act Three — One more rule
+10:00 Act Three — One more rule
+10:16 The same five numbers, before and after the review
+11:08 Act Four — The reviewed design
+11:24 Act Four — The reviewed design
+11:43 Act Four — The reviewed design
+11:55 What the rules gave, and what is left to people
+12:44 Act Five — The bill
+12:59 What It Costs
+13:27 Where You Have Seen It
+13:57 How To Use It
+14:30 The Java Classes
+14:45 Design — every element becomes a part with a kind and a zone
+15:03 Rules — no direct path to data, and encrypted crossings
+15:19 Rules — a decision must exist and be accepted
+15:32 FlowCheck — the answers decide which rules fire
+15:45 Stride — letters by kind, and three for a flow
+16:02 Changes — a removed flow, or a changed property
+16:14 Planted — found means the same rule on the same subject
+16:25 Thanks for Watching
 ```
 
 ## Tags

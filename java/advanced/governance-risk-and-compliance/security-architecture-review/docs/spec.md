@@ -22,6 +22,9 @@ Design reviews depend on who is in the room, and the decisions made there are no
 | The decision records | `Adr` |
 | The review rules | `Rules` |
 | What a rule reports | `Finding` |
+| The flow rules as questions (teaching class) | `FlowCheck` |
+| The STRIDE letters per kind | `Stride` |
+| What changed between two designs | `Changes` |
 | The planted weaknesses | `Planted` |
 | Entry point | `ArchitectureReviewDemo` |
 
@@ -38,10 +41,10 @@ Design reviews depend on who is in the room, and the decisions made there are no
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 155 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:18, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

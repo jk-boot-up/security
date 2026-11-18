@@ -102,7 +102,7 @@ Intermediate projects in `java/index.md` order, after the last uploaded one:
 | advanced: resilience-and-recovery/security-chaos-engineering | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/risk-management | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/controls-and-evidence | done, check clean | queued 11-17 |
-| advanced: governance-risk-and-compliance/security-architecture-review | done, check clean | building 11-18 |
+| advanced: governance-risk-and-compliance/security-architecture-review | done, check clean | Public 11-18 |
 | advanced: governance-risk-and-compliance/privacy-engineering | done, check clean | build queued 11-18 |
 
 Then, not started: nothing; every project has an agent or is done in

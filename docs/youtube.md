@@ -1,6 +1,6 @@
 # Security in Java — YouTube Uploads
 
-**149 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
+**150 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
 
 Every video is reviewed for technical accuracy before it is uploaded; a correction is made in the project's `concept.toml` (and code, if the demo printed it), the video is rebuilt, and the fix is checked in the captions. Videos go up in the order of the [learning path](../java/index.md), so each playlist lists them in learning order.
 
@@ -20,8 +20,8 @@ Every video is checked as YouTube serves it before it goes public: each slide's 
 | --- | ---: | ---: | ---: |
 | Beginner | 41 | 41 | 41 |
 | Intermediate | 76 | 15 | 76 |
-| Advanced | 32 | 0 | 34 |
-| **All** | **149** | **56** | **151** |
+| Advanced | 33 | 0 | 34 |
+| **All** | **150** | **56** | **151** |
 
 ## Playlists
 
@@ -75,7 +75,7 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | Offensive Security Methodology in Java - With Tools | 3 | 3 |
 | Resilience and Recovery in Java - With Tools | 2 | 2 |
 | Governance, Risk and Compliance in Java - Without Tools | 1 | 1 |
-| Governance, Risk and Compliance in Java - With Tools | 1 | 3 |
+| Governance, Risk and Compliance in Java - With Tools | 2 | 3 |
 
 ## Beginner
 
@@ -353,7 +353,7 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | [Detection engineering](#detection-engineering) | 3 | 0 | 3 | 3 |
 | [Offensive security methodology](#offensive-security-methodology) | 3 | 0 | 3 | 3 |
 | [Resilience and recovery](#resilience-and-recovery) | 2 | 0 | 2 | 2 |
-| [Governance risk and compliance](#governance-risk-and-compliance) | 4 | 0 | 2 | 4 |
+| [Governance risk and compliance](#governance-risk-and-compliance) | 4 | 0 | 3 | 4 |
 
 <a id="cloud-security-without-a-cloud"></a>
 
@@ -456,5 +456,5 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | ---: | --- | --- | --- | --- | --- |
 | 148 | [Risk Management: Monte Carlo Risk Register, Controls Within a Budget and Risk Appetite](../java/advanced/governance-risk-and-compliance/risk-management/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/hhyJrtVGLM4) |
 | 149 | [Controls and Evidence: NIST CSF 2.0, ISO 27001 and Evidence from Tests](../java/advanced/governance-risk-and-compliance/controls-and-evidence/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/iS0ujT-JFTg) |
-| 150 | [Security Architecture Review: Trust Boundaries, Data Flows and Decision Records (Structurizr, ADRs)](../java/advanced/governance-risk-and-compliance/security-architecture-review/README.md) | Without tools | — | — | to upload |
+| 150 | [Security Architecture Review: Trust Boundaries, Data Flows and Decision Records (Structurizr, ADRs)](../java/advanced/governance-risk-and-compliance/security-architecture-review/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/4kTVlkBQkGI) |
 | 151 | [Privacy Engineering: Minimization, Pseudonyms, Retention and Erasure in PostgreSQL](../java/advanced/governance-risk-and-compliance/privacy-engineering/README.md) | Without tools | — | — | to upload |
