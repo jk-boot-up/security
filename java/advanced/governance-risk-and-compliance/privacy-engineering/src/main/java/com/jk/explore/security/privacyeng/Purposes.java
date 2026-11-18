@@ -1,7 +1,6 @@
 package com.jk.explore.security.privacyeng;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -10,19 +9,23 @@ public final class Purposes {
 
     public static final List<String> PERSONAL_COLUMNS = List.of("name", "email", "phone", "postcode", "birth_date", "gender", "national_id", "marketing_consent", "consent_date");
 
-    public static final Map<String, Set<String>> NEEDS = Map.of(
-            "payments", Set.of("name", "postcode"),
-            "statements", Set.of("name", "email", "postcode"),
-            "marketing", Set.of("email", "marketing_consent", "consent_date"),
-            "fraud analytics", Set.of("postcode", "birth_date"),
-            "identity checks required by law", Set.of("name", "birth_date", "national_id"));
+    /** A purpose, the short code the demo prints for it, and the columns it needs. */
+    public record Purpose(String name, String code, Set<String> needs) {
+    }
+
+    public static final List<Purpose> ALL = List.of(
+            new Purpose("payments", "pay", Set.of("name", "postcode")),
+            new Purpose("statements", "stmt", Set.of("name", "email", "postcode")),
+            new Purpose("marketing", "mkt", Set.of("email", "marketing_consent", "consent_date")),
+            new Purpose("fraud analytics", "fraud", Set.of("postcode", "birth_date")),
+            new Purpose("identity checks required by law", "id", Set.of("name", "birth_date", "national_id")));
 
     private Purposes() {
     }
 
     public static Set<String> needed() {
         Set<String> all = new TreeSet<>();
-        NEEDS.values().forEach(all::addAll);
+        ALL.forEach(p -> all.addAll(p.needs()));
         return all;
     }
 

@@ -45,6 +45,6 @@ reading many files or images.
   reference project is `java/beginner/cryptography/symmetric-encryption`.
 - `docs/beginner-plan.md`, `docs/intermediate-plan.md`, `docs/advanced-plan.md`: the plans per level, including the
   repository layout, voice, video and YouTube process.
-- `java/learning-path.md`: the order of the projects.
+- `java/index.md`: the order of the projects.
 - `docs/rework-handoff.md`: where the video rework stands and how to resume it. Read this first when continuing the
   rework, and keep it updated.

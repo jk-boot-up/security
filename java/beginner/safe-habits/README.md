@@ -24,4 +24,4 @@ A project with `-with-` in its name is the same lesson with a framework, a libra
 - **The bill is part of the lesson.** The last act of every project shows what the control costs, or what it still leaves open.
 - **A threat model for every project,** with a diagram, in `docs/threat-model.md`.
 
-See the [learning path](../learning-path.md) for the order of all projects.
+See the [learning path](../../index.md) for the order of all projects.

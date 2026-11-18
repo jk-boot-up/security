@@ -15,10 +15,13 @@ at a time. Upload only when the author says so (see Rules).
 
 - 11-18: every advanced project is Public except the last two (table). Machine was rebooted; old scratchpad queue/watcher are gone.
 - YouTube (`docs/youtube-links.json`): 139 registered, all Public (2026-11-17 19:12): 41 beginner, 76 intermediate, 22 advanced.
-- Git: branch `advanced_security_projects` at `d169fbda`, same as `main` and origin. Everything since is uncommitted.
+- Git (11-18): `53c4f09f` pushed to `advanced_security_projects` and fast-forwarded to origin `main`. Only privacy-engineering (agent working) is uncommitted.
+- The learning path is now `java/index.md` (renamed 11-18). `java/playlists-youtube.md` is the playlist tree (playlist ids in `docs/youtube-playlists.json`, written by make_progress.py). A new playlist needs its id added there.
+- privacy-engineering: agent finished 11-18, check clean, build queued after security-architecture-review.
+- Learning path has a Video column, filled by `conceptkit.sh progress` from the registry; rerun it and `~/.cache/videokit/venv/bin/python tools/ytupload/make_progress.py` after uploads (system python3 lacks markdown, so the .html twins are skipped).
   Commit only when asked. No Co-Authored-By line and no mention of an AI.
 
-Intermediate projects in `java/learning-path.md` order, after the last uploaded one:
+Intermediate projects in `java/index.md` order, after the last uploaded one:
 
 | Project | Rework | Video |
 |---|---|---|
@@ -100,10 +103,10 @@ Intermediate projects in `java/learning-path.md` order, after the last uploaded 
 | advanced: governance-risk-and-compliance/risk-management | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/controls-and-evidence | done, check clean | queued 11-17 |
 | advanced: governance-risk-and-compliance/security-architecture-review | done, check clean | building 11-18 |
-| advanced: governance-risk-and-compliance/privacy-engineering | agent finishing (11-18): needs acronyms, classes, act figures | old |
+| advanced: governance-risk-and-compliance/privacy-engineering | done, check clean | build queued 11-18 |
 
 Then, not started: nothing; every project has an agent or is done in
-`java/learning-path.md` order. Advanced agents also read docs/advanced-plan.md. The upload watcher covers advanced
+`java/index.md` order. Advanced agents also read docs/advanced-plan.md. The upload watcher covers advanced
 too (the author said to upload built videos as they finish).
 
 How to check whether a project is reworked: `video/figures.py` exists and `conceptkit.sh check <slug> --no-render` says

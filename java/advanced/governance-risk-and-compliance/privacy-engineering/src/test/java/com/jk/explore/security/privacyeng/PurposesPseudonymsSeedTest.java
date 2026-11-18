@@ -18,8 +18,8 @@ class PurposesPseudonymsSeedTest {
 
     @Test
     void everyColumnAPurposeNeedsIsAPersonalColumn() {
-        for (var needs : Purposes.NEEDS.values()) {
-            assertTrue(Purposes.PERSONAL_COLUMNS.containsAll(needs));
+        for (Purposes.Purpose p : Purposes.ALL) {
+            assertTrue(Purposes.PERSONAL_COLUMNS.containsAll(p.needs()));
         }
     }
 
@@ -49,5 +49,26 @@ class PurposesPseudonymsSeedTest {
         assertEquals(7, Retention.TRANSACTION_YEARS);
         assertEquals(2, Retention.CONSENT_YEARS);
         assertEquals(1, Retention.NOTE_YEARS);
+    }
+
+    @Test
+    void thePseudonymIsTheFirstEightBytesOfTheWholeMac() throws Exception {
+        PseudonymSteps steps = PseudonymSteps.of("analytics-key-one", 17);
+        assertEquals("customer:17", steps.input());
+        assertEquals(64, steps.fullMac().length());
+        assertTrue(steps.fullMac().startsWith(steps.pseudonym()));
+        assertEquals(new Pseudonyms("analytics-key-one").of(17), steps.pseudonym());
+    }
+
+    @Test
+    void coarseValuesKeepThreeDigitsAndTheDecade() {
+        assertEquals("108", Coarse.postcode("10845"));
+        assertEquals("1960s", Coarse.decade(java.time.LocalDate.of(1969, 11, 16)));
+        assertEquals("2000s", Coarse.decade(java.time.LocalDate.of(2005, 1, 1)));
+    }
+
+    @Test
+    void thePurposesAreInAFixedOrderWithShortCodes() {
+        assertEquals(List.of("pay", "stmt", "mkt", "fraud", "id"), Purposes.ALL.stream().map(Purposes.Purpose::code).toList());
     }
 }

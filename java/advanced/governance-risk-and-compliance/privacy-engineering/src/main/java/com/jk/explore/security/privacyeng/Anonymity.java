@@ -35,4 +35,22 @@ public final class Anonymity {
     public static long namedFromOutsideCoarse(Pg pg, int outsideShare) throws SQLException {
         return pg.count("SELECT count(*) FROM customers c WHERE c.id % 10 < ? AND (SELECT count(*) FROM customers o WHERE (left(o.postcode, 3), extract(year from o.birth_date)::int / 10, o.gender) = (left(c.postcode, 3), extract(year from c.birth_date)::int / 10, c.gender)) = 1", outsideShare);
     }
+
+    /** How many customers share the given columns' values with one customer, the customer included. */
+    public static long groupOf(Pg pg, String columns, int id) throws SQLException {
+        String c = columns.replace("postcode", "c.postcode").replace("birth_date", "c.birth_date").replace("gender", "c.gender");
+        String o = columns.replace("postcode", "o.postcode").replace("birth_date", "o.birth_date").replace("gender", "o.gender");
+        return pg.count("SELECT count(*) FROM customers o, customers c WHERE c.id = ? AND (" + o + ") = (" + c + ")", id);
+    }
+
+    /** How many different values a column (or an expression over it) takes. */
+    public static long distinct(Pg pg, String expression) throws SQLException {
+        return pg.count("SELECT count(DISTINCT " + expression + ") FROM customers");
+    }
+
+    /** How many published analytics rows belong to a customer that the outside list names: rows tied back to a name. */
+    public static long analyticsRowsNamed(Pg pg, int outsideShare) throws SQLException {
+        return pg.count("SELECT count(*) FROM analytics_tx a JOIN customers c ON (a.postcode, a.birth_date, a.gender) = (c.postcode, c.birth_date, c.gender)"
+                + " WHERE c.id % 10 < ? AND (SELECT count(*) FROM customers o WHERE (o.postcode, o.birth_date, o.gender) = (c.postcode, c.birth_date, c.gender)) = 1", outsideShare);
+    }
 }

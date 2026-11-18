@@ -362,5 +362,7 @@ Rows with a link are built; the others are *planned*. Plan: [advanced plan](../d
 
 ## Other pages
 
+- [YouTube playlists](playlists-youtube.md): every playlist, by level and module, with its videos.
+- [YouTube uploads](../docs/youtube.md): every video's review and upload status.
 - [Beginner learning path](beginner/learning-path.md): the beginner track on its own.
 - [Repository README](../README.md): the scope of the whole repository.

@@ -14,7 +14,8 @@ import java.util.UUID;
 /** PostgreSQL in a Docker container, started for the demo and removed at the end. */
 public final class Pg implements AutoCloseable {
 
-    static final String IMAGE = "postgres:18.6-alpine";
+    // pinned by tag and digest, so every machine runs the same PostgreSQL
+    static final String IMAGE = "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
     private static final String PASSWORD = "demo-only";
 
     private final String name = "privacy-" + UUID.randomUUID().toString().substring(0, 6);

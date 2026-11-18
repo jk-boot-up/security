@@ -7,7 +7,7 @@
     conceptkit.sh check <project>    tests, docs and slides, then the teaching-standard checks and
                                      contact sheets in <project>/build/sheets (--no-render: checks only)
     conceptkit.sh html  <project>    only the .html twins of the Markdown files
-    conceptkit.sh progress           the built and planned counts at the top of java/learning-path.md (and its .html)
+    conceptkit.sh progress           the built and planned counts at the top of java/index.md (and its .html)
     conceptkit.sh site               the .html twins of every Markdown file under java/ (every level)
     conceptkit.sh scaffold <module> <project> <package> <MainClass>
                                      <module> is a beginner module (identity) or <level>/<module> (intermediate/web-security)
@@ -218,9 +218,9 @@ def main(argv):
     elif cmd == "scaffold":
         print(scaffold(*rest))
     elif cmd == "progress":
-        lp = REPO / "java" / "learning-path.md"
+        lp = REPO / "java" / "index.md"
         print("built %d, planned %d" % progress.update(lp))
-        lp.with_suffix(".html").write_text(site.to_html(lp.read_text()))
+        lp.with_suffix(".html").write_text(site.to_html(lp.read_text(), lp.parent))
     elif cmd == "site":
         print("%d HTML twins" % site.tree(REPO / "java"))
     elif cmd == "html":

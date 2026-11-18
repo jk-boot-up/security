@@ -73,10 +73,10 @@ PLAYLISTS = {
     "governance-risk-and-compliance": "Governance, Risk and Compliance in Java",
 }
 
-# Learning order comes from java/learning-path.md, which numbers every project in the
+# Learning order comes from java/index.md, which numbers every project in the
 # order a learner should take them (a with-tools version straight after its plain one).
 # Videos are uploaded in that order, so each playlist lists them in that order too.
-LEARNING_PATH = os.path.join(JAVA, "learning-path.md")
+LEARNING_PATH = os.path.join(JAVA, "index.md")
 
 
 def learning_order():

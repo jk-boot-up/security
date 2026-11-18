@@ -47,10 +47,16 @@ PAGE = """<!doctype html>
 """
 
 
-def to_html(md_text):
+def to_html(md_text, base=None):
     body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
     # a relative link to another .md file becomes a link to its .html twin
     body = re.sub(r'href="((?!https?:|#|mailto:)[^"]*?)\.md((?:#[^"]*)?)"', r'href="\1.html\2"', body)
+    if base is not None:
+        # a link to a folder with a README opens that README's twin (a browser shows a bare folder as a file list)
+        def readme(m):
+            t = m.group(1).rstrip("/")
+            return 'href="%s/README.html"' % t if (Path(base) / t / "README.md").is_file() else m.group(0)
+        body = re.sub(r'href="((?!https?:|#|mailto:)[^"#.]+/?)"', readme, body)
     m = re.search(r"<h1>(.*?)</h1>", body)
     title = re.sub(r"<[^>]+>", "", m.group(1)) if m else "Security"
     return PAGE.format(title=title, css=CSS, body=body, js=JS)
@@ -62,7 +68,7 @@ def twins(project_dir):
     files = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
     for f in files:
         if f.exists():
-            f.with_suffix(".html").write_text(to_html(f.read_text()))
+            f.with_suffix(".html").write_text(to_html(f.read_text(), f.parent))
     return len(files)
 
 
@@ -72,6 +78,6 @@ def tree(root):
     for f in sorted(Path(root).rglob("*.md")):
         if any(part in ("build", ".gradle", "node_modules") for part in f.parts):
             continue
-        f.with_suffix(".html").write_text(to_html(f.read_text()))
+        f.with_suffix(".html").write_text(to_html(f.read_text(), f.parent))
         n += 1
     return n

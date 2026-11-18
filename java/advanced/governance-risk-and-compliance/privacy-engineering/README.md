@@ -3,8 +3,10 @@
 ```
 src/main/java/com/jk/explore/security/privacyeng/
 ├── Anonymity.java               How easily a person can be picked out by columns that are not names: postcode, birth date and gender
+├── Coarse.java                  A teaching class: the coarse values that Anonymity.COARSE computes in SQL, worked out for one customer in Java
 ├── Pg.java                      PostgreSQL in a Docker container, started for the demo and removed at the end
-├── PrivacyEngineeringDemo.java  
+├── PrivacyEngineeringDemo.java  Minimizes, pseudonymizes, retains and erases a bank's customer data in PostgreSQL, and measures what is left
+├── PseudonymSteps.java          A teaching class: how a pseudonym is made, step by step: the input text, the whole HMAC-SHA256, and its first 8 bytes
 ├── Pseudonyms.java              Keyed pseudonyms for analytics: the same customer always gets the same one under one key, and nobody can compute it without the key
 ├── Purposes.java                Why the bank holds each personal column of the customers table: the purposes and the columns each one needs
 ├── Retention.java               How long each kind of data may be kept, and the job that removes what has expired, except where a legal hold applies
@@ -56,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `PrivacyDatabaseTest`, `PurposesPseudonymsSeedTest`. The purposes, the pseudonyms and the seed are tested with the JDK only; the database tests need Docker (./gradlew integrationTest).
+14 tests in `DemoRunsTest`, `PrivacyDatabaseTest`, `PurposesPseudonymsSeedTest`. The purposes, the pseudonyms and the seed are tested with the JDK only; the database tests need Docker (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

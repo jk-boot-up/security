@@ -1,4 +1,4 @@
-"""Counts built and planned projects in java/learning-path.md and writes the Status table between its markers."""
+"""Counts built and planned projects in java/index.md and writes the Status table between its markers."""
 import json
 import re
 
