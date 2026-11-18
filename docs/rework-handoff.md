@@ -75,19 +75,19 @@ Intermediate projects in `java/index.md` order, after the last uploaded one:
 | advanced: cloud-security-without-a-cloud/cloud-misconfigurations | done, check clean | Public |
 | advanced: infrastructure-as-code-security/iac-scanning | done, check clean | Public |
 | advanced: infrastructure-as-code-security/policy-as-code | done, check clean | Public |
-| advanced: kubernetes-and-container-security/kubernetes-admission-control | done, check clean (golden reformatted after the verified run; values unchanged; rerun integrationTest on a quiet machine) | Public |
+| advanced: kubernetes-and-container-security/kubernetes-admission-control | done, check clean; integrationTest passed twice 11-18 | Public |
 | advanced: kubernetes-and-container-security/kubernetes-network-policies | done, check clean (domain now online store) | Public |
-| advanced: kubernetes-and-container-security/runtime-security | done, check clean; integrationTest FLAKY (audit sensor misses short-lived records under load) | Public |
+| advanced: kubernetes-and-container-security/runtime-security | done, check clean; integrationTest passed twice 11-18 (quiet machine) | Public |
 | advanced: kubernetes-and-container-security/kubernetes-secrets | done, check clean | Public |
 | advanced: devsecops-pipelines/sast | done, check clean | Public |
 | advanced: devsecops-pipelines/dast | done, check clean | Public |
 | advanced: devsecops-pipelines/secret-scanning | done, check clean | Public |
 | advanced: devsecops-pipelines/secure-pipeline | done, check clean | Public |
 | advanced: service-identity-and-zero-trust/mutual-tls-between-services | done, check clean | Public |
-| advanced: service-identity-and-zero-trust/service-mesh-mtls | done, check clean; integrationTest to rerun once (golden spacing fixed by hand) | Public |
+| advanced: service-identity-and-zero-trust/service-mesh-mtls | done, check clean; integrationTest passed twice 11-18 | Public |
 | advanced: service-identity-and-zero-trust/workload-identity | done, check clean | Public |
 | advanced: service-identity-and-zero-trust/zero-trust-access | done, check clean | Public |
-| advanced: applied-cryptography-and-pki/certificate-lifecycle | done, check clean; integrationTest timing flake ("alerts 1" vs 0) - rerun when quiet | Public |
+| advanced: applied-cryptography-and-pki/certificate-lifecycle | done, check clean; integrationTest passed twice 11-18 (quiet machine) | Public |
 | advanced: applied-cryptography-and-pki/tls-attacks-and-downgrades | done, check clean (needs OpenSSL 3.6.x) | Public |
 | advanced: applied-cryptography-and-pki/post-quantum-cryptography | done, check clean (inventory now a fixed sample) | Public |
 | advanced: applied-cryptography-and-pki/crypto-agility | done, check clean | Public |
@@ -207,13 +207,10 @@ rebuild the projects marked "queued" whose `.mp4` is older than `concept.toml`.
    order: the openid-connect Draft, the 7 identity-and-access videos and the 4 rebuilt TLS videos (all passed check +
    ytquality). Three youtube_title values were shortened to fit 100 characters. Check `docs/youtube-links.json` for
    the ones that are done; run `ytupload.sh batch java/intermediate/<path>` for any that are still missing.
-4. Open issue: container-hardening-with-docker-and-kind does not pin kind's node image; a kind release could change
-   the golden counts (3, 7, 4). Pin it (CLAUDE.md asks for pinned versions) and rerun integrationTest.
+4. Fixed 11-18: container-hardening-with-docker-and-kind pins kindest/node v1.37.0 by digest (same as the advanced projects); test + integrationTest pass.
 4c. Decided (author, 11-18): keep Homebrew kubernetes-cli 1.37.2 (an agent upgraded it from 1.37.1 on 11-17). Do not revert.
-4d. Verify kubernetes-admission-control: `./gradlew integrationTest` on a quiet machine (use pause-builds).
-4e. runtime-security: rerun `./gradlew integrationTest` on a quiet machine; if it still misses records, fix
-   collector.sh to carry the container in the audit record instead of reading /proc/<pid>/cgroup afterwards.
-   Stray untracked kubernetes-network-policies-explained.{mp4,m4a,srt} sit in runtime-security/video/.
+4d. Verified 11-18: kubernetes-admission-control integrationTest passed twice on a quiet machine.
+4e. Verified 11-18: runtime-security integrationTest passed twice on a quiet machine (the misses only happen under load). Stray untracked kubernetes-network-policies-explained.{mp4,m4a,srt} may still sit in runtime-security/video/.
 4f. videokit cover.py: a long [poster] tagline overlaps the "Presented by" pill; agents shorten taglines.
 4g. tls-attacks-and-downgrades accepts only OpenSSL 3.6.x (Openssl.SERIES); if Homebrew openssl@3 moves on,
    regenerate its golden output and update SERIES.
