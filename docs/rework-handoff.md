@@ -209,8 +209,7 @@ rebuild the projects marked "queued" whose `.mp4` is older than `concept.toml`.
    the ones that are done; run `ytupload.sh batch java/intermediate/<path>` for any that are still missing.
 4. Open issue: container-hardening-with-docker-and-kind does not pin kind's node image; a kind release could change
    the golden counts (3, 7, 4). Pin it (CLAUDE.md asks for pinned versions) and rerun integrationTest.
-4c. Machine change 11-17 09:39: an agent's unquoted heredoc ran `brew install kind kubectl cosign`; Homebrew
-   kubernetes-cli went 1.37.1 -> 1.37.2 (kind, cosign unchanged). Ask the author before reverting.
+4c. Decided (author, 11-18): keep Homebrew kubernetes-cli 1.37.2 (an agent upgraded it from 1.37.1 on 11-17). Do not revert.
 4d. Verify kubernetes-admission-control: `./gradlew integrationTest` on a quiet machine (use pause-builds).
 4e. runtime-security: rerun `./gradlew integrationTest` on a quiet machine; if it still misses records, fix
    collector.sh to carry the container in the audit record instead of reading /proc/<pid>/cgroup afterwards.

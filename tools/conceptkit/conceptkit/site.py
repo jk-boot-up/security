@@ -50,7 +50,12 @@ PAGE = """<!doctype html>
 def to_html(md_text, base=None):
     body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
     # a relative link to another .md file becomes a link to its .html twin
-    body = re.sub(r'href="((?!https?:|#|mailto:)[^"]*?)\.md((?:#[^"]*)?)"', r'href="\1.html\2"', body)
+    def twin(m):
+        # without a base, or when the twin exists (or the target is unknown), link the .html twin; else keep the .md
+        if base is None or (Path(base) / (m.group(1) + ".html")).is_file() or not (Path(base) / (m.group(1) + ".md")).is_file():
+            return 'href="%s.html%s"' % (m.group(1), m.group(2))
+        return m.group(0)
+    body = re.sub(r'href="((?!https?:|#|mailto:)[^"]*?)\.md((?:#[^"]*)?)"', twin, body)
     if base is not None:
         # a link to a folder with a README opens that README's twin (a browser shows a bare folder as a file list)
         def readme(m):
