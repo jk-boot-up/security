@@ -1,44 +1,128 @@
-== 1. A server that follows the guidance ==
-shop.example: grade A (score 100), 0 finding(s)
-
-== 2. A legacy server ==
-legacy.shop.example: grade F (score 0), 13 finding(s)
-  HIGH     broken-cipher          2 broken suite(s): TLS_RSA_WITH_RC4_128_SHA, TLS_RSA_WITH_3DES_ED...
-  HIGH     insecure-renegotiation secure renegotiation is not supported
-  HIGH     old-protocol-tlsv1     TLSv1 is enabled
-  HIGH     old-protocol-tlsv1_1   TLSv1.1 is enabled
-  HIGH     tls-compression        TLS compression is on (CRIME)
-  HIGH     weak-key               RSA key of 1024 bits
-  HIGH     weak-signature         certificate signed with SHA1withRSA
-  MEDIUM   no-forward-secrecy     1 suite(s) without forward secrecy: TLS_RSA_WITH_AES_128_CBC_SHA
-  MEDIUM   no-https-redirect      plain HTTP does not redirect to HTTPS
-  LOW      cbc-suites             CBC suites are offered next to GCM or ChaCha20
-  LOW      client-chooses-cipher  the server lets the client pick among weak suites
-  LOW      no-tls13               TLS 1.3 is not offered
-  LOW      short-hsts             HSTS max-age is only 1 days
-
-== 3. A certificate that clients will refuse, and a forgotten HTTP setup ==
-pay.shop.example: grade F (score 0), 3 finding(s)
-  CRITICAL cert-expired           certificate expired 10 day(s) ago
-  CRITICAL name-mismatch          pay.shop.example is not in [www.other.example]
-  HIGH     incomplete-chain       the server does not send its intermediate certificate
-blog.shop.example: grade D (score 52), 5 finding(s)
-  HIGH     incomplete-chain       the server does not send its intermediate certificate
-  MEDIUM   cert-expires-soon      certificate expires in 10 day(s)
-  MEDIUM   cookie-not-secure      the session cookie lacks the Secure attribute
-  MEDIUM   no-hsts                no Strict-Transport-Security header
-  MEDIUM   no-https-redirect      plain HTTP does not redirect to HTTPS
-
-== 4. Moving the legacy server to a policy ==
-findings before: 13, after the intermediate policy: 4
-left to fix by hand (certificate and HTTP settings):
-  weak-key
-  weak-signature
-  no-https-redirect
-  short-hsts
-the generated nginx fragment:
-  ssl_protocols TLSv1.2 TLSv1.3;
-  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE...
-  ssl_prefer_server_ciphers on;
-  ssl_session_tickets off;
-  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" ...
+ONE. A server that follows the guidance.
+  THE SERVER shop.example (what a scan learned):
+    protocols    TLSv1.2 TLSv1.3
+    suites       9 offered, 9 forward secret, 0 broken
+    certificate  EC 256 bits, signed SHA256withECDSA
+    names        shop.example, *.shop.example
+    valid        2026-01-30 to 2026-04-30 (today 2026-03-01)
+    chain        complete, ends at a trusted root
+    HSTS         max-age 63072000 (730 days), subdomains
+    HTTP         redirects to HTTPS, cookie Secure
+    features     server picks, compression off, secure renegotiation
+  THE REPORT FOR shop.example:
+    no findings
+  HOW THE GRADE IS MADE:
+    points  100 = 100
+    score   100
+    grade   A (by score: A 90+, B 75+, C 60+, D 40+)
+  ONE SUITE NAME, PART BY PART (shop.example, legacy.shop.example):
+    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    TLS_RSA_WITH_RC4_128_SHA
+    key exchange    ECDHE       RSA
+    authentication  RSA         RSA
+    cipher          AES_128     RC4_128
+    mode            GCM         stream
+    hash            SHA256      SHA
+    forward secret  yes         no
+    broken          no          yes
+TWO. A legacy server.
+  THE SERVER legacy.shop.example (what a scan learned):
+    protocols    TLSv1 TLSv1.1 TLSv1.2
+    suites       5 offered, 2 forward secret, 2 broken
+    certificate  RSA 1024 bits, signed SHA1withRSA
+    names        legacy.shop.example
+    valid        2023-09-13 to 2026-09-17 (today 2026-03-01)
+    chain        complete, ends at a trusted root
+    HSTS         max-age 86400 (1 days)
+    HTTP         no redirect to HTTPS, cookie Secure
+    features     client picks, compression on, insecure renegotiation
+  THE SUITES, READ BY NAME:
+    TLS_RSA_WITH_RC4_128_SHA               broken
+    TLS_RSA_WITH_3DES_EDE_CBC_SHA          broken
+    TLS_RSA_WITH_AES_128_CBC_SHA           no forward secrecy
+    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA     CBC
+    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256  good
+  THE REPORT FOR legacy.shop.example:
+    HIGH     broken-cipher           -20
+    HIGH     insecure-renegotiation  -20
+    HIGH     old-protocol-tlsv1      -20
+    HIGH     old-protocol-tlsv1_1    -20
+    HIGH     tls-compression         -20
+    HIGH     weak-key                -20
+    HIGH     weak-signature          -20
+    MEDIUM   no-forward-secrecy       -7
+    MEDIUM   no-https-redirect        -7
+    LOW      cbc-suites               -2
+    LOW      client-chooses-cipher    -2
+    LOW      no-tls13                 -2
+    LOW      short-hsts               -2
+  HOW THE GRADE IS MADE:
+    points  100 - 7 x 20 - 2 x 7 - 4 x 2 = -62
+    score   0 (never below 0)
+    grade   F (by score: A 90+, B 75+, C 60+, D 40+)
+THREE. A certificate that clients will refuse, and a forgotten HTTP setup.
+  THE SERVER pay.shop.example (what a scan learned):
+    protocols, suites, features: the same as shop.example
+    names        www.other.example
+    valid        2024-10-17 to 2026-02-19 (today 2026-03-01)
+    chain        the intermediate certificate is not sent
+    HSTS         max-age 63072000
+    HTTP         redirects to HTTPS, cookie Secure
+  HOW THE CERTIFICATE CHECKS ARE MADE:
+    expiry    2026-02-19 -> 2026-03-01 = 10 day(s) after the end
+    name      pay.shop.example in [www.other.example]? no
+    wildcard  *.shop.example covers pay.shop.example? yes
+    wildcard  *.shop.example covers a.pay.shop.example? no
+  THE REPORT FOR pay.shop.example:
+    CRITICAL cert-expired            -60
+    CRITICAL name-mismatch           -60
+    HIGH     incomplete-chain        -20
+  HOW THE GRADE IS MADE:
+    points  100 - 2 x 60 - 1 x 20 = -40
+    score   0 (never below 0)
+    grade   F (a CRITICAL finding gives F)
+  THE SERVER blog.shop.example (what a scan learned):
+    protocols, suites, features: the same as shop.example
+    names        blog.shop.example
+    valid        2026-01-30 to 2026-03-11 (today 2026-03-01)
+    chain        the intermediate certificate is not sent
+    HSTS         no header
+    HTTP         no redirect to HTTPS, cookie not Secure
+  THE REPORT FOR blog.shop.example:
+    HIGH     incomplete-chain        -20
+    MEDIUM   cert-expires-soon        -7
+    MEDIUM   cookie-not-secure        -7
+    MEDIUM   no-hsts                  -7
+    MEDIUM   no-https-redirect        -7
+  HOW THE GRADE IS MADE:
+    points  100 - 1 x 20 - 4 x 7 = 52
+    score   52
+    grade   D (by score: A 90+, B 75+, C 60+, D 40+)
+FOUR. Moving the legacy server to a policy.
+  BEFORE THE POLICY:
+    legacy.shop.example  grade F (score 0), 13 finding(s)
+  THE POLICY intermediate (what it sets):
+    protocols    TLSv1.2 TLSv1.3
+    suites       9 offered, 9 forward secret, 0 broken
+    features     server picks, compression off, secure renegotiation
+  AFTER THE POLICY:
+    legacy.shop.example  grade D (score 51), 4 finding(s)
+    fixed by the policy (9):
+      broken-cipher, insecure-renegotiation, old-protocol-tlsv1,
+      old-protocol-tlsv1_1, tls-compression, no-forward-secrecy,
+      cbc-suites, client-chooses-cipher, no-tls13
+    left to fix by hand (4):
+      weak-key, weak-signature, no-https-redirect, short-hsts
+  THE GENERATED nginx SETTINGS:
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers
+      ECDHE-ECDSA-AES128-GCM-SHA256
+      ECDHE-RSA-AES128-GCM-SHA256
+      ECDHE-ECDSA-AES256-GCM-SHA384
+      ECDHE-RSA-AES256-GCM-SHA384
+      ECDHE-ECDSA-CHACHA20-POLY1305
+      ECDHE-RSA-CHACHA20-POLY1305
+    ssl_prefer_server_ciphers on;
+    ssl_session_tickets off;
+    add_header Strict-Transport-Security
+      "max-age=63072000; includeSubDomains" always;

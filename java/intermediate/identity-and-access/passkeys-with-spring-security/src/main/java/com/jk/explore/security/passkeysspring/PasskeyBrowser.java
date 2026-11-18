@@ -90,7 +90,7 @@ final class PasskeyBrowser {
     Attempt signInWithPasskey(SoftwareAuthenticator authenticator, boolean userVerified, String originOfPage, String rpIdAsked) throws IOException, InterruptedException {
         String host = URI.create(originOfPage).getHost();
         if (!host.equals(rpIdAsked) && !host.endsWith("." + rpIdAsked)) {
-            return new Attempt("the browser will not use " + rpIdAsked + " for a page at " + originOfPage, null);
+            return new Attempt(rpIdAsked + " is not this page's site", null);
         }
         if (!authenticator.hasPasskeyFor(rpIdAsked)) {
             return new Attempt("the authenticator has no passkey for " + rpIdAsked, null);

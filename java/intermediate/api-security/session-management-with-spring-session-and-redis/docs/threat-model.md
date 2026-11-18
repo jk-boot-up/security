@@ -54,6 +54,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `SessionRedisTest` starts a real Redis and real bank servers and checks the password, the cookie, the stolen key, fixation in both modes, the idle and absolute limits, sign-out, sign-out everywhere, the password change, the session limit, two servers, a Redis that stops answering, and the request cache.
 - `DemoRunsTest` compares the whole demo with the golden output.
+- `SessionKeysTest` and `AbsoluteTimeoutFilterTest` need no tools: the cookie is the Base64 of the id (by hand and by the library), which Redis keys count as live, and the 8-hour filter.
 
 ## Where this model goes next
 

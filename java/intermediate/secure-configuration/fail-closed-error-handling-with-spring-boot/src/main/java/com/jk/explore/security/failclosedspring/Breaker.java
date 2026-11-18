@@ -32,7 +32,7 @@ final class Breaker {
 
     <T> T call(Supplier<T> call) {
         if (state() == State.OPEN) {
-            throw new CheckFailedException("fraud check unavailable, breaker open", "breaker open", null);
+            throw new CheckFailedException("breaker open", "breaker open", null);
         }
         try {
             T result = call.get();

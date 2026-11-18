@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Controls and evidence for a bank: a control catalogue mapped to NIST CSF 2.0 and ISO 27001 Annex A, evidence read from JUnit test results and attestations, freshness rules, and a status for each control that an auditor can follow.
+> Controls and evidence for a bank, in Java: a control catalogue with owners mapped to NIST CSF 2.0 and ISO 27001 Annex A, the ids taken apart, the gap a map reveals, evidence read safely from JUnit XML test reports and attestations, status rules asked in order with freshness limits, every control on one day, and what happens when a test starts to fail.

@@ -39,10 +39,17 @@ final class MountedSecrets {
         return PosixFilePermissions.toString(Files.getPosixFilePermissions(file));
     }
 
+    /** The nine permission letters split by whom they apply to, for example "owner rw-  group r--  others r--". */
+    static String byWhom(String permissions) {
+        return "owner " + permissions.substring(0, 3) + "  group " + permissions.substring(3, 6)
+                + "  others " + permissions.substring(6, 9);
+    }
+
     static Secret read(Path file) throws IOException, UnsafeFileException {
         Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(file);
         if (permissions.stream().anyMatch(OTHERS::contains)) {
-            throw new UnsafeFileException(file.getFileName() + " is readable by others (" + PosixFilePermissions.toString(permissions) + ")");
+            throw new UnsafeFileException(file.getFileName() + " is readable by others ("
+                    + PosixFilePermissions.toString(permissions) + ")");
         }
         byte[] bytes = Files.readAllBytes(file);
         try {

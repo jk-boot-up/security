@@ -1,16 +1,21 @@
 package com.jk.explore.security.failclosed;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Runs the bank story in five numbered acts and prints exact, repeatable results. */
+/**
+ * Runs the bank story in five numbered acts and prints exact, repeatable results. Each act prints its input and its result in
+ * separate, labelled sections, and works out derived values (totals, waiting times, counts) with the real numbers.
+ */
 public class FailClosedDemo {
 
     static final long DAILY_LIMIT = 200_000;
     static final Payment SMALL = new Payment("P-1", "4111111111111111", "corner-cafe", 450);
     static final Payment RISKY = new Payment("P-2", "4111111111111111", "unknown-electronics", 150_000);
+    static final Payment BIG = new Payment("P-3", "4111111111111111", "furniture-store", 450_000);
 
     public static void main(String[] args) {
         System.out.print(run());
@@ -36,7 +41,26 @@ public class FailClosedDemo {
     }
 
     private static String outcome(Decision d) {
-        return d.approved() ? "APPROVED" : d.reason().equals("refused") ? "refused" : "refused (" + d.reason() + ")";
+        return d.approved() ? "APPROVED" : d.reason().equals("refused") ? "refused" : "refused: " + d.reason();
+    }
+
+    private static String describe(Payment p) {
+        return money(p.cents()) + " at " + p.merchant();
+    }
+
+    /** Splits a long text into lines of at most `width` characters, at spaces. */
+    static List<String> wrap(String text, int width) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (!current.isEmpty() && current.length() + 1 + word.length() > width) {
+                lines.add(current.toString());
+                current.setLength(0);
+            }
+            current.append(current.isEmpty() ? "" : " ").append(word);
+        }
+        lines.add(current.toString());
+        return lines;
     }
 
     private static void act1FailingOpen(StringBuilder out) {
@@ -44,16 +68,25 @@ public class FailClosedDemo {
         SimClock clock = new SimClock();
         FraudService fraud = new FraudService(clock, FraudService.Mode.HEALTHY);
         NaiveAuthorizer naive = new NaiveAuthorizer(fraud, DAILY_LIMIT);
-        line(out, "  a payment of " + money(RISKY.cents()) + " at " + RISKY.merchant() + ", fraud check working: " + outcome(naive.authorize(RISKY, "0")));
+        line(out, "  THE RULE (NaiveAuthorizer):");
+        line(out, "    start from yes; a check can only take it away");
+        line(out, "  THE PAYMENT:");
+        line(out, "    " + describe(RISKY));
+        line(out, "  THE RESULT, FRAUD CHECK WORKING:");
+        line(out, "    " + outcome(naive.authorize(RISKY, "0")) + " (looks fraudulent)");
         fraud.setMode(FraudService.Mode.BROKEN);
-        line(out, "  the same payment while the fraud check is down: " + outcome(naive.authorize(RISKY, "0"))
-                + "  <- AN ERROR BECAME A YES");
+        line(out, "  THE RESULT, FRAUD CHECK DOWN:");
+        line(out, "    " + outcome(naive.authorize(RISKY, "0")) + "  <- AN ERROR BECAME A YES");
         fraud.setMode(FraudService.Mode.HEALTHY);
-        Payment big = new Payment("P-3", "4111111111111111", "furniture-store", 450_000);
-        line(out, "  a payment of " + money(big.cents()) + " against a daily limit of " + money(DAILY_LIMIT) + ": " + outcome(naive.authorize(big, "0")));
-        line(out, "  the same payment when the account's spent-today value is unreadable: " + outcome(naive.authorize(big, "n/a"))
-                + "  <- AN EXCEPTION SKIPPED THE CHECK");
-        line(out, "  the decision started as yes, and each check could only take it away: a check that never ran took nothing away");
+        line(out, "  THE PAYMENT:");
+        line(out, "    " + describe(BIG));
+        line(out, "  THE DAILY LIMIT, WORKED OUT:");
+        line(out, "    spent today " + money(0) + " + " + money(BIG.cents()) + " = " + money(BIG.cents()) + " > " + money(DAILY_LIMIT));
+        line(out, "  THE RESULT, SPENT-TODAY READ AS \"0\":");
+        line(out, "    " + outcome(naive.authorize(BIG, "0")) + " (over the daily limit)");
+        line(out, "  THE RESULT, SPENT-TODAY UNREADABLE (\"n/a\"):");
+        line(out, "    " + outcome(naive.authorize(BIG, "n/a")) + "  <- THE CHECK WAS SKIPPED");
+        line(out, "  a check that never ran took nothing away");
     }
 
     private static void act2FailingClosed(StringBuilder out) {
@@ -61,41 +94,66 @@ public class FailClosedDemo {
         SimClock clock = new SimClock();
         FraudService fraud = new FraudService(clock, FraudService.Mode.HEALTHY);
         SecurityLog log = new SecurityLog();
-        SafeAuthorizer safe = new SafeAuthorizer(fraud, clock, DAILY_LIMIT, new References(), log);
-        line(out, "  the decision starts as no, and only a check that ran and passed can turn it into yes");
-        line(out, "  a coffee for " + money(SMALL.cents()) + ": " + outcome(safe.authorize(SMALL, "0")));
-        line(out, "  the risky payment, fraud check working: " + outcome(safe.authorize(RISKY, "0")));
-        fraud.setMode(FraudService.Mode.BROKEN);
-        Decision down = safe.authorize(RISKY, "0");
-        line(out, "  the risky payment while the fraud check is down: " + outcome(down) + ", reference " + down.reference());
-        fraud.setMode(FraudService.Mode.SLOW);
-        line(out, "  a coffee while the fraud check takes 5 seconds, with a budget of " + SafeAuthorizer.FRAUD_BUDGET_MS + " ms: " + outcome(safe.authorize(SMALL, "0")));
-        fraud.setMode(FraudService.Mode.HEALTHY);
-        Payment big = new Payment("P-3", "4111111111111111", "furniture-store", 450_000);
-        line(out, "  the big payment with an unreadable spent-today value: " + outcome(safe.authorize(big, "n/a")));
-        line(out, "  every refusal is in the log with its reference: " + log.lines().size() + " lines");
+        SafeAuthorizer safe = new SafeAuthorizer(fraud, DAILY_LIMIT, new References(), log);
+        line(out, "  THE RULE (SafeAuthorizer):");
+        line(out, "    start from no; only a check that ran and passed");
+        line(out, "    turns it into yes");
+        record Case(String name, Payment payment, FraudService.Mode mode, String limitText, String fault) {
+        }
+        List<Case> cases = List.of(
+                new Case("coffee", SMALL, FraudService.Mode.HEALTHY, "0", "nothing"),
+                new Case("risky", RISKY, FraudService.Mode.HEALTHY, "0", "nothing"),
+                new Case("risky", RISKY, FraudService.Mode.BROKEN, "0", "fraud check down"),
+                new Case("coffee", SMALL, FraudService.Mode.SLOW, "0", "fraud check slow"),
+                new Case("big", BIG, FraudService.Mode.HEALTHY, "n/a", "spent-today \"n/a\""));
+        line(out, "  THE INPUTS (payment, what goes wrong):");
+        List<String> results = new ArrayList<>();
+        int number = 1;
+        for (Case c : cases) {
+            line(out, String.format(Locale.ROOT, "    %d  %-7s%8s  %s", number, c.name(), money(c.payment().cents()), c.fault()));
+            fraud.setMode(c.mode());
+            Decision d = safe.authorize(c.payment(), c.limitText());
+            results.add("    " + number++ + "  " + d.reference() + "  " + outcome(d));
+        }
+        line(out, "  THE RESULTS:");
+        results.forEach(r -> line(out, r));
+        line(out, "  THE TIME BUDGET, WORKED OUT (REF-0004):");
+        line(out, "    the check needs " + new FraudService(clock, FraudService.Mode.SLOW).millisNeeded() + " ms > budget "
+                + SafeAuthorizer.FRAUD_BUDGET_MS + " ms");
+        line(out, "    -> given up at " + SafeAuthorizer.FRAUD_BUDGET_MS + " ms: no answer is a no");
+        line(out, "  THE SECURITY LOG (one line per refusal):");
+        line(out, "    " + log.lines().size() + " lines: " + String.join(", ", log.lines().stream().map(l -> l.split(" ")[0]).toList()));
+    }
+
+    private static String accounts(Ledger ledger) {
+        return "ana " + money(ledger.balance("ana")) + "   ben " + money(ledger.balance("ben")) + "   total " + money(ledger.total());
     }
 
     private static void act3PartialFailures(StringBuilder out) {
         line(out, "THREE. Failing halfway.");
+        long amount = 25_000;
         Ledger naive = new Ledger(Map.of("ana", 100_000L, "ben", 0L), Set.of("ben"));
         long before = naive.total();
-        boolean done = Transfers.naive(naive, "ana", "ben", 25_000);
-        line(out, "  ana sends " + money(25_000) + " to ben, whose account is frozen: done " + done + ", ana now has " + money(naive.balance("ana"))
-                + ", ben has " + money(naive.balance("ben")));
-        line(out, "  money in the bank before " + money(before) + ", after " + money(naive.total()) + "  <- " + money(before - naive.total()) + " VANISHED");
+        line(out, "  THE ACCOUNTS BEFORE (ben's account is frozen):");
+        line(out, "    " + accounts(naive));
+        line(out, "  THE TRANSFER:");
+        line(out, "    ana sends " + money(amount) + " to ben");
+        boolean done = Transfers.naive(naive, "ana", "ben", amount);
+        line(out, "  AFTER, DEBIT THEN CREDIT (Transfers.naive):");
+        line(out, "    debit ana  " + money(before) + " - " + money(amount) + " = " + money(naive.balance("ana")));
+        line(out, "    credit ben  fails: account ben is frozen; done " + done);
+        line(out, "    " + accounts(naive));
+        line(out, "    " + money(before) + " - " + money(naive.total()) + " = " + money(before - naive.total()) + "  <- VANISHED");
         Ledger atomic = new Ledger(Map.of("ana", 100_000L, "ben", 0L), Set.of("ben"));
-        boolean done2 = Transfers.atomic(atomic, "ana", "ben", 25_000);
-        line(out, "  as one unit of work, checked first and undone if the second half fails: done " + done2 + ", ana still has "
-                + money(atomic.balance("ana")) + ", money in the bank " + money(atomic.total()));
+        boolean done2 = Transfers.atomic(atomic, "ana", "ben", amount);
+        line(out, "  AFTER, ONE UNIT OF WORK (Transfers.atomic):");
+        line(out, "    checked first: ben accepts credit? " + atomic.acceptsCredit("ben") + " -> done " + done2);
+        line(out, "    " + accounts(atomic));
+        line(out, "  THE CONNECTION POOL BEFORE:");
+        line(out, "    3 connections, 3 free");
+        line(out, "  AFTER 3 FAILED UPDATES, GIVEN BACK ONLY ON SUCCESS:");
         ConnectionPool leaky = new ConnectionPool(3);
-        for (int i = 0; i < 3; i++) {
-            try {
-                ConnectionPool.naiveUpdate(leaky, true);
-            } catch (IllegalStateException e) {
-                // the update failed
-            }
-        }
+        line(out, "    free after each: " + afterEachFailure(leaky, false));
         String next;
         try {
             ConnectionPool.naiveUpdate(leaky, false);
@@ -103,16 +161,26 @@ public class FailClosedDemo {
         } catch (IllegalStateException e) {
             next = "fails: " + e.getMessage();
         }
-        line(out, "  three failed updates that give a connection back only on success: free connections " + leaky.free() + ", the next update " + next);
-        ConnectionPool safe = new ConnectionPool(3);
+        line(out, "    the next update " + next);
+        line(out, "  AFTER 3 FAILED UPDATES, WITH TRY-WITH-RESOURCES:");
+        line(out, "    free after each: " + afterEachFailure(new ConnectionPool(3), true));
+    }
+
+    /** Runs three failing updates and lists the free connections after each one. */
+    private static String afterEachFailure(ConnectionPool pool, boolean safe) {
+        List<String> free = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             try {
-                ConnectionPool.safeUpdate(safe, true);
+                if (safe) {
+                    ConnectionPool.safeUpdate(pool, true);
+                } else {
+                    ConnectionPool.naiveUpdate(pool, true);
+                }
             } catch (IllegalStateException e) {
-                // the update failed
+                free.add(String.valueOf(pool.free()));
             }
         }
-        line(out, "  the same three failures with try-with-resources: free connections " + safe.free());
+        return String.join(", ", free);
     }
 
     private static void act4ErrorMessages(StringBuilder out) {
@@ -126,51 +194,69 @@ public class FailClosedDemo {
         } catch (ServiceException e) {
             failure = e;
         }
+        line(out, "  THE FAILURE (the fraud service's exception):");
+        wrap(failure.getClass().getSimpleName() + ": " + failure.getMessage(), 48).forEach(l -> line(out, "    " + l));
         String naive = ErrorPages.naive(failure);
-        line(out, "  the raw error page names an internal server: " + naive.contains("fraud-db.internal")
-                + ", shows the full card number: " + naive.contains(RISKY.card()) + ", shows code lines: " + naive.contains("  at "));
+        line(out, "  THE RAW ERROR PAGE (the exception as it came):");
+        line(out, "    names an internal server: " + naive.contains("fraud-db.internal"));
+        line(out, "    shows the full card number: " + naive.contains(RISKY.card()));
+        line(out, "    shows code lines (a stack trace): " + naive.contains("  at "));
         SecurityLog log = new SecurityLog();
-        SafeAuthorizer safe = new SafeAuthorizer(fraud, clock, DAILY_LIMIT, new References(), log);
+        SafeAuthorizer safe = new SafeAuthorizer(fraud, DAILY_LIMIT, new References(), log);
         Decision d = safe.authorize(RISKY, "0");
-        String page = ErrorPages.safe(d.reference());
-        line(out, "  the customer sees: \"" + page + "\"");
-        String logged = log.lines().get(0);
-        line(out, "  the log line has the reference: " + logged.contains(d.reference()) + ", the reason: " + logged.contains("connection refused")
-                + ", the full card number: " + logged.contains(RISKY.card()) + ", the last four digits: " + logged.contains("****1111"));
-        line(out, "  support finds the detail from the reference, and an attacker learns nothing from the page");
+        line(out, "  THE SAFE PAGE (what the customer sees):");
+        wrap(ErrorPages.safe(d.reference()), 48).forEach(l -> line(out, "    " + l));
+        line(out, "  THE LOG LINE (what support sees):");
+        wrap(log.lines().get(0), 48).forEach(l -> line(out, "    " + l));
+        line(out, "  THE REDACTION, WORKED OUT:");
+        line(out, "    " + RISKY.card() + " -> " + SecurityLog.redact(RISKY.card()) + " (last four digits)");
+        line(out, "  support finds the detail from the reference;");
+        line(out, "  an attacker learns nothing from the page");
     }
 
     private static void act5TheBill(StringBuilder out) {
         line(out, "FIVE. The bill, and how to pay it.");
+        line(out, "  THE OUTAGE:");
+        line(out, "    the fraud check needs " + new FraudService(new SimClock(), FraudService.Mode.SLOW).millisNeeded()
+                + " ms; the budget is " + SafeAuthorizer.FRAUD_BUDGET_MS + " ms");
+        line(out, "    10 customers each pay " + money(SMALL.cents()) + " for a coffee");
         SimClock waiting = new SimClock();
         FraudService slowForAll = new FraudService(waiting, FraudService.Mode.SLOW);
-        SafeAuthorizer safe = new SafeAuthorizer(slowForAll, waiting, DAILY_LIMIT, new References(), new SecurityLog());
+        SafeAuthorizer safe = new SafeAuthorizer(slowForAll, DAILY_LIMIT, new References(), new SecurityLog());
         int approved = 0;
         for (int i = 0; i < 10; i++) {
             if (safe.authorize(SMALL, "0").approved()) {
                 approved++;
             }
         }
-        line(out, "  failing closed costs availability: 10 coffees while the fraud check is slow, approved " + approved
-                + ", time spent waiting " + waiting.now() / 1000 + " seconds");
+        line(out, "  WITHOUT A BREAKER:");
+        line(out, "    approved " + approved + " of 10; calls to the fraud check " + slowForAll.calls());
+        line(out, "    waiting " + slowForAll.calls() + " x " + SafeAuthorizer.FRAUD_BUDGET_MS + " ms = " + waiting.now() + " ms");
         SimClock clock = new SimClock();
         FraudService fraud = new FraudService(clock, FraudService.Mode.SLOW);
         CircuitBreaker breaker = new CircuitBreaker(clock, 3, 30_000);
-        ResilientAuthorizer resilient = new ResilientAuthorizer(fraud, clock, breaker, 5);
+        int alertAfter = 5;
+        ResilientAuthorizer resilient = new ResilientAuthorizer(fraud, breaker, alertAfter);
         int approved2 = 0;
         for (int i = 0; i < 10; i++) {
             if (resilient.authorize(SMALL).approved()) {
                 approved2++;
             }
         }
-        line(out, "  with a circuit breaker that opens after 3 failures: approved " + approved2 + ", calls to the fraud check " + fraud.calls()
-                + ", time spent waiting " + clock.now() / 1000 + " seconds, breaker " + breaker.state());
-        line(out, "  refusals by reason: " + resilient.refusals() + ", alert raised: " + resilient.alerted());
+        line(out, "  WITH A BREAKER THAT OPENS AFTER 3 FAILURES:");
+        line(out, "    approved " + approved2 + " of 10; calls to the fraud check " + fraud.calls());
+        line(out, "    waiting " + fraud.calls() + " x " + SafeAuthorizer.FRAUD_BUDGET_MS + " ms = " + clock.now() + " ms; breaker " + breaker.state());
+        line(out, "  THE REFUSALS BY REASON:");
+        int total = 0;
+        for (Map.Entry<String, Integer> e : resilient.refusals().entrySet()) {
+            line(out, String.format(Locale.ROOT, "    %-22s%2d", e.getKey(), e.getValue()));
+            total += e.getValue();
+        }
+        line(out, "    total " + total + " >= alert threshold " + alertAfter + " -> alert raised " + resilient.alerted());
         clock.advance(30_000);
         fraud.setMode(FraudService.Mode.HEALTHY);
-        line(out, "  after the cool-down, with the fraud check back: a coffee " + outcome(resilient.authorize(SMALL)) + ", breaker " + breaker.state());
-        line(out, "  an open breaker still says no: it fails fast, not open, and the refusals are watched so a long outage is noticed");
-        List<String> rules = List.of("start from no", "a budget for every call", "a limited retry", "a breaker that refuses", "an alert on refusals");
-        line(out, "  the rules: " + String.join(", ", rules));
+        line(out, "  AFTER THE 30000 ms COOL-DOWN, FRAUD CHECK BACK:");
+        line(out, "    one trial call: a coffee " + outcome(resilient.authorize(SMALL)) + "; breaker " + breaker.state());
+        line(out, "  an open breaker still says no: it fails fast, not open");
     }
 }

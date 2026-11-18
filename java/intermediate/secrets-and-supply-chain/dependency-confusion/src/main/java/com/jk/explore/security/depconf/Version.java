@@ -20,6 +20,19 @@ public record Version(int major, int minor, int patch) implements Comparable<Ver
         return c == 0 ? Integer.compare(patch, o.patch) : c;
     }
 
+    /** A teaching method: the first number that differs decides, for example "major 99 > 1". */
+    public String whyHigher(Version o) {
+        String[] part = {"major", "minor", "patch"};
+        int[] a = {major, minor, patch};
+        int[] b = {o.major, o.minor, o.patch};
+        for (int i = 0; i < 3; i++) {
+            if (a[i] != b[i]) {
+                return part[i] + " " + a[i] + (a[i] > b[i] ? " > " : " < ") + b[i];
+            }
+        }
+        return "equal";
+    }
+
     @Override
     public String toString() {
         return major + "." + minor + "." + patch;

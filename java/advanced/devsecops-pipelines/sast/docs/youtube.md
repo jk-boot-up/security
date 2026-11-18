@@ -16,17 +16,40 @@ Chapters:
 
 ```
 00:00 Introduction
-01:49 The Scenario
-02:09 Act One — The code under test
-02:23 Act Two — Pattern against taint
-02:38 Act Three — Tests for the rules
-02:50 Act Four — Triage
-03:03 Act Five — The bill
-03:14 What It Costs
-03:47 Who Does What
-04:08 Where You Have Seen It
-04:29 How To Use It
-04:48 Thanks for Watching
+00:52 The Scenario
+01:22 The Words
+02:02 What the Letters Stand For
+02:54 What the Letters Stand For (continued)
+03:13 One safe line, read by two rules
+04:10 Input followed from the request to the query
+05:05 Act One — One flaw, as a taint rule sees it
+05:27 Act One — One flaw, as a taint rule sees it
+05:36 The eight SQL lines, as each rule sees them
+06:38 Act Two — Pattern against taint
+06:48 Act Two — Pattern against taint
+07:03 Act Two — Pattern against taint
+07:19 Seven findings, matched with the truth
+08:01 Act Three — Every flaw class with the taint rules
+08:20 Act Three — Every flaw class with the taint rules
+08:31 Expected against reported lines
+09:25 Act Four — Tests for the rules
+09:46 Act Four — Tests for the rules
+10:01 From seven findings to a decision with a reason and an owner
+10:48 Act Five — Triage
+11:18 Act Five — Triage
+11:25 What It Costs
+11:59 Who Does What
+12:35 Where You Have Seen It
+13:06 How To Use It
+13:36 The Java Classes
+13:52 Marker — // VULN or // SAFE, and an id
+14:05 Score — compare findings with markers
+14:17 Score — recall and precision
+14:26 TaintSteps — assigned from a tainted value, tainted
+14:42 Semgrep — a scan, with --error for the build
+14:53 Semgrep — expected against reported lines
+15:05 Suppressions — the shape of a good one
+15:18 Thanks for Watching
 ```
 
 ## Tags

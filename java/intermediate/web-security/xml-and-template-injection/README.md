@@ -52,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. An invoice upload | An honest invoice is read: Ana, 42.50, and a note with an ampersand. |
-| 2. The parser reads what the file tells it to | An external entity makes the parser put a server file into the note; an entity bomb is stopped only by the JDK's expansion limit. |
-| 3. Refuse the DOCTYPE | The safe parser accepts the honest invoice and refuses both the external entity and the bomb because they need a DOCTYPE. |
-| 4. A template engine that evaluates expressions | A name pasted into the template reads the SMTP password and the customer's class name; the same name passed as data stays text. |
-| 5. A logic-less engine keeps data as data | With named, escaped values and no expressions, pasted text stays text and markup is escaped. |
+| 1. An invoice upload | A supplier uploads a five-line XML invoice; the parser replaces the built-in entity &amp; with & and the shop stores three fields: Ana, 42.50, and Thanks & see you soon. |
+| 2. The parser reads what the file tells it to | A DOCTYPE defines the entity xxe as a file on the server, and the note becomes demo-secret-from-the-server; an entity bomb of 464 characters would expand to 3,000,000 and is stopped only by the JDK's default limit. |
+| 3. Refuse the DOCTYPE | The safe parser refuses any DOCTYPE and switches off external DTDs, schemas, XInclude and entity expansion; the honest invoice is accepted, both attacks are refused before any entity is read, and a 10,095-character upload is too large. |
+| 4. A template engine that evaluates expressions | Every template can reach customer and app; the owner's template prints Hello Ana; a name of ${app.config.smtpPassword} pasted into the template is walked app -> config() -> smtpPassword() and prints demo-smtp-password; the same name passed as data stays text. |
+| 5. A logic-less engine keeps data as data | The fixed engine has two holes, {{name}} and {{email}}; the pasted expression stays text; markup is escaped character by character: & < > " ' become &amp; &lt; &gt; &quot; &#39;. |
 
 ## Test
 
@@ -64,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-10 tests in `DemoRunsTest`, `XmlTemplateTest`. The temporary file's name is random and never printed, so the demo prints the same text on every run.
+11 tests in `DemoRunsTest`, `XmlTemplateTest`. The temporary file's name is random and never printed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

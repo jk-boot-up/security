@@ -59,7 +59,7 @@ public final class WorkloadIdentityDemo {
     // ---- 1. the before
 
     private static void beforeSecret(StringBuilder out, LegacyLedger legacy, String secret) throws IOException, InterruptedException {
-        line(out, "--- before: one shared secret in three services");
+        line(out, "ONE. One shared secret in three services.");
         Path configs = Path.of("build", "legacy");
         Lab.deleteTree(configs);
         Files.createDirectories(configs);
@@ -68,18 +68,30 @@ public final class WorkloadIdentityDemo {
             Files.writeString(configs.resolve(service + ".conf"), "ledger.api.key=" + secret + "\n");
             holders++;
         }
-        line(out, "the same secret is copied into the configuration of payments, reporting and fraud-engine: " + holders + " of 3 hold it");
-        line(out, "payments (says payments), POST /transfers: " + legacy("POST", "/transfers", secret, "payments", legacy));
-        line(out, "reporting (says reporting), GET /statements: " + legacy("GET", "/statements", secret, "reporting", legacy));
-        line(out, "reporting (says reporting), POST /transfers: " + legacy("POST", "/transfers", secret, "reporting", legacy));
-        line(out, "reporting (says payments), POST /transfers: " + legacy("POST", "/transfers", secret, "payments", legacy)
-                + " (the ledger takes the caller's word)");
+        line(out, "  THE SECRET (24 random bytes, never printed):");
+        line(out, "    copied into payments, reporting, fraud-engine: " + holders + " of 3");
+        line(out, "  THE LEDGER'S RULES:");
+        for (Policy.Rule rule : Policy.RULES) {
+            line(out, String.format("    %-33s %s %s", rule.callerId(), rule.method(), rule.path()));
+        }
+        line(out, "  THE REQUESTS (the right key; X-Service says who calls):");
+        line(out, "    caller     says       request          answer");
+        request(out, "reporting", "reporting", "GET", "/statements", legacy("GET", "/statements", secret, "reporting", legacy));
+        request(out, "payments", "payments", "POST", "/transfers", legacy("POST", "/transfers", secret, "payments", legacy));
+        request(out, "reporting", "reporting", "POST", "/transfers", legacy("POST", "/transfers", secret, "reporting", legacy));
+        request(out, "reporting", "payments", "POST", "/transfers", legacy("POST", "/transfers", secret, "payments", legacy));
+        line(out, "    the ledger takes the caller's word for who it is");
         String leaked = Files.readString(configs.resolve("fraud-engine.conf")).trim().substring("ledger.api.key=".length());
-        line(out, "the fraud-engine's configuration leaks; an attacker outside the bank who says payments, POST /transfers: "
-                + legacy("POST", "/transfers", leaked, "payments", legacy));
-        line(out, "the same attacker saying reporting, GET /statements: " + legacy("GET", "/statements", leaked, "reporting", legacy));
-        line(out, "the attacker is every service: it holds the one thing each service holds");
-        line(out, "a wrong key: " + legacy("POST", "/transfers", "wrong", "payments", legacy));
+        line(out, "  THE LEAK (fraud-engine's configuration, outside the bank):");
+        line(out, "    caller     says       request          answer");
+        request(out, "attacker", "payments", "POST", "/transfers", legacy("POST", "/transfers", leaked, "payments", legacy));
+        request(out, "attacker", "reporting", "GET", "/statements", legacy("GET", "/statements", leaked, "reporting", legacy));
+        request(out, "wrong key", "payments", "POST", "/transfers", legacy("POST", "/transfers", "wrong", "payments", legacy));
+        line(out, "    with the one secret, the attacker is every service");
+    }
+
+    private static void request(StringBuilder out, String caller, String says, String method, String path, Object answer) {
+        line(out, String.format("    %-10s %-10s %-16s %s", caller, says, method + " " + path, answer));
     }
 
     private static int legacy(String method, String path, String key, String claim, LegacyLedger ledger) throws IOException, InterruptedException {
@@ -92,107 +104,143 @@ public final class WorkloadIdentityDemo {
     // ---- 2. SPIRE decides who a workload is
 
     private static void spire(StringBuilder out, Lab lab) throws IOException, InterruptedException {
-        line(out, "--- SPIRE decides who a workload is");
-        line(out, "SPIRE server and agent " + Lab.SPIRE_VERSION + " run in one Docker container (linux arm64; SPIRE publishes no macOS build), trust domain "
-                + Lab.DOMAIN);
-        line(out, "registration entries: " + lab.entryCount() + ", each chosen by the operating system user the process runs as, none by anything it says");
+        line(out, "TWO. SPIRE decides who a workload is.");
+        line(out, "  THE SETUP (server and agent in one Linux container):");
+        line(out, "    SPIRE          " + Lab.SPIRE_VERSION + " (linux arm64; no macOS build exists)");
+        line(out, "    trust domain   " + Lab.DOMAIN);
+        line(out, "    entries        " + lab.entryCount() + ", chosen by the user a process runs as");
+        line(out, "  THE REGISTRATION ENTRIES (selector -> SPIFFE ID):");
+        for (String name : List.of("ledger", "payments", "reporting")) {
+            line(out, "    unix:uid:" + Lab.UIDS.get(name) + "  ->  spiffe://" + Lab.DOMAIN + "/" + name);
+        }
+        line(out, "  THE SAME PROGRAM, RUN AS EACH USER (the SVID it got):");
         for (String name : List.of("ledger", "payments", "reporting")) {
             String who = lab.workload(Lab.UIDS.get(name), "whoami");
-            line(out, "the Java program run as user " + Lab.UIDS.get(name) + " (" + name + "): " + field(who, "id"));
+            line(out, String.format("    %-26s %s", "user " + Lab.UIDS.get(name), field(who, "id")));
         }
         String liar = lab.workloadClaiming(REPORTING, PAYMENTS_ID, "whoami");
-        line(out, "the same program run as the reporting user, with the claim \"I am " + PAYMENTS_ID + "\" in its environment: " + field(liar, "id"));
-        line(out, "an SVID that was just issued has at most " + Lab.SVID_TTL_SECONDS + " seconds left: "
-                + yes(Long.parseLong(field(liar, "remaining")) <= Lab.SVID_TTL_SECONDS) + " (the certificate's own dates span " + field(liar, "span")
-                + " seconds: SPIRE starts them 10 seconds early to forgive clock skew)");
+        line(out, String.format("    %-26s %s", "user " + REPORTING + ", says payments", field(liar, "id")));
+        SpiffeIds.Parts parts = SpiffeIds.parts(field(liar, "id"));
+        line(out, "  ONE SPIFFE ID, PART BY PART:");
+        line(out, "    scheme         " + SpiffeIds.SCHEME);
+        line(out, "    trust domain   " + parts.trustDomain());
+        line(out, "    path           " + parts.path());
+        long span = Long.parseLong(field(liar, "span"));
+        line(out, "  HOW LONG AN SVID LIVES (from its own dates):");
+        line(out, "    Not After - Not Before     " + span + " s");
+        line(out, "    minus " + Lab.BACKDATE_SECONDS + " s back-dating     " + span + " - " + Lab.BACKDATE_SECONDS + " = "
+                + (span - Lab.BACKDATE_SECONDS) + " s, the TTL");
+        line(out, "    left when just issued      at most " + Lab.SVID_TTL_SECONDS + " s: "
+                + yes(Long.parseLong(field(liar, "remaining")) <= Lab.SVID_TTL_SECONDS));
     }
 
     // ---- 3. two Java services, mutual verification
 
     private static void services(StringBuilder out, Lab lab) throws IOException, InterruptedException {
-        line(out, "--- two Java services, each checking the other's SPIFFE ID");
+        line(out, "THREE. Two Java services check each other's SPIFFE ID.");
         lab.spawn(LEDGER, "ledger", "ledger", "ledger");
-        line(out, "payments, POST /transfers: " + lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
-        line(out, "payments, GET /statements: " + lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "GET", "/statements"));
-        line(out, "reporting, GET /statements: " + lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "GET", "/statements"));
-        line(out, "reporting, POST /transfers: " + lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
+        line(out, "  THE REQUESTS (mutual TLS; the ID comes from the certificate):");
+        line(out, "    caller     request          answer");
+        call(out, "payments", "POST", "/transfers", lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
+        call(out, "payments", "GET", "/statements", lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "GET", "/statements"));
+        call(out, "reporting", "GET", "/statements", lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "GET", "/statements"));
+        call(out, "reporting", "POST", "/transfers", lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
         TreeSet<String> callers = new TreeSet<>();
         for (String entry : lab.audit("ledger")) {
             callers.add(entry.split(" ")[0]);
         }
-        line(out, "the ledger's audit names " + lab.audit("ledger").size() + " requests by the identity in the certificate: " + String.join(", ", callers));
-
+        line(out, "  THE LEDGER'S AUDIT (" + lab.audit("ledger").size() + " requests, named by the certificate):");
+        for (String caller : callers) {
+            line(out, "    " + caller);
+        }
+        line(out, "  TWO IMPOSTORS:");
         lab.spawn(REPORTING, "fake", "ledger", "fake");
-        line(out, "a server run by the reporting workload, called by payments as if it were the ledger: "
-                + lab.workload(PAYMENTS, "call", "fake", LEDGER_ID, "POST", "/transfers") + " (payments expects " + LEDGER_ID + ")");
+        line(out, "    a server run as reporting, called as the ledger: "
+                + lab.workload(PAYMENTS, "call", "fake", LEDGER_ID, "POST", "/transfers"));
+        line(out, "      payments expects " + LEDGER_ID);
         int before = lab.audit("ledger").size();
         lab.root("keytool", "-genkeypair", "-alias", "forged", "-keyalg", "EC", "-groupname", "secp256r1", "-dname", "CN=payments", "-ext",
                 "san=uri:" + PAYMENTS_ID, "-validity", "1", "-keystore", "/work/forged.p12", "-storetype", "PKCS12",
                 "-storepass", "lab-password", "-keypass", "lab-password");
         lab.root("chmod", "a+r", "/work/forged.p12");
-        line(out, "a certificate made by the attacker that names itself " + PAYMENTS_ID + ": "
-                + lab.workload(ATTACKER, "forged", "/work/forged.p12", "/work/bundle.pem", "ledger", "/transfers")
-                + ", requests that reached the ledger's code: " + (lab.audit("ledger").size() - before));
+        line(out, "    a self-made certificate naming payments: "
+                + lab.workload(ATTACKER, "forged", "/work/forged.p12", "/work/bundle.pem", "ledger", "/transfers"));
+        line(out, "      requests that reached the ledger's code: " + (lab.audit("ledger").size() - before));
+    }
+
+    private static void call(StringBuilder out, String caller, String method, String path, String answer) {
+        line(out, String.format("    %-10s %-16s %s", caller, method + " " + path, answer));
     }
 
     // ---- 4. rotation
 
     private static void rotation(StringBuilder out, Lab lab) throws IOException, InterruptedException {
-        line(out, "--- rotation: an SVID that lives " + Lab.SVID_TTL_SECONDS + " seconds");
+        line(out, "FOUR. Rotation: an SVID that lives " + Lab.SVID_TTL_SECONDS + " seconds.");
+        line(out, "  THE TEST (payments calls the ledger, new connection each):");
+        line(out, "    for            50 s, about 4 calls a second");
+        line(out, "    SVID lifetime  " + Lab.SVID_TTL_SECONDS + " s, so 50 / " + Lab.SVID_TTL_SECONDS + " = 2.5 lifetimes");
         String result = lab.workload(PAYMENTS, "loop", "ledger", LEDGER_ID, "50");
         int calls = Integer.parseInt(field(result, "calls"));
-        line(out, "payments called the ledger on new connections for 50 seconds: at least 100 calls " + yes(calls >= 100)
-                + ", failed " + field(result, "failed"));
-        line(out, "payments' own SVID was replaced at least 3 times " + yes(Integer.parseInt(field(result, "own")) >= 3)
-                + "; the ledger's, as seen by payments, at least 3 times " + yes(Integer.parseInt(field(result, "server")) >= 3));
-        line(out, "the services contain no renewal code: the Workload API client swaps the SVID and the TLS context reads it at each handshake");
+        line(out, "  THE RESULT:");
+        line(out, "    calls, at least 100        " + yes(calls >= 100));
+        line(out, "    calls that failed          " + field(result, "failed"));
+        line(out, "    payments' SVID replaced    at least 3 times: " + yes(Integer.parseInt(field(result, "own")) >= 3));
+        line(out, "    the ledger's, as seen      at least 3 times: " + yes(Integer.parseInt(field(result, "server")) >= 3));
+        line(out, "    renewal code in services   none");
+        line(out, "    the Workload API client swaps the SVID; each TLS");
+        line(out, "    handshake reads the current one");
     }
 
     // ---- 5. a stolen SVID
 
     private static String stolen(StringBuilder out, Lab lab, LegacyLedger legacy, String secret) throws IOException, InterruptedException {
-        line(out, "--- a stolen SVID");
+        line(out, "FIVE. A stolen SVID.");
         lab.root("mkdir", "-p", "/work/payments-disk");
         lab.root("chmod", "777", "/work/payments-disk");
         lab.agentCli(PAYMENTS, "api", "fetch", "x509", "-write", "/work/payments-disk");
         long copied = System.currentTimeMillis();
         lab.root("sh", "-c", "mkdir -p /work/attacker && cp /work/payments-disk/* /work/attacker/ && chmod -R a+rX /work/attacker");
-        line(out, "the files an SVID helper leaves on payments' disk (certificate, private key, bundle) are copied by an attacker running as another user");
-        line(out, "the attacker, POST /transfers: " + lab.workload(ATTACKER, "stolen", "/work/attacker", "ledger", LEDGER_ID, "POST", "/transfers"));
+        line(out, "  THE THEFT (files an SVID helper left on payments' disk):");
+        line(out, "    certificate, private key, bundle: copied by another user");
+        line(out, "  THE ATTACKER'S CALLS (POST /transfers, with the copy):");
+        line(out, "    at once            " + lab.workload(ATTACKER, "stolen", "/work/attacker", "ledger", LEDGER_ID, "POST", "/transfers"));
         List<String> audit = lab.audit("ledger");
-        line(out, "the ledger's audit names that call: " + audit.get(audit.size() - 1).split(" ")[0] + " (a copy is as good as the original while it lives)");
+        line(out, "    the audit names    " + audit.get(audit.size() - 1).split(" ")[0]);
         long wait = copied + (Lab.SVID_TTL_SECONDS + 1) * 1000L - System.currentTimeMillis();
         Thread.sleep(Math.max(wait, 0));
-        line(out, "after the SVID's lifetime (" + Lab.SVID_TTL_SECONDS + " seconds), the attacker's call: " + lab.workload(ATTACKER, "stolen", "/work/attacker", "ledger", LEDGER_ID,
-                "POST", "/transfers"));
-        line(out, "payments itself, at the same moment: " + lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
+        line(out, "    after " + (Lab.SVID_TTL_SECONDS + 1) + " s (> " + Lab.SVID_TTL_SECONDS + ")  "
+                + lab.workload(ATTACKER, "stolen", "/work/attacker", "ledger", LEDGER_ID, "POST", "/transfers"));
+        line(out, "  AT THE SAME MOMENT:");
+        line(out, "    payments itself            " + lab.workload(PAYMENTS, "call", "ledger", LEDGER_ID, "POST", "/transfers"));
         String leaked = Files.readString(Path.of("build", "legacy", "fraud-engine.conf")).trim().substring("ledger.api.key=".length());
         int leakedStatus = legacy("POST", "/transfers", leaked, "payments", legacy);
-        line(out, "the leaked shared secret, at the same moment: " + leakedStatus);
+        line(out, "    the leaked shared secret   " + leakedStatus);
         return Integer.toString(leakedStatus);
     }
 
     // ---- 6. no entry
 
     private static void noEntry(StringBuilder out, Lab lab) throws IOException, InterruptedException {
-        line(out, "--- a workload that matches no entry");
+        line(out, "SIX. A workload that matches no entry.");
         int before = lab.audit("ledger").size();
-        line(out, "a process run as the attacker's user, saying it is " + PAYMENTS_ID + ": " + shown(lab.workloadWithoutEntry(ATTACKER, PAYMENTS_ID, "whoami")));
-        line(out, "the same process calling the ledger: " + shown(lab.workloadWithoutEntry(ATTACKER, PAYMENTS_ID, "call", "ledger", LEDGER_ID, "POST", "/transfers"))
-                + ", requests that reached the ledger's code: " + (lab.audit("ledger").size() - before));
+        line(out, "  THE ATTACKER'S OWN USER (" + ATTACKER + "), SAYING IT IS PAYMENTS:");
+        line(out, "    asks for an SVID            " + shown(lab.workloadWithoutEntry(ATTACKER, PAYMENTS_ID, "whoami")));
+        line(out, "    calls the ledger            " + shown(lab.workloadWithoutEntry(ATTACKER, PAYMENTS_ID, "call", "ledger", LEDGER_ID, "POST", "/transfers")));
+        line(out, "    reached the ledger's code   " + (lab.audit("ledger").size() - before));
         lab.deleteEntry("payments");
         long end = System.currentTimeMillis() + 40_000;
         while (System.currentTimeMillis() < end && lab.agentCli(PAYMENTS, "api", "fetch", "x509").ok()) {
             Thread.sleep(500);
         }
-        line(out, "the payments entry is deleted; a new payments process, within 40 seconds: " + shown(lab.workloadWithoutEntry(PAYMENTS, null, "whoami")));
-        line(out, "reporting, unaffected, GET /statements: " + lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "GET", "/statements"));
+        line(out, "  THE PAYMENTS ENTRY IS DELETED (checked within 40 s):");
+        line(out, "    a new payments process      " + shown(lab.workloadWithoutEntry(PAYMENTS, null, "whoami")));
+        line(out, "    reporting, GET /statements  " + lab.workload(REPORTING, "call", "ledger", LEDGER_ID, "GET", "/statements"));
     }
 
-    // ---- 7. the bill
+    // ---- 7. evicting the attacker
 
     private static void bill(StringBuilder out, LegacyLedger legacy, String secret, String leakedStatus) throws IOException, InterruptedException {
-        line(out, "--- the bill");
+        line(out, "SEVEN. Evicting the attacker.");
         String fresh = HexFormat.of().formatHex(new SecureRandom().generateSeed(24));
         legacy.rotateSecret(fresh);
         int broken = 0;
@@ -201,11 +249,12 @@ public final class WorkloadIdentityDemo {
                 broken++;
             }
         }
-        line(out, "evicting the attacker by changing the shared secret: the leaked copy " + legacy("POST", "/transfers", secret, "payments", legacy)
-                + ", and " + broken + " of 3 services fail until each is given the new secret");
-        line(out, "evicting a stolen SVID changed nothing in any service: it expired by itself (the leaked secret was still " + leakedStatus + " until it was changed)");
-        line(out, "the identity is only as strong as the selector: any process that runs as the payments user on that node is payments");
-        line(out, "a short lifetime is the revocation that always works, and it costs a SPIRE server and agent that must stay up to renew");
+        line(out, "  THE SHARED SECRET IS CHANGED:");
+        line(out, "    the leaked copy        " + legacy("POST", "/transfers", secret, "payments", legacy));
+        line(out, "    services that fail     " + broken + " of 3, until each gets the new one");
+        line(out, "  THE STOLEN SVID:");
+        line(out, "    services changed       0: it expired by itself");
+        line(out, "    the leaked secret      " + leakedStatus + " until it was changed");
     }
 
     // ---- helpers

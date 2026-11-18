@@ -20,7 +20,9 @@ public final class VerifyingResolver implements Resolver {
             throw new ResolutionException(name + " is not in the lockfile");
         }
         Resolved r = inner.resolve(name, range, repositories);
-        if (!r.artifact().version().equals(expected.version()) || !r.artifact().digest().equals(expected.digest())) {
+        boolean sameVersion = r.artifact().version().equals(expected.version());
+        boolean sameBytes = r.artifact().digest().equals(expected.digest());
+        if (!sameVersion || !sameBytes) {
             throw new ResolutionException(name + " " + r.artifact().version() + " from " + r.source().name() + " does not match the lockfile");
         }
         return r;

@@ -64,6 +64,14 @@ class GateAndDriftTest {
     }
 
     @Test
+    void theGateSaysWhyAPasswordIsTooWeak() {
+        assertEquals("is empty", Secrets.weakness("  "));
+        assertEquals("is a known default", Secrets.weakness("Admin"));
+        assertEquals("has 10 characters, under 12", Secrets.weakness("Summer2026"));
+        assertEquals("", Secrets.weakness(Profiles.DEMO_PRODUCTION_SECRET));
+    }
+
+    @Test
     void passwordComparisonIsExact() {
         assertTrue(Secrets.same("abc", "abc"));
         assertFalse(Secrets.same("abc", "abd"));

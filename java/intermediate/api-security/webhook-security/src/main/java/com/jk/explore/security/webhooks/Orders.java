@@ -51,8 +51,9 @@ final class Orders {
         boolean payment = event.type().equals(Event.PAID);
         if (checkState) {
             State expected = payment ? State.NEW : State.PAID;
-            if (order.state() != expected) {
-                return "not applied: order is " + order.state().name().toLowerCase(Locale.ROOT);
+            State now = order.state();
+            if (now != expected) {
+                return "not applied: order is " + now.name().toLowerCase(Locale.ROOT);
             }
         }
         Order next = payment ? new Order(order.amount(), State.PAID, order.refundedCents(), order.refunds())

@@ -14,10 +14,10 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The weak server | 7 min |
-| 0:17 | Act 2: Probes and testssl.sh | 7 min |
+| 0:10 | Act 1: The lab: a weak server and two controls | 7 min |
+| 0:17 | Act 2: Our probes and testssl.sh, scored against the truth | 7 min |
 | 0:24 | Act 3: The downgrade dance | 7 min |
-| 0:31 | Act 4: The leaked key | 7 min |
+| 0:31 | Act 4: A recorded session, and the server key leaks later | 7 min |
 | 0:38 | Act 5: What TLS 1.3 removed | 7 min |
 | 0:45 | Exercises | 15 min |
 

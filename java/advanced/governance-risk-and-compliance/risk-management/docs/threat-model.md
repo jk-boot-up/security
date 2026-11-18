@@ -48,7 +48,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `SimulationTest` and `OptimizerTest` check the distributions, the simulation, the optimizer and the register with the JDK only.
+- `SimulationTest`, `YearStepsTest` and `OptimizerTest` check the distributions, the simulation, the hand-worked year, the optimizer and the register with the JDK only.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

@@ -20,6 +20,7 @@ Teams copy OAuth settings from examples and leave the implicit flow, wildcard re
 | --- | --- |
 | Authorization server | `KeycloakLab`, `infra/bank-realm.json` |
 | The app and the browser | `OAuthClient` |
+| The S256 steps worked out by hand | `ChallengeSteps` |
 | Resource server | `ApiSecurity`, `AccountsController`, `Running` |
 | Time | `OffsetClock` |
 | Entry point | `OAuthKeycloakDemo` |
@@ -41,10 +42,10 @@ Teams copy OAuth settings from examples and leave the implicit flow, wildcard re
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 33, all passing |
-| Demo output | 60 lines, identical on every run |
+| Tests | 40, all passing |
+| Demo output | 165 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:47, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:19, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

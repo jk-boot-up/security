@@ -38,10 +38,10 @@ Developers let the shape of the database record decide what an API accepts and r
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 22 lines, identical on every run |
+| Tests | 12, all passing |
+| Demo output | 99 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:32, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:08, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

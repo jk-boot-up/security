@@ -39,4 +39,13 @@ class DesignTest {
         Design.Diff d = Lab.DESIGN.compare(Lab.CALLERS, Lab.BANK, Set.of(Design.pair(Lab.PAYMENTS, Lab.LEDGER)));
         assertEquals(List.of("bank/web -> bank/payments"), d.missing());
     }
+
+    @Test
+    void theTableHasARowPerCallerAndAColumnPerService() {
+        List<String> rows = Design.table(Lab.CALLERS, Lab.BANK, DESIGN);
+        assertEquals("caller          web        payments   ledger     statements", rows.get(0));
+        assertEquals("bank/web        -          yes        no         no", rows.get(1));
+        assertEquals("bank/payments   no         -          yes        no", rows.get(2));
+        assertEquals(6, rows.size());
+    }
 }

@@ -79,7 +79,8 @@ final class Bff {
             sessions.remove(key);
             return Response.of(401, "the sign-in has ended");
         }
-        return api.handle(Request.of(request.method(), target).withHeader("Authorization", "Bearer " + access.get()));
+        Request onward = Request.of(request.method(), target);
+        return api.handle(onward.withHeader("Authorization", "Bearer " + access.get()));
     }
 
     private Optional<String> accessToken(String key, Session session) {

@@ -24,7 +24,8 @@ final class AuditLog {
     }
 
     private static String chain(int seq, String event, String file, String contentHash, String previous) {
-        return sha256((seq + "|" + event + "|" + file + "|" + contentHash + "|" + previous).getBytes(StandardCharsets.UTF_8));
+        String line = seq + "|" + event + "|" + file + "|" + contentHash + "|" + previous;
+        return sha256(line.getBytes(StandardCharsets.UTF_8));
     }
 
     void append(String event, String file, byte[] content) {

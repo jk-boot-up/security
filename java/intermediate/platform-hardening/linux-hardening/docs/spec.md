@@ -18,7 +18,9 @@ Images and hosts keep the settings that were convenient once, and nobody scans f
 
 | Role | Class |
 | --- | --- |
-| The checker | `Scanner`, `Finding`, `Severity`, `Policy`, `Modes` |
+| The checker | `Scanner`, `Finding`, `Severity`, `Policy`, `Modes`, `Fix` |
+| The readers | `HostFiles`, `PortTable` |
+| The build step | `BuildGate` |
 | The prepared image | `Fixture` |
 | Entry point | `LinuxHardeningDemo` |
 
@@ -28,17 +30,18 @@ Images and hosts keep the settings that were convenient once, and nobody scans f
 2. Findings are sorted worst first.
 3. Permission fixes change only modes and leave no fixable finding; the other findings remain.
 4. The hardened tree has no findings.
-5. The demo prints the same output on every run.
+5. A later change that brings a HIGH finding back fails the build gate.
+6. The demo prints the same output on every run.
 
 ## Measured
 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 16, all passing |
-| Demo output | 46 lines, identical on every run |
+| Tests | 23, all passing |
+| Demo output | 94 lines, identical on every run |
 | Acts | 4 |
-| Video | 05:43, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:18, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

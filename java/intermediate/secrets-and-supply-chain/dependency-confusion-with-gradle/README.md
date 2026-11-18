@@ -3,9 +3,12 @@
 ```
 src/main/java/com/jk/explore/security/depconfusion/
 ├── Build.java                    One real Gradle build of a small consumer project, in a folder of its own, using this project's Gradle wrapper
+├── Checksums.java                A teaching class: what dependency verification compares
 ├── DependencyConfusionDemo.java  Real Gradle builds against a private and a public repository: who answers for a name, what a filter and a checksum refuse, and what they do not
+├── GroupFilter.java              A teaching class: which groups a repository content filter covers
 ├── Lab.java                      The two repositories of the lesson and the folders of the builds that use them
-└── Repo.java                     A Maven repository on a loopback port that remembers every path it was asked for
+├── Repo.java                     A Maven repository on a loopback port that remembers every path it was asked for
+└── VersionSteps.java             A teaching class: how Gradle picks a version for a range like {@code [1.4,)}
 ```
 
 **A Gradle build that lists a private and a public repository will take the highest version of an internal name from whichever one has it, and the first copy of an exact version in declaration order; repository content filters tell each repository which groups it may answer for, so an internal name is never even asked for in the public repository, and dependency verification checks the sha256 of every artifact against a file in the repository; but a filter is only as good as its list of groups, and checksums written from a build that was already compromised record the attacker's package.**
@@ -39,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A build that works | The internal libraries come from the private repository and the public library from the public one. |
-| 2. Somebody registers the company's name in the public repository | A version range takes the highest version of any repository, and an exact version comes from the first repository that has it. |
-| 3. The repository says which names it may answer for | Content filters keep the internal group out of the public repository, and the public repository receives no request for it. |
-| 4. Checksums that the build checks | Dependency verification records the sha256 of what was resolved and refuses an unlisted version and the same version with other bytes. |
-| 5. The bill | A filter is only as good as its list, checksums can be written from a compromised build, and plugins have their own repositories. |
+| 1. A build that works | settings.gradle lists the private repository first and the public one second; build.gradle asks for org.acme:json-lib:2.0.1, com.shop:pricing:[1.4,) and com.shop:audit:3.1.0. Gradle resolves audit 3.1.0 and pricing 1.4.2 from private and json-lib 2.0.1 from public. |
+| 2. Somebody registers the store's name in the public repository | The attacker publishes com.shop:pricing:99.0.0 to public. For [1.4,), private lists 1.4.2 and public lists 99.0.0; both are at or above 1.4, and 99 > 1, so Gradle takes the attacker's 99.0.0. With public declared first, the attacker's copy of the pinned audit 3.1.0 is the first one found. |
+| 3. The repository says which names it may answer for | private includes com.shop and its subgroups, public excludes them: the build resolves pricing 1.4.2 and audit 3.1.0 from private and the public repository's log shows 0 requests for com/shop. The unpublished com.shop:newlib:1.0 is refused with 0 public requests; without the filters, the public repository receives GET /com/shop/newlib/1.0/newlib-1.0.pom. |
+| 4. Checksums that the build checks | --write-verification-metadata sha256 writes gradle/verification-metadata.xml once; the SHA-256 it lists for pricing-1.4.2.jar is the one computed from private's jar. The attacker's 99.0.0 is not listed, and a replaced 1.4.2 has a different SHA-256: both builds are refused. |
+| 5. The bill | includeGroup 'com.shop' does not cover com.shop.tools, so the attacker's com.shop.tools:signer:9.0 comes from public; includeGroupAndSubgroups does, and signer 1.0 comes from private. Checksums written after the attacker published trust pricing 99.0.0. Plugin repositories need the same filters, and real repositories use https. |
 
 ## Test
 
@@ -51,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `DependencyConfusionTest`. The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network.
+18 tests in `BuildResultTest`, `DemoRunsTest`, `DependencyConfusionTest`, `TeachingStepsTest`. The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network.
 
 ## What the simulation got right, and what it left out
 

@@ -20,15 +20,16 @@ record Pipeline(String name, boolean writesProvenance, boolean hostedPlatformSig
         return buildsIsolatedFromSigningKey ? 3 : 2;
     }
 
-    /** What stops this pipeline from reaching the next level, or nothing at level three. */
+    /** What stops this pipeline from reaching the next level (a developer could forge the provenance, or a malicious build step could sign
+     * anything), or nothing at level three. */
     List<String> missing() {
         List<String> missing = new ArrayList<>();
         if (!writesProvenance) {
-            missing.add("it writes no provenance");
+            missing.add("no provenance");
         } else if (!hostedPlatformSigns) {
-            missing.add("the provenance is signed with a key the developer holds, so the developer could forge it");
+            missing.add("the developer holds the key");
         } else if (!buildsIsolatedFromSigningKey) {
-            missing.add("build steps run where the signing key can be reached, so a malicious build could sign anything");
+            missing.add("build steps can reach the key");
         }
         return missing;
     }

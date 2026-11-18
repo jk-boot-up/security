@@ -21,8 +21,10 @@ Risk registers rank by feeling and controls are bought without a price on the lo
 | A three-point estimate | `Tri` |
 | A line of the register | `Risk` |
 | A treatment | `Control` |
+| The register | `Register` |
 | The simulated years | `Simulation` |
-| Choosing within a budget | `Optimizer` |
+| Choosing within a budget and the appetite | `Optimizer` |
+| Teaching class: one year by hand | `YearSteps` |
 | Entry point | `RiskManagementDemo` |
 
 ## Requirements
@@ -38,10 +40,10 @@ Risk registers rank by feeling and controls are bought without a price on the lo
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 37 lines, identical on every run |
+| Tests | 20, all passing |
+| Demo output | 126 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:50, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:37, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -27,7 +27,7 @@ Run act three and find the stage that removes the most findings. In act four rea
 
 ## Exercises
 
-1. Add the refund flow to the answers: encrypt it, and see which five findings go.
+1. Add the refund flow to the answers: encrypt it, and see which of its five findings go.
 2. Add a template line for the mitigations pytm gives each finding.
 3. Write a test that fails when an answer is true in the model and false in the code.
 4. Add the plain project's decisions (owner, accept, review day) next to the findings.

@@ -4,7 +4,7 @@
 
 - Java basics
 - Docker running
-- The ZAP image (docker pull ghcr.io/zaproxy/zaproxy:stable, about 2 GB once)
+- The ZAP image, pinned by digest (about 2 GB, pulled once)
 
 ## Explicitly not required
 

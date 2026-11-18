@@ -1,35 +1,102 @@
-ONE. CSRF protection switched off, as many tutorials do to make a POST work.
-  the web chain has http.csrf(c -> c.disable()); ana signs in: 302, 200 balance 1000
-  a page on evil.example posts a transfer; the browser adds ana's session cookie: 200 sent 500 to mallory  <- A TRANSFER ANA NEVER ASKED FOR
-  balances now: ana 500, mallory 500
+ONE. CSRF protection switched off, as many tutorials do.
+  THE CONFIGURATION (the web chain):
+    http.csrf(c -> c.disable())
+  ANA SIGNS IN (POST /login):
+    302, Set-Cookie: JSESSIONID=<id>; Path=/; HttpOnly
+    GET /balance -> 200 balance 1000
+  THE REQUEST (a hidden form on https://evil.example):
+    POST /transfer   amount=500&to=mallory
+    Cookie: JSESSIONID=<Ana's session>  (the browser adds it)
+    Origin: https://evil.example
+  THE RESPONSE:
+    200 sent 500 to mallory  <- ANA NEVER ASKED FOR
+    balance: ana 500, mallory 500
 TWO. Spring Security's default: a token tied to the session.
-  the sign-in form itself needs a token, or anyone could sign a victim in to the attacker's account: without one 403, with one 302
-  the token is renewed when ana signs in, so the one from before the sign-in no longer works: 403 Forbidden
-  evil.example posts the same form without a token: 403 Forbidden
-  with a real token from mallory's own session: 403 Forbidden
-  ana's own form, with her token: 200 sent 20 to mallory
-  the token is masked with a new random value on every page, so the same token never appears twice (a defence against BREACH): true
-  and every masked token is accepted: 200
-  logging out is a state change too: POST /logout without a token 403, with one 302
-  balances now: ana 960, mallory 40
-THREE. A single-page app: the token in a cookie that the page's script reads.
-  the XSRF-TOKEN cookie is set, and HttpOnly is false: the script has to read it, so a script injected by cross-site scripting can too
-  evil.example posts without the header: 403 Forbidden
-  with the value from mallory's own cookie: 403 Forbidden
-  the bank's own script copies the cookie into the X-XSRF-TOKEN header: 200 sent 20 to mallory
-  evil.example cannot do that copy: a browser lets a page read only its own site's cookies
-  balances now: ana 980, mallory 20
+  THE CONFIGURATION (the web chain):
+    http.csrf(csrf -> csrf
+        .ignoringRequestMatchers("/webhooks/**"))
+  THE SIGN-IN FORM NEEDS A TOKEN TOO (no forged sign-in):
+    POST /login, no token -> 403
+    POST /login, with a token -> 302
+  THE REQUESTS (POST /transfer, each with Ana's cookie):
+    1 Ana, with the token from before she signed in
+    2 evil.example, no token
+    3 evil.example, a real token from Mallory's session
+    4 Ana's own form, with her token (amount=20)
+  THE RESPONSES:
+    1 403 Forbidden  (the token is renewed at sign-in)
+    2 403 Forbidden
+    3 403 Forbidden
+    4 200 sent 20 to mallory
+  HOW THE TOKEN IS MASKED (a new mask on every page):
+    the session's token: a UUID of 36 characters: true
+    36 random bytes + (token XOR random) = 72 bytes
+    as Base64 URL text: 72 / 3 * 4 = 96 characters
+    page 1 and page 2 differ: true
+    first half XOR second half: the same token on both: true
+  ONE BYTE OF IT ('a' and a random byte 0x5c):
+    0x61 XOR 0x5c = 0x3d is sent
+    0x3d XOR 0x5c = 0x61 ('a') again
+  THE REQUESTS (POST, each with Ana's cookie):
+    5 /transfer, the token masked by hand (amount=20)
+    6 /logout, no token
+    7 /logout, with her token
+  THE RESPONSES:
+    5 200 sent 20 to mallory
+    6 403    7 302  (logging out is a state change too)
+    balance: ana 960, mallory 40
+THREE. A single-page app: the token in a readable cookie.
+  THE CONFIGURATION (the web chain):
+    csrf.csrfTokenRepository(
+        CookieCsrfTokenRepository.withHttpOnlyFalse())
+  THE COOKIE THE BANK SETS:
+    Set-Cookie: XSRF-TOKEN=<token>; Path=/
+    HttpOnly: false, so the page's script can read it,
+    and so could injected script (cross-site scripting)
+  THE REQUESTS (POST /transfer; the browser adds both cookies):
+    1 evil.example, no X-XSRF-TOKEN header
+    2 evil.example, the header = Mallory's cookie value
+    3 the bank's script copies the cookie into the header
+  THE RESPONSES (the header must equal the cookie):
+    1 403 Forbidden
+    2 403 Forbidden
+    3 200 sent 20 to mallory
+    balance: ana 980, mallory 20
+  evil.example cannot copy the cookie: a page reads only
+  its own site's cookies
 FOUR. What the default does not cover.
-  the payment provider's webhook is exempt from tokens, because it has no session: a forged post with ana's cookie and no signature: 401 bad signature
-  the exemption is safe only because the route checks its own proof: with the signature, 200 payment noted
-  a route that moves money on GET, from a link on evil.example: 200 sent 100 to mallory  <- SPRING DOES NOT CHECK GET FOR A TOKEN
-  the same transfer to a route that needs POST: 405  <- GET MUST NEVER CHANGE STATE
-  balances now: ana 900, mallory 100
-  a developer adds /transfer to the exemptions to make a test pass; evil.example posts: 200 sent 500 to mallory  <- ONE LINE OF CONFIGURATION UNDID THE DEFENCE
+  THE REQUESTS (Ana is signed in; no CSRF token is sent):
+    1 evil.example: POST /webhooks/payments, no signature
+    2 the payment provider: the same, with X-Signature
+    3 evil.example link: GET /legacy/move?to=mallory&amount=100
+    4 evil.example link: GET /transfer?to=mallory&amount=100
+  THE RESPONSES:
+    1 401 bad signature  (no token needed: it checks a signature)
+    2 200 payment noted
+    3 200 sent 100 to mallory  <- GET IS NEVER CHECKED
+    4 405  (the route needs POST)
+    balance: ana 900, mallory 100
+  THE CONFIGURATION, AFTER ONE CHANGE TO PASS A TEST:
+    csrf.ignore=/webhooks/**,/transfer
+  THE REQUEST: evil.example, POST /transfer, no token
+  THE RESPONSE:
+    200 sent 500 to mallory  <- DEFENCE UNDONE
 FIVE. The bill.
-  the session cookie by default: HttpOnly true, SameSite false
-  the API chain takes credentials in a header and keeps no session: ana's cookie from evil.example, no header: 401 Unauthorized
-  the app that holds the credentials: 200 sent 20 to mallory
-  so the API chain can leave CSRF off, because a browser never adds a header it was not given
-  every state-changing route of the web chain, posted from evil.example with no token: 3 of 3 refused with 403
-  with server.servlet.session.cookie.same-site=lax: SameSite=Lax is true; it is one more layer, and the token is still needed
+  THE SESSION COOKIE BY DEFAULT:
+    Set-Cookie: JSESSIONID=<id>; Path=/; HttpOnly
+    HttpOnly: true    SameSite set: false
+  THE API REQUESTS (POST /api/transfer; no session at all):
+    1 evil.example: Ana's cookie, no Authorization header
+    2 Ana's app: Authorization: Basic YW5hOmxhYi1wYXNzd29yZA==
+      (Base64 of ana:lab-password)
+  THE RESPONSES:
+    1 401 Unauthorized
+    2 200 sent 20 to mallory
+  a browser never adds a header it was not given
+  EACH STATE-CHANGING ROUTE (evil.example, no token):
+    /transfer 403   /logout 403   /login 403
+    3 of 3 refused
+  WITH server.servlet.session.cookie.same-site=lax:
+    Set-Cookie: JSESSIONID=<id>; Path=/; HttpOnly;
+                SameSite=Lax
+    one more layer; the token is still needed

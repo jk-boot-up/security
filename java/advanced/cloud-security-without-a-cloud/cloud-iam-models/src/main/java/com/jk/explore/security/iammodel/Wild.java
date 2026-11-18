@@ -17,6 +17,7 @@ final class Wild {
                 default -> regex.append(Pattern.quote(String.valueOf(c)));
             }
         }
-        return Pattern.compile(regex.toString(), ignoreCase ? Pattern.CASE_INSENSITIVE | Pattern.DOTALL : Pattern.DOTALL).matcher(value).matches();
+        int flags = ignoreCase ? Pattern.CASE_INSENSITIVE | Pattern.DOTALL : Pattern.DOTALL;
+        return Pattern.compile(regex.toString(), flags).matcher(value).matches();
     }
 }

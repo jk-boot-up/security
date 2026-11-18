@@ -4,25 +4,26 @@
 src/main/java/com/jk/explore/security/secretscan/
 ├── BankRepo.java            The bank's repository as it grew: five commits, five real secrets, four look-alikes, and a clean-up commit that removes two files
 ├── Detector.java            A small secret scanner written for this project: a few patterns and an entropy check, on files or on every line ever added
-├── Finding.java             Something a scanner reported: the rule, the file and the text it matched
+├── EntropySteps.java        A teaching class: the entropy that {@link Detector#entropy} computes in one loop, worked out in steps
+├── Finding.java             Something a scanner reported: the rule, the file, the text it matched, and the commit it was added in (empty for a scan of files)
 ├── Git.java                 A git repository driven through the git command line, with fixed author and dates so that runs do not differ
-├── Gitleaks.java            The real gitleaks command line (brew install gitleaks), asked for a JSON report
+├── Gitleaks.java            The real gitleaks command line, asked for a JSON report
 ├── Planted.java             A string put in the bank's repository on purpose, with the truth about it: a real secret, or a look-alike that is not one
 ├── Score.java               What a scanner got right against what was planted
-├── SecretScanningDemo.java  
+├── SecretScanningDemo.java  The commit a finding came from, by number ("commit 3"), or nothing for a scan of files
 └── Sh.java                  Runs a program and returns what it printed, whether it worked or not
 ```
 
-**A bank's repository of 5 commits holds 5 real secrets and 4 look-alikes; a scan of the files now finds 2 of the 5 and a scan of the whole history finds 4 with gitleaks and 5 with a small scanner written in Java, and each gets something wrong (gitleaks misses a database password and flags a test key, the small scanner flags a documentation key and the same test key); an allowlist for documentation and fixtures leaves no look-alike flagged, and a baseline report reduces 7 findings to 1 new one; a pre-commit hook refuses a commit with a key, --no-verify gets around it, and a pre-receive hook on the shared repository rejects the push; and a fresh clone still holds a key that a later commit removed, so the key must be revoked.**
+**A key in base64 matches no pattern, but its entropy, worked out by hand, is 4.707 bits per character, above the threshold of 4.2, while a hex checksum can never pass 4.0; a bank's repository of 5 commits holds 5 real secrets and 4 look-alikes, the files now hold 2 of the 5 and a fresh clone still holds a key that commit 4 removed; over the whole history a scanner written in Java finds 5 of 5 and flags 2 look-alikes (precision 71%), gitleaks finds 4 of 5 and flags 1 (precision 80%); an allowlist leaves no look-alike flagged and a baseline of 7 findings leaves 1 new one; a pre-commit hook refuses a commit with a key, --no-verify gets around it, and a pre-receive hook on the shared repository rejects the push.**
 
-A secret committed once is in the repository for good: removing the file removes it from the files, not from the history, and every clone carries the history. This project builds a bank's git repository in five commits with **5 real secrets and 4 look-alikes** planted in it, and measures two scanners against that truth: a small one written in Java (patterns and an entropy check) and **gitleaks**. A Java program drives the real `git` and `gitleaks` command lines (`brew install gitleaks`); the demo is tagged `integration`: `./gradlew integrationTest`.
+A secret committed once is in the repository for good: removing the file removes it from the files, not from the history, and every clone carries the history. This project builds a bank's git repository in five commits with **5 real secrets and 4 look-alikes** planted in it, and measures two scanners against that truth: a small one written in Java (patterns and an entropy check) and **gitleaks**. A Java program drives the real `git` and `gitleaks` 8.30.1 command lines (the pinned gitleaks release is downloaded into `build/` once and checked against its SHA-256); the demo is tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
-- **Files now or the whole history.** The files at HEAD hold 2 of the 5 secrets; the whole history holds all 5. gitleaks finds **4**, the small scanner **5**.
-- **Misses and false alarms.** gitleaks misses a database password (low entropy) and flags a test key; the small scanner flags a documentation key and the same test key. Neither is right about everything.
-- **An allowlist and a baseline.** An allowlist for documentation and fixtures removes the look-alikes; a baseline turns **7 findings** into **1 new** one.
+- **Entropy by hand.** A key in base64 matches no pattern; its entropy is worked out step by step: **4.707** bits per character, above the threshold of 4.2. A hex checksum can never pass 4.0.
+- **Files now or the whole history.** The files at HEAD hold 2 of the 5 secrets; a fresh clone still holds a key that commit 4 removed.
+- **Misses and false alarms.** Over the whole history the scanner written in Java finds **5 of 5** and flags 2 look-alikes; gitleaks finds **4 of 5** (it misses a short database password) and flags 1.
+- **An allowlist and a baseline.** An allowlist for documentation and fixtures removes the look-alike; a baseline turns **7 findings** into **1 new** one.
 - **Blocking.** A pre-commit hook refuses a commit with a key, `--no-verify` skips it, and a pre-receive hook on the shared repository still rejects the push.
-- **The bill.** A fresh clone still holds a key that a later commit removed: revoke first, then clean up.
 
 **Maps to:** OWASP Top 10 (2025) A04 Cryptographic Failures and A07 Authentication Failures · NIST SSDF PS.1 · CIS Software Supply Chain · MITRE ATT&CK T1552 Unsecured Credentials.
 
@@ -44,11 +45,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The history is the repository | The files now hold 2 of the 5 secrets; the whole history holds all 5. |
-| 2. What each one gets wrong | gitleaks misses a database password and flags a test key; the small scanner flags a documentation key and the same test key. |
-| 3. An allowlist and a baseline | An allowlist removes the look-alikes, and a baseline turns 7 findings into 1 new one. |
-| 4. Blocking the next one | A pre-commit hook refuses the commit, --no-verify skips it, and a pre-receive hook rejects the push. |
-| 5. The bill | A fresh clone still holds a key that a commit removed. |
+| 1. One string, measured by hand | The key in k8s/secret.yaml (commit 5) is base64, 44 characters, and no pattern rule matches it. Its entropy, worked out in four groups of characters (21 once, 6 twice, 2 three times, 1 five times), is 4.707 bits per character, above the threshold of 4.2. A SHA-256 checksum in hex has 16 different characters, so at most 4.000 bits; its entropy is 3.786. The detector reports the key as a high-entropy string and the checksum not at all. |
+| 2. The files now, and the whole history | The bank's repository has 5 commits. Of the 9 planted strings, the payment key, the database password and the cloud key were added in commits 1 and 2 and removed in commit 4. A scan of the files now finds 2 of 5 real secrets with either scanner; a scan of the whole history finds 5 of 5 with our scanner and 4 of 5 with gitleaks. A fresh clone still holds the payment key that commit 4 removed. |
+| 3. What each scanner gets wrong | Over the whole history our scanner finds all 5 real secrets and flags 2 look-alikes (the documentation key and the test key): recall 5/5 = 100%, precision 5/7 = 71%. gitleaks finds 4, misses the database password, and flags the test key: recall 4/5 = 80%, precision 4/5 = 80%. The password is 11 characters with an entropy of 3.096 and no known prefix; our scanner has a rule for the word password. |
+| 4. An allowlist and a baseline | An allowlist in gitleaks.toml for ^docs/ and /test/resources/ changes the whole-history scan from 4 of 5 found with 1 look-alike flagged to 4 of 5 with 0 flagged. Today's report has 7 findings (the key in commit 5 is reported by three rules) and exit code 1; with it as the baseline, one more commit with a new token gives 1 new finding, still exit 1. |
+| 5. Blocking a secret before it is shared | A pre-commit hook on the laptop runs gitleaks on what is staged, and a pre-receive hook on the shared repository runs it on each push. A clean first push is accepted. A commit with the payment key is refused by the pre-commit hook (1 commit); with --no-verify it is made (2 commits); its push is rejected by the pre-receive hook (1 commit on the server). With the key taken out, a clean change is accepted (2 commits on the server). |
 
 ## Test
 
@@ -56,11 +57,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `DetectorTest`, `ScoreTest`. The detector and the scoring are tested with no tools. The demo runs git and gitleaks (./gradlew integrationTest).
+18 tests in `DemoRunsTest`, `DetectorTest`, `EntropyStepsTest`, `GitleaksAndPlantedTest`, `ScoreTest`. The detector, the entropy steps, the scoring and the verdicts are tested with no tools. The demo runs git and gitleaks 8.30.1 (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 
-The git repositories and the gitleaks runs are real. The keys are made-up strings in the shapes of real ones, and none of them opens anything. The demo prints counts and names, never hashes or paths.
+The git repositories and the gitleaks runs are real. The keys are made-up strings in the shapes of real ones, and none of them opens anything. The demo prints counts, names and only the first characters of a key, never a whole key.
 
 ## Technologies and versions
 

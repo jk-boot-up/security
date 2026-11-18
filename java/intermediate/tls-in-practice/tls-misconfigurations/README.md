@@ -12,6 +12,7 @@ src/main/java/com/jk/explore/security/tlscheck/
 ├── Report.java         The findings for one server, worst first, and a grade from A to F
 ├── ServerProfile.java  Everything a scan of one server found
 ├── Severity.java       How bad a finding is, and how many points it costs
+├── SuiteName.java      A TLS 1.2 cipher suite name split into its parts, the way {@link CipherSuites} reads it: TLS_ key exchange _ authentication _WITH_ cipher _ mode _ hash
 └── TlsCheckDemo.java   Runs the four-server scan in four numbered acts and prints exact, repeatable results
 ```
 
@@ -50,10 +51,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A server that follows the guidance | TLS 1.2 and 1.3 with forward-secret AEAD suites, a valid complete certificate and HSTS: grade A, no findings. |
-| 2. A legacy server | 13 findings, grade F: old protocols, RC4 and 3DES, no forward secrecy, a 1024-bit SHA-1 certificate, compression, no secure renegotiation, no redirect and a one-day HSTS. |
-| 3. A certificate that clients will refuse, and a forgotten HTTP setup | pay.shop.example has an expired certificate for the wrong name with no intermediate (F); blog.shop.example is modern but has an incomplete chain, an expiry in 10 days and no HSTS, redirect or Secure cookie (D). |
-| 4. Moving the legacy server to a policy | The intermediate policy removes 9 of the 13 findings and generates the nginx settings; weak-key, weak-signature, no-https-redirect and short-hsts must be fixed by hand. |
+| 1. A server that follows the guidance | shop.example offers TLS 1.2 and 1.3, nine forward-secret suites, a valid EC certificate with its whole chain, a two-year HSTS, a redirect and a Secure cookie: no findings, 100 points, grade A. One good and one broken suite name are split into their parts. |
+| 2. A legacy server | legacy.shop.example offers TLSv1 to TLSv1.2, five suites of which two are broken, a 1024-bit SHA-1 certificate, compression, insecure renegotiation, no redirect and a one-day HSTS: 13 findings cost 162 points, 100 - 162 = -62, the score is 0 and the grade F. |
+| 3. A certificate that clients will refuse, and a forgotten HTTP setup | pay.shop.example's certificate ended on 2026-02-19, 10 days before today, names only www.other.example and comes without its intermediate: two CRITICAL findings give F. blog.shop.example ends in 10 days, has no intermediate, no HSTS, no redirect and no Secure cookie: 100 - 20 - 4 x 7 = 52, grade D. |
+| 4. Moving the legacy server to a policy | The intermediate policy sets TLSv1.2 and TLSv1.3, nine forward-secret suites, server preference, no compression and secure renegotiation: 9 of the 13 findings are fixed, grade F (score 0) becomes D (score 51), and weak-key, weak-signature, no-https-redirect and short-hsts are left for a new certificate and HTTP settings. |
 
 ## Test
 
@@ -61,7 +62,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `TlsCheckTest`. Everything is fixed data and a fixed date, so the demo prints the same text on every run.
+13 tests in `DemoRunsTest`, `TlsCheckTest`. Everything is fixed data and a fixed date, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

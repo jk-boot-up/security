@@ -64,11 +64,12 @@ final class HardenedRelyingParty implements WebAuthnRelyingPartyOperations {
         }
         CredentialRecord before = credentials.findByCredentialId(id);
         long storedCounter = before == null ? 0 : before.getSignatureCount();
-        PublicKeyCredentialUserEntity user = delegate.authenticate(request);   // the signature, the challenge, the origin and the relying party id
+        // Spring Security checks the signature, the challenge, the origin and the relying party id
+        PublicKeyCredentialUserEntity user = delegate.authenticate(request);
         long presented = Integer.toUnsignedLong(java.nio.ByteBuffer.wrap(authenticatorData, COUNTER, 4).getInt());
         if ((storedCounter > 0 || presented > 0) && presented <= storedCounter) {
             suspended.add(id);
-            throw refuse("counter " + presented + " is not above " + storedCounter + ": possible cloned authenticator");
+            throw refuse("counter " + presented + " is not above " + storedCounter + ": a cloned key?");
         }
         return user;
     }

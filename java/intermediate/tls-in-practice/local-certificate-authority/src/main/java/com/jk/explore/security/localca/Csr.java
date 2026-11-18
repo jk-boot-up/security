@@ -57,7 +57,8 @@ final class Csr {
     /** True when the request's signature verifies with the public key inside it. */
     static boolean provesPossession(PKCS10CertificationRequest request) {
         try {
-            return request.isSignatureValid(new JcaContentVerifierProviderBuilder().build(request.getSubjectPublicKeyInfo()));
+            return request.isSignatureValid(
+                    new JcaContentVerifierProviderBuilder().build(request.getSubjectPublicKeyInfo()));
         } catch (Exception e) {
             return false;
         }

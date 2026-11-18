@@ -1,47 +1,71 @@
 package com.jk.explore.security.container;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
-/** Writes the settings as Docker flags and as a Kubernetes container {@code securityContext}, so the checked configuration is the one that is deployed. */
+/**
+ * Writes the settings as Docker flags, as a Kubernetes container {@code securityContext} and as a short summary, so the checked configuration is the one that is
+ * deployed.
+ */
 public final class Renderer {
 
     private Renderer() {
     }
 
-    public static String dockerFlags(ContainerSpec c) {
-        StringBuilder b = new StringBuilder("docker run");
+    /** The {@code docker run} arguments, one flag (with its value) per entry, the image last. */
+    public static List<String> dockerArgs(ContainerSpec c) {
+        List<String> a = new ArrayList<>();
         if (c.privileged()) {
-            b.append(" --privileged");
+            a.add("--privileged");
         }
         if (!c.runsAsRoot()) {
-            b.append(" --user ").append(c.user());
+            a.add("--user " + c.user());
         }
         if (c.capabilities().isEmpty()) {
-            b.append(" --cap-drop=ALL");
+            a.add("--cap-drop=ALL");
         }
         if (c.readOnlyRootFilesystem()) {
-            b.append(" --read-only --tmpfs /tmp:rw,noexec,nosuid");
+            a.add("--read-only");
+            a.add("--tmpfs /tmp:rw,noexec,nosuid");
         }
         if (!c.allowPrivilegeEscalation()) {
-            b.append(" --security-opt no-new-privileges");
+            a.add("--security-opt no-new-privileges");
         }
         if (c.seccomp() == Seccomp.UNCONFINED) {
-            b.append(" --security-opt seccomp=unconfined");
+            a.add("--security-opt seccomp=unconfined");
         }
         if (c.memoryLimitMb() > 0) {
-            b.append(" --memory ").append(c.memoryLimitMb()).append('m');
+            a.add("--memory " + c.memoryLimitMb() + "m");
         }
         if (c.pidsLimit() > 0) {
-            b.append(" --pids-limit ").append(c.pidsLimit());
+            a.add("--pids-limit " + c.pidsLimit());
         }
         if (c.hostNetwork()) {
-            b.append(" --network host");
+            a.add("--network host");
         }
         if (c.hostPid()) {
-            b.append(" --pid host");
+            a.add("--pid host");
         }
-        c.hostMounts().forEach(m -> b.append(" -v ").append(m).append(':').append(m));
-        return b.append(' ').append(c.image()).toString();
+        c.hostMounts().forEach(m -> a.add("-v " + m + ":" + m));
+        a.add(c.image());
+        return a;
+    }
+
+    /** The command on one line. */
+    public static String dockerFlags(ContainerSpec c) {
+        return "docker run " + String.join(" ", dockerArgs(c));
+    }
+
+    /** The command one flag per line, as a shell script would write it. */
+    public static List<String> dockerLines(ContainerSpec c) {
+        List<String> args = dockerArgs(c);
+        List<String> lines = new ArrayList<>();
+        lines.add("docker run \\");
+        for (int i = 0; i < args.size(); i++) {
+            lines.add("  " + args.get(i) + (i < args.size() - 1 ? " \\" : ""));
+        }
+        return lines;
     }
 
     public static String kubernetesSecurityContext(ContainerSpec c) {
@@ -59,5 +83,34 @@ public final class Renderer {
         }
         b.append("  seccompProfile:\n    type: ").append(c.seccomp() == Seccomp.RUNTIME_DEFAULT ? "RuntimeDefault" : "Unconfined").append('\n');
         return b.toString();
+    }
+
+    /** The settings that decide the attacks, as {@code name, value} pairs a person can read. */
+    public static List<String[]> settings(ContainerSpec c) {
+        List<String> host = new ArrayList<>();
+        if (c.hostNetwork()) {
+            host.add("network");
+        }
+        if (c.hostPid()) {
+            host.add("PID");
+        }
+        if (!c.hostMounts().isEmpty()) {
+            host.add(c.hostMounts().size() + " mount(s)");
+        }
+        String caps = c.privileged() || c.capabilities().contains("ALL") ? "all of them"
+                : c.capabilities().isEmpty() ? "none (all dropped)"
+                : c.capabilities().equals(ContainerSpec.DOCKER_DEFAULT_CAPABILITIES) ? c.capabilities().size() + ", Docker's default set"
+                : String.join(", ", c.capabilities().stream().sorted().toList());
+        return List.of(
+                new String[] {"user", c.runsAsRoot() ? "root" : c.user() + " (not root)"},
+                new String[] {"privileged", c.privileged() ? "yes" : "no"},
+                new String[] {"capabilities", caps},
+                new String[] {"root files", c.readOnlyRootFilesystem() ? "read-only" : "writable"},
+                new String[] {"new privileges", c.allowPrivilegeEscalation() ? "allowed" : "forbidden"},
+                new String[] {"seccomp", c.seccomp() == Seccomp.RUNTIME_DEFAULT ? "RuntimeDefault" : "Unconfined"},
+                new String[] {"host access", host.isEmpty() ? "none" : String.join(", ", host)},
+                new String[] {"limits", c.memoryLimitMb() == 0 && c.pidsLimit() == 0 ? "none"
+                        : c.memoryLimitMb() + " MB, " + c.pidsLimit() + " processes"},
+                new String[] {"secrets", c.secretsInEnvironment() ? "in the environment" : "as files"});
     }
 }

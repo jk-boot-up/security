@@ -9,7 +9,7 @@ title = "A Local Certificate Authority"
 short_title = "Local Certificate Authority"
 package = "localca"
 main_class = "LocalCaDemo"
-tagline = "A certificate is a signed claim about a name, and revocation is only as good as the list the client has"
+tagline = "A certificate is a signed claim about a name; taking it back is the hard part"
 bold = "A small certificate authority shows what issuing really involves: the authority applies the policy itself, proves the requester holds the key, limits its own reach with name constraints, and then faces the hard part, taking a certificate back, where short-lived certificates beat revocation lists."
 domain = "an online store's internal services"
 domain_note = ""
@@ -41,7 +41,7 @@ scenario = """
 An online store's internal services call each other over TLS. The demo runs a root CA, an issuing CA, four teams that request certificates, a validator built on the JDK's PKIX code, revocation lists, a renewing service and an inventory, all on a fixed clock.
 """
 costs = [
-    "**The root key must stay offline.** It signs three times in the whole demo; a stolen root key means every client has to be changed.",
+    "**The root key must stay offline.** It signs four times in the whole demo; a stolen root key means every client has to be changed.",
     "**Revocation needs publishing and checking.** The authority must publish lists on time and every client must fetch and enforce them, or the list does nothing.",
     "**Short-lived certificates need automation.** Every service needs a request, a renewal job and a deployment step, which is what ACME does.",
     "**Name constraints are only as good as the clients.** A client that ignores them accepts the stray certificate, so test the clients you use.",
@@ -60,106 +60,281 @@ where = """
 This project opens the [tls-in-practice](..) module. The [certificate-pinning](../certificate-pinning) and [tls-misconfigurations](../tls-misconfigurations) projects use certificates like the ones built here, each with a small copy of the code so every project stands alone.
 """
 twin = """
-The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. Keys are random and never printed, so the demo prints the same text on every run.
+The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. `ChainSteps` redoes the validator's checks by hand so each can be printed, and a test proves it reaches the JDK's exact verdict. Keys are random and never printed; serials count up from 1000 and the clock is fixed, so the demo prints the same text on every run.
 """
 test_note = "Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run."
 
 [[act]]
 title = "Running a certificate authority"
-summary = "An offline root signs an issuing authority limited to shop.internal; the issuer applies a policy, and a name constraint still holds when the policy is skipped."
+summary = "An offline root signs an issuing authority limited to shop.internal; it issues www.shop.internal as serial 1000, a client checks the chain in seven steps, the policy refuses three bad requests, and the name constraint still refuses pay.example when the policy is skipped."
 detail = """
-The root may certify one level below it and is kept offline. The issuing authority has path length zero (it cannot create more authorities) and a name constraint for `shop.internal`. A server certificate for `www.shop.internal` is issued for 90 days with the serverAuth purpose,
-digital signature only, and it is not an authority. Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would: the certificate is signed, but clients refuse it because of the name constraint.
+The root (serial 1, valid twenty years) may certify one level below it and is kept offline. The issuing authority (serial 2, five years) has path length 0, so it cannot create more authorities, and a name constraint: names only under `shop.internal`.
+web-team asks for www.shop.internal for 90 days. The certificate is serial 1000, valid 2026-01-05 09:00 to 2026-04-05 09:00, serverAuth, digital signature only, and not an authority.
+A client checks the chain by hand in the JDK's order, from the root down: the trusted root, the issuing CA's signature and dates, the name constraint, the path length, the leaf's signature and dates. All seven are true, and `ChainSteps` reaches the same verdict as the JDK's validator: accepted.
+Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would, and pay.example is signed as serial 1001; the client's step 4 is false and both the hand check and the JDK say refused (INVALID_NAME).
+"""
+figure = "chain_check"
+figure_title = "The client's check, step by step"
+figure_speech = """
+First demo: running a certificate authority. [[slnc 400]] On the left, a client checks the new certificate for w w w dot shop dot internal, on day one. [[slnc 300]] It walks the chain from the top. [[slnc 300]] Is the root one it trusts? [[slnc 300]] Did the root sign the issuing C A, and is that certificate in date? [[slnc 300]] Is the name inside shop dot internal, the only names the issuing C A may use? [[slnc 300]] Is the new certificate not an authority itself? [[slnc 300]] Did the issuing C A sign it, and is it in date? [[slnc 600]]
+Seven steps, all true. [[slnc 300]] Our hand check says accepted, and so does the J D K's own validator. [[slnc 700]]
+On the right, the policy is skipped, as a buggy or stolen issuer would. [[slnc 300]] It signs pay dot example anyway. [[slnc 300]] Step four is now false. [[slnc 300]] Pay dot example is not inside shop dot internal. [[slnc 300]] The client refuses it, with the reason invalid name. [[slnc 600]]
+The limit sits inside the issuing C A's own certificate, so every client enforces it, whatever the issuer does.
 """
 speech = """
-First demo: running a certificate authority. [[slnc 400]] An offline root signs an issuing authority, which may only name things under shop dot internal. [[slnc 600]]
-The issuer applies the policy itself: a request with no name, a four hundred day lifetime, or a name outside the domain is refused. [[slnc 600]]
-Even when the policy is skipped, as a stolen issuer would, clients still refuse the stray name, because the constraint is inside the issuing certificate.
+Here is the real output. [[slnc 400]] The root: serial one, valid for twenty years, allowed one level of authority below it. [[slnc 400]] The issuing authority: serial two, path length zero, and names only under shop dot internal.
+[[page]]
+Web team asks for w w w dot shop dot internal, for ninety days. [[slnc 400]] The certificate: serial one thousand, issued by the shop issuing C A, valid ninety days, for a T L S server, and not an authority.
+[[page]]
+The chain check by hand, on day one. [[slnc 300]] Seven steps, from the root down, and every one is true. [[slnc 400]] The result: accepted by hand, and accepted by the J D K's validator.
+[[page]]
+Three requests the policy refuses. [[slnc 300]] No subject alternative name. [[slnc 300]] Four hundred days, over the profile's ninety. [[slnc 300]] And pay dot example, outside shop dot internal.
+[[page]]
+Now the policy is skipped, and pay dot example is signed as serial one thousand and one. [[slnc 400]] The client's check fails at step four. [[slnc 300]] Refused, invalid name, by hand and by the J D K. [[slnc 300]] The name constraint holds.
 """
 rows = { issue = "active ok" }
 console = [
-    ["issued for web-team: www.shop.internal, serial 1000, 90 days", "ok"],
-    ["a request for 400 days -> refused: the server profile allows at most 90 days", "ok"],
-    ["a request for pay.example -> refused: pay.example is outside shop.internal", "ok"],
-    ["policy skipped for pay.example -> clients say refused (INVALID_NAME)  <- THE NAME CONSTRAINT HOLDS", "ok"],
+    ["THE ROOT (signs its own certificate, then goes offline):", "code"],
+    ["  subject      Shop Internal Root CA, serial 1", "muted"],
+    ["  valid        2026-01-05 09:00 to 2045-12-31 09:00", "muted"],
+    ["  may certify  1 level of authority below it", "muted"],
+    ["THE ISSUING AUTHORITY (signed by the root):", "code"],
+    ["  subject      Shop Issuing CA, serial 2", "muted"],
+    ["  valid        2026-01-05 09:00 to 2031-01-04 09:00", "muted"],
+    ["  path length  0: it may not create authorities", "muted"],
+    ["  names        only under shop.internal", "muted"],
+    ["---", ""],
+    ["THE REQUEST (web-team):", "code"],
+    ["  www.shop.internal, 90 days, server profile", "muted"],
+    ["THE CERTIFICATE:", "code"],
+    ["  serial       1000, issued by Shop Issuing CA", "muted"],
+    ["  names        www.shop.internal", "muted"],
+    ["  valid        2026-01-05 09:00 to 2026-04-05 09:00 (90 days)", "muted"],
+    ["  purpose      serverAuth, digital signature only: true", "ok"],
+    ["  authority    no: it may not sign certificates", "muted"],
+    ["---", ""],
+    ["THE CHAIN CHECK BY HAND (what a client does, on 2026-01-06 09:00):", "code"],
+    ["  1. Shop Internal Root CA is the client's trusted root: true", "ok"],
+    ["  2. Shop Issuing CA is signed by Shop Internal Root CA: true", "ok"],
+    ["  3. Shop Issuing CA is valid on that date: true", "ok"],
+    ["  4. www.shop.internal is inside shop.internal: true", "ok"],
+    ["  5. www.shop.internal is not an authority (path length 0): true", "ok"],
+    ["  6. www.shop.internal is signed by Shop Issuing CA: true", "ok"],
+    ["  7. www.shop.internal is valid on that date: true", "ok"],
+    ["THE RESULT:", "code"],
+    ["  by hand:             accepted", "ok"],
+    ["  the JDK's validator: accepted", "ok"],
+    ["---", ""],
+    ["THE REQUESTS THE POLICY REFUSES:", "code"],
+    ["  web-team, no subject alternative name", "muted"],
+    ["    -> refused: needs at least one subject alternative name", "ok"],
+    ["  web-team, www.shop.internal for 400 days", "muted"],
+    ["    -> refused: 400 days is over the server profile's 90 days", "ok"],
+    ["  payments-team, pay.example", "muted"],
+    ["    -> refused: pay.example is outside shop.internal", "ok"],
+    ["---", ""],
+    ["THE POLICY SKIPPED (a buggy or stolen issuer):", "code"],
+    ["  pay.example signed anyway, serial 1001", "muted"],
+    ["THE CLIENT'S CHECK OF IT:", "code"],
+    ["  4. pay.example is inside shop.internal: false", "bad"],
+    ["THE RESULT:", "code"],
+    ["  by hand:             refused (INVALID_NAME)", "ok"],
+    ["  the JDK's validator: refused (INVALID_NAME)", "ok"],
+    ["  <- THE NAME CONSTRAINT HOLDS", "ok"],
 ]
 
 [[act]]
 title = "Issuing from a signing request"
-summary = "The request carries only the public key and proves possession; a forged request, a name that belongs to another team and a mixed request are all refused."
+summary = "payments-team's request carries only the public key; the authority makes five checks in order and signs serial 1002 with exactly that key; a forged request and another team's names are refused; orders-team gets a client certificate."
 detail = """
-payments-team signs a request with its own key. The request carries the public key only, so the authority never sees the private key, and the signature proves the sender holds it. The issued certificate carries exactly that public key. A request that claims
-payments-team's public key but is signed by another key is refused, web-team may not ask for payments.shop.internal, and one forbidden name in a mixed request refuses the whole request. orders-team gets a client certificate (clientAuth) to call other services.
+payments-team makes a key pair and signs a request for payments.shop.internal with its private key. The request carries the names and the public key (EC, 256-bit curve); the private key stays with the team.
+The authority checks, in order: the signature verifies with the request's own key (proof of possession), there is at least one name, the name is inside shop.internal, payments-team may ask for it, and 90 days is within the server profile. All true, so it signs serial 1002, whose public key is exactly the request's.
+A request carrying payments-team's public key but signed by another key is refused: not signed by the key it carries. web-team asking for payments.shop.internal is refused, and one forbidden name refuses a mixed request. orders-team gets serial 1003 for clientAuth, 30 days, and the chain check accepts it.
+"""
+figure = "signing_request"
+figure_title = "A signing request, the checks, the certificate"
+figure_speech = """
+Second demo: issuing from a signing request. [[slnc 400]] On the left, the request. [[slnc 300]] The payments team made a key pair. [[slnc 300]] The request carries the name, and the public key. [[slnc 300]] The private key never leaves the team. [[slnc 300]] Instead, the team signs the request with it. [[slnc 700]]
+In the middle, the authority's five checks, in order. [[slnc 300]] First, the signature verifies with the key inside the request. [[slnc 300]] That proves the sender holds the matching private key, without ever showing it. [[slnc 300]] Then a name, inside the domain, allowed for this team, for a lifetime the profile allows. [[slnc 600]]
+On the right, the certificate: serial one thousand and two, carrying exactly the request's public key. [[slnc 700]]
+Below, two refusals. [[slnc 300]] A forged request, with the payments key but someone else's signature. [[slnc 300]] And the web team, asking for a name that belongs to payments.
 """
 speech = """
-Second demo: issuing from a signing request. [[slnc 400]] The request carries only the public key, and its signature proves the sender holds the private key. [[slnc 600]]
-A request that claims someone else's key is refused. [[slnc 300]] A team may not ask for another team's name, and one forbidden name refuses the whole request.
+Here is the output. [[slnc 400]] The request: the name, and an elliptic curve public key. [[slnc 300]] The private key stays with the team. [[slnc 400]] The authority's five checks, all true. [[slnc 400]] The certificate: serial one thousand and two, with the request's own public key.
+[[page]]
+The forged request is refused: it is not signed by the key it carries. [[slnc 400]] The web team may not ask for the payments name, alone or mixed with its own. [[slnc 400]] And the orders team gets a client certificate, for calling other services, which the chain check accepts.
 """
 rows = { csr = "active ok" }
 console = [
-    ["the signature proves the sender holds the private key: true", "ok"],
-    ["issued serial 1002; the authority never saw the private key", "ok"],
-    ["a request signed by another key -> refused: the request is not signed by the key it carries", "ok"],
-    ["web-team asking for payments.shop.internal -> refused", "ok"],
+    ["THE REQUEST (payments-team signs it with its own private key):", "code"],
+    ["  names        payments.shop.internal", "muted"],
+    ["  public key   EC, 256-bit curve, inside the request", "muted"],
+    ["  private key  stays with payments-team: not in the request", "muted"],
+    ["THE AUTHORITY'S CHECKS, IN ORDER:", "code"],
+    ["  1. the signature verifies with the request's key: true", "ok"],
+    ["  2. at least one name: true", "ok"],
+    ["  3. payments.shop.internal is inside shop.internal: true", "ok"],
+    ["  4. payments-team may ask for it: true", "ok"],
+    ["  5. 90 days is within the server profile's 90 days: true", "ok"],
+    ["THE CERTIFICATE:", "code"],
+    ["  serial 1002; its public key is the request's: true", "ok"],
+    ["---", ""],
+    ["THE FORGED REQUEST (payments-team's key, another key signs):", "code"],
+    ["  -> refused: not signed by the key it carries", "ok"],
+    ["THE WRONG TEAM (web-team asks):", "code"],
+    ["  payments.shop.internal", "muted"],
+    ["    -> refused: may not ask for payments.shop.internal", "ok"],
+    ["  www.shop.internal and payments.shop.internal at once", "muted"],
+    ["    -> refused: may not ask for payments.shop.internal", "ok"],
+    ["THE CLIENT CERTIFICATE (orders-team calls other services):", "code"],
+    ["  serial 1003, orders.shop.internal, clientAuth, 30 days", "muted"],
+    ["  the chain check: accepted", "muted"],
 ]
 
 [[act]]
 title = "Revocation: taking a certificate back"
-summary = "A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date."
+summary = "The day-10 list revokes serial 1002 until day 17; on day 11 a checking client refuses it and a client that never checks accepts it; on day 20 the stale list makes a strict client refuse even www, until a fresh list arrives."
 detail = """
-payments.shop.internal's key is reported stolen on day 10, and serial 1002 goes into a list valid for a week. On day 11 a checking client refuses it and still accepts www; a client that never checks accepts the revoked certificate. On day 20, the day-10 list is past its next update:
-the strict client refuses even the healthy certificate, failing closed, until a fresh list is fetched. Revocation only works if the authority publishes on time and every client fetches and checks.
+payments.shop.internal's key is reported stolen on day 10. The issuing CA signs a revocation list: this update 2026-01-15 (day 10), next update 2026-01-22 (day 17), revoked serial 1002 for key compromise. The root's own list (day 0 to day 365) revokes nothing, so it covers the issuing CA.
+On day 11 a client that checks the lists refuses payments (REVOKED) and accepts www; a client that never checks still accepts the revoked certificate.
+On day 20 the day-10 list is past its next update. A strict client refuses even the healthy www certificate (UNDETERMINED_REVOCATION_STATUS): with no current list it fails closed. With a fresh list from day 20 it accepts again.
+"""
+figure = "revocation_timeline"
+figure_title = "Revocation lists over twenty days"
+figure_speech = """
+Third demo: revocation, taking a certificate back before it expires. [[slnc 400]] Across the top, days zero to twenty one. [[slnc 300]] Each bar is a revocation list, and how long it stays current. [[slnc 600]]
+The root's list starts on day zero and lasts a year. [[slnc 300]] It revokes nothing, so the issuing C A is fine. [[slnc 300]] On day ten, the payments key is reported stolen. [[slnc 300]] The issuing C A signs a list with serial one thousand and two, current until day seventeen. [[slnc 700]]
+On day eleven, a client that checks the list refuses payments, and still accepts w w w. [[slnc 300]] But a client that never checks accepts the revoked certificate. [[slnc 700]]
+On day twenty, the day ten list has run out. [[slnc 300]] A strict client cannot know, so it refuses even the healthy certificate. [[slnc 300]] It fails closed, until a fresh list arrives.
 """
 speech = """
-Third demo: revocation. [[slnc 400]] The payments key is reported stolen, and its serial goes into a list. [[slnc 600]]
-A checking client refuses it. A client that never checks still accepts it. [[slnc 600]]
-When the list is out of date, a strict client refuses everything until a fresh one arrives. [[slnc 300]] Revocation is only as good as the list the client has.
+Here is the output. [[slnc 400]] The issuing C A's list: from day ten to day seventeen, revoking serial one thousand and two, for key compromise. [[slnc 400]] The root's list, from day zero to day three hundred and sixty five, revokes nothing.
+[[page]]
+Day eleven. [[slnc 300]] With the lists, payments is refused, revoked, and w w w is accepted. [[slnc 300]] Without checking, payments is accepted. [[slnc 500]] Day twenty, with only the old list: refused, revocation status undetermined. [[slnc 300]] With a fresh list: accepted.
 """
 rows = { revoke = "active wrong" }
 console = [
-    ["day 11, payments.shop.internal, with revocation checked: refused (REVOKED)", "ok"],
-    ["day 11, by a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE", "bad"],
-    ["day 20, only the day-10 list: refused (UNDETERMINED_REVOCATION_STATUS)  <- IT FAILS CLOSED", "amber"],
-    ["day 20, with a fresh list: accepted", "ok"],
+    ["THE REPORT (day 10): payments.shop.internal's key is stolen", "code"],
+    ["THE ISSUING CA'S REVOCATION LIST:", "code"],
+    ["  this update  2026-01-15 09:00 (day 10)", "muted"],
+    ["  next update  2026-01-22 09:00 (day 17)", "muted"],
+    ["  revoked      serial 1002, key compromise", "muted"],
+    ["THE ROOT'S REVOCATION LIST (covers the issuing CA):", "code"],
+    ["  this update  2026-01-05 09:00 (day 0)", "muted"],
+    ["  next update  2027-01-05 09:00 (day 365)", "muted"],
+    ["  revoked      none", "muted"],
+    ["---", ""],
+    ["THE CHECKS ON DAY 11:", "code"],
+    ["  payments.shop.internal, the client checks the lists", "muted"],
+    ["    -> refused (REVOKED)", "ok"],
+    ["  www.shop.internal, the client checks the lists", "muted"],
+    ["    -> accepted", "ok"],
+    ["  payments.shop.internal, a client that never checks", "muted"],
+    ["    -> accepted  <- A REVOKED CERTIFICATE STILL WORKS", "bad"],
+    ["THE CHECKS ON DAY 20 (the day-10 list ran out on day 17):", "code"],
+    ["  www.shop.internal, only the day-10 list", "muted"],
+    ["    -> refused (UNDETERMINED_REVOCATION_STATUS)", "ok"],
+    ["    <- NO CURRENT LIST, SO NO: IT FAILS CLOSED", "amber"],
+    ["  www.shop.internal, a fresh list from day 20", "muted"],
+    ["    -> accepted", "ok"],
 ]
 
 [[act]]
 title = "Short-lived certificates instead of revocation"
-summary = "A 24-hour certificate renews at two thirds of its life with a new key: 4 renewals in 72 hours and no failed check, and a stopped job simply expires; the inventory flags what needs attention."
+summary = "A 24-hour certificate is renewed at two thirds of its life, 16 hours: renewals at hours 16, 32, 48 and 64, five different keys, no failed check; when the job stops, the last one ends at hour 88 and is refused as EXPIRED."
 detail = """
-cart.shop.internal gets 24-hour certificates and a job that renews at two thirds of the lifetime, with a new key each time. Over 72 hours, checked every hour, there are 4 renewals and 0 failed checks. If the job stops, the certificate is refused as EXPIRED 25 hours after the last renewal,
-with no list at all. A stolen 24-hour key works for at most a day. The inventory on day 65 flags the 90-day certificates as RENEW_NOW and the stopped one as EXPIRED: most certificate outages are expiries nobody saw coming.
+cart.shop.internal gets serial 1004, valid 2026-02-04 09:00 to 2026-02-05 09:00. The renewal time is worked out from the certificate itself: a lifetime of 24 hours, two thirds is 24 x 2 / 3 = 16 hours, so it renews at 2026-02-05 01:00.
+Over 72 hours, checked every hour, it renews at hours 16, 32, 48 and 64: 5 certificates, 5 different keys, 0 failed checks.
+The job stops. The last certificate, serial 1008, ends 2026-02-08 01:00; 25 hours after it began it is refused (EXPIRED), with no list at all.
+The inventory on day 65 flags the two 90-day certificates as RENEW_NOW with 25 days left, and the stopped cart certificate as EXPIRED. A stolen 24-hour key works for at most a day; a stolen 90-day key, for up to 90 days unless every client checks.
+"""
+figure = "renewal_timeline"
+figure_title = "Twenty-four-hour certificates, renewed at sixteen hours"
+figure_speech = """
+Fourth demo: short lived certificates instead of revocation. [[slnc 400]] At the top, how the renewal time is worked out. [[slnc 300]] The certificate lives twenty four hours. [[slnc 300]] Two thirds of that is twenty four, times two, divided by three: sixteen hours. [[slnc 300]] So the first one, issued at nine in the morning, is renewed at one the next night. [[slnc 700]]
+Below, each bar is one certificate, and the amber mark is its renewal time. [[slnc 300]] A new certificate starts at hours sixteen, thirty two, forty eight and sixty four, each with a new key. [[slnc 300]] They overlap, so no check ever fails. [[slnc 700]]
+Then the renewal job stops. [[slnc 300]] The last certificate ends at hour eighty eight. [[slnc 300]] An hour later it is refused, as expired. [[slnc 600]]
+No list is needed. [[slnc 300]] A stolen key is only useful for a day.
 """
 speech = """
-Fourth demo: short lived certificates. [[slnc 400]] A twenty four hour certificate renews at two thirds of its life, with a new key each time. [[slnc 600]]
-Over three days, four renewals and no failed check. [[slnc 600]]
-If the job stops, the certificate simply runs out, with no list needed. [[slnc 300]] The inventory shows which certificates need renewing before they expire unnoticed.
+Here is the output. [[slnc 400]] The first certificate, serial one thousand and four, valid twenty four hours. [[slnc 400]] Two thirds is sixteen hours, so it renews at one in the morning. [[slnc 400]] Four renewals in seventy two hours, five different keys, and no failed check. [[slnc 400]] The job stops, and the last certificate is refused as expired.
+[[page]]
+The inventory on day sixty five. [[slnc 300]] Both ninety day certificates should be renewed now, with twenty five days left. [[slnc 300]] The cart certificate has expired. [[slnc 400]] A stolen short lived key works for at most a day.
 """
 rows = { short = "active ok" }
 console = [
-    ["over 72 hours, checked every hour: 4 renewals, 0 failed checks", "ok"],
-    ["the renewal job stops; 25 hours later -> refused (EXPIRED)", "ok"],
-    ["inventory, day 65: www RENEW_NOW, orders RENEW_NOW, cart EXPIRED", "amber"],
+    ["THE FIRST CERTIFICATE (cart.shop.internal, day 30):", "code"],
+    ["  serial 1004, valid 2026-02-04 09:00 to 2026-02-05 09:00", "muted"],
+    ["HOW THE RENEWAL TIME IS WORKED OUT:", "code"],
+    ["  lifetime     24 hours, from notBefore to notAfter", "muted"],
+    ["  two thirds   24 x 2 / 3 = 16 hours", "muted"],
+    ["  renew at     2026-02-04 09:00 + 16 hours = 2026-02-05 01:00", "muted"],
+    ["THE 72 HOURS, CHECKED EVERY HOUR:", "code"],
+    ["  renewed at hours 16, 32, 48, 64: 4 renewals", "muted"],
+    ["  5 certificates, 5 different keys; failed checks: 0", "muted"],
+    ["THE RENEWAL JOB STOPS:", "code"],
+    ["  the last certificate, serial 1008, ends 2026-02-08 01:00", "muted"],
+    ["  25 hours after it began: refused (EXPIRED)", "muted"],
+    ["---", ""],
+    ["THE INVENTORY ON DAY 65 (renew after two thirds of a life):", "code"],
+    ["  www.shop.internal      RENEW_NOW  25 days left", "muted"],
+    ["  orders.shop.internal   RENEW_NOW  25 days left", "muted"],
+    ["  cart.shop.internal     EXPIRED    0 hours left", "muted"],
+    ["A STOLEN KEY WORKS FOR:", "code"],
+    ["  a 24-hour certificate: at most 24 hours, with no list at all", "muted"],
+    ["  a 90-day certificate: up to 90 days, unless every client checks", "muted"],
 ]
 
 [[act]]
 title = "The bill"
-summary = "The root key signed 3 times and stays offline; revoking the issuing authority with the root's list refuses every certificate below it; the audit log holds 18 decisions, 6 of them refusals."
+summary = "The root key signs four times in all and stays offline; its day-40 list revokes the issuing CA, so www.shop.internal is refused on day 41; the audit log holds 18 decisions, 6 of them refusals."
 detail = """
-Running an authority has costs. The root key signed three times in all (the issuing authority, itself and its revocation lists) and belongs offline, ideally in hardware. If the issuing authority's key is stolen, the offline root revokes it, and www.shop.internal and every certificate below it
-are refused. The audit log holds every decision, 18 in the demo and 6 of them refusals. Every service also needs a request, a renewal job and a deployment step, which is why this is automated in practice with ACME.
+The root key signed four times: its own certificate, the issuing authority's certificate, its revocation list of day 0, and on day 40 a list that revokes the issuing CA. Each signature is a ceremony with an offline key, ideally in hardware.
+The day-40 list revokes serial 2 (Shop Issuing CA) for CA compromise, so on day 41 www.shop.internal is refused (REVOKED), and so is every certificate below the issuing CA.
+The audit log holds 18 decisions, 6 of them refusals, each with its reason. Every service still needs a request, a renewal job and a deployment step: ACME automates them, as the -with-step-ca version shows.
+"""
+figure = "root_key_uses"
+figure_title = "The offline root key, and revoking a whole branch"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] On the left, everything the root key ever signed in this story. [[slnc 300]] Its own certificate. [[slnc 300]] The issuing C A's certificate. [[slnc 300]] And two revocation lists. [[slnc 300]] Four signatures in all. [[slnc 300]] Each one is a ceremony with a key that lives offline. [[slnc 700]]
+On the right, the fourth signature at work. [[slnc 300]] On day forty, the issuing C A's own key is reported stolen. [[slnc 300]] The root's new list revokes serial two, the issuing C A. [[slnc 300]] Now w w w dot shop dot internal is refused, and so is every certificate below it, in one step. [[slnc 600]]
+Below the list, the audit log: eighteen decisions, six of them refusals. [[slnc 300]] An authority is a high value target, so every decision is written down.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] The root key signed three times in all, and stays offline. [[slnc 600]]
-If the issuing key is stolen, the root revokes it, and everything below it is refused. [[slnc 600]]
-Every decision is in the audit log. [[slnc 300]] In practice, ACME automates the requests and the renewals.
+Here is the output. [[slnc 400]] The root key's four signatures. [[slnc 400]] The root's list of day forty revokes serial two, the issuing C A, for C A compromise. [[slnc 400]] On day forty one, w w w is refused, and so is every certificate below.
+[[page]]
+The audit log: eighteen decisions, six of them refusals, each with its reason. [[slnc 400]] And what is left to automate for every service: a request, a renewal job, and a deployment step. [[slnc 300]] A C M E does that, as the step C A version shows.
 """
 rows = { bill = "active ok" }
 console = [
-    ["the root key signed 3 times in all; keep it offline", "ok"],
-    ["issuing authority revoked by the root -> www.shop.internal refused (REVOKED)", "ok"],
-    ["the audit log holds 18 decisions, 6 of them refusals", "muted"],
+    ["THE ROOT KEY'S SIGNATURES (each one a ceremony, offline):", "code"],
+    ["  1. the root's own certificate", "muted"],
+    ["  2. the issuing authority's certificate", "muted"],
+    ["  3. the root's revocation list, day 0", "muted"],
+    ["  4. the root's revocation list, day 40, issuing CA revoked", "muted"],
+    ["THE ROOT'S LIST OF DAY 40 (the issuing CA's key is stolen):", "code"],
+    ["  revoked      serial 2 (Shop Issuing CA), CA compromise", "muted"],
+    ["THE CHECK ON DAY 41:", "code"],
+    ["  www.shop.internal -> refused (REVOKED)", "muted"],
+    ["  and so is every certificate below the issuing CA", "muted"],
+    ["---", ""],
+    ["THE AUDIT LOG (18 decisions, 6 of them refusals):", "code"],
+    ["  refused web-team: needs at least one subject alternative name", "muted"],
+    ["  refused web-team: 400 days is over the server profile's 90 days", "muted"],
+    ["  refused payments-team: pay.example is outside shop.internal", "muted"],
+    ["  refused payments-team: not signed by the key it carries", "muted"],
+    ["  refused web-team: may not ask for payments.shop.internal", "muted"],
+    ["  refused web-team: may not ask for payments.shop.internal", "muted"],
+    ["STILL TO AUTOMATE, PER SERVICE:", "code"],
+    ["  a request, a renewal job and a deployment step: ACME does it,", "muted"],
+    ["  as the -with-step-ca version shows", "muted"],
 ]
+
+[highlight]
+console_green = ["THE CERTIFICATE", "THE CLIENT CERTIFICATE", "THE 72 HOURS", "THE CHECKS ON DAY 11"]
+console_rose = ["THE POLICY SKIPPED", "THE FORGED REQUEST", "THE WRONG TEAM", "THE RENEWAL JOB STOPS", "THE ROOT'S LIST OF DAY", "THE REPORT"]
+console_amber = ["THE REQUEST", "THE RESULT", "THE REQUESTS THE POLICY", "THE CLIENT'S CHECK", "THE CHECKS ON DAY 20", "THE CHECK ON DAY", "THE AUDIT LOG", "A STOLEN KEY", "STILL TO AUTOMATE", "HOW THE RENEWAL"]
+console_cyan = ["THE ROOT", "THE ISSUING", "THE CHAIN CHECK", "THE AUTHORITY'S CHECKS", "THE FIRST CERTIFICATE", "THE INVENTORY"]
 
 [animation]
 subtitle = "An offline root, an issuing authority, four teams and a clock that moves from days to hours."
@@ -239,7 +414,7 @@ nongoals = [
 problem = """
 Teams issue certificates by hand with no policy, long lifetimes and no plan for taking one back.
 """
-roles = [["The authority and its policy", "`CertificateAuthority`, `Profile`, `RefusedException`"], ["Requests and keys", "`Csr`, `Keys`, `Issued`"], ["Clients", "`Validator`"], ["Lifetime", "`ShortLived`, `Inventory`"], ["Entry point", "`LocalCaDemo`"]]
+roles = [["The authority and its policy", "`CertificateAuthority`, `Profile`, `RefusedException`"], ["Requests and keys", "`Csr`, `Keys`, `Issued`"], ["Clients", "`Validator`, and `ChainSteps`, which redoes its checks by hand"], ["Lifetime", "`ShortLived`, `Inventory`"], ["Entry point", "`LocalCaDemo`"]]
 requirements = [
     "A request must prove possession of the key it carries.",
     "The issuer enforces names, allow-lists and the profile's maximum lifetime.",
@@ -410,15 +585,15 @@ residual = "Replacing the root in every client after a root compromise"
 
 [poster]
 headline = [["LOCAL", "text"], ["CERT AUTHORITY", "accent"]]
-taglines = [["A certificate is a signed claim about a name, and revocation is only as good as the list t", "gold"]]
-before = { code = "issued for web-team: www.shop.internal, serial 1000,", note = "Running a certificate authority", tag = "BEFORE" }
-after = { code = "CA + CRL + 24h certs", note = "The bill", tag = "AFTER" }
+taglines = [["Issue, check, take back: a CA in Java", "gold"]]
+before = { code = "never checks -> accepted", note = "A revoked certificate still works", tag = "BEFORE" }
+after = { code = "24-hour certs, 0 failed checks", note = "Short lives instead of lists", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "A Local Certificate Authority"
-narration = "Hello, and welcome. [[slnc 400]] This video explains how a certificate authority works, by building a small one, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A certificate is a signed statement that a public key belongs to a name. [[slnc 300]] A certificate authority is whoever signs those statements, and every client that trusts it believes them. [[slnc 300]] So the authority must apply its own policy, limit its own reach, and have a way to take a certificate back. [[slnc 600]] Think of the office that issues staff badges. [[slnc 300]] It checks who you are before printing one, and a lost badge is only stopped at doors that check the lost list. [[slnc 600]] Our example is an online store's internal services."
+narration = "Hello, and welcome. [[slnc 400]] This video explains how a certificate authority, or C A, works, by building a small one, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A certificate is a signed statement that a public key belongs to a name. [[slnc 300]] A certificate authority is whoever signs those statements, and every client that trusts it believes them. [[slnc 300]] So the authority must apply its own policy, limit its own reach, and have a way to take a certificate back. [[slnc 600]] Think of the office that issues staff badges. [[slnc 300]] It checks who you are before printing one, and a lost badge is only stopped at doors that check the lost list. [[slnc 600]] Our example is an online store's internal services."
 
 [[scene]]
 key = "02-scenario"
@@ -426,6 +601,26 @@ kind = "bullets"
 title = "The Scenario"
 body = ["An online store's internal services:", "  www, payments, orders, cart", "call each other over TLS.", "", "The demo runs an offline root, an issuing CA,", "four teams asking for certificates,", "and clients built on the JDK's own validator."]
 narration = "Here is the scenario. [[slnc 400]] An online store's internal services, the web site, payments, orders and the cart, call each other over T L S. [[slnc 500]] The store runs its own certificate authority: an offline root, and an issuing authority below it. [[slnc 500]] Four teams ask for certificates, and clients check them with the J D K's own certificate validator, on a fixed clock, so every day of the story can be replayed."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Certificate: a signed claim that a key belongs to a name", "Chain: certificate, issuing CA, root", "Signing request: a name and a public key, self-signed", "Path length, name constraint: limits on a CA", "Revocation list: serials taken back, with a next update"]
+narration = """Before the demos, the words. [[slnc 500]] A certificate is a signed claim that a public key belongs to a name. [[slnc 500]] A chain links a certificate to the issuing C A that signed it, and that one to the root. [[slnc 500]] A signing request carries a name and a public key, and is signed with the matching private key. [[slnc 500]] Path length and name constraint are limits written into a C A's own certificate: how many authorities may sit below it, and which names it may use. [[slnc 500]] And a revocation list names the serials taken back, with the date of its next update."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-chain"
+kind = "figure"
+title = "Three certificates in a chain"
+body = "chain_of_trust"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] Three certificates, from the demo. [[slnc 600]] On the left, the root. [[slnc 300]] It signs itself, lives twenty years, and may certify one level below it. [[slnc 300]] Then it goes offline. [[slnc 600]] In the middle, the issuing C A, signed by the root. [[slnc 300]] Path length zero: it may not create more authorities. [[slnc 300]] And a name constraint: only names under shop dot internal. [[slnc 600]] On the right, the certificate for w w w dot shop dot internal, signed by the issuing C A. [[slnc 300]] Ninety days, for a T L S server, and not an authority. [[slnc 600]] A client trusts only the root. [[slnc 300]] It believes the right hand certificate because each signature leads back to it, and every limit on the way holds."""
 
 [[scene]]
 key = "03-acts"
@@ -441,25 +636,24 @@ body = ["The root key must stay offline", "Revocation needs publishing and check
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The root key must stay offline, which makes every use of it a ceremony. [[slnc 500]] Revocation lists must be published, and checked by every client. [[slnc 500]] Short-lived certificates need automation that never stops. [[slnc 500]] A name constraint helps only clients that check it. [[slnc 300]] And the authority itself becomes a high-value target."
 
 [[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["CertificateAuthority, Profile: the issuer and its policy", "Csr, Keys, Issued: requests and keys", "Validator: the clients, on the JDK's checks", "ShortLived, Inventory: renewal and expiry", "LocalCaDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] CertificateAuthority is the issuer, and Profile holds its policy: names, teams, and the longest lifetime. [[slnc 500]] Csr, Keys, and Issued are the signing requests, the key pairs, and the certificates. [[slnc 500]] Validator is a client, built on the J D K's own certificate path checks. [[slnc 500]] ShortLived renews a certificate, and Inventory lists what will expire. [[slnc 300]] And LocalCaDemo runs the five demos."
-
-[[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["A padlock, and \"issued by\" in the browser", "CRL distribution points in a certificate", "An outage caused by an expired certificate", "Let's Encrypt certificates renewed by ACME"]
-narration = "You have probably met this already. [[slnc 400]] The padlock in a browser, and the issued by line behind it, is a certificate authority's signature. [[slnc 500]] A C R L distribution point, inside a certificate, says where its revocation list lives. [[slnc 500]] An outage caused by an expired certificate is the renewal that stopped. [[slnc 500]] And Let's Encrypt certificates, which last weeks and are renewed by ACME, are the short lives this project ends with."
+narration = "You have probably met this already. [[slnc 400]] The padlock in a browser, and the issued by line behind it, is a certificate authority's signature. [[slnc 500]] The C R L distribution point, inside a certificate, says where its revocation list lives. [[slnc 500]] An outage caused by an expired certificate is the renewal that stopped. [[slnc 500]] And Let's Encrypt certificates, which last weeks and are renewed by A C M E, are the short lives this project ends with."
 
 [[scene]]
 key = "07-verdict"
 kind = "bullets"
 title = "How To Use It"
 body = ["Keep the root offline", "Issue from a constrained authority", "The issuer applies the policy", "Short-lived certificates, renewed automatically", "ACME and a maintained CA in production"]
-narration = "So, how do you use it? [[slnc 400]] Keep the root key offline. [[slnc 300]] Issue from an authority limited by a name constraint and a path length. [[slnc 500]] Let the issuer apply the policy, never the requester. [[slnc 500]] Prefer short-lived certificates, renewed by automation, over revocation lists that clients may not check. [[slnc 500]] And in production, use ACME, and a maintained authority such as step C A, rather than your own code."
+narration = "So, how do you use it? [[slnc 400]] Keep the root key offline. [[slnc 300]] Issue from an authority limited by a name constraint and a path length. [[slnc 500]] Let the issuer apply the policy, never the requester. [[slnc 500]] Prefer short-lived certificates, renewed by automation, over revocation lists that clients may not check. [[slnc 500]] And in production, use A C M E, and a maintained authority such as step C A, rather than your own code."
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "08-outro"
@@ -467,3 +661,122 @@ kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add an OCSP-style status check", "and compare how it fails with the list."]
 narration = "That's a local certificate authority. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A certificate authority is a signing policy plus a key: the policy decides what may be said, the name constraint limits the key's reach, and short lifetimes make taking a certificate back almost unnecessary. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add an O C S P style status check, and compare how it fails with the revocation list. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Bouncy Castle builds the certificates, and the J D K's own validator checks them, on a fixed clock. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "CertificateAuthority"
+what = "the issuer: the policy, and the limits in its own certificate"
+[[class.part]]
+title = "the policy, applied by the issuer"
+code = """
+if (!Csr.provesPossession(request)) {
+    throw new RefusedException("not signed by the key it carries");
+}
+...
+if (!inDomain(lower)) {
+    throw new RefusedException(name + " is outside " + DOMAIN);
+}
+if (!allowed.contains(lower)) {
+    throw new RefusedException("may not ask for " + name);
+}
+"""
+speech = """Every request goes through one method. [[slnc 300]] It checks proof of possession first, then that each name is inside the domain, and on this team's list. [[slnc 300]] Any failure refuses the whole request, and goes into the audit log."""
+[[class.part]]
+title = "path length 0 and a name constraint"
+code = """
+case ISSUING -> {
+    builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(0));
+    ...
+    GeneralSubtree permitted = new GeneralSubtree(new GeneralName(GeneralName.dNSName, DOMAIN));
+    builder.addExtension(Extension.nameConstraints, true,
+            new NameConstraints(new GeneralSubtree[] {permitted}, null));
+"""
+speech = """When the root signs the issuing C A, it writes two limits into that certificate. [[slnc 300]] Path length zero, and names only under shop dot internal. [[slnc 300]] Both are marked critical, so every client must enforce them."""
+
+[[class]]
+name = "Csr"
+what = "signing requests and proof of possession"
+[[class.part]]
+title = "the request's own key verifies its signature"
+code = """
+return request.isSignatureValid(
+        new JcaContentVerifierProviderBuilder().build(request.getSubjectPublicKeyInfo()));
+"""
+speech = """Proof of possession is one line. [[slnc 300]] The request's signature must verify with the public key inside the request. [[slnc 300]] Only the holder of the private key can make that true."""
+
+[[class]]
+name = "Validator"
+what = "a client: the JDK's PKIX validator against the one root"
+[[class.part]]
+title = "a fixed date, revocation on or off"
+code = """
+parameters.setDate(Date.from(when));
+parameters.setRevocationEnabled(revocation);
+...
+CertPathValidator.getInstance("PKIX").validate(path, parameters);
+"""
+speech = """The client is the J D K's own validator. [[slnc 300]] The date is set, so the demo can jump to day eleven or day twenty. [[slnc 300]] Revocation checking is a switch, which is why one client refuses a revoked certificate and another does not."""
+
+[[class]]
+name = "ChainSteps"
+what = "the same chain check by hand, one printed step at a time"
+[[class.part]]
+title = "the name constraint step"
+code = """
+String permitted = permittedDomain(issuing);
+boolean inside = names.stream()
+        .allMatch(n -> permitted == null || n.toLowerCase(Locale.ROOT).endsWith("." + permitted));
+steps.add(new Step(String.join(", ", names) + " is inside " + permitted,
+        inside, "INVALID_NAME"));
+"""
+speech = """This teaching class redoes the validator's checks, in the J D K's order, so each one can be printed. [[slnc 300]] Here is step four: every name must end with the permitted domain. [[slnc 300]] A test proves its verdict matches the J D K's exactly."""
+
+[[class]]
+name = "ShortLived"
+what = "a service that renews its own 24-hour certificate"
+[[class.part]]
+title = "renew at two thirds of the life"
+code = """
+return from.plus(Duration.between(from, to).multipliedBy(2).dividedBy(3));
+"""
+speech = """The renewal time comes from the certificate itself: two thirds of the way from not before to not after. [[slnc 300]] For twenty four hours, that is sixteen. [[slnc 300]] Each renewal makes a new key."""
+
+[[acronym]]
+short = "CA"
+long = "Certificate Authority: whoever signs certificates"
+say = "C A is certificate authority: whoever signs certificates, and is trusted by the clients."
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: the encrypted connection that uses certificates"
+say = "T L S is transport layer security: the encrypted connection between services, which uses these certificates."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit: Java, its tools and libraries"
+say = "J D K is the Java development kit."
+[[acronym]]
+short = "PKIX"
+long = "Public Key Infrastructure using X.509: the chain-checking rules"
+say = "P K I X is public key infrastructure using X dot five oh nine: the rules a client follows to check a chain."
+[[acronym]]
+short = "X.509"
+long = "the standard format of certificates and revocation lists"
+say = "X dot five oh nine is the standard format of certificates and revocation lists."
+[[acronym]]
+short = "CRL"
+long = "Certificate Revocation List: signed list of serials taken back"
+say = "C R L is certificate revocation list: a signed list of serial numbers taken back, with a next update date."
+[[acronym]]
+short = "EC"
+long = "Elliptic Curve: the kind of key pair used here, on a 256-bit curve"
+say = "E C is elliptic curve: the kind of key pair every service uses here."
+[[acronym]]
+short = "ACME"
+long = "Automatic Certificate Management Environment: automated issuing"
+say = "A C M E is the automatic certificate management environment: a protocol that requests and renews certificates without a person."
+[[acronym]]
+short = "OCSP"
+long = "Online Certificate Status Protocol: ask about one certificate"
+say = "O C S P is the online certificate status protocol: a client asks about one certificate instead of fetching a list."

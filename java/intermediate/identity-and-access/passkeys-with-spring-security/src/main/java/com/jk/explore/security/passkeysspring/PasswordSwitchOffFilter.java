@@ -28,7 +28,8 @@ final class PasswordSwitchOffFilter extends OncePerRequestFilter {
         if (request.getMethod().equals("POST") && request.getRequestURI().equals("/login") && request.getParameter("username") != null) {
             PublicKeyCredentialUserEntity user = userEntities.findByUsername(request.getParameter("username"));
             if (user != null && credentials.findByUserId(user.getId()).size() >= PASSKEYS_NEEDED) {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "password sign-in is switched off for this customer");
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
+                        "password sign-in is switched off for this customer");
                 return;
             }
         }

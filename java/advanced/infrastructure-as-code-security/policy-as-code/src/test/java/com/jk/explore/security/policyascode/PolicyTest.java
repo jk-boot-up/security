@@ -44,6 +44,41 @@ class PolicyTest {
     }
 
     @Test
+    void eachRuleIsLabelledByTheCommentAboveIt() throws Exception {
+        String source = Files.readString(POLICY.resolve("main.rego"));
+        assertEquals("R1: an allowed kind", Mutants.label(source, 0));
+        assertEquals("R5: a cpu limit", Mutants.label(source, 4));
+        assertEquals("R10: at least one container", Mutants.label(source, Mutants.count(source) - 1));
+        for (int i = 0; i < Mutants.count(source); i++) {
+            assertTrue(Mutants.label(source, i).matches("R\\d+: .+"), Mutants.label(source, i));
+        }
+    }
+
+    @Test
+    void aStepShowsUndefinedWhenOpaLeavesTheRuleOut() {
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        assertEquals("undefined", Steps.show(null));
+        assertEquals("true", Steps.show(json.readTree("true")));
+        assertEquals("0", Steps.show(json.readTree("0")));
+        assertEquals("Deployment", Steps.show(json.readTree("\"Deployment\"")));
+    }
+
+    @Test
+    void everyStepNamesARuleOfTheStepsModule() {
+        for (var list : List.of(Steps.EMPTY_OBJECT, Steps.NO_CONTAINERS, Steps.NO_SECURITY_CONTEXT)) {
+            list.forEach(s -> assertTrue(Steps.MODULE.contains("\n" + s.rule() + " := "), s.rule()));
+        }
+    }
+
+    @Test
+    void theDemoWordsCountsAndDecisions() {
+        assertEquals("1 warning", PolicyAsCodeDemo.count(1, "warning"));
+        assertEquals("0 failures", PolicyAsCodeDemo.count(0, "failure"));
+        assertEquals("allow", PolicyAsCodeDemo.describe(List.of()));
+        assertEquals("deny R2 R8", PolicyAsCodeDemo.describe(List.of("R8 b", "R2 a")));
+    }
+
+    @Test
     void anAdmissionResponseCarriesTheReasons() {
         assertTrue(Admission.respond(List.of()).allowed());
         Admission.Response r = Admission.respond(List.of("R2 a", "R8 b"));
@@ -86,6 +121,24 @@ class PolicyTest {
     @Tag("integration")
     @Test
     void theFullSuiteKillsEveryMutant() throws Exception {
-        assertEquals(12, Mutants.killed(POLICY, null, Path.of("build/mutants-test")));
+        Mutants.Score s = Mutants.score(POLICY, null, Path.of("build/mutants-test"));
+        assertEquals(12, s.killed());
+        assertEquals(17, s.tests());
+    }
+
+    @Tag("integration")
+    @Test
+    void theToolsAreThePinnedVersions() throws Exception {
+        Opa.requirePinnedVersions();
+    }
+
+    @Tag("integration")
+    @Test
+    void theStepsAgreeWithThePolicy() throws Exception {
+        var empty = Steps.values(POLICY, Steps.EMPTY_OBJECT, tools.jackson.databind.json.JsonMapper.builder().build().createObjectNode(),
+                Path.of("build/steps-test"));
+        assertEquals(List.of("undefined", "undefined", "true"), List.copyOf(empty.values()));
+        var good = Steps.values(POLICY, Steps.NO_SECURITY_CONTEXT, Cases.good(), Path.of("build/steps-test"));
+        assertEquals(List.of("true", "false", "undefined"), List.copyOf(good.values()));
     }
 }

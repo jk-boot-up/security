@@ -37,10 +37,10 @@ Logs are written freely, read widely and kept for long, so what is written in th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 39 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 115 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:40, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

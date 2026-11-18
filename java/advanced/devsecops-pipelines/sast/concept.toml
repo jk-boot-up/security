@@ -60,96 +60,237 @@ This is a project of the [devsecops-pipelines](..) module, with [secret-scanning
 twin = """
 Semgrep is real and runs offline with the rule files in this project. The code under test is a small made-up bank application that is never compiled or run. The demo prints counts and rule names, never paths.
 """
-test_note = "The scoring, the markers and the suppression check are tested with no tools. The demo runs Semgrep (./gradlew integrationTest)."
+test_note = "The scoring, the markers, the suppression check, the rule-file reader, the hand-worked taint steps and the reading of semgrep --test output are tested with no tools. The demo runs Semgrep, pinned to 1.182.1 (./gradlew integrationTest)."
 
 [[act]]
-title = "The code under test"
-summary = "Six files hold 7 planted flaws and 7 safe look-alikes, each marked in a comment."
+title = "One flaw, as a taint rule sees it"
+summary = "Three lines of AccountController (22 to 24): name comes from request.getParameter, sql is built from name, and executeQuery(sql) runs it. The rule sql-taint names the source, the sink and the sanitizers; followed by hand, the taint reaches the sink on line 24, and Semgrep reports sql-taint at AccountController:24."
 detail = """
-The bank's web code builds queries from request parameters directly, through a variable and through a helper, runs a converter, reads a file and hashes with MD5. Next to them are safe versions: a prepared statement, a parsed number, a constant, an allowlisted column, a command array, a validated file name and SHA-256.
+The input is three lines of the bank's AccountController, lines 22 to 24, and the rule sql-taint from rules/taint.yml: source $REQ.getParameter(...), sink $S.executeQuery(...), sanitizers Integer.parseInt(...) and Validate.fileName(...).
+How the taint travels, worked out by hand: line 22, name is tainted because it comes from the source; line 23, sql is tainted because it is built from name; line 24, executeQuery(sql) gets a tainted value, which is a finding.
+The result: Semgrep reports sql-taint at AccountController:24, the same line.
+"""
+figure = "taint_path"
+figure_title = "Input followed from the request to the query"
+figure_speech = """
+First demo: one flaw, the way a taint rule sees it. [[slnc 400]] On the left, the input: three lines of the bank's code. [[slnc 300]] On line twenty two, the name comes from the request: that is the source. [[slnc 300]] On line twenty three, it is glued into a query. [[slnc 300]] On line twenty four, the query runs: that is the sink. [[slnc 700]]
+On the right, the rule: a source, a sink, and two sanitizers, calls that make the input safe. [[slnc 700]]
+The arrows are the taint travelling. [[slnc 300]] name is tainted, so sql is tainted, so execute query receives a tainted value. [[slnc 300]] No sanitizer lies between, so it is a finding. [[slnc 300]] Semgrep reports exactly line twenty four.
 """
 speech = """
-First demo: the code under test. [[slnc 400]] Seven planted flaws and seven safe look-alikes. [[slnc 600]] Each line is marked, so a rule can be scored.
+Here is the real output. [[slnc 400]] The code, three lines. [[slnc 300]] The rule, read from its file: source, sink, and sanitizers. [[slnc 400]] Then the taint, worked out by hand: name from the source, sql from name, and the sink gets a tainted value on line twenty four.
+[[page]]
+What Semgrep reports: sql taint, at line twenty four of the account controller. [[slnc 300]] The same line.
 """
-rows = { code = "active ok" }
+rows = { path = "active ok" }
 console = [
-    ["files: 6", "ok"],
-    ["flaws planted: 7", "bad"],
-    ["safe look-alikes: 7", "ok"],
+    ["THE CODE (AccountController.java, lines 22 to 24):", "code"],
+    ["  String name = request.getParameter(\"name\");", "muted"],
+    ["  String sql = \"SELECT * FROM clients WHERE name = '\" + name + \"'\";", "muted"],
+    ["  return stmt.executeQuery(sql).getString(1);", "muted"],
+    ["THE RULE sql-taint (rules/taint.yml):", "code"],
+    ["  source     $REQ.getParameter(...)", "muted"],
+    ["  sink       $S.executeQuery(...)", "muted"],
+    ["  sanitizer  Integer.parseInt(...), Validate.fileName(...)", "muted"],
+    ["HOW THE TAINT TRAVELS (worked out by hand):", "code"],
+    ["  line 22  name               tainted: from the source", "muted"],
+    ["  line 23  sql                tainted: from name", "muted"],
+    ["  line 24  executeQuery(sql)  a tainted value reaches the sink", "ok"],
+    ["---", ""],
+    ["WHAT SEMGREP REPORTS:", "code"],
+    ["  sql-taint  AccountController:24, the same line: yes", "ok"],
 ]
 
 [[act]]
 title = "Pattern against taint"
-summary = "On the SQL the pattern rule finds 4 of 4 and flags 3 of 4 safe lines; the taint rule finds 3 of 4 and flags 1 of 4."
+summary = "On the 8 SQL lines the pattern rule finds 4 of 4 flaws and flags 3 of 4 safe lines (recall 4/4 = 100%, precision 4/7 = 57%); the taint rule finds 3 of 4 and flags 1 of 4 (recall 3/4 = 75%, precision 3/4 = 75%): it misses sql-other-file and flags sql-allowlisted."
 detail = """
-The pattern rule flags any query that is not a constant: the parsed number, the constant and the allowlisted column too. The taint rule follows the request parameter and knows that parsing is a sanitizer, so it flags only the allowlisted column. It misses the query built in another file, because there the input is a method parameter.
+The input: six files with 7 planted flaws and 7 safe look-alikes, each marked // VULN or // SAFE, and two rules: the pattern rule sql-concat matches executeQuery($Q + ...) and executeQuery($Q); the taint rule sql-taint follows getParameter to executeQuery.
+The result, line by line on the 8 SQL lines: the pattern rule finds every flaw but also flags the parsed number, the constant and the allowlisted column. The taint rule knows parsing is a sanitizer and that a constant carries no input; it flags only the allowlisted column, and misses sql-other-file, whose query is built in AccountRepository, another file.
+How the score is made: recall = found / flaws (4/4 = 100% and 3/4 = 75%); precision = real / flagged (4/7 = 57% and 3/4 = 75%).
+"""
+figure = "pattern_vs_taint"
+figure_title = "The eight SQL lines, as each rule sees them"
+figure_speech = """
+Second demo: a pattern rule against a taint rule, on the eight lines that run S Q L. [[slnc 400]] Each row is one line of the bank's code: four real flaws, and four safe look-alikes. [[slnc 600]]
+The pattern rule, in the middle column, looks only at the shape. [[slnc 300]] It finds all four flaws. [[slnc 300]] But it also flags three safe lines: the parsed number, the constant, and the allowlisted column. [[slnc 700]]
+The taint rule, on the right, follows the input. [[slnc 300]] It flags only one safe line, the allowlisted column, because it cannot know that the allowlist is a check. [[slnc 300]] And it misses one flaw: the query built in another file. [[slnc 600]]
+At the bottom, the two numbers. [[slnc 300]] Recall: found divided by flaws. [[slnc 300]] Precision: real flaws divided by everything flagged.
 """
 speech = """
-Second demo: pattern against taint. [[slnc 400]] The pattern rule finds everything and flags three safe lines. [[slnc 600]] The taint rule flags one, and misses the flaw in the other file.
+The code under test: six files, seven flaws, seven safe look-alikes, each marked. [[slnc 300]] And the two rules.
+[[page]]
+The eight S Q L lines, and what each rule says. [[slnc 300]] The pattern rule flags three safe lines. [[slnc 300]] The taint rule flags one, and misses the flaw in the other file.
+[[page]]
+How the score is made. [[slnc 300]] Recall, found over flaws: one hundred percent against seventy five. [[slnc 300]] Precision, real over flagged: fifty seven percent against seventy five.
 """
 rows = { taint = "active ok" }
 console = [
-    ["pattern rule: 4 of 4, 3 of 4 safe flagged", "bad"],
-    ["taint rule: 3 of 4, 1 of 4 safe flagged", "ok"],
-    ["taint rule misses: sql-other-file", "bad"],
+    ["THE CODE UNDER TEST (corpus/bank):", "code"],
+    ["  files 6, flaws planted 7, safe look-alikes 7", "muted"],
+    ["  each such line ends in // VULN or // SAFE", "muted"],
+    ["THE RULES:", "code"],
+    ["  pattern  sql-concat: executeQuery($Q + ...), executeQuery($Q)", "muted"],
+    ["  taint    sql-taint: from getParameter to executeQuery", "muted"],
+    ["---", ""],
+    ["THE 8 SQL LINES, AND WHAT EACH RULE SAYS:", "code"],
+    ["  the line's marker       pattern  taint", "muted"],
+    ["  VULN sql-direct         found    found", "ok"],
+    ["  VULN sql-variable       found    found", "ok"],
+    ["  VULN sql-helper         found    found", "ok"],
+    ["  SAFE sql-prepared       quiet    quiet", "muted"],
+    ["  SAFE sql-parsed         flagged  quiet", "bad"],
+    ["  SAFE sql-constant       flagged  quiet", "bad"],
+    ["  SAFE sql-allowlisted    flagged  flagged", "bad"],
+    ["  VULN sql-other-file     found    missed", "bad"],
+    ["---", ""],
+    ["HOW THE SCORE IS MADE:", "code"],
+    ["                              pattern     taint", "muted"],
+    ["  flaws found                 4 of 4      3 of 4", "muted"],
+    ["  safe lines flagged          3 of 4      1 of 4", "muted"],
+    ["  recall = found / flaws      4/4 = 100%  3/4 = 75%", "muted"],
+    ["  precision = real / flagged  4/7 = 57%   3/4 = 75%", "muted"],
+]
+
+[[act]]
+title = "Every flaw class with the taint rules"
+summary = "The taint rules (sql, command, path) and a weak-hash pattern report 7 findings: 6 on planted flaws and 1 on the allowlisted column. By class: sql 3 of 4, command 1 of 1, path 1 of 1, weak-hash 1 of 1; all 6 of 7 flaws found, 1 of 7 safe lines flagged."
+detail = """
+The input: rules/taint.yml with three taint rules (sql-taint, command-taint, path-taint) and one pattern rule for MD5 and SHA-1.
+The result: 7 findings, each matched with the marker on its line: sql-direct, sql-variable, sql-helper, weak-hash, command and path are real; sql-allowlisted is a false alarm.
+By class: sql 3 of 4 flaws found and 1 of 4 safe lines flagged; command 1 of 1 and 0 of 1; path 1 of 1 and 0 of 1; weak-hash 1 of 1 and 0 of 0; all together 6 of 7 and 1 of 7.
+"""
+figure = "class_grid"
+figure_title = "Seven findings, matched with the truth"
+figure_speech = """
+Third demo: every flaw class, with the taint rules. [[slnc 400]] At the top, the seven findings, each one placed on the line it points to. [[slnc 300]] Green ones land on a planted flaw. [[slnc 300]] The red one lands on a safe line: the allowlisted column again. [[slnc 700]]
+At the bottom, the score by class. [[slnc 300]] S Q L: three of four flaws found. [[slnc 300]] Command, path and the weak hash: one of one each, with no false alarm. [[slnc 600]]
+All together: six of seven flaws found, and one of seven safe lines flagged.
+"""
+speech = """
+The rules: three taint rules, and one pattern for M D five and S H A one. [[slnc 400]] What they report: seven findings, each with the marker on its line. [[slnc 300]] Six are real, and one is the safe allowlisted line.
+[[page]]
+By class: S Q L three of four, the others one of one. [[slnc 300]] All together, six of seven found, one of seven safe lines flagged.
+"""
+rows = { classes = "active ok" }
+console = [
+    ["THE RULES (rules/taint.yml):", "code"],
+    ["  sql-taint, command-taint, path-taint: taint", "muted"],
+    ["  weak-hash: a pattern, MD5 or SHA-1", "muted"],
+    ["WHAT THEY REPORT (7 findings):", "code"],
+    ["  sql-taint      AccountController:18  VULN sql-direct", "muted"],
+    ["  sql-taint      AccountController:24  VULN sql-variable", "muted"],
+    ["  sql-taint      AccountController:29  VULN sql-helper", "muted"],
+    ["  sql-taint      AccountController:56  SAFE sql-allowlisted", "bad"],
+    ["  weak-hash      Hashing:10            VULN weak-hash", "muted"],
+    ["  command-taint  ReportController:16   VULN command", "muted"],
+    ["  path-taint     ReportController:25   VULN path", "muted"],
+    ["---", ""],
+    ["BY CLASS:", "code"],
+    ["  class      flaws found   safe lines flagged", "muted"],
+    ["  sql        3 of 4        1 of 4", "muted"],
+    ["  command    1 of 1        0 of 1", "muted"],
+    ["  path       1 of 1        0 of 1", "muted"],
+    ["  weak-hash  1 of 1        0 of 0", "muted"],
+    ["  all        6 of 7        1 of 7", "muted"],
 ]
 
 [[act]]
 title = "Tests for the rules"
-summary = "semgrep --test passes 4 of 4 checks, and a rule with its sanitizer removed passes only 3 of 4."
+summary = "rules/taint.java marks 6 lines that must be flagged (// ruleid:) and 5 that must not (// ok:). semgrep --test: 4 of 4 checks pass, pattern.yml has no test. With the sanitizer Integer.parseInt(...) removed, sql-taint fails: expected 10 16, reported 10 16 22, so 3 of 4 pass; line 22 is the parsed number."
 detail = """
-A test file marks the lines a rule must flag and the lines it must leave alone. The four taint checks pass. The same file run against a rule without the parseInt sanitizer fails one check: the test notices the broken rule. The pattern rule has no test, and the run says so.
+The input: a test file next to the rules, rules/taint.java, where // ruleid: <rule> marks a line the rule must flag (6 of them) and // ok: <rule> a line it must not flag (5).
+Before the change, semgrep --test compares the expected lines with the reported ones: command-taint 32 and 32, path-taint 42 and 42, sql-taint 10 16 and 10 16, weak-hash 52 54 and 52 54: 4 of 4 pass. pattern.yml has no test file.
+The change: the sanitizer Integer.parseInt(...) is removed from sql-taint. After it, sql-taint reports 10 16 22 where 10 16 were expected, so it fails and 3 of 4 pass. Line 22 runs a query with a number parsed from the request, marked // ok: the broken rule now flags safe code, and the test says so.
+"""
+figure = "test_lines"
+figure_title = "Expected against reported lines"
+figure_speech = """
+Fourth demo: tests for the rules. [[slnc 400]] A test file sits next to the rules. [[slnc 300]] A comment rule i d marks a line the rule must flag; a comment o k marks a line it must leave alone. [[slnc 700]]
+At the top, before the change: for each rule, the lines expected, and the lines reported. [[slnc 300]] They are the same, so all four checks pass. [[slnc 700]]
+At the bottom, after the change: the sanitizer integer parse int is removed from the S Q L rule. [[slnc 300]] Now it reports line twenty two as well. [[slnc 300]] Line twenty two is the parsed number, marked o k. [[slnc 300]] The broken rule flags safe code, and the test fails, before the rule ever reaches a pipeline.
 """
 speech = """
-Third demo: tests for the rules. [[slnc 400]] Mark what must be flagged and what must not. [[slnc 600]] Break the rule, and a check fails.
+The test file: six lines that must be flagged, five that must not. [[slnc 400]] Before the change, each rule's expected and reported lines match: four of four pass. [[slnc 300]] The pattern rule file has no test. [[slnc 400]] Then the change: the sanitizer removed.
+[[page]]
+After the change, the S Q L rule reports line twenty two as well, and fails: three of four. [[slnc 400]] Why line twenty two: a number parsed from the request, marked o k.
 """
 rows = { tests = "active ok" }
 console = [
-    ["semgrep --test: 4 of 4 checks pass", "ok"],
-    ["sanitizer removed: 3 of 4", "ok"],
-    ["rule files with no test: 1", "bad"],
+    ["THE TEST FILE (rules/taint.java):", "code"],
+    ["  // ruleid: <rule>  the next line must be flagged: 6", "muted"],
+    ["  // ok: <rule>      the next line must not be: 5", "muted"],
+    ["BEFORE THE CHANGE (semgrep --test rules):", "code"],
+    ["  command-taint  pass  expected 32, reported 32", "ok"],
+    ["  path-taint     pass  expected 42, reported 42", "ok"],
+    ["  sql-taint      pass  expected 10 16, reported 10 16", "ok"],
+    ["  weak-hash      pass  expected 52 54, reported 52 54", "ok"],
+    ["  4 of 4 pass; rule files with no test: pattern.yml", "bad"],
+    ["THE CHANGE:", "code"],
+    ["  the sanitizer Integer.parseInt(...) removed from sql-taint", "muted"],
+    ["---", ""],
+    ["AFTER THE CHANGE:", "code"],
+    ["  sql-taint      FAIL  expected 10 16, reported 10 16 22", "bad"],
+    ["  3 of 4 pass", "muted"],
+    ["WHY LINE 22 (rules/taint.java, lines 20 to 22):", "code"],
+    ["  int n = Integer.parseInt(request.getParameter(\"n\"));", "muted"],
+    ["  // ok: sql-taint", "muted"],
+    ["  stmt.executeQuery(\"SELECT 1 FROM t WHERE id = \" + n);", "muted"],
 ]
 
 [[act]]
 title = "Triage"
-summary = "A false alarm is suppressed with a reason and an owner, and a build check refuses a suppression without them."
+summary = "semgrep --error reports 7 findings (6 real, 1 false) with exit code 1. A suppression above line 56 names the rule, the reason and the owner: 6 findings, still exit code 1, 1 of 1 well written. A second suppression with no reason makes 2, 1 well written, and the build check fails. Validate.java: 0 findings, exit code 0."
 detail = """
-The taint rules report 7 findings, 6 real and 1 false, and exit with code 1. A comment above the false one names the rule, says why and who decides, and the scan reports 6. A second comment with no reason is counted as badly written and the check fails. A file with no flaw gives exit code 0.
+The input: the taint rules run with --error, which makes the exit code 1 when there is a finding, so the build fails: 7 findings, 6 real and 1 false.
+The suppression: a comment above AccountController line 56 with three parts: the rule (nosemgrep: rules.sql-taint), the reason (the column is checked against an allowlist above) and the owner (payments-team).
+The result: 6 findings and still exit code 1, because the real flaws remain; suppressions 1, well written 1. A second suppression with no reason gives suppressions 2, well written 1, and the build check fails. A file with no flaw, Validate.java, gives 0 findings and exit code 0.
+"""
+figure = "triage_flow"
+figure_title = "From seven findings to a decision with a reason and an owner"
+figure_speech = """
+Fifth demo: triage. [[slnc 400]] On the left, the input: seven findings, six real and one false, and exit code one. [[slnc 300]] The build fails. [[slnc 700]]
+In the middle, the suppression for the false one, in three parts. [[slnc 300]] Which rule. [[slnc 300]] Why: the column is checked against an allowlist. [[slnc 300]] And who owns the decision: the payments team. [[slnc 700]]
+On the right, the result. [[slnc 300]] Six findings remain, and the build still fails, because they are real. [[slnc 300]] A second suppression with no reason is caught by the build check. [[slnc 300]] And a file with no flaw passes, with exit code zero.
 """
 speech = """
-Fourth demo: triage. [[slnc 400]] Seven findings, one false. [[slnc 600]] Suppress it with a reason and an owner, and fail the build on a suppression without them.
+Before the suppression: seven findings, six real and one false, exit code one. [[slnc 300]] The suppression, in three parts: the rule, why, and the owner. [[slnc 400]] After it: six findings, and the build still fails on the real flaws. [[slnc 300]] One suppression, well written. [[slnc 400]] A second one with no reason: two suppressions, one well written, and the check fails.
+[[page]]
+A file with no flaw: zero findings, exit code zero, and the build passes.
 """
 rows = { triage = "active ok" }
 console = [
-    ["findings: 7 (6 real, 1 false), exit 1", "bad"],
-    ["suppression with a reason: 6 findings", "ok"],
-    ["suppression with no reason: check fails", "ok"],
+    ["BEFORE THE SUPPRESSION (semgrep --error):", "code"],
+    ["  findings 7 (6 real, 1 false), exit code 1: the build fails", "bad"],
+    ["THE SUPPRESSION (a comment above AccountController line 56):", "code"],
+    ["  rule   nosemgrep: rules.sql-taint", "muted"],
+    ["  why    -- the column is checked against an allowlist above", "muted"],
+    ["  owner  (owner: payments-team)", "muted"],
+    ["AFTER THE SUPPRESSION:", "code"],
+    ["  findings 6, exit code 1: the real flaws still fail the build", "bad"],
+    ["  suppressions 1, well written 1", "ok"],
+    ["A SECOND SUPPRESSION, WITH NO REASON (above line 20):", "code"],
+    ["  // nosemgrep: rules.sql-taint", "muted"],
+    ["  suppressions 2, well written 1, the build check fails: yes", "bad"],
+    ["---", ""],
+    ["A FILE WITH NO FLAW (Validate.java):", "code"],
+    ["  findings 0, exit code 0: the build passes", "ok"],
 ]
 
-[[act]]
-title = "The bill"
-summary = "A taint rule follows input inside a method; the sink in another file is missed."
-detail = """
-A rule knows only its sources, sinks and sanitizers, so a check it does not know looks like no check. A rule without a test is a guess. The reports are a list for people to read, not a verdict.
-"""
-speech = """
-Fifth demo: the bill. [[slnc 400]] A rule sees what it was taught. [[slnc 600]] Test it, own it, and know what it cannot see.
-"""
-rows = { bill = "active wrong" }
-console = [
-    ["the sink in another file is missed", "bad"],
-    ["an allowlist is invisible to a rule", "bad"],
-    ["a rule without a test is a guess", "bad"],
-]
+[highlight]
+console_green = ["WHAT SEMGREP", "AFTER THE SUPPRESSION", "A FILE WITH NO FLAW", "BEFORE THE CHANGE"]
+console_rose = ["AFTER THE CHANGE", "BEFORE THE SUPPRESSION", "A SECOND SUPPRESSION", "WHY LINE"]
+console_amber = ["HOW THE TAINT", "HOW THE SCORE", "BY CLASS", "THE SUPPRESSION", "THE CHANGE"]
+console_cyan = ["THE CODE", "THE RULE", "THE 8 SQL", "WHAT THEY REPORT", "THE TEST FILE"]
 
 [animation]
 subtitle = "A bank's code, read by rules."
 boxes = [
-    ["code", "The code under test", "7 and 7"],
+    ["path", "One flaw, as a taint rule sees it", "source to sink"],
     ["taint", "Pattern against taint", "4/4 and 3/4"],
+    ["classes", "Every flaw class with the taint rules", "6 of 7"],
     ["tests", "Tests for the rules", "4/4, then 3/4"],
     ["triage", "Triage", "7 to 6"],
-    ["bill", "The bill", "own file only"],
 ]
 
 [docs.problem]
@@ -221,7 +362,7 @@ nongoals = [
 problem = """
 Static analysis tools report a lot, rules are written without tests, and nobody measures what they miss.
 """
-roles = [["The planted truth", "`Marker`"], ["The scan and the rule tests", "`Semgrep`"], ["The scoring", "`Score`"], ["The suppression check", "`Suppressions`"], ["The tool install", "`Venv`"], ["Entry point", "`SastDemo`"]]
+roles = [["The planted truth", "`Marker`"], ["The scan and the rule tests", "`Semgrep`"], ["The scoring", "`Score`"], ["A rule's patterns, and taint followed by hand", "`RuleFile`, `TaintSteps`"], ["The suppression check", "`Suppressions`"], ["The tool install", "`Venv`"], ["Entry point", "`SastDemo`"]]
 requirements = [
     "Every flaw and every safe look-alike is marked in the code under test.",
     "Pattern and taint rules are scored on the same lines.",
@@ -376,7 +517,7 @@ residual = "A reason that is not true"
 
 [poster]
 headline = [["STATIC", "text"], ["ANALYSIS", "accent"]]
-taglines = [["Write static analysis rules for a bank's Java code, compare a pattern rule with a taint ru", "gold"]]
+taglines = [["Pattern and taint rules, rule tests and triage", "gold"]]
 before = { code = "pattern rule: 3 of 4 safe lines flagged", note = "Pattern against taint", tag = "BEFORE" }
 after = { code = "taint rule: 1 of 4 safe lines flagged", note = "Taint", tag = "AFTER" }
 
@@ -392,6 +533,29 @@ kind = "bullets"
 title = "The Scenario"
 body = ["A bank's small web application,", "with 7 planted flaws and", "7 safe look-alikes, each marked", "in a comment, so a rule can be scored.", "", "The demo runs pattern rules and taint rules,", "tests the rules, and triages the findings."]
 narration = "Here is the scenario. [[slnc 400]] A bank's small web application has seven planted flaws, and seven safe lines that look like them. [[slnc 500]] Each one is marked in a comment, so every rule can be scored: what it found, what it missed, and what it flagged by mistake. [[slnc 500]] The demo runs a pattern rule and a taint rule with Semgrep, tests the rules themselves, and triages the findings."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Static analysis: reading code without running it", "Rule: what a scanner looks for", "Pattern rule: a shape of code", "Taint rule: input followed from a source to a sink", "Sanitizer: a call that makes the input safe", "Finding: a line a rule flags; false alarm: a safe one"]
+narration = """Before the demos, the words. [[slnc 500]] Static analysis reads the code without running it. [[slnc 500]] A rule says what the scanner looks for. [[slnc 500]] A pattern rule looks for a shape of code, like a query built with a plus sign. [[slnc 500]] A taint rule follows input from a source, where it enters, to a sink, where it can hurt. [[slnc 500]] A sanitizer is a call on the way that makes the input safe, like parsing it as a number. [[slnc 500]] A finding is a line a rule flags; when the line is safe, it is a false alarm."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-two-readers"
+kind = "figure"
+title = "One safe line, read by two rules"
+body = "two_readers"
+narration = """Let's see the core idea on one example: a safe line, read by both kinds of rule. [[slnc 400]] At the top, the input: two lines. [[slnc 300]] A number is parsed from the request, then glued into a query. [[slnc 700]]
+On the left, the pattern rule. [[slnc 300]] It sees execute query with a plus sign in it, and that is all it looks for. [[slnc 300]] So it flags the line: a false alarm. [[slnc 700]]
+On the right, the taint rule. [[slnc 300]] It sees the input come from the request, the source. [[slnc 300]] But on the way, integer parse int turns it into a number, and a number cannot carry S Q L. [[slnc 300]] That call is a sanitizer, so the rule stays quiet. [[slnc 600]]
+Same line, two rules: one looks at shapes, the other follows the data."""
 
 [[scene]]
 key = "03-acts"
@@ -410,8 +574,8 @@ narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] P
 key = "05-roles"
 kind = "bullets"
 title = "Who Does What"
-body = ["Marker: reads the flaw and safe marks", "Semgrep, Venv: runs Semgrep", "Score: found, missed, and false alarms", "Suppressions: checks every nosemgrep has a", "  reason and an owner", "SastDemo: runs the demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Marker reads the marks that say which lines are flaws, and which are safe. [[slnc 500]] Semgrep runs the real Semgrep, with the rules and their tests. [[slnc 300]] Score counts what each rule found, missed, and flagged by mistake. [[slnc 500]] Suppressions checks that every suppressed finding says why, and who owns it. [[slnc 300]] And SastDemo runs the demos."
+body = ["Marker: reads the flaw and safe marks", "Semgrep, Venv: runs Semgrep", "RuleFile, TaintSteps: a rule, followed by hand", "Score: found, missed, and false alarms", "Suppressions: checks every nosemgrep has a", "  reason and an owner", "SastDemo: runs the demos"]
+narration = "Here is who does what in the code. [[slnc 400]] Marker reads the marks that say which lines are flaws, and which are safe. [[slnc 500]] Semgrep runs the real Semgrep, with the rules and their tests. [[slnc 300]] RuleFile reads a rule, and TaintSteps follows the taint by hand. [[slnc 300]] Score counts what each rule found, missed, and flagged by mistake. [[slnc 500]] Suppressions checks that every suppressed finding says why, and who owns it. [[slnc 300]] And SastDemo runs the demos."
 
 [[scene]]
 key = "06-recognise"
@@ -428,9 +592,126 @@ body = ["Taint rules for injection; patterns for the rest", "Score rules on plan
 narration = "So, how do you use it? [[slnc 400]] Use taint rules for injection, and pattern rules for simple shapes like a weak hash. [[slnc 500]] Score your rules on planted flaws and safe look-alikes. [[slnc 300]] Give every rule a test. [[slnc 500]] Suppress a finding only with a reason and an owner, and make the build check it. [[slnc 300]] And write down what the rules cannot see, like a flow across files."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a header as a source,", "and a test for it."]
 narration = "That's static analysis with Semgrep. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rule is code: score it on flaws and look-alikes, test it, give every suppression a reason, and be honest about what it cannot see. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a request header as a source of tainted input, and a test for it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Semgrep does the scanning; the classes score it against the truth written in the code, and a small teaching class redoes the taint by hand. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Marker"
+what = "the truth about a line, written in a comment"
+[[class.part]]
+title = "// VULN or // SAFE, and an id"
+code = """
+private static final Pattern MARK = Pattern.compile("// (VULN|SAFE) ([a-z-]+)");
+...
+markers.add(new Marker(p.getFileName().toString(), i + 1, m.group(1).equals("VULN"), m.group(2)));
+"""
+speech = """Every planted flaw and every safe look-alike ends in a comment. [[slnc 300]] Marker reads them, with the file and the line, so any finding can be checked against the truth."""
+
+[[class]]
+name = "Score"
+what = "found, missed and flagged, per rule"
+[[class.part]]
+title = "compare findings with markers"
+code = """
+List<Marker> found = mine.stream().filter(m -> m.vulnerable() && hits.contains(m.key())).toList();
+List<Marker> missed = mine.stream().filter(m -> m.vulnerable() && !hits.contains(m.key())).toList();
+List<Marker> flagged = mine.stream().filter(m -> !m.vulnerable() && hits.contains(m.key())).toList();
+"""
+speech = """A flaw with a finding on its line is found; without one, it is missed. [[slnc 300]] A safe line with a finding is flagged: a false alarm."""
+[[class.part]]
+title = "recall and precision"
+code = """
+return ratio(found.size(), vulnerable());
+...
+return ratio(found.size(), found.size() + flaggedSafe.size());
+"""
+speech = """Recall divides the flaws found by all the flaws. [[slnc 300]] Precision divides them by everything the rule flagged."""
+
+[[class]]
+name = "TaintSteps"
+what = "a teaching class: taint followed by hand"
+[[class.part]]
+title = "assigned from a tainted value, tainted"
+code = """
+String from = line.contains("." + source + "(") ? "the source" : tainted.stream().filter(v -> line.matches(".*\\\\b" + v + "\\\\b.*")).findFirst().orElse(null);
+if (a.find() && from != null) {
+    tainted.add(a.group(1));
+"""
+speech = """A variable assigned from the source, or from a tainted variable, becomes tainted. [[slnc 300]] When the sink is called with one, that is a finding. [[slnc 300]] A test checks the three steps of the first demo."""
+
+[[class]]
+name = "Semgrep"
+what = "runs the real semgrep and reads its JSON"
+[[class.part]]
+title = "a scan, with --error for the build"
+code = """
+command.addAll(List.of("--json", "--metrics=off", "--disable-version-check", "--quiet"));
+if (error) {
+    command.add("--error");
+"""
+speech = """Rules come from local files, with metrics off. [[slnc 300]] With the error flag, any finding makes the exit code one, which fails a build."""
+[[class.part]]
+title = "expected against reported lines"
+code = """
+m.path("expected_lines").forEach(n -> expected.add(n.asInt()));
+m.path("reported_lines").forEach(n -> reported.add(n.asInt()));
+"""
+speech = """semgrep test prints, for each rule, the lines its test file expects and the lines it reported. [[slnc 300]] A check passes when they are the same."""
+
+[[class]]
+name = "Suppressions"
+what = "a suppression must name the rule, the reason and the owner"
+[[class.part]]
+title = "the shape of a good one"
+code = """
+private static final Pattern GOOD = Pattern.compile(
+        "nosemgrep: [\\\\w.-]+ -- .{10,} \\\\(owner: [\\\\w-]+\\\\)");
+"""
+speech = """The rule's name, two dashes and a reason of at least ten characters, then an owner in brackets. [[slnc 300]] A build check counts every no semgrep comment that does not match."""
+
+[[acronym]]
+short = "SAST"
+long = "Static Application Security Testing: reading code without running it"
+say = "S A S T is static application security testing: reading the code for flaws without running it."
+[[acronym]]
+short = "SQL"
+long = "Structured Query Language: the language of database queries"
+say = "S Q L is structured query language, the language of database queries."
+[[acronym]]
+short = "VULN, SAFE"
+long = "the markers: a planted flaw (vulnerability), a safe look-alike"
+say = "VULN marks a planted flaw, a vulnerability. SAFE marks a safe line that looks like one."
+[[acronym]]
+short = "YAML"
+long = "YAML Ain't Markup Language: the format of the rule files"
+say = "YAML is the text format of the rule files."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: what Semgrep prints"
+say = "jay son is JavaScript object notation, the format Semgrep prints its results in."
+[[acronym]]
+short = "MD5, SHA-1"
+long = "Message Digest 5; Secure Hash Algorithm 1: broken hashes"
+say = "M D five is message digest five, and S H A one is secure hash algorithm one. Both are broken as hashes."
+[[acronym]]
+short = "CWE"
+long = "Common Weakness Enumeration: the catalogue of flaw types"
+say = "C W E is the common weakness enumeration, a numbered catalogue of flaw types. C W E 89 is S Q L injection."
+[[acronym]]
+short = "OK"
+long = "a test-file mark: this line must not be flagged"
+say = "In a test file, o k marks a line the rule must not flag."

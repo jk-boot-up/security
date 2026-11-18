@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs git and gitleaks. Cluster, registry and image names are never printed. */
+/** The demo must print exactly the golden output. Needs git and the pinned gitleaks release (downloaded once). Paths and whole keys are never printed. */
 @Tag("integration")
 class DemoRunsTest {
 

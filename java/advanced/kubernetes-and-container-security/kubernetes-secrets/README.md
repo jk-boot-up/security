@@ -2,11 +2,12 @@
 
 ```
 src/main/java/com/jk/explore/security/k8ssecrets/
+├── Base64Steps.java            A teaching class: undoes one group of base64 by hand, to show that no key is involved
 ├── Cluster.java                A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
 ├── Encryption.java             The EncryptionConfiguration file the API server reads, and the marker that an encrypted value carries in etcd
 ├── Http.java                   An HTTP answer from OpenBao: the status code and the JSON body (empty when there is none)
 ├── Jwt.java                    The claims of a ServiceAccount token
-├── KubernetesSecretsDemo.java  Whether every Secret that etcd holds is encrypted
+├── KubernetesSecretsDemo.java  "k of n": how many of the Secrets that etcd holds are encrypted
 ├── Manifests.java              The Kubernetes objects of the demo, as text
 ├── OpenBao.java                Sets up OpenBao in the cluster (policy, Kubernetes login) and talks to it from a pod, the way an application would
 ├── Sh.java                     Runs a program and returns what it printed, whether it worked or not
@@ -46,11 +47,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Base64 is not encryption | A Secret's value decodes with no key and a role that may only list secrets reads it. |
-| 2. Raw etcd, before | Read with etcdctl, the stored value holds the key as plain text. |
-| 3. Encryption at rest | After a restart with aescbc only new secrets are encrypted; a rewrite encrypts the rest. |
-| 4. OpenBao and a 10 second token | The password is outside Kubernetes; a pod logs in with its ServiceAccount token and gets 10 seconds. |
-| 5. A bound ServiceAccount token | A token tied to a pod and an audience for 600 seconds, against the old token Secret that never expires. |
+| 1. Base64 is not encryption | The card key comes back from the API as base64, ZGVtby1jYXJk..., which decodes with no key: four characters are four places in a fixed alphabet, 24 bits, three bytes. The auditor, who may only list secrets, reads it (yes); an account with no rule cannot (no). |
+| 2. Raw etcd, before encryption | etcdctl reads /registry/secrets/payments/card-key straight out of etcd: the value starts with k8s and a zero byte, and the card key is there as plain text, behind the bytes 0a 03 'key' 12 17, where 0x17 = 23 is its length. 0 of 2 secrets are encrypted. |
+| 3. Encryption at rest | The API server restarts with an EncryptionConfiguration: aescbc with a 32-byte key1 first, identity second. card-key, written before, stays plain; card-key-2 is stored as k8s:enc:aescbc:v1:key1 and bytes that look random (1 of 3). After kubectl replace of every secret: 3 of 3, the card key nowhere in etcd. The key is a file on the node and the auditor still reads the value. |
+| 4. OpenBao and a 10 second token | OpenBao holds the database password (in no Secret, not in etcd). Its role lets only payments/payments-app log in, with audience openbao, for 10 seconds. The pod sends its token (sub system:serviceaccount:payments:payments-app): HTTP 200, a token of 10 seconds; it reads the password (200); 12 seconds later 12 > 10, HTTP 403; other-app gets HTTP 403. |
+| 5. A bound ServiceAccount token | kubectl create token gives a token whose claims are read with no key: exp - iat = 600 seconds, audience openbao, pod report-job. The old token Secret has 6 claims, no exp and no aud: it never expires. While report-job runs the API server accepts both; once the pod is deleted, the bound token is refused (no) and the old one still accepted (yes). |
 
 ## Test
 
@@ -58,7 +59,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-14 tests in `DemoRunsTest`, `HttpAndManifestsTest`, `JwtTest`, `StoredAndEncryptionTest`. The token reader, the etcd value check, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
+18 tests in `DemoRunsTest`, `HttpAndManifestsTest`, `JwtTest`, `StoredAndEncryptionTest`, `TeachingStepsTest`. The token reader, the etcd value check, the base64 steps, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest) from a kind node image pinned by digest.
 
 ## What the simulation got right, and what it left out
 

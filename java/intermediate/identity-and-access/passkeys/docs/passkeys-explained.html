@@ -27,34 +27,38 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 with the site's own name and the page's real origin, so the key cannot be used anywhere else.</p>
 <h2>The 5 acts</h2>
 <h3>1. Registering a passkey: the bank keeps only a public key</h3>
-<p>The bank sends a challenge of 32 random bytes and its relying party id, bank.example. Ana's phone makes a new P-256 key pair for bank.example,
-keeps the private key, and returns a credential id of 16 bytes and a public key of 91 bytes. The bank checks the challenge, the type, the origin
-and the relying party id hash, and registers the passkey. What it stores is a credential id, the public key and a counter of 0: nothing that can
+<p>The request: a challenge of 32 random bytes, sent as 43 base64url characters, and the relying party id bank.example. The browser, not the page,
+writes the client data: the type webauthn.create, the challenge and the origin https://bank.example. The response: Ana's phone makes a new P-256
+key pair for bank.example, keeps the private key, and returns a credential id of 16 bytes and a public key of 91 bytes. The bank checks the
+challenge, the type, the origin and the relying party id hash, and stores a credential id, the public key and a counter of 0: nothing that can
 sign. An answer made with another key under Ana's credential id, as someone holding a copy of the bank's records might try, is refused: the
 signature does not match.</p>
 <h3>2. Signing in: a fresh challenge, signed once</h3>
-<p>Ana touches her phone, which signs 37 bytes of authenticator data and the SHA-256 of the client data. The bank checks the challenge, the type, the
-origin, the relying party id hash, the flags, the signature and the counter, and Ana is signed in. The same answer sent again is refused: its
-challenge was single-use. An answer that arrives 301 seconds after its challenge is refused: challenges last five minutes. And an answer whose
-user-verified flag was switched on after signing is refused, because the flags are inside the signed bytes.</p>
+<p>A fresh 32-byte challenge. Step one: the browser writes 133 bytes of client data with the type webauthn.get, the challenge and the origin.
+Step two: the SHA-256 of those bytes, 32 bytes. Step three: the phone writes 37 bytes of authenticator data: the SHA-256 of bank.example, a flags
+byte 01 (user present, not verified) and a counter of 1. Step four: the signed bytes are the authenticator data followed by the client data hash,
+37 + 32 = 69 bytes. Step five: the phone signs them with its private key (ES256), a 71-byte signature. The bank checks the signature with the
+stored public key over the same 69 bytes, then every other field, and Ana is signed in. The same answer sent again is refused (its challenge was
+single-use), an answer 301 seconds after its challenge is refused (the limit is 300), and an answer whose flags were changed from 01 to 05 after
+signing is refused: the flags are inside the signed bytes.</p>
 <h3>3. A look-alike site gets nothing it can use</h3>
-<p>Ana opens https://bank-example.test, a copy of the bank's page. It asks for a passkey for its own name, bank-example.test, and gets nothing: the
-phone has no passkey for that name. It passes on the bank's real challenge and asks for bank.example, and gets nothing: the browser will not use
-bank.example for a page at bank-example.test. Even a browser that skipped that rule writes the page's real origin into the client data, and the
-bank refuses it: the origin is not https://bank.example. The same page asking for Ana's password gets a password that works at the bank. A password
-can be phished; a passkey cannot.</p>
+<p>Ana opens https://bank-example.test, a copy of the bank's page. Request one asks for a passkey for its own name, bank-example.test, and gets
+nothing: the phone has no passkey for that name. Request two passes on the bank's real challenge and asks for bank.example. The browser works out
+its rule: is bank-example.test equal to bank.example? No. Does it end with .bank.example? No. So bank.example is not this page's site, and nothing
+comes back. Request three: even a browser that skipped that rule writes the page's real origin, https://bank-example.test, into the signed client
+data, and the bank, which expects https://bank.example, refuses it. The same page asking for Ana's password gets a password that works at the bank.</p>
 <h3>4. User verification for payments, and counters against copies</h3>
-<p>A payment of 900 with only a touch is refused: payments need user verification. With Ana's fingerprint as well, it is accepted. Ana's phone counts
-its signatures, and the bank has now seen counter 6. An attacker copies the phone's key. The real phone signs in first, with counter 7. Then the copy
-signs in with counter 7, which is not above 7, and is refused as a possible cloned authenticator; the passkey is suspended until Ana confirms it,
-even for the real phone. A synced passkey, shared between Ana's devices, reports counter 0 every time and is accepted: a copy of it cannot be spotted
-by its counter, so its protection is the account it syncs through.</p>
+<p>A payment of 900 asks for user verification. With only a touch, the flags byte is 01 (user present) and the payment is refused. With a fingerprint
+as well, the flags byte is 05 (01 for present plus 04 for verified) and it is accepted. The bank has now seen counter 6. An attacker copies the
+phone's key. The real phone signs with counter 7: 7 is above 6, accepted. The copy signs with counter 7: 7 is not above 7, refused as a possible
+cloned key, and the passkey is suspended, so even the real phone with counter 8 is refused until Ana confirms it. A synced passkey, shared between
+Ana's devices, reports counter 0 every time and is accepted: a copy of it cannot be spotted by its counter.</p>
 <h3>5. The bill: recovery, lost devices and the move away from passwords</h3>
-<p>Ben registers 2 passkeys, his phone and a security key, and keeps 1 recovery code of 20 characters. His phone is lost, and his new laptop has no
-passkey yet. The security key from his drawer signs him in. The recovery code works once and is refused the second time. Recovery is now the
-weakest way in, so it needs the same care as the passkeys themselves. And Ana's password still works alongside her passkeys: the weakest way in
-sets the level. Once Ana has two passkeys and the bank switches her password off, the password is refused. A real bank uses a maintained WebAuthn
-library, which is the <code>-with-spring-security</code> version.</p>
+<p>Ben registers 2 passkeys, his phone and a security key, and keeps 1 recovery code of 20 characters, of which the bank keeps only the SHA-256.
+His phone is lost, and his new laptop has no passkey for bank.example. The security key from his drawer signs him in. The recovery code works once
+and is refused the second time. Recovery is now the weakest way in, so it needs the same care as the passkeys themselves. Ana's old password, still
+switched on, is accepted: the weakest way in sets the level. Once Ana has two passkeys and the bank switches her password off, it is refused. A real
+bank uses a maintained WebAuthn library, which is the <code>-with-spring-security</code> version.</p>
 <h2>The verdict</h2>
 <p>Offer passkeys as the main way in, with a maintained library making the checks. Require user verification for payments and changes to the account.
 Encourage two passkeys per customer, issue one-time recovery codes, guard the recovery flow, and switch passwords off once they are no longer needed.</p>

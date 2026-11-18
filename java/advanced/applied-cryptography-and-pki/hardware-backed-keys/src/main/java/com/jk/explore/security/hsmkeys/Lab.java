@@ -62,6 +62,11 @@ final class Lab implements AutoCloseable {
         throw new IllegalStateException("SoftHSM2 is not installed (brew install softhsm)");
     }
 
+    /** The SoftHSM2 version, printed by the demo: the golden output was made with 2.7.0, so another version fails DemoRunsTest. */
+    String version() throws IOException, InterruptedException {
+        return Sh.run(null, env(), "", List.of("softhsm2-util", "--version")).output().strip();
+    }
+
     Map<String, String> env() {
         return Map.of("SOFTHSM2_CONF", softhsmConf.toString());
     }

@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -67,6 +69,18 @@ final class SecretScanner {
     /** Values such as ${DB_PASSWORD} or file references are where a secret is read from, not the secret itself. */
     static boolean isPlaceholder(String value) {
         return value.startsWith("${") || value.startsWith("file:") || value.equalsIgnoreCase("changeme-at-runtime");
+    }
+
+    /**
+     * The groups the entropy sum is worked out over: for each count n, how many distinct characters occur n times.
+     * Each of those characters adds (n / length) x log2(length / n) bits.
+     */
+    static SortedMap<Integer, Integer> charactersByCount(String s) {
+        SortedMap<Integer, Integer> perChar = new TreeMap<>();
+        s.chars().forEach(c -> perChar.merge(c, 1, Integer::sum));
+        SortedMap<Integer, Integer> groups = new TreeMap<>();
+        perChar.values().forEach(n -> groups.merge(n, 1, Integer::sum));
+        return groups;
     }
 
     /** Shannon entropy in bits per character. */

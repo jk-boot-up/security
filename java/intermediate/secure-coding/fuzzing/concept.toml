@@ -70,122 +70,257 @@ test_note = "The fuzzer is seeded, so the tests check exact crash signatures and
 
 [[act]]
 title = "The example tests pass"
-summary = "Both parsers pass all 6 of their example tests, yet a line with only a product code crashes the order parser with an ArrayIndexOutOfBoundsException."
+summary = "Both parsers pass all 6 of their example tests, SHO-1042,2,8990 gives 2 x 8990 = 17980 cents, yet a line with only a product code, SHO-1042, crashes the order parser with an ArrayIndexOutOfBoundsException."
 detail = """
-The store's two parsers, for order import lines and for carts, pass all 6 of their 6 example tests: SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid.
-But a line with only a product code, "SHO-1042", crashes the order parser with an ArrayIndexOutOfBoundsException: an input nobody wrote a test for. A parser may refuse input; anything else it throws is a bug.
+The input is six example tests: two order lines, a word where a number should be, two carts and a broken cart. The result: all 6 pass. SHO-1042,2,8990 splits into three fields, and the total is 2 x 8990 = 17980 cents.
+Then the input nobody wrote a test for: "SHO-1042", a line with only a product code. split(",") gives one field, the code reads fields[1], and the result is an ArrayIndexOutOfBoundsException in OrderLine.parseCareless. A parser may refuse input; anything else it throws is a bug.
+"""
+figure = "examples_pass"
+figure_title = "Six example tests pass; one line nobody tested crashes"
+figure_speech = """
+First demo: the example tests pass. [[slnc 400]] On the left, the six example tests the store wrote. [[slnc 300]] Two order lines, which give the right totals. [[slnc 300]] A word where a number should be, which is refused. [[slnc 300]] Two carts, which parse, and a broken cart, which is refused. [[slnc 300]] All six pass. [[slnc 700]]
+On the right, an input nobody wrote a test for: a line with only a product code. [[slnc 300]] The parser splits the line at each comma. [[slnc 300]] That gives one field. [[slnc 300]] But the code reads the second field, which is missing. [[slnc 600]]
+The result is an array index out of bounds exception. [[slnc 300]] Refusing the line would be fine. [[slnc 300]] An exception like this is a bug.
 """
 speech = """
-First demo: the example tests pass. [[slnc 400]] The store has two parsers, one for order lines and one for carts. [[slnc 300]] All six example tests pass. [[slnc 600]]
-A normal order line gives the right total. [[slnc 300]] A word where a number should be is refused, as it should be. [[slnc 600]]
-But a line with only a product code crashes the parser. [[slnc 300]] Nobody wrote a test for that. [[slnc 600]]
-A parser may refuse input. [[slnc 300]] Anything else it throws is a bug.
+Here is the real output. [[slnc 400]] The six example tests, each with its input and its result. [[slnc 300]] Six of six pass. [[slnc 400]] How the total is made: the line has three fields, the code, the quantity and the price in cents. [[slnc 300]] Two times eight thousand nine hundred and ninety is seventeen thousand nine hundred and eighty cents.
+[[page]]
+The input nobody wrote a test for: just the product code. [[slnc 300]] The result: one field, and the code reads the second one. [[slnc 300]] So it crashes in parse careless. [[slnc 400]] The rule: a parser may refuse input. [[slnc 300]] Anything else it throws is a bug.
 """
 rows = { examples = "active wrong" }
 console = [
-    ["the store's two parsers, for order import lines and for carts, pass all 6 of their 6 example tests", "ok"],
-    ["SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid", "muted"],
-    ["a line with only a product code, \"SHO-1042\": crash: ArrayIndexOutOfBoundsException  <- AN INPUT NOBODY WROTE A TEST FOR", "bad"],
-    ["a parser may refuse input; anything else it throws is a bug", "amber"],
+    ["THE EXAMPLE TESTS, 6 OF 6 PASS:", "code"],
+    ["  order  \"SHO-1042,2,8990\"             total 17980 cents", "muted"],
+    ["  order  \"BAG-0007,1,4500\"             total 4500 cents", "muted"],
+    ["  order  \"SHO-1042,two,8990\"           refused (not a number)", "ok"],
+    ["  cart  \"{\"sku\":\"SHO-1042\",\"qty\":2,\"size\":\"42\"}\"  parsed", "muted"],
+    ["  cart  \"[{\"sku\":\"BAG-0007\",\"qty\":1}]\"  parsed", "muted"],
+    ["  cart  \"{\"sku\":}\"                    refused (not a value)", "ok"],
+    ["HOW THE TOTAL IS MADE (\"SHO-1042,2,8990\"):", "code"],
+    ["  fields    SHO-1042 | 2 | 8990  (code | quantity | cents)", "muted"],
+    ["  total     2 x 8990 = 17980 cents", "muted"],
+    ["THE INPUT NOBODY WROTE A TEST FOR:", "code"],
+    ["  order \"SHO-1042\"", "muted"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  fields    1 field, but the code reads fields[1]", "muted"],
+    ["  crash     ArrayIndexOutOfBoundsException", "bad"],
+    ["  in        OrderLine.parseCareless  <- A BUG", "bad"],
+    ["THE RULE:", "code"],
+    ["  a parser may refuse input; anything else it throws is a bug", "muted"],
 ]
 
 [[act]]
 title = "A mutation fuzzer"
-summary = "From 2 seeds each, 20000 runs find a missing-field crash at run 86 and an overflow at run 548 in the order parser, and 100000 runs find a stack overflow from deep nesting at run 1223 in the cart parser."
+summary = "Six kinds of change, one or two per run, from seeded random numbers. From 2 seeds, 20000 runs find a missing-field crash at run 86 and an int overflow at run 548 (999999999 x 4500 wraps to -1125730708); 100000 runs find a stack overflow at run 1223."
 detail = """
-The fuzzer flips bits, inserts, deletes and replaces characters, swaps numbers for boundary values and nests brackets deeply, with random numbers from L64X128MixRandom and seed 7, so every run finds the same crashes in the same order.
-In 20000 runs from 2 seed inputs, the order parser shows 2 distinct crashes: at run 86 an ArrayIndexOutOfBoundsException from "SHO-1042,28990", a line missing its comma, and at run 548 an IllegalArgumentException
-from "BAG-0007,999999999,4500", where the quantity times the price overflows an int into a negative total. In 100000 runs the cart parser shows 1 distinct crash: at run 1223 a StackOverflowError from an input of
-200039 characters starting with a wall of opening brackets. Each crash is a bug the example tests missed, found without anyone guessing the input.
+The fuzzer changes a seed input in one or two ways per run: it flips one bit, inserts, deletes or replaces a character, swaps a number for a boundary value (0, 1, 99, 100, 999999999, 2147483647, -1), or inserts 200000 opening brackets. Its random numbers come from L64X128MixRandom with seed 7, so every run is the same.
+The first six runs show the input before and after the change; all six are refused. A flipped bit can make an invisible control character, printed as \\x10.
+In 20000 runs the order parser crashes twice: at run 86 an ArrayIndexOutOfBoundsException from "SHO-1042,28990", a line missing its comma, and at run 548 an IllegalArgumentException in Money from "BAG-0007,999999999,4500".
+The overflow worked out: 999999999 x 4500 = 4499999995500; an int keeps the low 32 bits, 4499999995500 - 1047 x 4294967296 = 3169236588, and read as a signed int that is 3169236588 - 4294967296 = -1125730708, a negative total that Money refuses.
+In 100000 runs the cart parser overflows its stack at run 1223, on 200039 characters that start with opening brackets.
+"""
+figure = "first_runs"
+figure_title = "How the inputs are made, and how a total overflows"
+figure_speech = """
+Second demo: a mutation fuzzer. [[slnc 400]] On the left, the first six runs. [[slnc 300]] Each one takes a seed, makes one or two small changes, and runs the parser. [[slnc 300]] Replace a character, flip a bit, delete one, or swap a number for a boundary value. [[slnc 300]] All six are refused, which is fine. [[slnc 700]]
+Twenty thousand runs later, two crashes. [[slnc 300]] At run eighty six, a line missing its comma. [[slnc 300]] At run five hundred and forty eight, a huge quantity. [[slnc 700]]
+On the right, how that overflow is made. [[slnc 300]] The exact total is about four and a half trillion cents. [[slnc 300]] An int keeps only thirty two bits. [[slnc 300]] So the parser keeps the remainder after whole multiples of two to the thirty two. [[slnc 300]] Read as a signed int, that is minus one billion, one hundred and twenty five million. [[slnc 300]] A negative total, which the money class refuses with an exception.
 """
 speech = """
-Second demo: a mutation fuzzer. [[slnc 400]] It starts from two real inputs for each parser. [[slnc 300]] It flips bits, inserts and deletes characters, swaps numbers for boundary values, and nests brackets deeply. [[slnc 600]]
-Its random numbers come from a fixed seed. [[slnc 300]] So every run finds the same crashes, in the same order. [[slnc 600]]
-In twenty thousand runs, the order parser crashes in two ways. [[slnc 300]] A line missing its comma. [[slnc 300]] And a quantity so large that the total overflows, and turns negative. [[slnc 600]]
-The cart parser overflows its stack on brackets nested two hundred thousand deep. [[slnc 600]]
-Each one is a bug the example tests missed, and nobody had to guess the input.
+Here are the changes the fuzzer can make. [[slnc 300]] Flip one bit, insert, delete or replace a character. [[slnc 300]] Swap a number for a boundary value, like zero, ninety nine, or the largest int. [[slnc 300]] Or nest two hundred thousand brackets. [[slnc 300]] Its random numbers come from a fixed seed, seven, so every run is the same.
+[[page]]
+The first six runs: the change, and the input after it. [[slnc 300]] A flipped bit can make an invisible character, so it is printed as backslash x one zero. [[slnc 300]] All six are refused.
+[[page]]
+The crashes in the order lines. [[slnc 300]] Run eighty six: the missing comma. [[slnc 300]] Run five hundred and forty eight: the overflow. [[slnc 400]] Then how the overflow is made, step by step, ending at a negative number. [[slnc 300]] Money refuses it, and that exception is the crash.
+[[page]]
+And the carts: at run twelve twenty three, the parser overflows its stack, on two hundred thousand opening brackets.
 """
 rows = { blind = "active ok" }
 console = [
-    ["random numbers from L64X128MixRandom with seed 7, so every run finds the same crashes in the same order", "muted"],
-    ["order lines, careless, 20000 runs from 2 seed inputs: 2 distinct crashes", "amber"],
-    ["  run 86: ArrayIndexOutOfBoundsException in OrderLine.parseCareless, input \"SHO-1042,28990\"", "bad"],
-    ["  run 548: IllegalArgumentException in Money.<init>, input \"BAG-0007,999999999,4500\"", "bad"],
-    ["carts, careless, 100000 runs from 2 seed inputs: 1 distinct crash", "amber"],
-    ["  run 1223: StackOverflowError in CartParser, input 200039 characters starting \"[[[[[[[[[[[[\"", "bad"],
+    ["THE MUTATIONS (1 or 2 per run):", "code"],
+    ["  flip      one bit of one character", "muted"],
+    ["  insert    a random character", "muted"],
+    ["  delete    one character", "muted"],
+    ["  replace   one character by a random one", "muted"],
+    ["  number    a number becomes 0 1 99 100 999999999 2147483647 -1", "muted"],
+    ["  nest      200000 opening brackets", "muted"],
+    ["  random    L64X128MixRandom, seed 7: the same runs every time", "muted"],
+    ["---", ""],
+    ["THE FIRST RUNS (seeds \"SHO-1042,2,8990\", \"BAG-0007,1,4500\"):", "code"],
+    ["  1  replace         \"BAG|0007,1,4500\"        refused", "ok"],
+    ["  2  nest + replace  \"SHO-10...\" 200015 chars  refused", "ok"],
+    ["  3  replace         \"SHO-1M42,2,8990\"        refused", "ok"],
+    ["  4  flip + flip     \"FAG-0007,1,450\\x10\"     refused", "ok"],
+    ["  5  flip + flip     \"SHo-10\\x142,2,8990\"     refused", "ok"],
+    ["  6  delete + number  \"BA-0007,0,4500\"         refused", "ok"],
+    ["---", ""],
+    ["THE CRASHES, ORDER LINES (20000 runs, careless parser):", "code"],
+    ["  run 86    ArrayIndexOutOfBoundsException", "bad"],
+    ["            in OrderLine.parseCareless", "muted"],
+    ["            \"SHO-1042,28990\"", "muted"],
+    ["  run 548   IllegalArgumentException", "bad"],
+    ["            in Money.<init>", "muted"],
+    ["            \"BAG-0007,999999999,4500\"", "muted"],
+    ["HOW THE OVERFLOW IS MADE (999999999 x 4500):", "code"],
+    ["  exact        999999999 x 4500 = 4499999995500", "muted"],
+    ["  low 32 bits  4499999995500 - 1047 x 4294967296 = 3169236588", "muted"],
+    ["  as an int    3169236588 - 4294967296 = -1125730708", "muted"],
+    ["  Money        a total cannot be negative  <- THE CRASH", "bad"],
+    ["---", ""],
+    ["THE CRASHES, CARTS (100000 runs, careless parser):", "code"],
+    ["  run 1223  StackOverflowError", "bad"],
+    ["            in CartParser", "muted"],
+    ["            \"[[[[[[...\" 200039 chars", "muted"],
 ]
 
 [[act]]
 title = "Guided by coverage"
-summary = "Blind, 100000 runs reach 14 branches and never find the gift-message bug; guided by coverage, keeping 10 inputs, the fuzzer reaches 18 branches and finds it at run 49776."
+summary = "Blind, 100000 runs reach 14 branches and never find the gift-message bug. Guided, the fuzzer keeps 8 inputs that reached new branches, matching n, no, not, note one letter at a time, reaches 18 branches and finds the bug at run 49776: indexOf(':') is -1, so substring(1, -1) throws."
 detail = """
-The gift-message bug needs a field named note and a value starting with #: four letters and one more, all right at once. Blind, in 100000 runs, the fuzzer reaches 14 branches and never finds it.
-Guided by coverage, keeping every input that reaches a new branch, it reaches 18 branches with 10 inputs kept, and finds the bug at run 49776 with the input [{"note":"#AG-0007","qty"1}]. The parser compares the
-field name one letter at a time, so each letter matched is a new branch, and the fuzzer keeps the input that reached it. The work is counted in runs, not seconds, so the comparison is the same on every machine.
+The gift-message bug needs a field named note and a value starting with #. Blind, the fuzzer always changes a seed and keeps nothing: in 100000 runs it reaches 14 branches and never finds the bug.
+Guided by coverage, it keeps every input that reaches a branch no earlier input reached: a comma in a list at run 1162, an escape at 1486, an empty object at 2142, an empty list at 3251, then "n" matched at run 21497, "no" at 23783, "not" at 24448 and "note" at 47709. That is 18 branches and 10 inputs kept (2 seeds and 8 new).
+At run 49776 the input [{"note":"#AG-0007","qty"1}] crashes. How: the note is "#AG-0007", indexOf(':') is -1, and substring(1, -1) throws a StringIndexOutOfBoundsException in CartParser.giftMessage.
+"""
+figure = "letter_by_letter"
+figure_title = "Guidance keeps each input that matches one more letter"
+figure_speech = """
+Third demo: guided by coverage. [[slnc 400]] One bug hides behind a field named note, with a value that starts with a hash. [[slnc 300]] Blind, the fuzzer changes a seed and forgets the result. [[slnc 300]] It would need four right letters, all at once. [[slnc 300]] In a hundred thousand runs, it never gets there. [[slnc 700]]
+Guided, the fuzzer keeps every input that reaches a new branch. [[slnc 300]] The parser compares the field name one letter at a time, so each letter that matches is a new branch. [[slnc 300]] At run twenty one thousand, n matches. [[slnc 300]] Then n o, then n o t, then note. [[slnc 300]] Each kept input is the starting point for the next. [[slnc 600]]
+At run forty nine thousand, seven hundred and seventy six, the value starts with a hash, and the parser crashes. [[slnc 300]] On the right: blind reached fourteen branches, guided reached eighteen.
 """
 speech = """
-Third demo: guided by coverage. [[slnc 400]] One bug hides behind a field named note, with a value that starts with a hash. [[slnc 300]] Four letters, and one more, all right at once. [[slnc 600]]
-Blind, in a hundred thousand runs, the fuzzer never finds it. [[slnc 600]]
-Guided by coverage, the fuzzer keeps every input that reaches a branch nobody reached before. [[slnc 300]] Each letter of note that matches is a new branch. [[slnc 300]] So it creeps forward, one letter at a time. [[slnc 600]]
-It finds the bug at run forty nine thousand, seven hundred and seventy six. [[slnc 300]] The work is counted in runs, not seconds, so the comparison is the same on every machine.
+The target: a field named note, and a value starting with a hash. [[slnc 300]] Blind, a hundred thousand runs: fourteen branches, and the bug is not found.
+[[page]]
+Guided: the inputs kept, each with the branch it reached first. [[slnc 300]] A comma in a list, an escape, an empty object, an empty list. [[slnc 300]] Then the field name, letter by letter. [[slnc 400]] Eighteen branches, ten inputs kept. [[slnc 300]] Found at run forty nine thousand, seven hundred and seventy six.
+[[page]]
+How the crash is made. [[slnc 300]] The note is hash A G dash zero zero zero seven. [[slnc 300]] It has no colon, so index of colon is minus one. [[slnc 300]] And substring from one to minus one throws an exception.
 """
 rows = { guided = "active ok" }
 console = [
-    ["the gift-message bug needs a field named note and a value starting with #: four letters and one more, all right at once", "muted"],
-    ["blind, 100000 runs: branches reached 14, gift-message bug found: false", "amber"],
-    ["guided, keeping every input that reaches a new branch: branches reached 18, inputs kept 10", "ok"],
-    ["the guided fuzzer finds it at run 49776, input \"[{\"note\":\"#AG-0007\",\"qty\"1}]\"  <- ONE LETTER AT A TIME, EACH ONE A NEW BRANCH", "ok"],
-    ["the work is counted in runs, not seconds, so the comparison is the same on every machine", "muted"],
+    ["THE TARGET, A GIFT MESSAGE:", "code"],
+    ["  needs     a field named note, a value starting with #", "muted"],
+    ["  blind     a seed changed at random, never kept", "muted"],
+    ["BLIND, 100000 RUNS:", "code"],
+    ["  branches  14", "muted"],
+    ["  found     no", "muted"],
+    ["---", ""],
+    ["GUIDED, THE INPUTS KEPT FOR A NEW BRANCH:", "code"],
+    ["  1162  \"[{\"sku\":\"BAG-0p07\",\"qty\":1},]\"   a comma in a list", "muted"],
+    ["  1486  \"[{\"sku\":\"BAG-0007\\\",\"qty\":1}]\"   an escape", "muted"],
+    ["  2142  \"[{}\"sku\":\"BAG-0007\\\",\"qty\":1}]\"  an empty object", "muted"],
+    ["  3251  \"[]\"sku\":\"BAG-0007\\\",\"qty\":1}]\"   an empty list", "muted"],
+    ["  21497  \"[{\"nku\":\"BAG-0007\",\"qty\"1}]\"     \"n\" matched", "muted"],
+    ["  23783  \"[{\"nou\":\"BAG-0007\",\"qty\"1}]\"     \"no\" matched", "muted"],
+    ["  24448  \"[{\"not\":\"BAG-0007\",\"qty\"1}]\"     \"not\" matched", "muted"],
+    ["  47709  \"[{\"note\":\"@AG-0007\",\"qty\"1}]\"    \"note\" matched, a note", "muted"],
+    ["GUIDED, 100000 RUNS:", "code"],
+    ["  branches  18, inputs kept 10 (2 seeds + 8)", "muted"],
+    ["  found     at run 49776  <- ONE LETTER AT A TIME", "bad"],
+    ["  input     \"[{\"note\":\"#AG-0007\",\"qty\"1}]\"", "muted"],
+    ["---", ""],
+    ["HOW THE CRASH IS MADE:", "code"],
+    ["  note               \"#AG-0007\"", "muted"],
+    ["  indexOf(':')       -1", "muted"],
+    ["  substring(1, -1)   StringIndexOutOfBoundsException", "bad"],
+    ["  in                 CartParser.giftMessage", "muted"],
 ]
 
 [[act]]
 title = "From crash to fix"
-summary = "Delta debugging shrinks the crashes to \"SHO-1042\", \"BAG-0007,999999999,4\" and {\"note\":\"#\"; each becomes a regression test, the fixed parsers show 0 crashes in the same runs, and 2000 of 2000 valid carts round-trip."
+summary = "Delta debugging shrinks the gift-message crash from 28 characters to 11, {\"note\":\"#\", in 7 steps; the four smallest inputs crash the careless parsers and are refused by the fixed ones, which show 0 crashes in 20000 and 100000 runs, and 2000 of 2000 valid carts round-trip."
 detail = """
-Delta debugging removes pieces of each crashing input for as long as it still crashes the same way. The missing-field crash shrinks from 14 characters to "SHO-1042", which the fixed parser refuses because a line has three fields.
-The overflow shrinks from 23 characters to "BAG-0007,999999999,4", refused because the quantity is 1 to 99. The gift-message crash shrinks from 28 characters to {"note":"#", refused because a gift message is #to:message.
-The nesting crash is kept as it is, because how deep is too deep depends on the stack; the fixed parser refuses it as nested deeper than 32. Each smallest input is now a regression test. Under the same fuzzer the
-fixed parsers show 0 crashes in 20000 runs and 0 in 100000, and a property check, parse, print and parse again, gives the same cart for 2000 of 2000 inputs the fuzzer found valid.
+Delta debugging removes pieces of a crashing input for as long as it still crashes the same way. The gift-message input shrinks 28, 21, 17, 16, 14, 13, 12 and 11 characters: {"note":"#".
+Before the fix, the four smallest inputs crash the careless parsers: "SHO-1042" with an ArrayIndexOutOfBoundsException, "BAG-0007,999999999,4" with an IllegalArgumentException, {"note":"#" with a StringIndexOutOfBoundsException, and the 200039-character nesting with a StackOverflowError.
+After the fix, the fixed parsers refuse each one: a line has three fields; quantity is 1 to 99; a gift message is #to:message; nested deeper than 32. Each smallest input is now a regression test; the nesting one is kept as it is, because how deep is too deep depends on the stack.
+Under the same fuzzer the fixed parsers show 0 crashes in 20000 runs and 0 in 100000. A property check, parse, print and parse again, gives the same cart for 2000 of 2000 valid inputs; for example [{"sk":"BAG-0007","qty":1} ] prints without the space.
+"""
+figure = "shrink_steps"
+figure_title = "Shrink each crash, then fix the parser"
+figure_speech = """
+Fourth demo: from crash to fix. [[slnc 400]] On the left, delta debugging. [[slnc 300]] It removes a piece of the crashing input, and runs it again. [[slnc 300]] If it still crashes the same way, the smaller input is kept. [[slnc 300]] First big pieces, then smaller ones. [[slnc 300]] Twenty eight characters become eleven: just a note that is a hash. [[slnc 700]]
+On the right, before and after the fix. [[slnc 300]] Each smallest input crashes the careless parser, in red. [[slnc 300]] The fixed parser checks the number of fields, the ranges, the gift message and the depth. [[slnc 300]] So it refuses every one, in green. [[slnc 600]]
+Each smallest input becomes a regression test. [[slnc 300]] And under the same fuzzer, the fixed parsers do not crash at all.
 """
 speech = """
-Fourth demo: from crash to fix. [[slnc 400]] Delta debugging removes pieces of each crashing input, for as long as it still crashes the same way. [[slnc 600]]
-The missing field shrinks to just the product code. [[slnc 300]] The overflow shrinks to a huge quantity and a price of four. [[slnc 300]] The gift message shrinks to a note that is only a hash. [[slnc 600]]
-Each smallest input becomes a regression test. [[slnc 300]] So the bug cannot come back unnoticed. [[slnc 600]]
-The fixed parsers check the number of fields, the ranges, the depth, and the gift message. [[slnc 300]] Under the same fuzzer, they do not crash at all. [[slnc 600]]
-And a property check confirms that parsing, printing and parsing again gives the same cart, every time.
+The shrinking, step by step: each line is shorter, and still crashes the same way. [[slnc 300]] It ends at eleven characters.
+[[page]]
+Before the fix: the four smallest inputs, and the exception each one throws. [[slnc 300]] After the fix: the same inputs, each one refused, with a reason. [[slnc 300]] Each is now a regression test.
+[[page]]
+The fixed parsers under the same fuzzer: zero crashes. [[slnc 400]] And a property check: parse, print, and parse again. [[slnc 300]] The example has a space before the closing bracket, which printing drops. [[slnc 300]] The cart is the same for two thousand of two thousand inputs.
 """
 rows = { fix = "active ok" }
 console = [
-    ["ArrayIndexOutOfBoundsException: 14 characters made smallest, \"SHO-1042\"; fixed: refused (a line has three fields)", "ok"],
-    ["IllegalArgumentException in Money.<init>: 23 characters made smallest, \"BAG-0007,999999999,4\"; fixed: refused (quantity is 1 to 99)", "ok"],
-    ["StringIndexOutOfBoundsException in CartParser.giftMessage: 28 characters made smallest, \"{\"note\":\"#\"\"; fixed: refused (a gift message is #to:message)", "ok"],
-    ["the nesting crash: the fixed parser says refused (nested deeper than 32)", "ok"],
-    ["the fixed parsers under the same fuzzer: 0 crashes in 20000 runs, and 0 in 100000", "ok"],
-    ["a property check: parse, print and parse again gives the same cart for 2000 of 2000 inputs the fuzzer found valid", "ok"],
+    ["HOW DELTA DEBUGGING SHRINKS THE GIFT-MESSAGE CRASH:", "code"],
+    ["  28  \"[{\"note\":\"#AG-0007\",\"qty\"1}]\"", "muted"],
+    ["  21  \"[{\"note\":\"#AG-qty\"1}]\"", "muted"],
+    ["  17  \"[{\"note\":\"#Ay\"1}]\"", "muted"],
+    ["  16  \"[{\"note\":\"#Ay\"1}\"", "muted"],
+    ["  14  \"[{\"note\":\"#Ay\"\"", "muted"],
+    ["  13  \"{\"note\":\"#Ay\"\"", "muted"],
+    ["  12  \"{\"note\":\"#y\"\"", "muted"],
+    ["  11  \"{\"note\":\"#\"\"  <- STILL CRASHES", "bad"],
+    ["---", ""],
+    ["BEFORE THE FIX (the smallest inputs, careless parsers):", "code"],
+    ["  \"SHO-1042\"               ArrayIndexOutOfBoundsException", "bad"],
+    ["  \"BAG-0007,999999999,4\"   IllegalArgumentException", "bad"],
+    ["  \"{\"note\":\"#\"\"            StringIndexOutOfBoundsException", "bad"],
+    ["  \"[[[[[[...\" 200039 chars  StackOverflowError", "bad"],
+    ["AFTER THE FIX (the same inputs, fixed parsers):", "code"],
+    ["  \"SHO-1042\"               refused (a line has three fields)", "ok"],
+    ["  \"BAG-0007,999999999,4\"   refused (quantity is 1 to 99)", "ok"],
+    ["  \"{\"note\":\"#\"\"            refused (a gift message is #to:message)", "ok"],
+    ["  \"[[[[[[...\" 200039 chars  refused (nested deeper than 32)", "ok"],
+    ["  each one is now a regression test (the nesting one as it is)", "muted"],
+    ["---", ""],
+    ["THE FIXED PARSERS UNDER THE SAME FUZZER:", "code"],
+    ["  order lines  0 crashes in 20000 runs", "bad"],
+    ["  carts        0 crashes in 100000 runs", "bad"],
+    ["A PROPERTY CHECK, PARSE, PRINT AND PARSE AGAIN:", "code"],
+    ["  input     \"[{\"sk\":\"BAG-0007\",\"qty\":1} ]\"", "muted"],
+    ["  printed   \"[{\"sk\":\"BAG-0007\",\"qty\":1}]\"", "muted"],
+    ["  same cart for 2000 of 2000 inputs the fuzzer found valid", "ok"],
 ]
 
 [[act]]
 title = "What fuzzing does not find"
-summary = "A cart with a quantity of -5 parses without a crash, so no fuzzer reports it; each parser needs a harness, builds need a budget, and Jazzer adds branch counters by itself."
+summary = "A cart with a quantity of -5 parses with no crash, so no fuzzer reports it: whether -5 is allowed is a business rule. Two harnesses, a budget of runs in every build, longer runs at night, and Jazzer adds the branch counters by itself."
 detail = """
-A cart with a quantity of -5 parses: no crash, so no report. Whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions. Every parser needs its own harness, and
-this store wrote 2, one for each. In a build, a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new branches. Coverage-guided tools such as Jazzer add the branch counters
-to the bytecode by themselves, which is the -with-jazzer version.
+The input is a cart with a quantity of -5: {"sku":"SHO-1042","qty":-5}. The result, from the fixed parser: parsed. No crash, so no report.
+Whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions.
+What it costs: 2 harnesses, one for each parser; a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new code. Coverage-guided tools such as Jazzer add the branch counters to the bytecode by themselves, which is the -with-jazzer version.
+"""
+figure = "no_report"
+figure_title = "No crash, so no report"
+figure_speech = """
+Fifth demo: what fuzzing does not find. [[slnc 400]] The input is a cart with a quantity of minus five. [[slnc 300]] The fixed parser reads it without any trouble. [[slnc 300]] The result is parsed. [[slnc 300]] No crash, so the fuzzer reports nothing. [[slnc 700]]
+Whether minus five is allowed is a business rule. [[slnc 300]] A fuzzer cannot know that. [[slnc 300]] It finds crashes, and broken properties, not wrong decisions. [[slnc 700]]
+And it costs something. [[slnc 300]] Each parser needs a harness. [[slnc 300]] Each build needs a budget of runs. [[slnc 300]] Longer runs happen at night. [[slnc 300]] And a tool such as Jazzer adds the branch counters to the code by itself.
 """
 speech = """
-Fifth demo: what fuzzing does not find. [[slnc 400]] A cart with a quantity of minus five parses without a crash. [[slnc 300]] So no fuzzer reports it. [[slnc 600]]
-Whether minus five is allowed is a business rule. [[slnc 300]] A fuzzer finds crashes and broken properties, not wrong decisions. [[slnc 600]]
-Every parser needs its own harness. [[slnc 300]] Every build needs a budget of runs, with longer runs at night. [[slnc 600]]
-And tools such as Jazzer add the branch counters to the code by themselves.
+The real output. [[slnc 300]] The input: a cart with a quantity of minus five. [[slnc 300]] The result: parsed, so no report. [[slnc 400]] What a fuzzer cannot know: a business rule. [[slnc 300]] And what it costs: harnesses, a budget in every build, longer runs at night.
 """
 rows = { bill = "active amber" }
 console = [
-    ["a cart with a quantity of -5, \"{\"sku\":\"SHO-1042\",\"qty\":-5}\": parsed  <- NO CRASH, SO NO REPORT", "amber"],
-    ["whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions", "amber"],
-    ["every parser needs its own harness: this store wrote 2, one for each", "muted"],
-    ["in a build, a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new branches", "muted"],
-    ["coverage-guided tools such as Jazzer add the branch counters to the bytecode by themselves: the -with-jazzer version", "muted"],
+    ["THE INPUT, A CART WITH A QUANTITY OF -5:", "code"],
+    ["  \"{\"sku\":\"SHO-1042\",\"qty\":-5}\"", "muted"],
+    ["THE RESULT, FIXED PARSER:", "code"],
+    ["  parsed  <- NO CRASH, SO NO REPORT", "bad"],
+    ["WHAT A FUZZER CANNOT KNOW:", "code"],
+    ["  whether -5 is allowed is a business rule", "muted"],
+    ["  it finds crashes and broken properties, not wrong decisions", "bad"],
+    ["WHAT IT COSTS:", "code"],
+    ["  harnesses  2, one for each parser", "muted"],
+    ["  a build    a fixed budget of runs on every change", "muted"],
+    ["  at night   longer runs, keeping the inputs that reached new code", "muted"],
+    ["  Jazzer     adds the branch counters to the bytecode by itself", "muted"],
 ]
+
+[highlight]
+console_green = ["THE EXAMPLE TESTS", "GUIDED", "AFTER THE FIX", "THE FIXED", "A PROPERTY"]
+console_rose = ["THE RESULT", "THE CRASHES", "BLIND", "BEFORE THE FIX"]
+console_amber = ["HOW THE", "HOW DELTA", "THE RULE", "WHAT A FUZZER", "WHAT IT COSTS"]
+console_cyan = ["THE INPUT", "THE MUTATIONS", "THE FIRST RUNS", "THE TARGET"]
 
 [animation]
 subtitle = "An online store's order and cart parsers pass their example tests, then meet a fuzzer."
@@ -431,6 +566,22 @@ body = ["Seed: a real input to start from", "Mutation: a small change to an inpu
 narration = """Before the demos, the words. [[slnc 500]] A seed is a real input, the starting point. [[slnc 500]] A mutation is a small change to an input. [[slnc 500]] A crash is any failure other than the parser's own refusal. [[slnc 500]] Coverage is the set of branches an input reached. [[slnc 500]] And a harness is the small piece of code that feeds the fuzzer's input to one parser."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "03-one-run"
+kind = "figure"
+title = "One run of a fuzzer"
+body = "fuzz_loop"
+narration = """Let's see the core idea on one real run. [[slnc 400]] At the top, a seed: a real order line, a product code, a quantity and a price. [[slnc 300]] The fuzzer makes one small change: it deletes the second comma. [[slnc 600]]
+Then it runs the parser on the changed line. [[slnc 300]] Three things can happen. [[slnc 300]] The line parses. [[slnc 300]] Or the parser refuses it, with its own parse exception. [[slnc 300]] Both are fine. [[slnc 300]] Or something else is thrown: a crash. [[slnc 600]]
+Here it is a crash: an array index out of bounds exception, at run eighty six. [[slnc 300]] Nobody wrote a test for this line. [[slnc 600]]
+Then the fuzzer repeats, twenty thousand times, and keeps every crash it finds."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -442,13 +593,6 @@ kind = "bullets"
 title = "From Crash To Test"
 body = ["1. Fuzz from real seeds", "2. Keep inputs that reach new branches", "3. Shrink each crash", "4. Keep the smallest input as a test", "5. Fix, and fuzz again"]
 narration = """Let's put it in order. [[slnc 400]] First, fuzz from real seed inputs. [[slnc 500]] Second, keep every input that reaches a new branch. [[slnc 500]] Third, shrink each crash to its smallest input. [[slnc 500]] Fourth, keep that input as a regression test. [[slnc 500]] And fifth, fix the cause, and fuzz again."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Fuzzer: mutates and runs", "Harness: feeds one parser", "Coverage: counts branches", "Crash: names a failure", "Minimizer: shrinks it"]
-narration = """Here is who does what in the code. [[slnc 400]] The fuzzer mutates inputs and runs them. [[slnc 500]] Each harness feeds one parser. [[slnc 500]] The coverage class counts the branches an input reached. [[slnc 500]] The crash class names a failure by its type and place. [[slnc 300]] And the minimizer shrinks a crashing input to its smallest form."""
 
 [[scene]]
 key = "11-recognise"
@@ -463,6 +607,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["Fuzz every parser of outside input", "One harness per parser", "Keep stack traces and the corpus", "Every crash becomes a test", "A budget in every build"]
 narration = """So, how do you use it? [[slnc 400]] Fuzz every parser that reads input from outside. [[slnc 500]] Write one harness for each parser. [[slnc 500]] Keep stack traces, and keep the inputs that reached new branches. [[slnc 500]] Turn every crash into a regression test. [[slnc 500]] And give every build a budget of runs."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -550,3 +700,125 @@ threat = "A value that parses cleanly is still wrong for the business, such as a
 where = "the store logic after parsing"
 control = "None here: fuzzing finds crashes and broken properties, not wrong decisions"
 residual = "Business rules need their own tests and properties"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The fuzzer is about a hundred lines, and the parsers carry their own bugs. [[slnc 300]] Here are the lines that matter."""
+
+[[class]]
+name = "Fuzzer"
+what = "changes seed inputs, runs a parser, keeps what is new"
+[[class.part]]
+title = "one change: flip a bit"
+code = """
+char c = text.charAt(at);
+text.setCharAt(at, (char) ((c ^ (1 << random.nextInt(7))) & 0x7f));
+"""
+speech = """One kind of change flips a single bit of one character. [[slnc 300]] The others insert, delete or replace a character, swap a number for a boundary value, or nest brackets."""
+[[class.part]]
+title = "a crash is anything but a refusal"
+code = """
+} catch (ParseException expected) {
+    return new Outcome(coverage, null, false);
+} catch (RuntimeException | StackOverflowError bug) {
+    return new Outcome(coverage, bug, false);
+"""
+speech = """A parse exception is the parser refusing the input, which is fine. [[slnc 300]] Any other exception, or a stack overflow, is a crash, and the fuzzer records it."""
+[[class.part]]
+title = "guided: keep an input that reached a new branch"
+code = """
+if (outcome.coverage().addsTo(seen)) {
+    List<Integer> fresh = outcome.coverage().newBranches(seen);
+    seen.or(outcome.coverage().hits());
+    if (guided) {
+        corpus.add(input);
+"""
+speech = """If the run reached a branch no earlier run reached, the branch is added to the seen set. [[slnc 300]] Guided, the input is also kept, and later runs change it further."""
+
+[[class]]
+name = "Coverage"
+what = "the branches one run reached"
+[[class.part]]
+title = "a counter per branch"
+code = """
+void hit(int branch) {
+    hits.set(branch);
+}
+"""
+speech = """Each interesting branch of a parser calls hit with its own number. [[slnc 300]] Here this is done by hand. [[slnc 300]] Jazzer adds the same counters to the bytecode by itself."""
+
+[[class]]
+name = "CartParser"
+what = "the cart format, with the gift-message bug"
+[[class.part]]
+title = "one letter, one branch"
+code = """
+for (int i = 0; i < NOTE.length(); i++) {
+    if (i >= key.length() || key.charAt(i) != NOTE.charAt(i)) {
+        return false;
+    }
+    coverage.hit(50 + i);
+"""
+speech = """The field name is compared with note one letter at a time, as compiled code does. [[slnc 300]] Each letter that matches reaches a new branch. [[slnc 300]] That is what guidance follows."""
+[[class.part]]
+title = "the bug: no colon"
+code = """
+int colon = note.indexOf(':');
+if (careful && colon < 0) {
+    throw new ParseException("a gift message is #to:message");
+}
+String to = note.substring(1, colon);
+"""
+speech = """With no colon, index of returns minus one. [[slnc 300]] The careless version goes on to substring, which throws. [[slnc 300]] The fixed version refuses the message first."""
+
+[[class]]
+name = "OrderLine"
+what = "one order import line, careless and fixed"
+[[class.part]]
+title = "the overflow, and its fix"
+code = """
+int total = quantity * unit;
+...
+long total = Math.multiplyExact((long) quantity, (long) unit);
+"""
+speech = """The careless version multiplies two ints, so a big total wraps round to a negative one. [[slnc 300]] The fixed version checks the ranges, and multiplies in a long, with an exact check."""
+
+[[class]]
+name = "Minimizer"
+what = "delta debugging: the smallest input that still crashes"
+[[class.part]]
+title = "remove a piece, keep it if it still crashes"
+code = """
+String candidate = current.substring(0, start)
+        + current.substring(Math.min(current.length(), start + size));
+if (sameCrash(harness, candidate, signature)) {
+    current = candidate;
+"""
+speech = """Remove one piece of the input. [[slnc 300]] If it still crashes with the same signature, keep the smaller input. [[slnc 300]] Pieces get smaller until no single character can go."""
+
+[[class]]
+name = "Crash"
+what = "names a failure, so each bug is counted once"
+[[class.part]]
+title = "type and place"
+code = """
+return failure.getClass().getSimpleName() + " in " + where;
+"""
+speech = """A crash is named by its exception type and the parser method it happened in. [[slnc 300]] The same bug found again is not counted twice."""
+
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: a text format for data"
+say = "J S O N is JavaScript object notation, a text format for data. The store's carts use a small part of it."
+[[acronym]]
+short = "OSS"
+long = "Open Source Software; OSS-Fuzz fuzzes it continuously"
+say = "O S S is open source software. O S S fuzz is a service that fuzzes thousands of open source projects all the time."
+[[acronym]]
+short = "int"
+long = "Java's 32-bit whole number, -2147483648 to 2147483647"
+say = "An int is Java's thirty two bit whole number. A bigger result wraps round, and can turn negative."
+[[acronym]]
+short = "JVM"
+long = "Java Virtual Machine: runs the compiled bytecode"
+say = "J V M is the Java virtual machine, which runs the compiled bytecode. Jazzer adds its branch counters to that bytecode."

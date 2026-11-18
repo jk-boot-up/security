@@ -61,6 +61,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 - `InterleavingTest` runs every order of two requests: check-then-act overdraws in some, the lock and compare-and-set in none; coupons, deadlock and fixed lock order.
 - `RealThreadsTest` forces the bad order with a barrier on real threads, and checks the lock, compare-and-set and idempotency key under load fifty times.
 - `RulesTest` checks the transfer rules, idempotency answers, the order state machine and checkout pricing.
+- `EveryOrderTest` checks the 20 and 70 orders the demo counts, that only the two in-turn orders are safe, and how each checkout total is made.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

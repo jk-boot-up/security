@@ -22,7 +22,7 @@ What it shows:
 - **Covering shapes in the layout.** A `%mask` conversion word and a `%maskedEx` word (class and message of the exception and its causes, no frames). A card is covered only if it passes the **Luhn** check, so a 16-digit order number is left alone; the line break becomes `\n`.
 - **Make the secret unprintable.** `Secret` prints `[REDACTED]`, `Card` prints `****1111`, a `CheckoutRequest` record made of them prints safely under a plain layout. An exception from a library is logged by class, with a reference.
 - **Structured logs.** JSON events keep a line break inside one line; a record is written as its **fields**, not its `toString` (`PlainCard` leaks `number`, `Card` with `@JsonValue` does not); path masks and a value masker cover the rest.
-- **The bill.** A pin, a code word and an SSN in free text are in shapes nobody listed; a log file needs an owner, a retention and a level.
+- **What a mask cannot see.** A pin, a code word and an SSN in free text are in shapes nobody listed; a log file needs an owner, a retention and a level.
 
 **Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · CWE-532 (sensitive information in a log file), CWE-209, CWE-117 (improper output neutralization for logs).
 
@@ -44,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the log keeps | A careless message puts the card, the cvv, the token and the database password in the file, and a line break forges a second event. |
-| 2. Covering the shapes of secrets in the layout | A %mask conversion word and a %maskedEx word cover what they recognise; a card only if it passes Luhn; a line break becomes \n. |
-| 3. Make the secret unprintable | Types that print as [REDACTED] and ****1111 need no mask at all, and a library's exception is logged by class with a reference. |
-| 4. Structured logs | JSON events keep a line break inside one line; a record is written as its fields; path masks and a value masker cover the rest. |
-| 5. The bill | A pin, a code word and an SSN in free text are in shapes nobody listed; the file needs an owner, a retention and a level. |
+| 1. What the log keeps | Three careless log calls through a plain layout write 4 lines: the card, the CVV, the token and the database password are all in the file, and a name with a line break forges a login line. |
+| 2. Covering the shapes of secrets in the layout | The same three calls through %mask and %maskedEx write 3 lines with no fake secret left; a card is covered only when the Luhn sum ends in 0 (30 for the card, 31 for the order number). |
+| 3. Make the secret unprintable | A CheckoutRequest made of a Card and a Secret logs as card=****1111, cvv=[REDACTED] through a plain layout with no masking; reveal() gives 737 only where the value is used; a library's exception is logged by class with ref-0001. |
+| 4. Structured logs | As JSON, the forged name stays inside one line as \n; a PlainCard record is written as its fields (the full number) while a Card with @JsonValue is ****1111; the masking decorator covers /cvv and /card/number by path and the password in the exception by shape. |
+| 5. What a mask cannot see | 'my pin is 4921 and the code is hunter2, ssn 078-05-1120' passes the mask unchanged: card, CVV, token and password are covered, the pin, the code word and the SSN are missed. The order of defence: do not log it, make it unprintable, mask the shapes you know, test with canaries. |
 
 ## Test
 
@@ -56,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `LoggingTest`. The tests run the real Logback and need no other tool.
+15 tests in `DemoRunsTest`, `LoggingTest`, `TeachingStepsTest`. The tests run the real Logback and need no other tool.
 
 ## What the simulation got right, and what it left out
 

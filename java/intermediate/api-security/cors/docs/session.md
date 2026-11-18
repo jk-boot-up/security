@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Same origin needs no CORS | 7 min |
-| 0:17 | Act 2: No CORS headers: a page may send, but not read | 7 min |
-| 0:24 | Act 3: Policies that look like fixes | 7 min |
-| 0:31 | Act 4: An exact allow-list | 7 min |
-| 0:38 | Act 5: Wildcard and cookies never combine | 7 min |
+| 0:10 | Act 1: The bank's own page needs no CORS | 7 min |
+| 0:17 | Act 2: With no CORS headers, a page may send but not read | 7 min |
+| 0:24 | Act 3: Three policies that look like fixes | 7 min |
+| 0:31 | Act 4: An exact allow-list names one partner | 7 min |
+| 0:38 | Act 5: A wildcard and cookies never combine | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

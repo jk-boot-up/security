@@ -1,38 +1,119 @@
 ONE. What a security log must answer.
-  the bank's old logger wrote 8 lines this morning, for example:
+  THE OLD LOG (8 lines this morning, lines 2 and 6):
     2026-10-18T09:01:00Z ERROR login failed
     2026-10-18T09:05:00Z INFO transfer done amount=500
-  the question: who moved 500 from ANA-1 to MAL-9, and from where?
-  old lines that mention ANA-1: 0  <- THE LOG CANNOT ANSWER
-  the security log records who, what, when, where from, the outcome and a request id for each of 8 events
-  the transfer: by ana, from 198.51.100.66, at 2026-10-18T09:05:00Z, success, request req-0006
-  the same address before it: 2 failed logins as ana, then 1 success  <- SOMEONE WITH ANA'S PASSWORD, NOT ANA
-  event types in the log: [login, access-decision, money-movement, admin-change]
+  THE QUESTION:
+    who moved 500 from ANA-1 to MAL-9, and from where?
+  THE OLD LOG'S ANSWER:
+    lines that mention ANA-1: 0  <- IT CANNOT ANSWER
+  THE SAME TRANSFER IN THE SECURITY LOG (line 6, its fields):
+    time         2026-10-18T09:05:00Z
+    type         money-movement
+    actor        ana
+    action       transfer
+    target       ANA-1 -> MAL-9
+    source       198.51.100.66
+    outcome      success
+    correlation  req-0006
+  THE SECURITY LOG'S ANSWER (every event as ana):
+    09:00  203.0.113.7    login           success
+    09:01  198.51.100.66  login           failure
+    09:02  198.51.100.66  login           failure
+    09:03  198.51.100.66  login           success
+    09:05  198.51.100.66  money-movement  success
+    09:07  203.0.113.7    money-movement  success
+    from 198.51.100.66: 2 failed logins, 1 success, the transfer
+    ana's usual address is 203.0.113.7  <- ANA'S PASSWORD, NOT ANA
+  THE EVENT TYPES (8 events):
+    login 4, access-decision 1, money-movement 2, admin-change 1
 TWO. What never to log.
-  the old logger's card payment line holds the full card number: true  <- A BREACH OF THE LOG IS A BREACH OF THE CARDS
-  the password tried in a failed login: [removed]
-  the session id of the new login: [removed]
-  the transfer's Authorization header: [removed]
-  the card payment: card ************1111, and a card number typed into the note: "paid with ************1111"
-  secrets from the morning's events found anywhere in the security log: 0 of 5
-  secrets are removed by field name, and card numbers and tokens also by their shape, so free text is covered too
+  THE OLD LOG'S CARD PAYMENT (line 8):
+    2026-10-18T09:07:00Z INFO payment card=4111111111111111 amount=80
+    the full card number: true  <- A LEAKED LOG LEAKS THE CARD
+  BEFORE THE REDACTOR (the events' details, fake values):
+    line 2  password       Summer2026!
+    line 4  session        sess-7f3a9c41d2e8
+    line 6  authorization  Bearer, then the token:
+      eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
+    line 8  card           4111111111111111
+    line 8  note           paid with 4111-1111-1111-1111
+  AFTER THE REDACTOR (the same fields in the security log):
+    line 2  password       [removed]
+    line 4  session        [removed]
+    line 6  authorization  [removed]
+    line 8  card           ************1111
+    line 8  note           paid with ************1111
+  HOW EACH ONE WAS CAUGHT:
+    by field name  password, session, authorization
+    by its shape   4111111111111111: 16 digits, keep the last 4
+                   12 x * + 1111 = ************1111
+    by its shape   the note's 4111-1111-1111-1111: hyphens ignored
+  THE SEARCH (every fake secret, in the security log):
+    found 0 of 5
 THREE. Text that tries to write the log.
-  a username typed into the login form: "mallory\n2026-10-18T09:09:00Z INFO login ok user=admin"
-  the old logger's file now has 2 lines; the second reads: 2026-10-18T09:09:00Z INFO login ok user=admin  <- A FORGED LINE
-  the security log wrote 1 line; read back, the actor is exactly what was typed: true, and the outcome is failure
-  a username carrying a quote and a fake field: the outcome still reads failure, and the actor is the text as typed: true
-  structured output escapes text instead of trusting it, and keeps it whole, so investigators see exactly what was sent
+  THE INPUT (a username typed into the login form, \n shown):
+    mallory\n2026-10-18T09:09:00Z INFO login ok user=admin
+  THE OLD LOG (1 failed login, 2 lines in the file):
+    1 2026-10-18T09:08:00Z ERROR login failed user=mallory
+    2 2026-10-18T09:09:00Z INFO login ok user=admin  <- FORGED
+  THE SECURITY LOG (1 line; its actor field as written):
+    "actor":"mallory\n2026-10-18T09:09:00Z INFO login ok user=admin"
+  READ BACK:
+    actor    exactly what was typed: true
+    outcome  failure
+  THE INPUT (a username with quotes and a fake field):
+    mallory","outcome":"success
+  THE SECURITY LOG (its actor and outcome fields as written):
+    "actor":"mallory\",\"outcome\":\"success"
+    "outcome":"failure"
+  READ BACK:
+    actor    exactly what was typed: true
+    outcome  failure
+  HOW THE TEXT IS ESCAPED:
+    line break  ->  \n      quote  ->  \"      backslash  ->  \\
 FOUR. A log that shows it was changed.
-  each line carries the SHA-256 of the line before it; the morning's 8 lines: intact
-  line 6, the transfer, deleted: broken at line 6
-  line 6's amount edited from 500 to 50: broken at line 7
-  the last line edited: intact  <- NOTHING FOLLOWS THE LAST LINE TO GIVE IT AWAY
-  compared with the latest hash, published somewhere else as each line is written: does not match, so the change is found
-  the file is written by appending only, with permissions rw-------
-  an attacker with root can still rewrite the whole file and its chain, which is why the log must also leave the host
+  THE CHAIN (each line's prev, the first 12 hex digits):
+    line 1  prev 000000000000  (the start: all zeros)
+    line 2  prev 2c83d7c10ac6  = SHA-256 of line 1
+    line 3  prev 5b8481140de9  = SHA-256 of line 2
+    line 4  prev 7e141784e039  = SHA-256 of line 3
+    line 5  prev 575f79ee5769  = SHA-256 of line 4
+    line 6  prev 357222acfa26  = SHA-256 of line 5
+    line 7  prev 3d32ec7f52d2  = SHA-256 of line 6
+    line 8  prev a6e4a60a06e9  = SHA-256 of line 7
+    head         c588e90f2f57  = SHA-256 of line 8, kept elsewhere
+  HOW AN EDIT IS FOUND (line 6's amount, 500 -> 50):
+    SHA-256 of line 6 before  3d32ec7f52d2
+    SHA-256 of line 6 after   347bfe928ef5
+    line 7's prev             3d32ec7f52d2  <- NO LONGER EQUAL
+  THE CHECKS (the log as found, and the result):
+    the morning's 8 lines     intact
+    line 6 deleted            broken at line 6
+    line 6 amount 500 -> 50   broken at line 7
+    line 8 amount 80 -> 8     intact  <- NOTHING FOLLOWS IT
+    line 8, against the head  does not match: found
+  THE FILE:
+    written by   appending only
+    permissions  rw------- (owner only)
+    but root     can rewrite the file and its chain
 FIVE. The bill.
-  every line is also shipped to a second store as it is written; the attacker deletes the local log: local 0 lines, shipped 8 lines, intact
-  names and addresses make the log personal data, so it is kept for a fixed time: keeping 30 days, on day 41 10 old lines go and 30 stay
-  the kept lines check from the anchor written down when the old ones went: intact
-  the morning's lines average 291 bytes, so 2000000 logins a day write about 582 megabytes a day for logins alone: volume needs a budget
-  and a log that nobody reads is evidence only after the fact: the -with-loki-and-grafana version ships, queries and alerts
+  BEFORE THE ATTACKER (each line goes to both stores):
+    local    8 lines
+    shipped  8 lines
+  AFTER THE ATTACKER DELETES THE LOCAL LOG:
+    local    0 lines
+    shipped  8 lines, chain intact
+  RETENTION (one login a day for 40 days, keep 30 days):
+    first     2026-01-01 (day 1)
+    today     2026-02-10 (day 41)
+    cutoff    today - 30 days = 2026-01-11
+    removed   10 lines, day 1 to day 10
+    kept      30 lines, day 11 to day 40
+    anchor    56aaf08025e3 = the first kept line's prev
+    check     from the anchor: intact
+  THE VOLUME (worked out from the morning's lines):
+    the morning     8 lines, 2325 bytes
+    one line        2325 / 8 = 291 bytes (rounded)
+    logins a day    2000000
+    bytes a day     2000000 x 291 = 582000000
+    that is about   582 megabytes a day, logins only

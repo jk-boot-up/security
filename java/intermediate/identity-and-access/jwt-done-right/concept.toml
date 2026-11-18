@@ -59,7 +59,7 @@ their place when an API must check a token without calling the server that issue
 met_before = [
     "`Authorization: Bearer eyJ...` headers in API calls; every token starting with `eyJ` is base64url of `{\"`.",
     "OAuth 2.0 and OpenID Connect providers such as Keycloak, and their `/.well-known/jwks.json` key sets.",
-    "Debugging sites that decode a JWT: they show the claims without checking anything, which is exactly the point of act one.",
+    "Debugging sites that decode a JWT: they show the claims without checking anything, which is exactly the point of act two.",
     "Advisories about `alg: none` and algorithm confusion in JWT libraries.",
 ]
 where = """
@@ -74,138 +74,299 @@ other keys come from fixed seeds and protect nothing. No key is ever fetched ove
 test_note = "The Ed25519 code is checked against RFC 8037 appendix A: the published token verifies, signing its input gives the published signature, and the published public key is derived from the published private key. Every refusal is a test with its exact reason."
 
 [[act]]
-title = "Three parts, and decoding is not verifying"
-summary = "A bank access token is a header, claims and a 64-byte Ed25519 signature; anyone can read the claims, and a reader that only decodes believes claims edited to sub=mallory, which the validator refuses."
+title = "How the bank builds a token"
+summary = "The header (51 bytes) and claims (143 bytes) are JSON; base64url turns every 3 bytes into 4 characters (68 and 191); Ed25519 signs the 260-byte signing input into 64 bytes (86 characters); the token is 347 characters."
 detail = """
-The bank's authorization server issues Ana an access token of 347 characters in 3 parts. The header says the algorithm is EdDSA, the type is at+jwt
-and the key id is bank-2026-01. The claims name the issuer, the subject ana, the audience accounts-api, the scope accounts:read, and the times of issue,
-start and expiry. The third part is a 64-byte Ed25519 signature over the first two. Anyone can read the claims, because base64url is an encoding, not
-encryption. When the claims are edited to sub=mallory and Ana's signature is kept, a reader that only decodes says mallory. The validator refuses it:
-the signature does not match.
+The header is JSON of 51 bytes: the algorithm EdDSA, the type at+jwt and the key id bank-2026-01. The claims are JSON of 143 bytes: the issuer
+https://auth.bank.example, the subject ana, the audience accounts-api, the scope accounts:read, issued at 1800000000 (2027-01-15 08:00:00 UTC), not
+before the same second, and expiring 300 seconds later. Base64url turns every 3 bytes into 4 characters: the first three header bytes {"a are 7b 22 61,
+whose 24 bits cut into four groups of 6 bits are 30, 50, 9 and 33, the characters e, y, J and h. That is why every token starts with eyJ. The header
+becomes 68 characters and the claims 191. The signing input is the two parts joined by a dot, 260 ASCII bytes. Ed25519 signs it with the bank's private
+key into 64 bytes, 86 characters of base64url. The token is 68 + 1 + 191 + 1 + 86 = 347 characters.
+"""
+figure = "base64_steps"
+figure_title = "From JSON to token: base64url, then the signature"
+figure_speech = """
+First demo: how the bank builds a token. [[slnc 400]] The header and the claims are written as JSON text. [[slnc 300]] Then each is turned into base64url. [[slnc 600]]
+At the top, the first three bytes of the header: a brace, a quote, and the letter a. [[slnc 300]] In hex, seven b, twenty two, and sixty one. [[slnc 300]] That is twenty four bits. [[slnc 600]]
+Base64url cuts them into four groups of six bits. [[slnc 300]] Each group is a number from zero to sixty three. [[slnc 300]] Thirty, fifty, nine and thirty three. [[slnc 300]] Each number picks one character: e, y, capital J, and h. [[slnc 300]] Every header starts with a brace and a quote, so every token starts with e y J. [[slnc 700]]
+At the bottom, the real sizes. [[slnc 300]] The header becomes sixty eight characters, the claims one hundred and ninety one. [[slnc 300]] Joined by a dot, they are the signing input. [[slnc 300]] Ed twenty five five one nine signs it with the bank's private key: sixty four bytes, eighty six characters. [[slnc 300]] The token is three hundred and forty seven characters.
 """
 speech = """
-First demo: three parts. [[slnc 400]] The bank issues Ana an access token. [[slnc 300]] It has three parts, separated by dots. [[slnc 600]]
-The first is a header: the algorithm, the type, and the key id. [[slnc 300]] The second is the claims: who it is for, who issued it, which A P I, and until when. [[slnc 300]] The third is a signature over the first two. [[slnc 600]]
-Anyone can read the claims. [[slnc 300]] Base sixty four url is an encoding, not encryption. [[slnc 600]]
-Now edit the claims to say mallory, and keep Ana's signature. [[slnc 300]] A reader that only decodes says mallory. [[slnc 300]] Decoding is not verifying. [[slnc 600]]
-The validator refuses it. [[slnc 300]] The signature does not match.
+Here is the real output. [[slnc 400]] The header, as J S O N. [[slnc 300]] And the claims, one per line: the issuer, the subject Ana, the audience, the scope, and three times in seconds. [[slnc 300]] The token expires three hundred seconds after it is issued.
+[[page]]
+Step one: base64url, from three bytes to four characters. [[slnc 300]] Step two: the signing input, two hundred and sixty bytes. [[slnc 300]] Step three: the signature, sixty four bytes, shown in hex.
+[[page]]
+The token, in its three parts. [[slnc 300]] It is exactly what the issuer produces.
 """
 rows = { parts = "active amber" }
 console = [
-    ["the bank's authorization server issues ana an access token of 347 characters in 3 parts", "muted"],
-    ["header: {\"alg\":\"EdDSA\",\"typ\":\"at+jwt\",\"kid\":\"bank-2026-01\"}", "muted"],
-    ["claims: {\"iss\":\"https://auth.bank.example\",\"sub\":\"ana\",\"aud\":\"accounts-api\",\"scope\":\"accounts:read\",...}", "muted"],
-    ["the third part is a 64-byte Ed25519 signature over the first two", "muted"],
-    ["anyone can read the claims: base64url is an encoding, not encryption, so no secret belongs in them", "amber"],
-    ["the claims edited to sub=mallory, with ana's signature kept: a reader that only decodes says mallory  <- DECODING IS NOT VERIFYING", "bad"],
-    ["the validator: refused (signature does not match)", "ok"],
+    ["THE HEADER (JSON, 51 bytes):", "code"],
+    ["  {\"alg\":\"EdDSA\",\"typ\":\"at+jwt\",\"kid\":\"bank-2026-01\"}", "muted"],
+    ["THE CLAIMS (JSON, 143 bytes, one member per line):", "code"],
+    ["  \"iss\":\"https://auth.bank.example\"", "muted"],
+    ["  \"sub\":\"ana\"", "muted"],
+    ["  \"aud\":\"accounts-api\"", "muted"],
+    ["  \"scope\":\"accounts:read\"", "muted"],
+    ["  \"iat\":1800000000            issued at 2027-01-15 08:00:00 UTC", "muted"],
+    ["  \"nbf\":1800000000            not before: the same second", "muted"],
+    ["  \"exp\":1800000300            iat + 300 seconds = 5 minutes", "muted"],
+    ["---", ""],
+    ["STEP 1. BASE64URL: EVERY 3 BYTES BECOME 4 CHARACTERS:", "code"],
+    ["  {\"a  = bytes 7b 22 61", "muted"],
+    ["      = bits 011110 110010 001001 100001", "muted"],
+    ["      = characters e y J h", "muted"],
+    ["  header 51 bytes -> 68 characters, claims 143 bytes -> 191", "muted"],
+    ["STEP 2. THE SIGNING INPUT (header part, a dot, claims part):", "code"],
+    ["  260 ASCII bytes, starting eyJhbGciOiJFZERTQSIsInR5...", "muted"],
+    ["STEP 3. ED25519 SIGNS IT WITH THE PRIVATE KEY bank-2026-01:", "code"],
+    ["  64 bytes, starting bfc541c4e748d9be77c8f36303d4b402...", "muted"],
+    ["  base64url -> 86 characters", "muted"],
+    ["---", ""],
+    ["THE TOKEN (347 characters = 68 + 1 + 191 + 1 + 86):", "code"],
+    ["  PART 1, THE HEADER:", "muted"],
+    ["    eyJhbGciOiJFZERTQSIsInR5cCI6ImF0K2p3dCIsImtpZCI6ImJhbmst", "muted"],
+    ["    MjAyNi0wMSJ9", "muted"],
+    ["  PART 2, THE CLAIMS:", "muted"],
+    ["    eyJpc3MiOiJodHRwczovL2F1dGguYmFuay5leGFtcGxlIiwic3ViIjoi", "muted"],
+    ["    YW5hIiwiYXVkIjoiYWNjb3VudHMtYXBpIiwic2NvcGUiOiJhY2NvdW50", "muted"],
+    ["    czpyZWFkIiwiaWF0IjoxODAwMDAwMDAwLCJuYmYiOjE4MDAwMDAwMDAs", "muted"],
+    ["    ImV4cCI6MTgwMDAwMDMwMH0", "muted"],
+    ["  PART 3, THE SIGNATURE:", "muted"],
+    ["    v8VBxOdI2b53yPNjA9S0AoH039STIktHt5d6JJdxD0GEcPmUje8fz5da", "muted"],
+    ["    wG0S9GhgBluiXwa_Z5pgwJesO2icBQ", "muted"],
+    ["the same as the issuer's output: true", "ok"],
+]
+
+[[act]]
+title = "Decoding is not verifying"
+summary = "The claims part is replaced to say sub mallory while ana's signature is kept: a reader that only decodes says mallory; the validator verifies the signature over parts 1 and 2 first, gets false, and refuses."
+detail = """
+Only the claims part is replaced: "sub":"ana" becomes "sub":"mallory", so part 2 grows from 191 to 196 characters, while the header and Ana's
+86-character signature stay as they were. A reader that only decodes splits the token at the dots, decodes part 2, reads sub and says mallory. The
+validator first verifies part 3 over parts 1 and 2 with the public key of bank-2026-01: false, because the signature was made over Ana's claims. It refuses
+the token: the signature does not match. Anyone can read the claims, since base64url is an encoding and not encryption, so no secret belongs in them.
+"""
+figure = "forged_token"
+figure_title = "Ana's signature on mallory's claims"
+figure_speech = """
+Second demo: decoding is not verifying. [[slnc 400]] At the top, the edit. [[slnc 300]] Someone changes sub, ana, into sub, mallory. [[slnc 600]]
+The token sent keeps part one, the header, unchanged. [[slnc 300]] Part two, the claims, is new, and five characters longer. [[slnc 300]] Part three is still Ana's signature. [[slnc 700]]
+On the left, a reader that only decodes. [[slnc 300]] It splits at the dots, decodes part two, and reads the subject. [[slnc 300]] It says mallory. [[slnc 600]]
+On the right, the validator. [[slnc 300]] Before it reads any claim, it checks the signature over parts one and two, with the bank's public key. [[slnc 300]] The answer is false. [[slnc 300]] The signature was made over Ana's claims, so it cannot match mallory's. [[slnc 300]] Refused.
+"""
+speech = """
+Here is the output. [[slnc 400]] The edit, and the token sent: header and signature unchanged, claims replaced. [[slnc 400]] The reader that only decodes says mallory. [[slnc 400]] The validator's signature check gives false, and the token is refused. [[slnc 400]] And remember: anyone can read the claims, so no secret belongs in them.
+"""
+rows = { parts = "active ok" }
+console = [
+    ["THE EDIT (only the claims part is replaced):", "code"],
+    ["  \"sub\":\"ana\"  ->  \"sub\":\"mallory\"", "muted"],
+    ["THE TOKEN SENT:", "code"],
+    ["  part 1, the header     68 characters, unchanged", "muted"],
+    ["  part 2, the claims     196 characters, was 191", "muted"],
+    ["  part 3, the signature  86 characters, ana's, unchanged", "muted"],
+    ["A READER THAT ONLY DECODES (splits, decodes part 2, reads sub):", "code"],
+    ["  -> mallory  <- DECODING IS NOT VERIFYING", "bad"],
+    ["THE VALIDATOR (verifies part 3 over parts 1 and 2 first):", "code"],
+    ["  Ed25519 verify with bank-2026-01's public key -> false", "ok"],
+    ["  -> refused (signature does not match)", "ok"],
+    ["anyone can read the claims: base64url is an encoding, not", "amber"],
+    ["encryption, so no secret belongs in them", "amber"],
 ]
 
 [[act]]
 title = "The server chooses the algorithm, never the token"
-summary = "The RFC 8037 example verifies and re-signs exactly; Ana's token is accepted; a header saying none, a header saying HS256 and a correctly signed token of another type are all refused."
+summary = "The API accepts only alg EdDSA and typ at+jwt, checked against RFC 8037; headers saying none, HS256, or id+jwt are refused, and Ana's real token is accepted."
 detail = """
-The published RFC 8037 example token verifies with its published key, signing it again gives the same signature, and the JDK derives the published
-public key from the published private key. Ana's token is accepted with the bank's key. The same claims with a header that says none and no signature
-are refused: the algorithm none is not EdDSA. A header that says HS256 is refused the same way. A correctly signed token of another type, an ID token
-offered as an access token, is refused because its type id+jwt is not at+jwt. The algorithm and the type are settings of the API; the header is only
-checked against them.
+The API's settings are fixed in Policy: algorithm EdDSA, type at+jwt. The Ed25519 code is first checked against the published example of RFC 8037,
+appendix A: it verifies with the published public key, signing it again gives the same 64 bytes, and the public key derived from the private key matches.
+Four headers are sent, all with Ana's claims. EdDSA with at+jwt, Ana's real token, is accepted. none with no signature is refused (algorithm none is not
+EdDSA); HS256 is refused (algorithm HS256 is not EdDSA); an ID token, typ id+jwt, offered as an access token is refused (type id+jwt is not at+jwt).
+The header is only checked against the API's own settings.
+"""
+figure = "header_check"
+figure_title = "Four headers against the API's own settings"
+figure_speech = """
+Third demo: the algorithm. [[slnc 400]] At the top left, the A P I's settings. [[slnc 300]] Algorithm Ed D S A, type at J W T. [[slnc 300]] They are written in the code, not read from the token. [[slnc 600]]
+On the right, the signature code is checked against the example published in R F C eight oh three seven. [[slnc 300]] All three checks are true. [[slnc 700]]
+Below, four headers, all with Ana's claims. [[slnc 300]] Green means the value matches the A P I's settings. [[slnc 300]] The first is Ana's real token: accepted. [[slnc 600]]
+The second says none, and carries no signature at all. [[slnc 300]] A validator that obeyed the header would skip the check. [[slnc 300]] This one refuses. [[slnc 300]] The third says H S two five six. [[slnc 300]] Refused. [[slnc 300]] The fourth is an I D token, meant for the app, offered as an access token. [[slnc 300]] Refused by its type.
 """
 speech = """
-Second demo: the algorithm. [[slnc 400]] The validator is first checked against the example token published in R F C eight oh three seven. [[slnc 300]] It verifies. [[slnc 300]] And signing it again gives exactly the same signature. [[slnc 600]]
-Ana's token, with the bank's key, is accepted. [[slnc 600]]
-Now the same claims, with a header that says none, and no signature at all. [[slnc 300]] Refused. [[slnc 300]] A header that says H S two five six. [[slnc 300]] Refused. [[slnc 600]]
-And a correctly signed token of another type, an I D token offered as an access token. [[slnc 300]] Refused, by its type. [[slnc 600]]
-The algorithm and the type are settings of the A P I. [[slnc 300]] The header is only checked against them.
+Here is the output. [[slnc 400]] The A P I's settings. [[slnc 300]] And the check against the published example: true, true and true.
+[[page]]
+The four headers sent, then the four results. [[slnc 400]] Only the first is accepted. [[slnc 300]] The header is only checked against the A P I's own settings.
 """
 rows = { algorithm = "active ok" }
 console = [
-    ["the RFC 8037 example token verifies with its published key: true, and signing it again gives the same signature: true", "ok"],
-    ["the JDK derives the published public key from the published private key: true", "ok"],
-    ["ana's token with the bank's key: accepted for ana", "ok"],
-    ["the same claims with a header that says none and no signature: refused (algorithm none is not EdDSA)", "ok"],
-    ["a header that says HS256: refused (algorithm HS256 is not EdDSA)", "ok"],
-    ["a correctly signed token of another type, offered as an access token: refused (type id+jwt is not at+jwt)", "ok"],
-    ["the algorithm and the type are settings of the API; the header is only checked against them", "muted"],
+    ["THE API'S SETTINGS (fixed in Policy, never read from a token):", "code"],
+    ["  algorithm EdDSA, type at+jwt", "muted"],
+    ["CHECKED AGAINST THE PUBLISHED EXAMPLE (RFC 8037, appendix A):", "code"],
+    ["  the example verifies with its published public key: true", "ok"],
+    ["  signing it again gives the same 64 bytes: true", "ok"],
+    ["  the public key derived from the private key matches: true", "ok"],
+    ["---", ""],
+    ["THE HEADERS SENT (alg, typ), all with ana's claims:", "code"],
+    ["  1. EdDSA  at+jwt  ana's token, signed by the bank", "muted"],
+    ["  2. none   at+jwt  no signature at all", "muted"],
+    ["  3. HS256  at+jwt  another algorithm, signed by the bank", "muted"],
+    ["  4. EdDSA  id+jwt  an ID token offered as an access token", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana", "ok"],
+    ["  2. refused (algorithm none is not EdDSA)", "ok"],
+    ["  3. refused (algorithm HS256 is not EdDSA)", "ok"],
+    ["  4. refused (type id+jwt is not at+jwt)", "ok"],
+    ["the header is only checked against the API's own settings", "amber"],
 ]
 
 [[act]]
 title = "Every claim that matters is checked"
-summary = "Accepted at issue and 20 seconds after expiry within the 30-second skew, refused 30 seconds after; refused before its start time, from another issuer, for another audience, and without the required scope."
+summary = "Ana's token (iat and nbf 1800000000, exp 1800000300) is accepted at issue and at exp + 20, refused at exp + 30 = 1800000330; tokens with a later nbf, another iss, another aud or scope cards:read are refused."
 detail = """
-At the moment of issue the token is accepted. Twenty seconds after its expiry time it is still accepted, inside the 30 seconds allowed for clock skew;
-30 seconds after, it is refused as expired. A token that starts in 2 minutes, presented now, is refused as not valid yet. A token issued by another
-authorization server is refused, and so is one meant for the loyalty API but sent to the accounts API, and one with only the scope cards:read. A valid
-signature proves who wrote the token; only the claims say whether it is for this API, now.
+The API expects the issuer https://auth.bank.example, the audience accounts-api and the scope accounts:read, with 30 seconds of clock skew. Ana's token
+has iat and nbf 1800000000 and exp 1800000300, so it is accepted while now is before exp + 30 = 1800000330. At 1800000000, the moment of issue, it is
+accepted; at 1800000320 (exp + 20) it is still accepted; at 1800000330 (exp + 30) it is refused as expired. Then one claim is changed per token, each
+signed by the bank: nbf 1800000120 (it starts in 2 minutes) is refused as not valid yet, iss https://auth.partner.example as another issuer, aud
+loyalty-api as another audience, and scope cards:read as missing scope accounts:read. The signature proves who wrote the token; only the claims say
+whether it is for this API, now.
+"""
+figure = "clock_line"
+figure_title = "The clock, and one changed claim at a time"
+figure_speech = """
+Fourth demo: the claims. [[slnc 400]] At the top, Ana's token on a time line, in seconds after it was issued. [[slnc 300]] It may be used from zero, and it expires at three hundred. [[slnc 600]]
+Servers' clocks differ a little, so the A P I allows thirty seconds of skew: the amber band. [[slnc 300]] From three hundred and thirty, it is refused. [[slnc 600]]
+Three moments are tried. [[slnc 300]] At zero, accepted. [[slnc 300]] At three hundred and twenty, inside the skew, still accepted. [[slnc 300]] At three hundred and thirty, refused: expired. [[slnc 700]]
+Below, four more tokens, all signed by the bank, each with one claim changed. [[slnc 300]] One starts in two minutes. [[slnc 300]] One comes from a partner's server. [[slnc 300]] One is meant for the loyalty A P I. [[slnc 300]] One only allows cards. [[slnc 300]] All four are refused. [[slnc 300]] The signature is good. [[slnc 300]] The claims say the token is not for this A P I, now.
 """
 speech = """
-Third demo: the claims. [[slnc 400]] At the moment of issue, the token is accepted. [[slnc 600]]
-Twenty seconds after it expires, it is still accepted. [[slnc 300]] Servers' clocks differ, so thirty seconds of leeway are allowed. [[slnc 300]] Thirty seconds after, it is refused. [[slnc 600]]
-A token that starts in two minutes is refused now. [[slnc 300]] A token from another issuer is refused. [[slnc 300]] A token for another A P I is refused. [[slnc 300]] And a token without the right scope is refused. [[slnc 600]]
-A valid signature proves who wrote the token. [[slnc 300]] Only the claims say whether it is for this A P I, now.
+Here is the output. [[slnc 400]] What the A P I expects. [[slnc 300]] The three times in Ana's token, and the rule: accepted while now is before expiry plus thirty. [[slnc 400]] The three moments, and their results: accepted, accepted, refused.
+[[page]]
+One claim changed per token, and the four results: not valid yet, another issuer, another audience, and a missing scope.
 """
 rows = { claims = "active ok" }
 console = [
-    ["at the moment of issue: accepted for ana", "ok"],
-    ["20 seconds after exp, inside the 30 seconds allowed for clock skew: accepted for ana", "amber"],
-    ["30 seconds after exp: refused (expired)", "ok"],
-    ["a token that starts in 2 minutes, presented now: refused (not valid yet)", "ok"],
-    ["issued by another authorization server: refused (another issuer)", "ok"],
-    ["meant for the loyalty API, sent to the accounts API: refused (another audience)", "ok"],
-    ["with only the scope cards:read: refused (missing scope accounts:read)", "ok"],
+    ["THE API EXPECTS:", "code"],
+    ["  iss https://auth.bank.example, aud accounts-api", "muted"],
+    ["  scope accounts:read, clock skew 30 seconds", "muted"],
+    ["THE TIMES IN ana's TOKEN (seconds since 1970-01-01 UTC):", "code"],
+    ["  iat 1800000000   nbf 1800000000   exp 1800000300", "muted"],
+    ["  accepted while now < exp + 30 = 1800000330", "ok"],
+    ["THE MOMENTS TRIED:", "code"],
+    ["  1. now 1800000000  (the moment of issue)", "muted"],
+    ["  2. now 1800000320  (exp + 20)", "muted"],
+    ["  3. now 1800000330  (exp + 30)", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana", "ok"],
+    ["  2. accepted for ana", "ok"],
+    ["  3. refused (expired)", "ok"],
+    ["---", ""],
+    ["ONE CLAIM CHANGED PER TOKEN (signed by the bank, now 1800000000):", "code"],
+    ["  1. nbf   1800000120  (starts in 2 minutes)", "muted"],
+    ["  2. iss   https://auth.partner.example", "muted"],
+    ["  3. aud   loyalty-api", "muted"],
+    ["  4. scope cards:read", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. refused (not valid yet)", "ok"],
+    ["  2. refused (another issuer)", "ok"],
+    ["  3. refused (another audience)", "ok"],
+    ["  4. refused (missing scope accounts:read)", "ok"],
+    ["the signature proves who wrote the token; only the claims say", "amber"],
+    ["whether it is for this API, now", "amber"],
 ]
 
 [[act]]
 title = "Keys by id, from a set the API already holds"
-summary = "During a changeover two keys are trusted and tokens from both work; after the old key is retired its token is refused; an unknown key id and a forged signature under the bank's key id are refused, and nothing is fetched."
+summary = "During a changeover the API holds bank-2026-01 and bank-2026-07 and accepts tokens from both; after bank-2026-01 retires its token is refused, as are an unknown kid and an intruder's signature under bank-2026-07."
 detail = """
-During the changeover the API trusts 2 keys, bank-2026-01 and bank-2026-07, and tokens signed with either are accepted. After the old key is retired,
-the old token is refused with an unknown key id. A token naming a key id the API has never seen is refused, and so is a token signed with another key but
-naming the bank's key id, because its signature does not match. An unknown key id is refused; the API never fetches a key because a token asked it to.
+The API holds a key set: each key id (kid) with its public key x, bank-2026-01 (the RFC 8037 test key) and bank-2026-07. During the changeover a token
+with kid bank-2026-01 signed with bank-2026-01 and one with kid bank-2026-07 signed with bank-2026-07 are both accepted. After bank-2026-01 is retired, the
+set holds only bank-2026-07: the old token is refused (unknown key id bank-2026-01), a token naming attacker-key is refused (unknown key id attacker-key),
+and a token signed with an intruder's key but naming bank-2026-07 is refused (signature does not match). The API never fetches a key because a token
+asked it to.
+"""
+figure = "key_rotation"
+figure_title = "A token names a key; the API decides which keys exist"
+figure_speech = """
+Fifth demo: keys. [[slnc 400]] Every token's header names the key that signed it, by a key id. [[slnc 300]] The A P I holds its own set of public keys, by key id. [[slnc 600]]
+At the top left, during a changeover, the set holds two keys: the old one and the new one. [[slnc 300]] Tokens one and two, signed with either, are accepted. [[slnc 600]]
+At the top right, the old key is retired. [[slnc 300]] Now token three, signed with the old key, is refused: the key id is unknown. [[slnc 600]]
+Token four names a key called attacker key. [[slnc 300]] The A P I does not go and fetch it. [[slnc 300]] Refused. [[slnc 600]]
+Token five is cleverer. [[slnc 300]] It names the bank's real key id, but an intruder signed it. [[slnc 300]] The bank's public key does not match that signature. [[slnc 300]] Refused.
 """
 speech = """
-Fourth demo: keys. [[slnc 400]] Each token names its key, by a key id. [[slnc 300]] The A P I keeps its own set of keys. [[slnc 600]]
-During a changeover, it trusts two keys. [[slnc 300]] Tokens signed with either one are accepted. [[slnc 600]]
-After the old key is retired, the old token is refused. [[slnc 600]]
-A token that names a key the A P I has never seen is refused. [[slnc 300]] A token signed with another key, but naming the bank's key id, is refused, because the signature does not match. [[slnc 600]]
-And the A P I never fetches a key because a token asked it to.
+Here is the output. [[slnc 400]] The key set, with each key id and its public key. [[slnc 300]] The two tokens sent during the changeover. [[slnc 300]] Both accepted.
+[[page]]
+After the old key is retired, one key is left. [[slnc 300]] Three tokens sent, and three refusals: two unknown key ids, and a signature that does not match.
 """
 rows = { keys = "active ok" }
 console = [
-    ["during the changeover the API trusts 2 keys: bank-2026-01 and bank-2026-07", "muted"],
-    ["a token signed with the old key: accepted for ana", "ok"],
-    ["a token signed with the new key: accepted for ana", "ok"],
-    ["after the old key is retired, the old token: refused (unknown key id bank-2026-01)", "ok"],
-    ["a token naming a key id the API has never seen: refused (unknown key id attacker-key)", "ok"],
-    ["a token signed with another key but naming the bank's key id: refused (signature does not match)", "ok"],
-    ["an unknown key id is refused; the API never fetches a key because a token asked it to", "muted"],
+    ["THE KEY SET THE API HOLDS (kid and public key x):", "code"],
+    ["  bank-2026-01  11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo", "muted"],
+    ["  bank-2026-07  hzkVm1OxJqR_zCsTiRXWKgrjO6y3CwcAKFfl-zWd4_o", "muted"],
+    ["THE TOKENS SENT (the kid in the header, the key that signed):", "code"],
+    ["  1. kid bank-2026-01   signed with bank-2026-01", "muted"],
+    ["  2. kid bank-2026-07   signed with bank-2026-07", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana", "ok"],
+    ["  2. accepted for ana", "ok"],
+    ["---", ""],
+    ["THE KEY SET AFTER bank-2026-01 IS RETIRED:", "code"],
+    ["  bank-2026-07", "muted"],
+    ["THE TOKENS SENT:", "code"],
+    ["  3. kid bank-2026-01   signed with bank-2026-01", "muted"],
+    ["  4. kid attacker-key   signed with an intruder's key", "muted"],
+    ["  5. kid bank-2026-07   signed with an intruder's key", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  3. refused (unknown key id bank-2026-01)", "ok"],
+    ["  4. refused (unknown key id attacker-key)", "ok"],
+    ["  5. refused (signature does not match)", "ok"],
+    ["the API never fetches a key because a token asked it to", "amber"],
 ]
 
 [[act]]
 title = "The bill: a token cannot be taken back"
-summary = "Two minutes after Ana's access is removed her access token still works, while her server-side refresh token is refused; the access token stops at five and a half minutes, and a fifteen-minute cap refuses longer lifetimes."
+summary = "Ana's access is removed at 120 seconds: at 240 her access token is still accepted while her refresh token rt-1 is refused; the access token stops at 330; a token lasting 3600 seconds breaks the 900-second policy."
 detail = """
-Ana's access is removed 2 minutes after her token was issued. Two minutes later her access token is still accepted: it still works until it expires.
-Her refresh token, which the server looks up every time, is refused as revoked. At 5 minutes and 30 seconds the access token is refused as expired. So
-access tokens live for minutes, and a token asking for more than 15 minutes is refused by policy. Where a browser should keep tokens is the subject of
-the tokens-in-the-browser project, and in production a maintained library should do this work.
+Ana holds an access token, which stops working at 300 + 30 of skew = 330 seconds after issue, and a refresh token rt-1, which the bank looks up each time.
+At 120 seconds the bank removes Ana's access and revokes rt-1. At 240 the access token is still accepted: it still works, because the API checks the
+token, not the bank's records. The refresh token is refused as revoked. At 330 the access token is refused as expired. So the policy allows at most 900
+seconds, 15 minutes, and a token with exp = iat + 3600 is refused: lifetime longer than the policy allows. In production, use a maintained library,
+configured strictly.
+"""
+figure = "revocation_timeline"
+figure_title = "After the bank revokes, until the token expires"
+figure_speech = """
+Sixth demo: the bill. [[slnc 400]] Ana holds two tokens. [[slnc 300]] The access token is self-contained: the A P I checks it without asking the bank. [[slnc 300]] The refresh token is only a handle, which the bank looks up every time. [[slnc 700]]
+At one hundred and twenty seconds, the bank removes Ana's access. [[slnc 300]] The refresh token stops at once. [[slnc 300]] But nothing can reach the access token. [[slnc 600]]
+At two hundred and forty, the access token is still accepted. [[slnc 300]] At three hundred and thirty, it finally expires. [[slnc 700]]
+That is the price of a token that needs no lookup. [[slnc 300]] So access tokens must live for minutes, not hours.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Ana's access is removed, two minutes after her token was issued. [[slnc 600]]
-Two minutes later, her access token still works. [[slnc 300]] The A P I checks the token, not the bank's records. [[slnc 300]] It works until it expires. [[slnc 600]]
-Her refresh token is refused, because the server looks it up every time. [[slnc 600]]
-At five and a half minutes, the access token stops working. [[slnc 600]]
-So access tokens live for minutes. [[slnc 300]] A token asking for more than fifteen is refused. [[slnc 300]] And in production, a maintained library should do this work.
+Here is the output. [[slnc 400]] What Ana holds, and the event at one hundred and twenty. [[slnc 400]] At two hundred and forty, the access token still works, and the refresh token is refused. [[slnc 300]] At three hundred and thirty, the access token expires. [[slnc 400]] And a token asking for an hour breaks the fifteen minute policy.
 """
 rows = { revoke = "active amber" }
 console = [
-    ["ana's access is removed 2 minutes after her token was issued", "muted"],
-    ["2 minutes later her access token: accepted for ana  <- STILL WORKS UNTIL IT EXPIRES", "bad"],
-    ["her refresh token, which the server looks up: refused (revoked)", "ok"],
-    ["at 5 minutes and 30 seconds the access token: refused (expired)", "ok"],
-    ["so access tokens live for minutes, and a token asking for more than 15 is refused: refused (lifetime longer than the policy allows)", "amber"],
-    ["where a browser should keep tokens is the tokens-in-the-browser project; in production, use a maintained library", "muted"],
+    ["WHAT ana HOLDS (seconds after issue):", "code"],
+    ["  the access token, which stops working at 300 + 30 of skew = 330", "muted"],
+    ["  the refresh token rt-1, which the bank looks up each time", "muted"],
+    ["THE EVENT:", "code"],
+    ["  at 120 the bank removes ana's access and revokes rt-1", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  at 240 the access token:  accepted for ana  <- STILL WORKS", "bad"],
+    ["  at 240 the refresh token: refused (revoked)", "ok"],
+    ["  at 330 the access token:  refused (expired)", "ok"],
+    ["THE POLICY THAT FOLLOWS (at most 900 seconds = 15 minutes):", "code"],
+    ["  a token with exp = iat + 3600:", "muted"],
+    ["  -> refused (lifetime longer than the policy allows)", "ok"],
+    ["in production, use a maintained library, configured strictly", "amber"],
 ]
+
+[highlight]
+console_green = ["THE RESULTS", "THE VALIDATOR", "CHECKED AGAINST"]
+console_rose = ["A READER THAT ONLY DECODES", "THE EDIT"]
+console_amber = ["STEP 1", "STEP 2", "STEP 3", "THE TOKENS SENT", "THE HEADERS SENT", "THE MOMENTS TRIED", "ONE CLAIM CHANGED", "THE EVENT"]
+console_cyan = ["THE HEADER", "THE CLAIMS", "THE TOKEN", "THE API", "THE TIMES", "THE KEY SET", "WHAT ana HOLDS", "THE POLICY"]
 
 [animation]
 subtitle = "An online bank's accounts API checks the access tokens its authorization server issues."
@@ -257,9 +418,9 @@ objectives = [
     "explain why access tokens must be short-lived",
 ]
 walkthrough = """
-Start with the cinema ticket. Decode a real token from act one by hand, with any base64url tool, to show that anyone can read it. Then run the acts. After
-act two, ask what would happen if the validator took the algorithm from the header. After act three, ask which claim stops a token for one API being
-used at another. In act five, ask how long a stolen access token is useful, and how the bank could shorten that.
+Start with the cinema ticket. Decode the real token from act one by hand, with any base64url tool, to show that anyone can read it. Then run the acts. After
+act three, ask what would happen if the validator took the algorithm from the header. After act four, ask which claim stops a token for one API being
+used at another. In act six, ask how long a stolen access token is useful, and how the bank could shorten that.
 """
 exercises = [
     "Add a `jti` (token id) claim and a small deny-list for tokens reported stolen; measure what it costs to check on every request.",
@@ -298,7 +459,7 @@ nongoals = [
 problem = """
 Learners use JWTs through libraries and rarely see which checks the library is making; the common bugs are checks that were never switched on.
 """
-roles = [["Strict base64url", "`Base64Url`"], ["Strict JSON", "`Json`"], ["Ed25519 keys and signatures", "`Ed25519`"], ["Compact JWS", "`Jws`"], ["Keys by id", "`KeySet`"], ["The API's settings", "`Policy`"], ["The validator", "`Validator`"], ["The mistake", "`NaiveReader`"], ["Server-side refresh tokens", "`RefreshTokens`"], ["Entry point", "`JwtDemo`"]]
+roles = [["Strict base64url", "`Base64Url`"], ["Base64url by hand, for teaching", "`Base64UrlSteps`"], ["Strict JSON", "`Json`"], ["Ed25519 keys and signatures", "`Ed25519`"], ["Compact JWS", "`Jws`"], ["Keys by id", "`KeySet`"], ["The API's settings", "`Policy`"], ["The validator", "`Validator`"], ["The mistake", "`NaiveReader`"], ["Server-side refresh tokens", "`RefreshTokens`"], ["Entry point", "`JwtDemo`"]]
 requirements = [
     "The RFC 8037 example token verifies, re-signs to the same signature, and its public key is derived from its private key.",
     "Any algorithm other than EdDSA, a missing or wrong type, a critical header and an unknown key id are refused before the claims are read.",
@@ -440,7 +601,7 @@ after = { code = "alg fixed, kid known, aud, exp", note = "every check, in order
 key = "01-poster"
 kind = "poster"
 title = "JWT Done Right"
-narration = """Hello, and welcome. [[slnc 400]] This video explains how to check JSON web tokens properly, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A J W T is a small set of claims, such as who a token is for and until when, signed by the server that issued it. [[slnc 300]] A P Is receive them with every request. [[slnc 600]] Think of a cinema ticket. [[slnc 300]] Anyone can read what is printed on it. [[slnc 300]] What makes it valid is the box office's stamp, checked by an usher who also checks the film and the date. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will hear why decoding is not verifying. [[slnc 300]] Why the server, not the token, chooses the algorithm. [[slnc 300]] Which claims must be checked. [[slnc 300]] And why a token must not live long."""
+narration = """Hello, and welcome. [[slnc 400]] This video explains how to check JSON web tokens properly, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A JSON web token, or J W T, is a small set of claims, such as who a token is for and until when, signed by the server that issued it. [[slnc 300]] A P Is receive them with every request. [[slnc 600]] Think of a cinema ticket. [[slnc 300]] Anyone can read what is printed on it. [[slnc 300]] What makes it valid is the box office's stamp, checked by an usher who also checks the film and the date. [[slnc 700]] In this video, the domain is an online bank. [[slnc 500]] By the end, you will hear why decoding is not verifying. [[slnc 300]] Why the server, not the token, chooses the algorithm. [[slnc 300]] Which claims must be checked. [[slnc 300]] And why a token must not live long."""
 
 [[scene]]
 key = "02-scenario"
@@ -457,6 +618,19 @@ body = ["Claims: what the token says", "Signature: who wrote it", "Key id: which
 narration = """Before the demos, the words. [[slnc 500]] The claims are what the token says. [[slnc 500]] The signature shows who wrote it. [[slnc 500]] The key id says which key signed it. [[slnc 500]] The audience says which A P I it is for. [[slnc 500]] And the expiry says until when it works."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "03-anatomy"
+kind = "figure"
+title = "One real token, three parts"
+body = "token_anatomy"
+narration = """Let's see the whole idea on one real token. [[slnc 400]] At the top, Ana's access token, three hundred and forty seven characters. [[slnc 300]] The dots split it into three parts. [[slnc 700]] Part one, in yellow, is the header. [[slnc 300]] Decoded, it says the algorithm, the type, and the id of the key that signed it. [[slnc 600]] Part two, in blue, is the claims. [[slnc 300]] The issuer, the subject Ana, the audience, the scope, and three times in seconds. [[slnc 600]] Part three, in red, is the signature: sixty four bytes, made with the bank's private key over the first two parts. [[slnc 700]] Anyone can decode parts one and two. [[slnc 300]] Only part three, checked with the bank's public key, proves the bank wrote them. [[slnc 300]] Decoding is not verifying."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -468,13 +642,6 @@ kind = "bullets"
 title = "The Checks, In Order"
 body = ["Shape: three strict parts", "Header: algorithm and type fixed by the API", "Key: from the API's own set", "Signature", "Claims: expiry, issuer, audience, scope"]
 narration = """Let's put the checks in order. [[slnc 400]] First, the shape: three parts, read strictly. [[slnc 500]] Then the header, against the A P I's own algorithm and type. [[slnc 500]] Then a key, from the A P I's own set. [[slnc 500]] Then the signature. [[slnc 500]] And only then, the claims: expiry, issuer, audience and scope."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Validator: every check, in order", "Policy: the API's settings", "KeySet: public keys by key id", "Jws and Ed25519: the format and the signature", "NaiveReader: the mistake, kept for the tests"]
-narration = """Here is who does what in the code. [[slnc 400]] The validator makes every check, in order. [[slnc 500]] The policy holds the A P I's settings, including the one algorithm it accepts. [[slnc 500]] The key set holds public keys by key id. [[slnc 500]] The J W S and Ed twenty five five one nine classes handle the format and the signature. [[slnc 300]] And the naive reader is the mistake, kept so the tests can show what it lets in."""
 
 [[scene]]
 key = "11-recognise"
@@ -489,6 +656,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["One algorithm, chosen by the server", "A known key set, never fetched from a token", "Check issuer, audience, expiry and scope", "Short lifetimes; refresh tokens on the server", "A maintained library, configured strictly"]
 narration = """So, how do you use it? [[slnc 400]] Accept one algorithm, chosen by the server. [[slnc 500]] Use a key set the server already knows, and never fetch a key because a token asked. [[slnc 500]] Check the issuer, the audience, the expiry and the scope. [[slnc 500]] Keep access tokens short, and refresh tokens on the server. [[slnc 500]] And use a maintained library, configured strictly."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -586,3 +759,154 @@ threat = "A stolen or revoked customer's access token keeps working"
 where = "the customer's app, `Validator`"
 control = "Short lifetimes and a cap on them; refresh tokens checked on the server"
 residual = "A stolen access token works until it expires; sender-constrained tokens (DPoP) are the tokens-in-the-browser project"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Everything uses the Java development kit alone, with a simulated clock, so every run is the same. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Policy"
+what = "the API's settings: one algorithm, one type, issuer, audience, scope"
+[[class.part]]
+title = "fixed by the server"
+code = """
+static final String ALGORITHM = "EdDSA";
+static final String TYPE = "at+jwt";
+...
+return new Policy("https://auth.bank.example", "accounts-api", "accounts:read",
+        30, 900);
+"""
+speech = """The policy holds the A P I's settings. [[slnc 300]] One algorithm and one token type, written in the code. [[slnc 300]] Then the issuer, the audience, the scope, thirty seconds of skew, and at most nine hundred seconds of lifetime."""
+
+[[class]]
+name = "Validator"
+what = "every check, in order: header, key, signature, then the claims"
+[[class.part]]
+title = "the header against the policy, a known key"
+code = """
+Object alg = header.get("alg");
+if (!Policy.ALGORITHM.equals(alg)) {
+    throw new InvalidTokenException(
+            "algorithm " + alg + " is not " + Policy.ALGORITHM);
+...
+PublicKey key = keys.find(kid)
+        .orElseThrow(() -> new InvalidTokenException("unknown key id " + kid));
+if (!Ed25519.verify(key, parts.signingInput(), parts.signature())) {
+    throw new InvalidTokenException("signature does not match");
+"""
+speech = """The validator compares the header's algorithm with the policy, never the other way round. [[slnc 300]] It finds the key by key id in its own set. [[slnc 300]] And it verifies the signature before it reads a single claim."""
+[[class.part]]
+title = "then the claims"
+code = """
+if (now >= exp + policy.skewSeconds()) {
+    throw new InvalidTokenException("expired");
+...
+if (!audiences(claims.get("aud")).contains(policy.audience())) {
+    throw new InvalidTokenException("another audience");
+"""
+speech = """Only then come the claims. [[slnc 300]] Expiry, with the skew. [[slnc 300]] Then not before, the lifetime, the issuer, the audience, and the scope."""
+
+[[class]]
+name = "KeySet"
+what = "the public keys the API trusts, by key id"
+[[class.part]]
+title = "look up, never fetch"
+code = """
+private final Map<String, PublicKey> keys = new TreeMap<>();
+...
+Optional<PublicKey> find(String kid) {
+    return Optional.ofNullable(keys.get(kid));
+"""
+speech = """The key set is a map from key id to public key. [[slnc 300]] An unknown key id finds nothing. [[slnc 300]] Nothing is ever fetched because a token asked for it."""
+
+[[class]]
+name = "Base64UrlSteps"
+what = "base64url by hand: 6 bits per character"
+[[class.part]]
+title = "three bytes, four characters"
+code = """
+bits = (bits << 8) | (b & 0xff);
+count += 8;
+while (count >= 6) {
+    count -= 6;
+    out.append(ALPHABET.charAt((bits >> count) & 0x3f));
+"""
+speech = """This teaching class redoes base64url by hand. [[slnc 300]] Bytes go in eight bits at a time, and characters come out six bits at a time. [[slnc 300]] A test proves it gives the library's exact result."""
+
+[[class]]
+name = "RefreshTokens"
+what = "refresh tokens kept on the server, so they can be revoked"
+[[class.part]]
+title = "a lookup the bank controls"
+code = """
+void revokeAll(String subject) {
+    subjects.values().removeIf(subject::equals);
+...
+return Optional.ofNullable(subjects.get(handle));
+"""
+speech = """A refresh token is only a handle in the bank's own table. [[slnc 300]] Removing it revokes it at once. [[slnc 300]] An access token has no such table, which is why it must be short."""
+
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: signed claims, RFC 7519"
+say = "J W T is a JSON web token: a set of claims, signed by the server that issued it."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: text like {\"sub\":\"ana\"}"
+say = "J S O N is JavaScript object notation: names and values written as text, between braces."
+[[acronym]]
+short = "JWS"
+long = "JSON Web Signature: header.payload.signature, RFC 7515"
+say = "J W S is JSON web signature: the format with three parts, separated by dots."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: here the bank's accounts API"
+say = "A P I is an application programming interface: here, the bank's accounts service that apps call."
+[[acronym]]
+short = "RFC"
+long = "Request for Comments: the numbered internet standards"
+say = "R F C means request for comments: the numbered documents that define internet standards."
+[[acronym]]
+short = "EdDSA, DSA, Ed25519"
+long = "Edwards-curve Digital Signature Algorithm, on curve 25519"
+say = "Ed D S A is the Edwards curve digital signature algorithm. Ed twenty five five one nine is that algorithm on curve twenty five five one nine."
+[[acronym]]
+short = "HS256"
+long = "HMAC with SHA-256: a shared-secret algorithm"
+say = "H S two five six is H Mac with S H A two five six: a signature made with a shared secret."
+[[acronym]]
+short = "HMAC, SHA"
+long = "Hash-based Message Authentication Code; Secure Hash Algorithm"
+say = "H Mac is a hash based message authentication code. S H A is the secure hash algorithm."
+[[acronym]]
+short = "base64url"
+long = "64 characters, 6 bits each, safe in a web address"
+say = "Base64url writes bytes with sixty four characters, six bits each, all safe in a web address."
+[[acronym]]
+short = "iss, sub, aud"
+long = "claims: issuer, subject, audience"
+say = "In the claims, i s s is the issuer, sub is the subject, and aud is the audience."
+[[acronym]]
+short = "iat, nbf, exp"
+long = "claims: issued at, not before, expires, in seconds"
+say = "I a t is issued at, n b f is not before, and e x p is the expiry, all in seconds since nineteen seventy."
+[[acronym]]
+short = "kid, typ, alg"
+long = "header: key id, token type, algorithm"
+say = "In the header, kid is the key id, typ is the token type, and alg is the algorithm."
+[[acronym]]
+short = "at+jwt, ID"
+long = "access token type; an ID (identity) token is for the app"
+say = "At plus J W T marks an access token. An I D token, short for identity token, is meant for the app, not for an A P I."
+[[acronym]]
+short = "JWKS"
+long = "JSON Web Key Set: an issuer's public keys by key id"
+say = "J W K S is a JSON web key set: the public keys of an issuer, by key id."
+[[acronym]]
+short = "UTC, ASCII"
+long = "Coordinated Universal Time; the 128-character American code"
+say = "U T C is coordinated universal time. A S C I I is the American standard code for information interchange."
+[[acronym]]
+short = "hex"
+long = "hexadecimal: one byte as two digits, 0-9 and a-f"
+say = "Hex is hexadecimal: each byte written as two digits, from zero to nine and a to f."

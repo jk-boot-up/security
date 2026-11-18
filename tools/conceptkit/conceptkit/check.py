@@ -81,7 +81,9 @@ def check(slug, render=True):
                 break
             letters = letters[len(hit):]
     words = set(re.findall(r"\b[A-Z]{2,}\b", (pdir / "docs" / "expected-output.txt").read_text()))
-    missing = sorted(u for u in used if u not in have and u not in IGNORE and u not in words)
+    hex_value = re.compile(r"(?=.*\d)[0-9A-F]{4,6}")                         # code points such as FF41
+    missing = sorted(u for u in used if u not in have and u not in IGNORE and u not in words
+                     and not hex_value.fullmatch(u))
     if missing:
         problems.append("capitalised words with no [[acronym]] entry (add one if it is jargon): " + ", ".join(missing))
     anim = (pdir / "docs" / "animation.html").read_text()

@@ -15,7 +15,7 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A build that works | 7 min |
-| 0:17 | Act 2: Somebody registers the company's name in the public repository | 7 min |
+| 0:17 | Act 2: Somebody registers the store's name in the public repository | 7 min |
 | 0:24 | Act 3: The repository says which names it may answer for | 7 min |
 | 0:31 | Act 4: Checksums that the build checks | 7 min |
 | 0:38 | Act 5: The bill | 7 min |

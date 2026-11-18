@@ -56,4 +56,74 @@ public final class Engine {
     public static List<Finding> scan(String text) {
         return scan(text, Rules.ALL);
     }
+
+    /** What each container sets that the rules read, as "container  key=value, ..." lines no wider than `width`. */
+    public static List<String> settings(String text, int width) {
+        List<String> out = new ArrayList<>();
+        for (JsonNode doc : documents(text)) {
+            JsonNode pod = podSpec(doc);
+            if (pod == null) {
+                continue;
+            }
+            for (JsonNode c : pod.path("containers")) {
+                List<String> items = new ArrayList<>();
+                items.add("image=" + c.path("image").asString());
+                if (pod.path("hostNetwork").asBoolean(false)) {
+                    items.add("hostNetwork=true");
+                }
+                JsonNode limits = c.path("resources").path("limits");
+                if (!limits.isMissingNode()) {
+                    items.add("limits=" + limits.path("cpu").asString() + "/" + limits.path("memory").asString());
+                }
+                for (String key : List.of("privileged", "runAsNonRoot", "readOnlyRootFilesystem", "allowPrivilegeEscalation")) {
+                    JsonNode v = c.path("securityContext").path(key);
+                    if (!v.isMissingNode()) {
+                        items.add(key + "=" + v.asString());
+                    }
+                }
+                for (JsonNode e : c.path("env")) {
+                    items.add(e.path("name").asString() + "=" + (e.has("value") ? e.path("value").asString() : "from a Secret"));
+                }
+                String name = String.format("%-8s", c.path("name").asString());
+                StringBuilder line = new StringBuilder(name);
+                for (int i = 0; i < items.size(); i++) {
+                    String item = items.get(i) + (i < items.size() - 1 ? "," : "");
+                    if (line.length() > name.length() && line.length() + 1 + item.length() > width) {
+                        out.add(line.toString());
+                        line = new StringBuilder(" ".repeat(name.length()));
+                    } else if (line.length() > name.length()) {
+                        line.append(' ');
+                    }
+                    line.append(item);
+                }
+                out.add(line.toString());
+            }
+        }
+        return out;
+    }
+
+    /** One row per container and one column per rule: x where the container breaks the rule. */
+    public static List<String> matrix(String text, List<Finding> findings) {
+        List<String> out = new ArrayList<>();
+        StringBuilder head = new StringBuilder(" ".repeat(8));
+        Rules.ALL.forEach(r -> head.append(String.format(" %-2s", r.id())));
+        out.add(head.toString());
+        for (JsonNode doc : documents(text)) {
+            JsonNode pod = podSpec(doc);
+            if (pod == null) {
+                continue;
+            }
+            String resource = doc.path("kind").asString() + "/" + doc.path("metadata").path("name").asString();
+            for (JsonNode c : pod.path("containers")) {
+                String name = c.path("name").asString();
+                StringBuilder row = new StringBuilder(String.format("%-8s", name));
+                for (Rule r : Rules.ALL) {
+                    row.append(String.format(" %-2s", findings.contains(new Finding(r.id(), resource, name)) ? "x" : "."));
+                }
+                long n = findings.stream().filter(f -> f.resource().equals(resource) && f.container().equals(name)).count();
+                out.add(row.toString().stripTrailing() + "   " + n);
+            }
+        }
+        return out;
+    }
 }

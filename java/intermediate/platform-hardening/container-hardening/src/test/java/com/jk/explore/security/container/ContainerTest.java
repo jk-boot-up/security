@@ -104,4 +104,40 @@ class ContainerTest {
         String reckless = Renderer.dockerFlags(ContainerSpec.reckless());
         assertTrue(reckless.contains("--privileged") && reckless.contains("--network host") && reckless.contains("-v /var/run/docker.sock:/var/run/docker.sock"));
     }
+
+    @Test
+    void everyCheckOfALevelPassesExactlyWhenItHasNoProblem() {
+        ContainerSpec d = ContainerSpec.dockerDefaults();
+        assertEquals(9, PodSecurityLevel.CHECKS.size());
+        assertEquals(List.of("not root", "no privilege escalation", "drops ALL capabilities"),
+                PodSecurityLevel.CHECKS.stream().filter(k -> !k.passes(d)).map(PodSecurityLevel.Check::name).toList());
+        assertTrue(PodSecurityLevel.CHECKS.stream().allMatch(k -> k.passes(ContainerDemo.hardened())));
+        assertEquals(6, PodSecurityLevel.CHECKS.stream().filter(k -> k.level() == PodSecurityLevel.BASELINE && !k.passes(ContainerSpec.reckless())).count(),
+                "the tutorial configuration fails all six baseline checks");
+    }
+
+    @Test
+    void theAttacksAreGroupedByWhatTheyReach() {
+        assertEquals(List.of(4L, 3L, 4L, 2L), List.of(Attacker.CONTAINER, Attacker.KERNEL, Attacker.HOST, Attacker.RESOURCES).stream()
+                .map(r -> Attacker.ATTACKS.stream().filter(a -> a.reach().equals(r)).count()).toList());
+        assertEquals(List.of("read-secrets"), Attacker.possibleIds(ContainerDemo.hardened()));
+    }
+
+    @Test
+    void theCommandIsWrittenOneFlagPerLine() {
+        List<String> lines = Renderer.dockerLines(ContainerDemo.hardened());
+        assertEquals("docker run \\", lines.get(0));
+        assertEquals("  shop-app@sha256:9f2c1a7d", lines.get(lines.size() - 1));
+        assertTrue(lines.subList(1, lines.size() - 1).stream().allMatch(l -> l.endsWith(" \\")));
+        assertEquals(Renderer.dockerFlags(ContainerDemo.hardened()),
+                String.join(" ", lines.stream().map(l -> l.replace(" \\", "").strip()).toList()));
+    }
+
+    @Test
+    void theDemoWrapsListsAtSixtySixCharacters() {
+        StringBuilder out = new StringBuilder();
+        ContainerDemo.wrap(out, "  blocks ", List.of("docker-socket", "host-files", "host-network", "see-host-processes", "fork-bomb", "exhaust-memory"));
+        assertTrue(out.toString().lines().allMatch(l -> l.length() <= ContainerDemo.WIDTH));
+        assertTrue(ContainerDemo.run().lines().allMatch(l -> l.length() <= ContainerDemo.WIDTH), "every demo line fits a slide");
+    }
 }

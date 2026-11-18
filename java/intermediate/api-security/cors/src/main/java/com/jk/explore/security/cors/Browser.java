@@ -33,8 +33,7 @@ public final class Browser {
         if (contentType != null) {
             headers.put("content-type", contentType);
         }
-        boolean simple = SIMPLE_METHODS.contains(method) && (contentType == null || SIMPLE_TYPES.contains(contentType));
-        if (!simple) {
+        if (!isSimple(method, contentType)) {
             Map<String, String> pre = new HashMap<>();
             pre.put("origin", pageOrigin);
             pre.put("access-control-request-method", method);
@@ -50,6 +49,11 @@ public final class Browser {
         Response r = bank.handle(new Request(method, path, headers, withCredentials));
         boolean readable = approves(r, pageOrigin, withCredentials);
         return new FetchResult(true, readable, readable ? r.body() : null);
+    }
+
+    /** A simple request is sent without asking first: GET, HEAD or POST, with no body or a form or plain-text body. */
+    static boolean isSimple(String method, String contentType) {
+        return SIMPLE_METHODS.contains(method) && (contentType == null || SIMPLE_TYPES.contains(contentType));
     }
 
     /** The browser's check on a response: Access-Control-Allow-Origin must name the page (or be {@code *} without credentials). */

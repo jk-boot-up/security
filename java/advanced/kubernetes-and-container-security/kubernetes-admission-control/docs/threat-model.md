@@ -50,7 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `PodsAndPoliciesTest` and `VerdictTest` check the requests, the policy files and the verdicts with no tools.
+- `PodsAndPoliciesTest`, `VerdictTest` and `TagRuleAndPoliciesTest` check the requests, the policy files, the verdicts, the tag rule and the retry rule with no tools.
 - `DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

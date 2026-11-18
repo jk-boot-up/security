@@ -15,8 +15,8 @@ class IncidentTest {
         assertEquals(1, Preparation.monitoringOnly().score());
         assertEquals(6, Preparation.full().score());
         assertEquals(List.of(), Preparation.full().missing());
-        assertTrue(Preparation.none().missing().contains("backups never tested"));
-        assertTrue(new Preparation(true, true, true, 3, true, true, true).missing().contains("logs not kept centrally for at least 7 days"));
+        assertTrue(Preparation.none().missing().contains("tested backups"));
+        assertTrue(new Preparation(true, true, true, 3, true, true, true).missing().contains("logs kept centrally 7+ days"));
     }
 
     @Test
@@ -139,5 +139,41 @@ class IncidentTest {
         assertEquals("day 0 01:00", w.clock());
         w.advance(25 * 60);
         assertEquals("day 1 02:00", w.clock());
+    }
+
+    @Test
+    void theCopyingStopsAtTheMinuteOfTheFirstContainment() {
+        World w = Playbooks.improvised();
+        assertEquals(35, w.stoppedAt, "isolated at 01:35");
+        assertEquals((w.stoppedAt - World.EXFIL_START) * World.EXFIL_RATE, w.rowsWhenStopped);
+        assertEquals(-1, Playbooks.panic().stoppedAt, "the panicked response never stops the copying");
+    }
+
+    @Test
+    void theAttackerComesBackThroughTheFirstWayLeftOpen() {
+        assertEquals("cron job on web01", Playbooks.panic().returnedVia);
+        assertEquals("hidden admin account svc-backup", Playbooks.improvised().returnedVia);
+        assertEquals(null, Playbooks.playbook().returnedVia);
+    }
+
+    @Test
+    void everyWayBackInHasAnActionThatClosesIt() {
+        assertEquals(new World(Preparation.none()).footholdsLeft(), List.copyOf(World.waysBackIn().keySet()));
+    }
+
+    @Test
+    void theImprovisedAndThePlaybookResponsesPartWaysAtTheThirdStep() {
+        World b = Playbooks.improvised();
+        World c = Playbooks.playbook();
+        assertEquals(b.actions.subList(0, 2), c.actions.subList(0, 2));
+        assertEquals("rebuild web01", b.actions.get(2));
+        assertEquals("kill db sessions", c.actions.get(2));
+    }
+
+    @Test
+    void theChecklistHasSixThingsInAFixedOrder() {
+        assertEquals(6, Preparation.full().checklist().size());
+        assertEquals("runbook and contact list", Preparation.full().checklist().keySet().iterator().next());
+        assertEquals("day 3 01:00", World.clockAt(World.THREE_DAYS));
     }
 }

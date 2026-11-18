@@ -28,11 +28,12 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── Policy.java                The ledger's authorization: which SPIFFE ID may call which route
 ├── Rotations.java             Counts how often a certificate was replaced, from the serial numbers seen one after the other
 ├── Sh.java                    Runs a program and returns what it printed, whether it worked or not
+├── SpiffeIds.java             A teaching class: a SPIFFE ID taken apart by hand, the way the java-spiffe library reads it (a test checks they agree)
 ├── Workload.java              The program that runs inside the SPIRE container, once per workload
 └── WorkloadIdentityDemo.java  A bank's ledger is called by payments and reporting
 </code></pre>
 <p><strong>One static secret copied into 3 services lets a leak from any one of them act as every service; with SPIRE each workload gets a SPIFFE ID chosen by a registration entry and its operating system user, not by what it claims, and an X.509-SVID that lives 20 seconds; two Java services verify each other's SPIFFE ID against the trust bundle, the ledger authorizes by that ID (200 and 403 as the rules say), the SVID is renewed on its own at least 3 times in 50 seconds with 0 calls failed, a stolen copy works while it lives and is refused after 20 seconds, and a process that matches no entry gets no SVID.</strong></p>
-<p>A shared secret says "someone who holds this key is calling", never which service. This project first shows that <strong>before</strong>: one static key copied into the configuration of payments, reporting and fraud-engine; when the fraud-engine's copy leaks, the attacker is every service. It then runs a real <strong>SPIRE</strong> server and agent (SPIFFE's reference implementation) and gives each workload a <strong>SPIFFE ID</strong> such as <code>spiffe://bank.example/payments</code>, chosen by a registration entry and the operating system user the process runs as, plus an <strong>X.509-SVID</strong> that lives 20 seconds. SPIRE has no macOS build, so the official linux arm64 release runs in one Docker container (<code>eclipse-temurin:25-jre</code>, the release downloaded once into <code>build/spire</code>); the Java workloads run in that container as different users and use the <code>java-spiffe</code> Workload API client. The demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code> (about 3 minutes).</p>
+<p>A shared secret says "someone who holds this key is calling", never which service. This project first shows that <strong>before</strong>: one static key copied into the configuration of payments, reporting and fraud-engine; when the fraud-engine's copy leaks, the attacker is every service. It then runs a real <strong>SPIRE</strong> server and agent (SPIFFE's reference implementation) and gives each workload a <strong>SPIFFE ID</strong> such as <code>spiffe://bank.example/payments</code>, chosen by a registration entry and the operating system user the process runs as, plus an <strong>X.509-SVID</strong> that lives 20 seconds. SPIRE has no macOS build, so the official linux arm64 release runs in one Docker container (<code>eclipse-temurin:25-jre</code>, pinned by digest, the release downloaded once into <code>build/spire</code>); the Java workloads run in that container as different users and use the <code>java-spiffe</code> Workload API client. The demo is tagged <code>integration</code>: <code>./gradlew integrationTest</code> (about 3 minutes).</p>
 <p>What it shows:
 - <strong>The shared secret.</strong> Held by <strong>3</strong> services, it lets a copy from one service call as any of them; the ledger takes the caller's word for who it is.
 - <strong>Identity by registration.</strong> The same Java program gets <code>ledger</code>, <code>payments</code> or <code>reporting</code> depending on the user it runs as; a claim in its environment changes nothing.
@@ -40,7 +41,7 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 - <strong>Rotation.</strong> SVIDs are replaced at least <strong>3</strong> times in 50 seconds with <strong>0</strong> failed calls and no renewal code in the services.
 - <strong>A stolen SVID.</strong> It works while it lives and is refused after 20 seconds; a shared secret still works.
 - <strong>No entry, no identity.</strong> A process that matches nothing gets no SVID, and deleting an entry ends a workload's identity.</p>
-<p><strong>Maps to:</strong> NIST SP 800-207 (zero trust) · SPIFFE and SPIRE · OWASP ASVS V9 · CWE-798 (hard-coded credentials).</p>
+<p><strong>Maps to:</strong> NIST SP 800-207 (zero trust) · SPIFFE and SPIRE · OWASP ASVS 5.0 V12 Secure Communication · CWE-798 (hard-coded credentials).</p>
 <h2>The idea in everyday terms</h2>
 <p>A shared secret is a master key cut three times: whoever finds one lost copy can open every door and nobody can tell which copy it was. A SPIFFE ID is a name badge printed at the door by a guard who looks at who is standing there, and the badge stops working after 20 seconds.</p>
 <h2>The scenario</h2>
@@ -48,7 +49,7 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
 </code></pre>
-<p>The demo tells the story in 6 acts, each printing exact numbers that the tests check:</p>
+<p>The demo tells the story in 7 acts, each printing exact numbers that the tests check:</p>
 <table>
 <thead>
 <tr>
@@ -58,35 +59,39 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 </thead>
 <tbody>
 <tr>
-<td>1. One shared secret</td>
-<td>One key in 3 services lets a leak from any of them act as every service.</td>
+<td>1. One shared secret in three services</td>
+<td>One random key is copied into payments, reporting and fraud-engine (3 of 3). The ledger checks the key, then believes the X-Service header: reporting saying payments may POST /transfers (200). With fraud-engine's leaked copy an attacker outside the bank gets 200 as payments and 200 as reporting; only a wrong key gets 401.</td>
 </tr>
 <tr>
-<td>2. Identity by registration</td>
-<td>SPIRE gives the same Java program a different SPIFFE ID for each user it runs as.</td>
+<td>2. SPIRE decides who a workload is</td>
+<td>A SPIRE 1.15.5 server and agent hold 3 registration entries: unix:uid:2001 -&gt; spiffe://bank.example/ledger, 2002 -&gt; payments, 2003 -&gt; reporting. The same Java program run as each user gets that ID; run as user 2003 while saying it is payments, it still gets /reporting. An SVID's dates span 30 s: 10 s back-dated, so 30 - 10 = 20 s, the TTL.</td>
 </tr>
 <tr>
-<td>3. Two services check each other</td>
-<td>Each side verifies the other's SPIFFE ID against the trust bundle, and the ledger authorizes by it.</td>
+<td>3. Two Java services check each other's SPIFFE ID</td>
+<td>Over mutual TLS the ledger reads the caller's SPIFFE ID from its certificate and applies the same two rules: payments POST /transfers 200, GET /statements 403; reporting GET /statements 200, POST /transfers 403. The audit names 4 requests by certificate. A server run as reporting is refused by payments, which expects spiffe://bank.example/ledger, and a self-made certificate naming payments is refused before any request reaches the ledger (0).</td>
 </tr>
 <tr>
-<td>4. Rotation without a restart</td>
-<td>SVIDs are replaced at least 3 times in 50 seconds and no call fails.</td>
+<td>4. Rotation: an SVID that lives 20 seconds</td>
+<td>payments calls the ledger on a new connection about 4 times a second for 50 s, 50 / 20 = 2.5 SVID lifetimes: at least 100 calls (yes), 0 failed, payments' own SVID and the ledger's as seen by payments each replaced at least 3 times (yes), with no renewal code in the services.</td>
 </tr>
 <tr>
 <td>5. A stolen SVID</td>
-<td>A copy works while the SVID lives and is refused after 20 seconds; a shared secret still works.</td>
+<td>The certificate, key and bundle an SVID helper left on payments' disk are copied by another user. With the copy the attacker's POST /transfers gets 200 and the audit names spiffe://bank.example/payments; after 21 s (&gt; 20) it is refused, while payments itself gets 200 and the leaked shared secret still gets 200.</td>
 </tr>
 <tr>
-<td>6. No entry, no identity</td>
-<td>A process that matches no entry gets no SVID, and deleting an entry ends an identity.</td>
+<td>6. A workload that matches no entry</td>
+<td>A process run as the attacker's user 2004, saying it is payments, gets no SVID and cannot call the ledger (0 requests reach it). Once the payments entry is deleted, a new payments process gets no SVID either, while reporting still gets 200.</td>
+</tr>
+<tr>
+<td>7. Evicting the attacker</td>
+<td>Changing the shared secret stops the leaked copy (401) but breaks 3 of 3 services until each gets the new one. The stolen SVID needed no change in any service (0): it expired by itself, while the leaked secret kept working (200) until it was changed.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>10 tests in <code>DemoRunsTest</code>, <code>LegacyLedgerTest</code>, <code>PolicyTest</code>, <code>RotationsTest</code>. The policy, the rotation count and the shared-secret ledger are tested with no tools. The demo runs SPIRE in Docker (./gradlew integrationTest).</p>
+<p>13 tests in <code>DemoRunsTest</code>, <code>LegacyLedgerTest</code>, <code>PolicyTest</code>, <code>RotationsTest</code>, <code>SpiffeIdsTest</code>. The policy, the rotation count, the SPIFFE ID parts and the shared-secret ledger are tested with no tools. The demo runs SPIRE in Docker (./gradlew integrationTest).</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>SPIRE (server and agent 1.15.5), Docker and the java-spiffe client are real, and every number is measured. The "bank" is a ledger and three callers on one node; a real deployment has many nodes and a node attestor stronger than a join token. The demo never prints ports, serial numbers, tokens or times.</p>
 <h2>Technologies and versions</h2>

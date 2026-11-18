@@ -21,7 +21,8 @@ public final class ModelBuilder {
     }
 
     private static String id(String key) {
-        return UUID.nameUUIDFromBytes(("dragon-bank-" + key).getBytes(StandardCharsets.UTF_8)).toString();
+        byte[] name = ("dragon-bank-" + key).getBytes(StandardCharsets.UTF_8);
+        return UUID.nameUUIDFromBytes(name).toString();
     }
 
     private static Map<String, Object> position(int x, int y) {
@@ -162,7 +163,7 @@ public final class ModelBuilder {
         cells.add(node("transfer", "process", "tm.Process", "Transfer API", 760, 60, 100, 100, 1, Map.of("privilegeLevel", "", "isWebApplication", false, "handlesCardPayment", false, "handlesGoodsOrServices", false), byElement.getOrDefault("transfer", t)));
         cells.add(node("approval", "process", "tm.Process", "Approval console", 760, 340, 100, 100, 1, Map.of("privilegeLevel", "operations", "isWebApplication", true, "handlesCardPayment", false, "handlesGoodsOrServices", false), byElement.getOrDefault("approval", t)));
         cells.add(node("accounts", "store", "tm.Store", "Accounts database", 960, 80, 160, 80, 1, Map.of("isALog", false, "isEncrypted", true, "isSigned", false, "storesCredentials", false, "storesInventory", false), byElement.getOrDefault("accounts", t)));
-        cells.add(flow("signin", "ana", "web", "Sign in with password and one-time code", "HTTPS", true, true, 2, byElement.getOrDefault("signin", t)));
+        cells.add(flow("signin", "ana", "web", "Sign-in", "HTTPS", true, true, 2, byElement.getOrDefault("signin", t)));
         cells.add(flow("request", "web", "transfer", "Transfer request", "HTTPS", true, false, 2, byElement.getOrDefault("request", t)));
         cells.add(flow("balance", "transfer", "accounts", "Balance update", "TLS", true, false, 2, byElement.getOrDefault("balance", t)));
         cells.add(flow("approve", "transfer", "approval", "Approval request", "HTTPS", true, false, 2, byElement.getOrDefault("approve", t)));

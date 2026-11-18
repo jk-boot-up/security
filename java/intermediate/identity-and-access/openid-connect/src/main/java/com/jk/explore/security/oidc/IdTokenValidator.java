@@ -32,7 +32,8 @@ final class IdTokenValidator {
         if (!(parts.header().get("kid") instanceof String kid)) {
             throw new InvalidTokenException("no key id");
         }
-        PublicKey key = provider.keys().find(kid).orElseThrow(() -> new InvalidTokenException("unknown key id"));
+        PublicKey key = provider.keys().find(kid)
+                .orElseThrow(() -> new InvalidTokenException("unknown key id"));
         if (!Ed25519.verify(key, parts.signingInput(), parts.signature())) {
             throw new InvalidTokenException("signature does not match");
         }
@@ -65,7 +66,9 @@ final class IdTokenValidator {
         if (!(claims.get("nonce") instanceof String nonce)) {
             throw new InvalidTokenException("no nonce");
         }
-        if (!MessageDigest.isEqual(nonce.getBytes(StandardCharsets.UTF_8), expectedNonce.getBytes(StandardCharsets.UTF_8))) {
+        byte[] given = nonce.getBytes(StandardCharsets.UTF_8);
+        byte[] expected = expectedNonce.getBytes(StandardCharsets.UTF_8);
+        if (!MessageDigest.isEqual(given, expected)) {
             throw new InvalidTokenException("nonce is not the one this browser was given");
         }
         if (!(claims.get("sub") instanceof String sub) || sub.isEmpty()) {

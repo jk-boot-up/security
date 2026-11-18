@@ -6,25 +6,35 @@ A rule is a program, so give it tests and an owner.
 
 ## The 5 acts
 
-### 1. The code under test
+### 1. One flaw, as a taint rule sees it
 
-The bank's web code builds queries from request parameters directly, through a variable and through a helper, runs a converter, reads a file and hashes with MD5. Next to them are safe versions: a prepared statement, a parsed number, a constant, an allowlisted column, a command array, a validated file name and SHA-256.
+The input is three lines of the bank's AccountController, lines 22 to 24, and the rule sql-taint from rules/taint.yml: source $REQ.getParameter(...), sink $S.executeQuery(...), sanitizers Integer.parseInt(...) and Validate.fileName(...).
+How the taint travels, worked out by hand: line 22, name is tainted because it comes from the source; line 23, sql is tainted because it is built from name; line 24, executeQuery(sql) gets a tainted value, which is a finding.
+The result: Semgrep reports sql-taint at AccountController:24, the same line.
 
 ### 2. Pattern against taint
 
-The pattern rule flags any query that is not a constant: the parsed number, the constant and the allowlisted column too. The taint rule follows the request parameter and knows that parsing is a sanitizer, so it flags only the allowlisted column. It misses the query built in another file, because there the input is a method parameter.
+The input: six files with 7 planted flaws and 7 safe look-alikes, each marked // VULN or // SAFE, and two rules: the pattern rule sql-concat matches executeQuery($Q + ...) and executeQuery($Q); the taint rule sql-taint follows getParameter to executeQuery.
+The result, line by line on the 8 SQL lines: the pattern rule finds every flaw but also flags the parsed number, the constant and the allowlisted column. The taint rule knows parsing is a sanitizer and that a constant carries no input; it flags only the allowlisted column, and misses sql-other-file, whose query is built in AccountRepository, another file.
+How the score is made: recall = found / flaws (4/4 = 100% and 3/4 = 75%); precision = real / flagged (4/7 = 57% and 3/4 = 75%).
 
-### 3. Tests for the rules
+### 3. Every flaw class with the taint rules
 
-A test file marks the lines a rule must flag and the lines it must leave alone. The four taint checks pass. The same file run against a rule without the parseInt sanitizer fails one check: the test notices the broken rule. The pattern rule has no test, and the run says so.
+The input: rules/taint.yml with three taint rules (sql-taint, command-taint, path-taint) and one pattern rule for MD5 and SHA-1.
+The result: 7 findings, each matched with the marker on its line: sql-direct, sql-variable, sql-helper, weak-hash, command and path are real; sql-allowlisted is a false alarm.
+By class: sql 3 of 4 flaws found and 1 of 4 safe lines flagged; command 1 of 1 and 0 of 1; path 1 of 1 and 0 of 1; weak-hash 1 of 1 and 0 of 0; all together 6 of 7 and 1 of 7.
 
-### 4. Triage
+### 4. Tests for the rules
 
-The taint rules report 7 findings, 6 real and 1 false, and exit with code 1. A comment above the false one names the rule, says why and who decides, and the scan reports 6. A second comment with no reason is counted as badly written and the check fails. A file with no flaw gives exit code 0.
+The input: a test file next to the rules, rules/taint.java, where // ruleid: <rule> marks a line the rule must flag (6 of them) and // ok: <rule> a line it must not flag (5).
+Before the change, semgrep --test compares the expected lines with the reported ones: command-taint 32 and 32, path-taint 42 and 42, sql-taint 10 16 and 10 16, weak-hash 52 54 and 52 54: 4 of 4 pass. pattern.yml has no test file.
+The change: the sanitizer Integer.parseInt(...) is removed from sql-taint. After it, sql-taint reports 10 16 22 where 10 16 were expected, so it fails and 3 of 4 pass. Line 22 runs a query with a number parsed from the request, marked // ok: the broken rule now flags safe code, and the test says so.
 
-### 5. The bill
+### 5. Triage
 
-A rule knows only its sources, sinks and sanitizers, so a check it does not know looks like no check. A rule without a test is a guess. The reports are a list for people to read, not a verdict.
+The input: the taint rules run with --error, which makes the exit code 1 when there is a finding, so the build fails: 7 findings, 6 real and 1 false.
+The suppression: a comment above AccountController line 56 with three parts: the rule (nosemgrep: rules.sql-taint), the reason (the column is checked against an allowlist above) and the owner (payments-team).
+The result: 6 findings and still exit code 1, because the real flaws remain; suppressions 1, well written 1. A second suppression with no reason gives suppressions 2, well written 1, and the build check fails. A file with no flaw, Validate.java, gives 0 findings and exit code 0.
 
 ## The verdict
 

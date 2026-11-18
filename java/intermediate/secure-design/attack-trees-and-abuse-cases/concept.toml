@@ -30,7 +30,7 @@ That is a missing ownership check, and no password policy or one-time code would
 The project then does the thing that makes trees useful in practice:
 - **Price the defences** (ownership check, CSRF tokens, breached-password check, app-based one-time codes, passkeys, a strict content security policy, fast patching, dual control) and see what each one does to the tree on its own: no single one fixes it.
 - **Cut the cheapest path, then look again.** After the ownership check, the cheapest path moves to leaked-password reuse and CSRF at 100 EUR; after passkeys, to a script injection at 2,000 EUR; after a content security policy, to a software flaw at 6,000 EUR. Each round shows the next weakest door.
-- **Write abuse cases as tests.** "As Mallory I transfer from Ana's account by changing the account number" is a check that *fails* on the weak bank and passes when the ownership check exists. Eight abuse cases cover thirteen of the tree's fourteen steps.
+- **Write abuse cases as tests.** "As Mallory I change the account number to Ana's" is a check that *fails* on the weak bank and passes when the ownership check exists. Eight abuse cases cover thirteen of the tree's fourteen steps. The AND and OR arithmetic is written out step by step with the real numbers by the teaching class `GateSteps`, which a test checks against the analysis for every gate.
 
 **Maps to:** OWASP Top 10 (2025) A06 Insecure Design · OWASP ASVS 5.0, V1 architecture and design requirements · Bruce Schneier, *Attack Trees* (1999) · NIST SSDF PW.1 (design software to meet security requirements) · OWASP Threat Modeling.
 """
@@ -62,100 +62,263 @@ This project is in [secure-design](..) and follows [threat-modeling](../threat-m
 twin = """
 The tree is a small Java data structure; the analysis is exact arithmetic over it. The abuse cases run against a model of the bank's configuration (a set of switched-on defences), not against a running bank: each is a predicate that is false until the defence exists. That is enough to show the loop between the tree, the defence and the test.
 """
-test_note = "Everything is fixed data, so the demo prints the same text on every run."
+test_note = "Everything is fixed data, so the demo prints the same text on every run. GateStepsTest checks the worked-out arithmetic of every gate against Analysis."
 
 [[act]]
 title = "The tree"
-summary = "One goal, 14 attacker steps in four branches: log in as Ana, abuse the transfer call, bribe an employee, or break in through the software."
+summary = "One goal, 14 attacker steps in four branches (log in as Ana, abuse the transfer call, bribe an employee, break in through the software), each step with a cost to the attacker and a chance that it works."
 detail = """
-The root is "move money out of Ana's account". Logging in as her can be done by phishing her password and one-time code, reusing a leaked password, a SIM swap, or stealing her session with an injected script. The transfer call can be abused by changing the account number or forging a request from another site.
-An employee can be bribed. The software can be exploited through an unpatched library and a move to the database. Each leaf carries a cost and a chance.
+The input is the tree. The root, an OR gate, is the goal: move money out of Ana's account. Its first branch, log in as Ana, is an OR of four AND gates: phish her password and one-time code (A1a, 300 EUR, 90%; A1b, 50 EUR, 20%), reuse a leaked password (A2a, 100 EUR, 80%; A2b, 0 EUR, 15%), a SIM swap (A3a, 1,500 EUR, 30%; A3b, 100 EUR, 15%) and steal her session with a script (A4a, 2,000 EUR, 10%; A4b, 0 EUR, 50%).
+The other branches: abuse the transfer call (B1, change the account number, 50 EUR, 90%; or forge a request from another site, B2a and B2b), bribe an employee (C, 20,000 EUR, 20%), and break in through the software (D1, an unpatched library, 5,000 EUR, 15%, and D2, move to the database, 1,000 EUR, 60%).
+The rules: at an OR gate any child will do, so the cheapest child wins and the chance is 1 - (1 - p1)(1 - p2)...; at an AND gate every child is needed, so the costs add and the chances multiply.
+"""
+figure = "bank_tree"
+figure_title = "The tree: one goal, fourteen steps"
+figure_speech = """
+First demo: the tree. [[slnc 400]] At the top, the goal: move money out of Ana's account. [[slnc 300]] Cyan boxes are OR gates: any one child is enough. [[slnc 300]] Amber boxes are AND gates: every child is needed. [[slnc 600]]
+Under the goal, four branches. [[slnc 300]] Log in as Ana, which itself has four ways: phishing, a leaked password, a SIM swap, or a script. [[slnc 300]] Abuse the transfer call. [[slnc 300]] Bribe an employee. [[slnc 300]] And break in through the software. [[slnc 600]]
+At the bottom, the fourteen steps. [[slnc 300]] Each has what it costs the attacker, in euros, and the chance that it works against the bank as it is today. [[slnc 300]] The one in red, B one, is the cheapest way in.
 """
 speech = """
-First demo: the tree. [[slnc 400]] The goal at the top: move money out of Ana's account. [[slnc 300]] Four ways in. [[slnc 300]] Log in as her. Abuse the transfer call. Bribe an employee. Break in through the software. [[slnc 600]]
-Each step has a cost to the attacker, and a chance that it works.
+Here is the real output. [[slnc 400]] The goal, the root of the tree. [[slnc 300]] Then the first branch, log in as Ana. [[slnc 300]] Under it, AND gates, and under each, two steps with a cost and a chance. [[slnc 300]] Phishing needs a page that relays the code, and Ana typing into it.
+[[page]]
+A SIM swap needs the phone company and her password. [[slnc 300]] A script needs an injection in a memo, and Ana opening the page.
+[[page]]
+The other branches. [[slnc 300]] Abuse the transfer call: change the account number for fifty euros, or forge a request from another site. [[slnc 300]] Bribe an employee for twenty thousand. [[slnc 300]] Or break in through the software.
+[[page]]
+And the rules for reading it. [[slnc 300]] At an OR gate, the cheapest child wins, and the chance is one minus the chance that none works. [[slnc 300]] At an AND gate, the costs add up, and the chances multiply.
 """
 rows = { tree = "active ok" }
 console = [
-    ["OR: Move money out of Ana's account", "muted"],
-    ["- [B1] change the account number in the request to Ana's  (50 EUR, 90%)", "bad"],
-    ["- [A2a] buy a list of leaked passwords (100 EUR, 80%) AND [A2b] she reuses one (0 EUR, 15%)", "amber"],
-    ["- [C] bribe an employee who can approve transfers  (20,000 EUR, 20%)", "muted"],
+    ["THE GOAL (the root of the tree):", "code"],
+    ["  OR  Move money out of Ana's account", "muted"],
+    ["THE FIRST BRANCH (cost to the attacker, chance it works):", "code"],
+    ["  OR  Log in as Ana", "muted"],
+    ["    AND  Phish her password and one-time code", "muted"],
+    ["      A1a    300 EUR  90%  a phishing page that relays the code", "muted"],
+    ["      A1b     50 EUR  20%  she enters the password and the code", "muted"],
+    ["    AND  Reuse a leaked password", "muted"],
+    ["      A2a    100 EUR  80%  buy a list of leaked passwords", "muted"],
+    ["      A2b      0 EUR  15%  she reuses one; nothing else is asked", "muted"],
+    ["---", ""],
+    ["    AND  SIM swap", "muted"],
+    ["      A3a  1,500 EUR  30%  talk the phone company into a new SIM", "muted"],
+    ["      A3b    100 EUR  15%  know or guess her password", "muted"],
+    ["    AND  Steal her session with a script", "muted"],
+    ["      A4a  2,000 EUR  10%  a stored script injection in a memo", "muted"],
+    ["      A4b      0 EUR  50%  she opens the page while signed in", "muted"],
+    ["---", ""],
+    ["THE OTHER BRANCHES:", "code"],
+    ["  OR  Abuse the transfer call", "muted"],
+    ["    B1      50 EUR  90%  change the account number to Ana's", "muted"],
+    ["    AND  Forge a request from another site", "muted"],
+    ["      B2a    100 EUR  50%  lure Ana to a page with a hidden form", "muted"],
+    ["      B2b      0 EUR  95%  a cookie alone authorizes a transfer", "muted"],
+    ["  C    20,000 EUR  20%  bribe an employee who approves transfers", "muted"],
+    ["  AND  Break in through the software", "muted"],
+    ["    D1   5,000 EUR  15%  exploit a flaw in an unpatched library", "muted"],
+    ["    D2   1,000 EUR  60%  move from the web server to the database", "muted"],
+    ["---", ""],
+    ["THE RULES (how the tree is read):", "code"],
+    ["  OR   any child will do: the cheapest child wins", "muted"],
+    ["       chance 1 - (1 - p1)(1 - p2)..., some child works", "muted"],
+    ["  AND  every child is needed: the costs add up", "muted"],
+    ["       chance p1 x p2 x ..., every child works", "muted"],
 ]
 
 [[act]]
 title = "What the tree says about the attacker"
-summary = "The cheapest way in costs 50 EUR (change the account number), and the chance that some way works is 97%."
+summary = "Worked out: the phishing AND gate costs 300 + 50 = 350 EUR at 0.9 x 0.2 = 18%; the log-in OR gate costs min(350, 100, 1,600, 2,000) = 100 EUR at 1 - (1-0.18)(1-0.12)(1-0.045)(1-0.05) = 35%; the root's cheapest way in is 50 EUR via B1, and some way works with 97%."
 detail = """
-Costs add along AND gates and the cheapest child wins at OR gates, so the cheapest path to the goal is the single step B1 at 50 euros. The chance that at least one path succeeds is 97%. Branch by branch: logging in as Ana costs 100 euros and works 35% of the time, abusing the transfer call costs 50 and works 95%,
-the insider costs 20,000 and works 20%, and the software break-in costs 6,000 and works 9%.
+The input is the tree of act one. An AND gate worked out: phish her password and one-time code costs 300 + 50 = 350 EUR and works with 0.9 x 0.2 = 18%.
+An OR gate worked out: log in as Ana has four AND gates, at 350 EUR and 18%, 100 EUR and 12%, 1,600 EUR and 5%, 2,000 EUR and 5%. Its cost is min(350, 100, 1,600, 2,000) = 100 EUR and its chance 1 - (1-0.18)(1-0.12)(1-0.045)(1-0.05) = 35%.
+The result: the root is an OR of four branches: log in as Ana 100 EUR and 35%, abuse the transfer call 50 EUR and 95%, bribe an employee 20,000 EUR and 20%, break in through the software 6,000 EUR and 9%. The cheapest way in costs 50 EUR via B1, changing the account number, and some way works with 97%.
+"""
+figure = "root_branches"
+figure_title = "Four ways in, and the cheapest"
+figure_speech = """
+Second demo: what the tree says about the attacker. [[slnc 400]] Each row is one branch of the root, worked out with the same two rules. [[slnc 300]] On the left, what it costs the attacker. [[slnc 300]] On the right, the chance that it works. [[slnc 600]]
+Logging in as Ana: a hundred euros, thirty five percent. [[slnc 300]] Abusing the transfer call: fifty euros, ninety five percent. [[slnc 300]] Bribing an employee: twenty thousand euros. [[slnc 300]] Breaking in through the software: six thousand. [[slnc 600]]
+The cheapest way in is fifty euros, through step B one: change the account number in the request. [[slnc 300]] And the chance that at least one way works is ninety seven percent.
 """
 speech = """
-Second demo: what the tree says about the attacker. [[slnc 400]] The cheapest way in costs fifty euros: change the account number in the request. [[slnc 600]]
-The chance that some way works is ninety seven percent. [[slnc 300]] The expensive ideas, the bribe and the software break in, are not where the risk is.
+The input: the tree. [[slnc 300]] First an AND gate, worked out. [[slnc 300]] Phishing costs three hundred plus fifty, three hundred and fifty euros. [[slnc 300]] It works with point nine times point two, eighteen percent. [[slnc 400]] Then an OR gate: log in as Ana. [[slnc 300]] The cheapest of its four children is a hundred euros. [[slnc 300]] And one minus the chance that none works gives thirty five percent.
+[[page]]
+The same rules at the root, over its four branches. [[slnc 300]] The result: the cheapest way in is fifty euros, through B one. [[slnc 300]] Some way works with ninety seven percent.
 """
 rows = { analysis = "active wrong" }
 console = [
-    ["cheapest way in: 50 EUR via [B1]", "bad"],
-    ["chance that some way works: 97%", "bad"],
-    ["Log in as Ana: 100 EUR, 35%; Abuse the transfer call: 50 EUR, 95%; insider: 20,000 EUR, 20%; software: 6,000 EUR, 9%", "amber"],
+    ["AN AND GATE, WORKED OUT (Phish her password and one-time code):", "code"],
+    ["  cost     300 + 50 = 350 EUR", "muted"],
+    ["  chance   0.9 x 0.2 = 18%", "muted"],
+    ["AN OR GATE, WORKED OUT (Log in as Ana):", "code"],
+    ["  the AND gates under it:", "muted"],
+    ["    Phish her password and one-time code     350 EUR  18%", "muted"],
+    ["    Reuse a leaked password                  100 EUR  12%", "muted"],
+    ["    SIM swap                               1,600 EUR   5%", "muted"],
+    ["    Steal her session with a script        2,000 EUR   5%", "muted"],
+    ["  cost     min(350, 100, 1,600, 2,000) = 100 EUR", "muted"],
+    ["  chance   1 - (1-0.18)(1-0.12)(1-0.045)(1-0.05)", "muted"],
+    ["           = 35%", "muted"],
+    ["---", ""],
+    ["THE ROOT, AN OR OF FOUR BRANCHES:", "code"],
+    ["  Log in as Ana                                100 EUR  35%", "muted"],
+    ["  Abuse the transfer call                       50 EUR  95%", "muted"],
+    ["  bribe an employee who approves transfers  20,000 EUR  20%", "muted"],
+    ["  Break in through the software              6,000 EUR   9%", "muted"],
+    ["THE RESULT:", "code"],
+    ["  cheapest way in   50 EUR via [B1]", "muted"],
+    ["  some way works    97%", "muted"],
 ]
 
 [[act]]
 title = "Each defence on its own"
-summary = "The ownership check raises the cheapest path from 50 to 100 EUR for 2,000 EUR; no other defence alone moves it, and the passkey, the most expensive, leaves it at 50."
+summary = "Eight priced defences, each applied alone: only OWN (2,000 EUR) moves the cheapest way, to 100 EUR at 75%; worked out on the transfer branch, OWN removes B1 and leaves the forged request at 100 + 0 = 100 EUR and 48%; PASSKEY alone, at 40,000 EUR, still leaves 50 EUR via B1."
 detail = """
-Applying each of eight defences to the baseline tree, one at a time: only the ownership check changes the cheapest path, because only it closes B1. Passkeys at 40,000 euros close three login branches and leave the cheapest way in untouched. A decision based on "which defence is the strongest" would have bought the wrong one first.
+The input: eight defences with a price: OWN (the account must belong to the user, 2,000 EUR), CSRF (form tokens and SameSite cookies, 3,000 EUR), BREACH (5,000 EUR), OTP (15,000 EUR), PASSKEY (40,000 EUR), CSP (10,000 EUR), PATCH (8,000 EUR) and DUAL (12,000 EUR). Each changes the cost or chance of the steps it names, or removes them.
+Each alone, on the tree: OWN gives 100 EUR via A2a and A2b at 75%; every other defence leaves the cheapest way at 50 EUR via B1.
+Worked out on the transfer branch: before, the cheapest is 50 EUR via B1 at 95%. OWN removes B1; what is left is the forged request, 100 + 0 = 100 EUR, at 48%.
+The result: the best one alone is OWN, and the attacker then pays 100 EUR; PASSKEY alone costs 40,000 EUR and the attacker still pays 50 EUR via B1.
+"""
+figure = "one_defence"
+figure_title = "Only the defence on the cheapest path helps"
+figure_speech = """
+Third demo: each defence on its own. [[slnc 400]] On the left, each of the eight defences applied alone, with its price, and the cheapest way in after it. [[slnc 300]] Only one row is green: OWN, the ownership check, for two thousand euros. [[slnc 300]] It moves the cheapest way to a hundred euros. [[slnc 300]] Every other defence leaves it at fifty, even passkeys for forty thousand. [[slnc 600]]
+On the right, the ownership check worked out on the transfer branch. [[slnc 300]] Before: fifty euros through B one, ninety five percent. [[slnc 300]] After: B one is gone. [[slnc 300]] What is left is the forged request, a hundred plus zero, a hundred euros, at forty eight percent.
 """
 speech = """
-Third demo: each defence on its own. [[slnc 400]] Only the ownership check changes the cheapest way in, from fifty to a hundred euros. [[slnc 600]]
-Passkeys cost forty thousand euros, and close three ways to log in, and the cheapest way in stays at fifty. [[slnc 300]] The strongest defence is not the first one to buy.
+The input: eight defences, each with a price and the steps it changes. [[slnc 300]] The account ownership check, C S R F tokens, refusing leaked passwords, one-time codes, passkeys, a content security policy, fast patching, and two people approving transfers.
+[[page]]
+Each alone, on the tree. [[slnc 300]] Only the ownership check moves the cheapest way, to a hundred euros. [[slnc 300]] All the others leave it at fifty, through B one.
+[[page]]
+Before and after the ownership check, on the transfer branch. [[slnc 300]] B one is removed, and the forged request is left at a hundred euros. [[slnc 400]] The result: passkeys alone cost forty thousand euros, and the attacker still pays fifty.
 """
-rows = { defences = "active amber" }
+rows = { defences = "active wrong" }
 console = [
-    ["OWN      check that the account belongs to the signed-in user  2,000 EUR  -> cheapest 100 EUR, 75%", "ok"],
-    ["CSRF     form tokens and SameSite cookies  3,000 EUR  -> cheapest 50 EUR, 95%", "amber"],
-    ["PASSKEY  passkeys for sign-in and payments  40,000 EUR  -> cheapest 50 EUR, 96%", "amber"],
+    ["THE DEFENCES (price, what it is):", "code"],
+    ["  OWN       2,000 EUR  the account must belong to the user", "muted"],
+    ["  CSRF      3,000 EUR  form tokens and SameSite cookies", "muted"],
+    ["  BREACH    5,000 EUR  refuse passwords found in leaks", "muted"],
+    ["  OTP      15,000 EUR  one-time codes from an app, not SMS", "muted"],
+    ["  PASSKEY  40,000 EUR  passkeys for sign-in and payments", "muted"],
+    ["  CSP      10,000 EUR  strict CSP and HttpOnly cookies", "muted"],
+    ["  PATCH     8,000 EUR  update libraries within a week", "muted"],
+    ["  DUAL     12,000 EUR  two people approve staff transfers", "muted"],
+    ["---", ""],
+    ["EACH ALONE, ON THE TREE (cheapest way, chance):", "code"],
+    ["  OWN         100 EUR  [A2a, A2b]        75%", "muted"],
+    ["  CSRF         50 EUR  [B1]              95%", "muted"],
+    ["  PASSKEY      50 EUR  [B1]              96%", "muted"],
+    ["  DUAL         50 EUR  [B1]              97%", "muted"],
+    ["  OTP          50 EUR  [B1]              97%", "muted"],
+    ["  BREACH       50 EUR  [B1]              97%", "muted"],
+    ["  PATCH        50 EUR  [B1]              97%", "muted"],
+    ["  CSP          50 EUR  [B1]              97%", "muted"],
+    ["---", ""],
+    ["BEFORE THE DEFENCE (Abuse the transfer call):", "code"],
+    ["  cheapest  50 EUR via [B1], chance 95%", "muted"],
+    ["AFTER THE DEFENCE (OWN removes B1):", "code"],
+    ["  left      the forged request: 100 + 0 = 100 EUR", "muted"],
+    ["  cheapest  100 EUR via [B2a, B2b], chance 48%", "muted"],
+    ["THE RESULT:", "code"],
+    ["  the best one alone  OWN, 2,000 EUR: the attacker pays 100 EUR", "muted"],
+    ["  PASSKEY alone       40,000 EUR, still 50 EUR via [B1]", "muted"],
 ]
 
 [[act]]
-title = "A plan: always cut the cheapest path, then look again"
-summary = "Ownership check (2,000 EUR) → 100 EUR; CSRF tokens (5,000 EUR in all) → still 100 EUR via the leaked-password path; passkeys (45,000 EUR) → 2,000 EUR via a script injection; a strict CSP (55,000 EUR) → 6,000 EUR via the software."
+title = "A plan: cut the cheapest path, then look again"
+summary = "Aiming for a cheapest attack of at least 5,000 EUR, the plan picks OWN, CSRF, PASSKEY and CSP: the cheapest way goes 50, 100, 100, 2,000, 6,000 EUR, the chance 97% to 28%, the failing abuse cases 8, 7, 6, 3, 2 of 8, for 55,000 EUR on 4 of 8 defences."
 detail = """
-Greedy planning: choose the defence that raises the cheapest path most (ties by lower chance of success, then price), apply it, recompute. The ownership check moves the cheapest path to 100 euros, tied between the leaked-password and CSRF paths. Closing CSRF leaves it at 100 (leaked passwords) but cuts the chance
-to 52%. Passkeys then close the leaked password and phishing paths and the cheapest becomes a script injection at 2,000. A strict content security policy triples that to 6,000, where the software break-in becomes the cheapest path, above the target. The abuse cases still failing fall from 8 to 2 along the way (the insider and the unpatched library).
+The input: the target, a cheapest attack of at least 5,000 EUR, and the rule: at each step pick the defence that most raises the cheapest path, then look again.
+The steps: with nothing, 50 EUR via B1 at 97%, 8 of 8 abuse cases failing. OWN (2,000 EUR spent): 100 EUR via A2a and A2b, 75%, 7 failing. CSRF (5,000 EUR): 100 EUR, 52%, 6 failing. PASSKEY (45,000 EUR): 2,000 EUR via A4a and A4b, 31%, 3 failing. CSP (55,000 EUR): 6,000 EUR via A4a and A4b, 28%, 2 failing.
+The result: 55,000 EUR on 4 of the 8 defences; the cheapest way goes from 50 EUR to 6,000 EUR and the chance from 97% to 28%.
+"""
+figure = "plan_steps"
+figure_title = "Cut the cheapest path, then look again"
+figure_speech = """
+Fourth demo: a plan. [[slnc 400]] Each bar is the cheapest way in after one more defence. [[slnc 300]] The dashed green line is the target: five thousand euros. [[slnc 600]]
+With nothing, fifty euros. [[slnc 300]] The ownership check moves it to a hundred: leaked passwords. [[slnc 300]] C S R F tokens close the forged request, and the chance falls, but the cheapest stays at a hundred. [[slnc 300]] Passkeys move it to two thousand: the script in a memo. [[slnc 300]] The content security policy moves it to six thousand, above the target. [[slnc 600]]
+Under each bar, the money spent so far, and how many abuse cases still fail: eight, then seven, six, three, and two.
 """
 speech = """
-Fourth demo: a plan, always cut the cheapest path, then look again. [[slnc 400]] The ownership check. The cheapest way moves to a hundred euros, in two places. [[slnc 600]]
-Close the forged request. Then passkeys. The cheapest way becomes a script injection at two thousand. [[slnc 300]] A strict content security policy, and the cheapest way is now six thousand euros, through the software. [[slnc 600]]
-Fifty five thousand euros in all, and the abuse cases failing fall from eight to two.
+The target: the cheapest attack must cost at least five thousand euros. [[slnc 400]] The steps. [[slnc 300]] Each row is one more defence, the total spent, the cheapest way after it, the chance some way works, and the abuse cases still failing. [[slnc 300]] Fifty, a hundred, a hundred, two thousand, six thousand.
+[[page]]
+The result: fifty five thousand euros on four of the eight defences. [[slnc 300]] The cheapest way goes from fifty euros to six thousand, and the chance from ninety seven percent to twenty eight.
 """
 rows = { plan = "active ok" }
 console = [
-    ["0 (none)   0 EUR    50 EUR [B1]            97%  abuse cases failing: 8 of 8", "bad"],
-    ["1 OWN      2,000 EUR   100 EUR [A2a, A2b]   75%  abuse cases failing: 7 of 8", "amber"],
-    ["2 CSRF     5,000 EUR   100 EUR [A2a, A2b]   52%  abuse cases failing: 6 of 8", "amber"],
-    ["3 PASSKEY  45,000 EUR  2,000 EUR [A4a, A4b] 31%  abuse cases failing: 3 of 8", "ok"],
-    ["4 CSP      55,000 EUR  6,000 EUR [A4a, A4b] 28%  abuse cases failing: 2 of 8", "ok"],
+    ["THE TARGET:", "code"],
+    ["  the cheapest attack costs at least 5,000 EUR", "muted"],
+    ["THE STEPS (chosen by what each does to the tree):", "code"],
+    ["  step defence       spent    cheapest  via         p  fail", "muted"],
+    ["  0    (none)        0 EUR      50 EUR  B1        97%  8/8", "muted"],
+    ["  1    OWN       2,000 EUR     100 EUR  A2a,A2b   75%  7/8", "muted"],
+    ["  2    CSRF      5,000 EUR     100 EUR  A2a,A2b   52%  6/8", "muted"],
+    ["  3    PASSKEY  45,000 EUR   2,000 EUR  A4a,A4b   31%  3/8", "muted"],
+    ["  4    CSP      55,000 EUR   6,000 EUR  A4a,A4b   28%  2/8", "muted"],
+    ["  (p: the chance some way works; fail: abuse cases failing)", "muted"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  spent       55,000 EUR on 4 of 8 defences", "muted"],
+    ["  cheapest    50 EUR -> 6,000 EUR", "muted"],
+    ["  chance      97% -> 28%", "muted"],
 ]
 
 [[act]]
 title = "Abuse cases as tests"
-summary = "All 8 abuse cases fail on the bank as it is; after the plan 2 still fail (the insider and the unpatched library); 13 of the tree's 14 steps have an executable abuse case."
+summary = "Each abuse case is a check that passes only when the bank refuses the abuse: all 8 fail on the bank as it is; after the plan (csp, csrf, ownership, passkey) 6 pass and AC7 and AC8 still fail; 13 of the 14 steps have a test, D2 has none."
 detail = """
-Each abuse case is written as a story ("as Mallory I transfer from Ana's account by changing the account number") and as a check that passes only when the abuse is refused. On the weak bank all eight fail, which is the point: the tests describe the defences that do not exist yet. After the planned defences, six turn green and two stay red:
-the insider approving their own transfer and the library flaw that was fixed last month. Those are the next items for the backlog, with their cost from the tree. Thirteen of the tree's fourteen steps have a test; the fourteenth (moving from the web server to the database) is a judgement that no test checks.
+The input: one abuse case, AC5, the test of leaf B1: As Mallory I change the account number to Ana's. It passes when the bank refuses it, which it does when ownership is on.
+Before the plan, nothing is on, and all eight abuse cases fail. After the plan, with csp, csrf, ownership and passkey on, AC1 to AC6 pass; AC7 (an insider approves their own transfer) and AC8 (last month's library flaw) still fail.
+The result: 13 of the 14 steps have a test; D2, moving from the web server to the database, has none and stays a judgement; the 2 failing cases are the risks the plan accepts, in writing.
+"""
+figure = "abuse_grid"
+figure_title = "Abuse cases: red today, green when built"
+figure_speech = """
+Fifth demo: abuse cases as tests. [[slnc 400]] Each row is one abuse case, written from the attacker's side. [[slnc 300]] As Mallory, I change the account number to Ana's. [[slnc 300]] The test passes only when the bank refuses it. [[slnc 600]]
+The middle column is the bank as it is: all eight fail. [[slnc 300]] The right column is after the plan. [[slnc 300]] Six now pass. [[slnc 300]] Two still fail: the insider who approves their own transfer, and last month's library flaw. [[slnc 300]] Those are the risks the plan accepts, and the build shows them every day. [[slnc 600]]
+At the bottom: thirteen of the fourteen steps have a test. [[slnc 300]] D two has none; it stays a judgement.
 """
 speech = """
-Fifth demo: abuse cases as tests. [[slnc 400]] Each abuse case is a story, and a check that passes only when the abuse is refused. [[slnc 300]] On the bank as it is, all eight fail. [[slnc 600]]
-After the plan, six are green. [[slnc 300]] Two are still red: the insider, and the library flaw. [[slnc 300]] Those are the next items on the backlog, with a price from the tree.
+One abuse case: A C five, the test of step B one. [[slnc 300]] It passes when the bank refuses it, which needs the ownership check. [[slnc 400]] Before the plan, all eight fail.
+[[page]]
+After the plan: six pass, and two still fail. [[slnc 400]] The result: thirteen of fourteen steps have a test. [[slnc 300]] And the two that fail are the risks the plan accepts, in writing.
 """
 rows = { abuse = "active ok" }
 console = [
-    ["AC5 FAILS   As Mallory I transfer from Ana's account by changing the account number", "bad"],
-    ["after the plan: AC7 FAILS (insider), AC8 FAILS (unpatched library)", "amber"],
-    ["13 of 14 steps of the tree have an executable abuse case", "ok"],
+    ["ONE ABUSE CASE (the test of leaf B1):", "code"],
+    ["  AC5     As Mallory I change the account number to Ana's", "muted"],
+    ["  passes  when the bank refuses it: ownership is on", "muted"],
+    ["BEFORE THE PLAN (the bank as it is, nothing on):", "code"],
+    ["  AC1  FAILS   As a phisher I replay Ana's password and code", "bad"],
+    ["  AC2  FAILS   As a thief I sign in with a leaked password", "bad"],
+    ["  AC3  FAILS   As a SIM swapper I read Ana's text code", "bad"],
+    ["  AC4  FAILS   As an attacker I steal her session via a memo", "bad"],
+    ["  AC5  FAILS   As Mallory I change the account number to Ana's", "bad"],
+    ["  AC6  FAILS   As another site I forge a transfer with her cookie", "bad"],
+    ["  AC7  FAILS   As an insider I approve my own transfer", "bad"],
+    ["  AC8  FAILS   As an attacker I exploit last month's library flaw", "bad"],
+    ["---", ""],
+    ["AFTER THE PLAN (on: csp, csrf, ownership, passkey):", "code"],
+    ["  AC1  PASSES  As a phisher I replay Ana's password and code", "ok"],
+    ["  AC2  PASSES  As a thief I sign in with a leaked password", "ok"],
+    ["  AC3  PASSES  As a SIM swapper I read Ana's text code", "ok"],
+    ["  AC4  PASSES  As an attacker I steal her session via a memo", "ok"],
+    ["  AC5  PASSES  As Mallory I change the account number to Ana's", "ok"],
+    ["  AC6  PASSES  As another site I forge a transfer with her cookie", "ok"],
+    ["  AC7  FAILS   As an insider I approve my own transfer", "bad"],
+    ["  AC8  FAILS   As an attacker I exploit last month's library flaw", "bad"],
+    ["THE RESULT:", "code"],
+    ["  steps with a test   13 of 14", "muted"],
+    ["  without one         1: D2, a judgement no test checks", "muted"],
+    ["  still failing       2: the risks the plan accepts, in writing", "muted"],
 ]
+
+[highlight]
+console_green = ["THE RESULT", "AFTER THE DEFENCE", "AFTER THE PLAN"]
+console_rose = ["BEFORE THE DEFENCE", "BEFORE THE PLAN"]
+console_amber = ["AN AND GATE", "AN OR GATE", "THE ROOT", "THE RULES", "THE TARGET", "THE STEPS", "EACH ALONE", "ONE ABUSE"]
+console_cyan = ["THE GOAL", "THE FIRST", "THE OTHER", "THE DEFENCES"]
 
 [animation]
 subtitle = "How an attacker wins, step by step, and which defence cuts the cheapest path."
@@ -235,7 +398,7 @@ nongoals = [
 problem = """
 Security spending follows fashion and fear, and nobody has priced the attacker's alternatives.
 """
-roles = [["The tree", "`Node`, `Analysis`, `BankTree`"], ["Defences and planning", "`Defence`, `Planner`"], ["Abuse cases", "`AbuseCase`, `BankConfig`"], ["Entry point", "`AttackTreeDemo`"]]
+roles = [["The tree", "`Node`, `Analysis`, `BankTree`"], ["The arithmetic by hand", "`GateSteps`"], ["Defences and planning", "`Defence`, `Planner`"], ["Abuse cases", "`AbuseCase`, `BankConfig`"], ["Entry point", "`AttackTreeDemo`"]]
 requirements = [
     "Costs add along AND and the cheapest child wins at OR; chances multiply along AND and combine at OR; a step with no chance blocks its branch.",
     "The baseline tree has a cheapest path of 50 EUR and a success chance of 97%.",
@@ -415,9 +578,9 @@ residual = "The most expensive steps remain, and are the next to price"
 
 [poster]
 headline = [["ATTACK TREES", "text"], ["AND ABUSE CASES", "accent"]]
-taglines = [["Draw how the attacker wins, price each step, then cut the cheapest path and look again", "gold"]]
-before = { code = "OR: Move money out of Ana's account", note = "The tree", tag = "BEFORE" }
-after = { code = "cheapest path: 50 EUR", note = "Abuse cases as tests", tag = "AFTER" }
+taglines = [["Price each step, cut the cheapest path, look again", "gold"]]
+before = { code = "cheapest way in: 50 EUR", note = "The tree as it is", tag = "BEFORE" }
+after = { code = "cheapest way in: 6,000 EUR", note = "Four defences later", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -433,6 +596,27 @@ body = ["An online bank, and one goal:", "  move money out of Ana's account", ""
 narration = "Here is the scenario. [[slnc 400]] An online bank, and one attacker goal: move money out of Ana's account. [[slnc 500]] The tree has fourteen attacker steps, each with a cost to the attacker and a chance that it works. [[slnc 300]] There are eight defences, each with a price, and eight abuse cases that run against a model of the bank's settings. [[slnc 500]] All the numbers are teaching estimates. [[slnc 300]] A real tree uses the team's own, and argues about them."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Goal: the root, what the attacker wants", "Step: a leaf, with a cost and a chance", "OR gate: any one child is enough", "AND gate: every child is needed", "Defence: changes or removes some steps", "Abuse case: a test that passes when refused"]
+narration = """Before the demos, the words. [[slnc 500]] The goal is the root of the tree: what the attacker wants. [[slnc 500]] A step is a leaf: one thing the attacker does, with what it costs them and the chance it works. [[slnc 500]] An OR gate needs any one of its children. [[slnc 500]] An AND gate needs every one of them. [[slnc 500]] A defence makes some steps dearer or less likely, or removes them. [[slnc 500]] And an abuse case is a story from the attacker's side, written as a test that passes only when the bank refuses the abuse."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-two-gates"
+kind = "figure"
+title = "Two rules, worked out on one branch"
+body = "two_gates"
+narration = """Let's see the core idea on one real example. [[slnc 400]] On the left, an AND gate: phish Ana's password and one-time code. [[slnc 300]] Both steps are needed. [[slnc 300]] A page that relays the code costs three hundred euros and works ninety percent of the time. [[slnc 300]] Ana typing into it costs fifty, and happens twenty percent of the time. [[slnc 300]] So the costs add, to three hundred and fifty euros, and the chances multiply, to eighteen percent. [[slnc 600]]
+On the right, an OR gate: log in as Ana, with four AND gates under it. [[slnc 300]] Any one is enough, so the cheapest wins: a hundred euros, the leaked password. [[slnc 300]] And the chance that some way works is one minus the chance that none does: thirty five percent."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -442,15 +626,8 @@ narration = "unused"
 key = "04-costs"
 kind = "bullets"
 title = "What It Costs"
-body = ["The numbers are estimates", "Steps are treated as independent", "A tree covers one goal at a time", "Trees go stale as the system changes", "Abuse cases are tests to maintain"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The costs and chances are estimates, and the answer is only as good as they are. [[slnc 500]] The maths treats steps as independent, which real attacks often are not. [[slnc 500]] One tree covers one goal, so a system needs several. [[slnc 500]] Trees go stale as the system changes. [[slnc 300]] And abuse cases are tests, which must be kept up like any others."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Node, BankTree: the tree, with AND and OR", "Analysis: cheapest path and chance of success", "Defence, Planner: priced defences, and the plan", "AbuseCase, BankConfig: checks on the bank", "AttackTreeDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Node and BankTree build the tree, with AND gates, where every step is needed, and OR gates, where any one is enough. [[slnc 500]] Analysis finds the cheapest path, and the chance that some path works. [[slnc 500]] Defence and Planner price the defences, and cut the cheapest path, round after round. [[slnc 500]] AbuseCase and BankConfig run the abuse cases against the bank's settings. [[slnc 300]] And AttackTreeDemo runs the five demos."
+body = ["The numbers are estimates", "Steps are treated as independent", "A tree covers one goal at a time", "A greedy plan is not always the cheapest", "Abuse cases are tests to maintain"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The costs and chances are estimates, and the answer is only as good as they are. [[slnc 500]] The maths treats steps as independent, which real attacks often are not. [[slnc 500]] One tree covers one goal, so a system needs several. [[slnc 500]] Choosing the best defence one step at a time is easy to explain, but not always the cheapest set. [[slnc 300]] And abuse cases are tests, which must be kept up like any others."
 
 [[scene]]
 key = "06-recognise"
@@ -467,8 +644,133 @@ body = ["One tree for each goal that matters", "Cost and chance on every step", 
 narration = "So, how do you use it? [[slnc 400]] Draw one tree for each goal that matters. [[slnc 300]] Put a cost and a chance on every step, and argue about them as a team. [[slnc 500]] Cut the cheapest path first, then look again, because the next weakest door is now the cheapest. [[slnc 500]] Expect no single defence to be enough. [[slnc 300]] And give every step an abuse case that runs in the build."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a branch for the support", "desk resetting a password for a caller."]
 narration = "That's attack trees and abuse cases. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Draw how the attacker wins, price each step, cut the cheapest path, and look again, with an abuse case that checks every step in the build. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a branch for the support desk resetting a password for a caller, and decide its cost and its chance. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The tree is plain Java data, and the analysis is exact arithmetic over it. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Node and BankTree"
+what = "the tree: leaves with a cost and a chance, AND and OR gates"
+[[class.part]]
+title = "a leaf, and a gate"
+code = """
+record Leaf(String id, String name, double cost, double probability, String abuseCase) implements Node {
+...
+enum Kind { AND, OR }
+...
+leaf("B1", "change the account number to Ana's", 50, 0.9, "AC5"),
+"""
+speech = """A leaf has an id, a cost in euros, a chance, and the abuse case that tests it. [[slnc 300]] A gate is AND or OR over its children. [[slnc 300]] BankTree builds the bank's tree from them."""
+
+[[class]]
+name = "Analysis"
+what = "the cheapest path and the chance some path works"
+[[class.part]]
+title = "OR and AND, recursively"
+code = """
+none *= 1.0 - a.probability();
+if (a.minCost() < best.minCost()) {
+    best = a;
+...
+cost += a.minCost();
+p *= a.probability();
+"""
+speech = """At an OR gate, the cheapest child wins, and the chance that none works is multiplied up. [[slnc 300]] At an AND gate, the costs add and the chances multiply. [[slnc 300]] It runs from the leaves up to the root."""
+
+[[class]]
+name = "GateSteps"
+what = "a teaching class: writes one gate's arithmetic out"
+[[class.part]]
+title = "the steps, as the demo prints them"
+code = """
+cost = Math.min(cost, a.minCost());
+p *= 1.0 - a.probability();
+chances.add("(1-" + AttackTreeDemo.decimal(a.probability()) + ")");
+"""
+speech = """GateSteps redoes one gate by hand, and writes each step out with the real numbers. [[slnc 300]] A test checks that every gate of the tree gives exactly what Analysis gives."""
+
+[[class]]
+name = "Defence and Planner"
+what = "priced defences, and the plan that cuts the cheapest path"
+[[class.part]]
+title = "pick the best, apply it, look again"
+code = """
+while (Analysis.of(current).minCost() < target && !left.isEmpty()) {
+...
+current = best.defence().applyTo(current);
+"""
+speech = """A defence multiplies the cost or the chance of the steps it names, or removes them. [[slnc 300]] The planner picks the defence that raises the cheapest path most, applies it, and looks again, until the target is met."""
+
+[[class]]
+name = "AbuseCase and BankConfig"
+what = "abuse cases as checks against the bank's settings"
+[[class.part]]
+title = "passes only when refused"
+code = """
+new AbuseCase("AC5", "As Mallory I change the account number to Ana's", c -> c.has("ownership")),
+...
+public boolean passes(BankConfig c) {
+    return refused.test(c);
+"""
+speech = """Each abuse case is a story and a check. [[slnc 300]] It passes only when the bank refuses the abuse: here, when the ownership check is on. [[slnc 300]] So a missing defence is a failing test."""
+
+[[acronym]]
+short = "EUR"
+long = "euro: the attacker's cost, in euros"
+say = "E U R is the euro. Each step's cost is in euros."
+[[acronym]]
+short = "A1a, A1b, A2a, A2b, A3a, A3b, A4a, A4b"
+long = "the ids of the log-in branch's steps"
+say = "Ids such as A one a name one step: the letter is its branch, then its gate and step."
+[[acronym]]
+short = "B1, B2a, B2b, C, D1, D2"
+long = "the ids of the other branches' steps"
+say = "B one to D two are the steps of the other branches: the transfer call, the bribe, and the software."
+[[acronym]]
+short = "AC1-AC8"
+long = "the eight abuse cases"
+say = "A C one to A C eight are the eight abuse cases."
+[[acronym]]
+short = "SIM"
+long = "Subscriber Identity Module: the phone's SIM card"
+say = "S I M is the subscriber identity module, the phone's SIM card. A SIM swap moves Ana's number to the attacker's card."
+[[acronym]]
+short = "SMS, OTP"
+long = "Short Message Service (text); One-Time Password"
+say = "S M S is the short message service, a text message. O T P is a one-time password."
+[[acronym]]
+short = "CSRF"
+long = "Cross-Site Request Forgery"
+say = "C S R F is cross site request forgery: another site makes Ana's browser send a request with her cookie."
+[[acronym]]
+short = "CSP"
+long = "Content Security Policy: which scripts a page may run"
+say = "C S P is the content security policy, a header that limits which scripts a page may run."
+[[acronym]]
+short = "OWN, BREACH, PASSKEY, PATCH, DUAL"
+long = "the other defences' ids in the demo"
+say = "OWN, BREACH, PASSKEY, PATCH and DUAL are the ids of the other defences: the ownership check, leaked passwords, passkeys, patching and dual control."
+[[acronym]]
+short = "OWASP, ASVS"
+long = "Open Worldwide Application Security Project; its standard"
+say = "OWASP is the open worldwide application security project. A S V S is its application security verification standard."
+[[acronym]]
+short = "NIST"
+long = "National Institute of Standards and Technology"
+say = "NIST is the national institute of standards and technology."
+[[acronym]]
+short = "SSDF"
+long = "Secure Software Development Framework (by NIST)"
+say = "S S D F is NIST's secure software development framework."

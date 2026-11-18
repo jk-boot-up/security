@@ -27,10 +27,11 @@ final class Register {
         for (String flow : List.of("F2", "F3", "F4")) {
             d.put("R:" + flow, Decision.mitigate(Checks.AUDIT));
         }
-        d.put("R:F6", Decision.accept("the processor's signed receipts and the contract cover disputes", "payments lead", ACCEPTED_REVIEW_DAY));
+        d.put("R:F6", Decision.accept("signed receipts and the contract cover it",
+                "payments lead", ACCEPTED_REVIEW_DAY));
         d.put("I:S1", Decision.mitigate(Checks.STORE_PROTECTION));
-        d.put("I:S2", Decision.avoid("card numbers and secrets are never written to the audit log"));
-        d.put("D:P2", Decision.transfer("the hosting provider's denial-of-service protection, under contract"));
+        d.put("I:S2", Decision.avoid("no card numbers in the audit log"));
+        d.put("D:P2", Decision.transfer("the hosting provider, under contract"));
         for (String flow : List.of("F2", "F3", "F7", "F8")) {
             d.put("E:" + flow, Decision.mitigate(Checks.AUTHORIZATION));
         }

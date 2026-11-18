@@ -54,6 +54,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `IdentitiesTest` and `PolicyTest` check the identity rule and the policy with no tools.
+- `ChainStepsTest` checks the chain by hand against the JDK's own check, the SAN listing and the pinned assets, on a fixed chain made once with step.
 - `DemoRunsTest` starts step-ca and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

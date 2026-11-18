@@ -11,6 +11,7 @@ record Policy(String issuer, String audience, String requiredScope, long skewSec
 
     /** The bank's settings: five-minute tokens, thirty seconds of clock skew, nothing longer than fifteen minutes. */
     static Policy bank() {
-        return new Policy("https://auth.bank.example", "accounts-api", "accounts:read", 30, 900);
+        return new Policy("https://auth.bank.example", "accounts-api", "accounts:read",
+                30, 900);
     }
 }

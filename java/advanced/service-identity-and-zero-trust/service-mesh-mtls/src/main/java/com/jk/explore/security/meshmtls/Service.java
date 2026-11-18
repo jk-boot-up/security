@@ -13,7 +13,13 @@ public record Service(String namespace, String name, String serviceAccount) {
 
     /** The identity a Linkerd proxy takes from the pod's ServiceAccount: name, namespace, then the trust domain. */
     public String identity() {
-        return serviceAccount + "." + namespace + ".serviceaccount.identity.linkerd.cluster.local";
+        return String.join(".", identityParts());
+    }
+
+    /** The parts of the identity, in order: the ServiceAccount, the namespace, a fixed part, Linkerd's namespace and the trust domain. */
+    public java.util.List<String> identityParts() {
+        return java.util.List.of(serviceAccount, namespace,
+                "serviceaccount.identity", "linkerd", "cluster.local");
     }
 
     /** The address other pods use for it. */

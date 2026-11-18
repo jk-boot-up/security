@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Kubernetes network policies for a bank on a real kind cluster: default deny, one allow for each line of the design, measuring all pairs of pods against the design, the mistakes that are accepted silently, egress and DNS, and labels as the credential.
+> Kubernetes network policies for an online store on a real kind cluster: default deny, one allow for each line of the design, measuring all 20 pairs of pods against the design, three mistakes the API server accepts, egress and DNS, and labels as the credential.

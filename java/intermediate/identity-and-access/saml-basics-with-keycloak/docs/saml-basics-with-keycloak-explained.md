@@ -8,23 +8,44 @@ A SAML service provider believes a statement only if the identity provider's own
 
 ### 1. Signing in through the bank
 
-The shop sends the shopper to the bank with an authentication request from the shop's entity id, naming its assertion consumer address, unsigned, with an id of its own. Ana signs in at the bank, never at the shop. The bank answers with a response signed as a whole and an assertion signed on its own: 2 signatures. The response answers the shop's request, is addressed to the shop's address and comes from the bank's realm. The assertion names ana, is for the shop's entity id only, and lasts seconds. The shopper's browser posts it to the shop and she is signed in as ana, with her e-mail address.
+The request: the shop at http://127.0.0.1:<port> sends Ana's browser to the bank with an unsigned AuthnRequest whose Issuer is the shop's entity id
+<shop>/saml2/service-provider-metadata/keycloak, asking for the answer at <shop>/login/saml2/sso/keycloak. The response: Ana signs in at the bank,
+never at the shop. The bank's realm (<keycloak>/realms/bank) answers that request (InResponseTo), sends it to the shop's address (Destination),
+names ana, is for the shop's entity id only (Audience) and lasts 2 seconds (NotOnOrAfter minus NotBefore). It carries 2 signatures: the Response as a
+whole and the Assertion on its own. Redone by hand: the shop's key is the RSA 2048-bit key in the bank's metadata; the signatures use rsa-sha256,
+sha256 and exclusive canonicalization; for each, the SHA-256 of the covered element equals its DigestValue and RSA verification succeeds. The browser
+posts the response, and the shop's page says name ana, email ana@bank.example.
 
 ### 2. A valid signature is not the same as the bank's signature
 
-The bank's response with the name edited to admin is refused: invalid_signature. Admin, signed correctly with the attacker's own key, two valid XML signatures, is refused: invalid_signature. A genuine response from the wallet, signed by the wallet and answering the shop's own request, is refused: invalid_signature. The shop trusts the key in the bank's metadata, and no other key, however valid the signature.
+One name edited in the bank's response, ana to admin, with both signatures left in place: the SHA-256 of the Response and of the Assertion no
+longer equal their DigestValues, and the shop refuses (invalid_signature). The attacker's response: admin, both signatures removed and made again
+with the attacker's own key, whose public half is in KeyInfo; RSA verifies with the attacker's key (true, true) and fails with the bank's (false,
+false); refused. A genuine response from the wallet realm, which answers the shop's own request, is signed by the wallet's key; refused. The shop
+trusts the key in the bank's metadata and no other.
 
-### 3. A valid signature on one assertion, and another one read
+### 3. Signature wrapping: one assertion checked, another read
 
-With the response unsigned, an admin assertion first and the bank's signed one second, the response is refused: invalid_signature. With the bank's signed assertion first and an admin one second, it is refused too. With no signature anywhere, admin is refused. A response with a DOCTYPE that reads a file is refused as malformed. The shop reads the assertion that a trusted key signed, and only that one; a library does this and is kept patched.
+The input: a genuine response with its own signature removed, an unsigned copy of the assertion naming admin put first, and the bank's signed
+assertion for ana second. A reader that takes the first assertion would sign in admin; OpenSAML refuses it (invalid_signature), because every
+assertion it reads must be signed by the trusted key. Then one thing at a time: the bank's signed assertion first and an unsigned admin one second
+(invalid_signature), no signature anywhere with NameID admin (invalid_signature), and a response with a DOCTYPE that reads a file
+(malformed_response_data). The shop reads only what a trusted key signed, which is why the library is kept patched.
 
 ### 4. The statement itself is checked
 
-A genuine response, first time: signed in as ana. The same response replayed from another browser is refused: invalid_in_response_to, because the shop's request was used up. Replayed from the same browser, it is refused too. A response posted 4 seconds after it was issued, to an assertion that lasts 2, is refused: invalid_assertion. A genuine response the bank signed for another shop is refused: invalid_assertion, because the signature is the bank's and the audience is not this shop. A signature says who wrote the statement; the other checks say whether it is for this shop, this request, now.
+A genuine response posted once signs Ana in. Then one thing at a time, each response genuinely signed by the bank: the same response replayed from
+another browser, and from the same browser, is refused (invalid_in_response_to), because the shop's request is answered once; a response posted 4
+seconds after it was issued, when the assertion lasts 2 seconds and the shop allows 1 second of skew, is refused (invalid_assertion); and a response
+the bank signed for another shop, whose Audience is other-shop.example/saml/metadata, is refused (invalid_assertion). A signature says who wrote
+the statement; these checks say whether it is for this shop, this request, and now.
 
 ### 5. The bill: keys, metadata and XML
 
-The shop reads the bank's metadata once, when it starts; a sign-in works. The bank adds a new signing key and signs with it from now on; the next sign-in is refused: invalid_signature, and so is every shopper's. The shop restarts and reads the metadata again; the next sign-in works. So a bank that rotates its key needs the shop to reload its metadata first, and a plan for the hours between. XML signatures are hard to get right, which is why the shop uses OpenSAML through Spring Security, and why its patches matter.
+Before the key change, the shop has read the bank's metadata once, at start, and a sign-in works. The bank adds a new RSA signing key with a higher
+priority (HTTP 201) and signs with it from then on: the next sign-in is refused (invalid_signature), and so is every shopper's. After the shop
+restarts and reads the metadata again, the next sign-in works. So a key rotation needs the shop to reload the metadata first, and a plan for the
+hours between; and because XML signatures are hard, the shop uses OpenSAML through Spring Security, whose patches matter.
 
 ## The verdict
 

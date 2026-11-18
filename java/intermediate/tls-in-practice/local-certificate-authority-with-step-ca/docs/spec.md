@@ -36,10 +36,10 @@ Teams need certificates for internal names and fall back to self-signed ones tha
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 34 lines, identical on every run |
+| Tests | 17, all passing |
+| Demo output | 83 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:54, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

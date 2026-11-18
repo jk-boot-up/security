@@ -58,7 +58,8 @@ final class Receiver {
             if (parsed.isEmpty()) {
                 return new Reply(400, "refused: no signature");
             }
-            if (policy.toleranceSeconds() > 0 && Math.abs(clock.now() - parsed.get().timestamp()) > policy.toleranceSeconds()) {
+            long age = Math.abs(clock.now() - parsed.get().timestamp());
+            if (policy.toleranceSeconds() > 0 && age > policy.toleranceSeconds()) {
                 return new Reply(400, "refused: signed too long ago");
             }
             if (!Signatures.matchesAny(secrets, parsed.get(), rawBody)) {

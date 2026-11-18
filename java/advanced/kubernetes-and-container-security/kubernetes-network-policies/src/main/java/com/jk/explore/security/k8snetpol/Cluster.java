@@ -10,12 +10,15 @@ import java.util.UUID;
 /** A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close. */
 public final class Cluster implements AutoCloseable {
 
+    /** The node image (Kubernetes 1.37.0) pinned by digest, so a new kind release cannot change the cluster under the demo. */
+    static final String NODE_IMAGE = "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5";
+
     private final String name = "netpol-" + UUID.randomUUID().toString().substring(0, 6);
     private final Path kubeconfig;
 
     public Cluster() throws IOException, InterruptedException {
         this.kubeconfig = Files.createTempFile("kubeconfig", ".yaml");
-        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
+        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--image", NODE_IMAGE, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
     }
 
     Sh.Result kubectl(String... args) throws IOException, InterruptedException {
@@ -32,10 +35,11 @@ public final class Cluster implements AutoCloseable {
         return r.output();
     }
 
-    void apply(String manifest) throws IOException, InterruptedException {
+    /** Applies a manifest and returns what the API server answered, such as "networkpolicy.networking.k8s.io/deny-all-ingress created". */
+    String apply(String manifest) throws IOException, InterruptedException {
         Path file = Files.createTempFile("manifest", ".yaml");
         Files.writeString(file, manifest);
-        must("apply", "-f", file.toString());
+        return must("apply", "-f", file.toString()).strip();
     }
 
     /** Starts the pods and waits until each one answers. */
@@ -55,9 +59,21 @@ public final class Cluster implements AutoCloseable {
         return must("-n", w.namespace(), "get", "pod", w.name(), "-o", "jsonpath={.status.podIP}");
     }
 
+    /** The names of the pods of a namespace that carry a label such as app=web: what a podSelector on that label selects. */
+    List<String> podsLabelled(String namespace, String label) throws IOException, InterruptedException {
+        String out = must("-n", namespace, "get", "pods", "-l", label, "-o", "jsonpath={.items[*].metadata.name}").strip();
+        return out.isEmpty() ? List.of() : List.of(out.split(" "));
+    }
+
+    /** The value of a pod's app label, as the API server has it now. */
+    String appLabel(Workload w) throws IOException, InterruptedException {
+        return must("-n", w.namespace(), "get", "pod", w.name(), "-o", "jsonpath={.metadata.labels.app}").strip();
+    }
+
     /** Runs curl inside a pod against a URL and returns curl's exit code: 0 answered, 28 timed out, 6 name not found. */
     int curl(Workload from, String url) throws IOException, InterruptedException {
-        return kubectl("-n", from.namespace(), "exec", from.name(), "--", "curl", "-s", "-m", "2", "-o", "/dev/null", url).exit();
+        return kubectl("-n", from.namespace(), "exec", from.name(), "--",
+                "curl", "-s", "-m", "2", "-o", "/dev/null", url).exit();
     }
 
     /** Removes every network policy of the namespaces. */

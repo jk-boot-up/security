@@ -3,6 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/localca/
 ├── CertificateAuthority.java  The store's internal certificate authority
+├── ChainSteps.java            A teaching copy of what a client does with the chain leaf, issuing authority, root: the same checks the JDK's PKIX validator makes, done by hand one at a time so each can be printed
 ├── Csr.java                   Certificate signing requests (PKCS#10)
 ├── Inventory.java             A list of every certificate the store runs, with the ones that need attention flagged
 ├── Issued.java                A certificate together with its subject's key pair
@@ -47,11 +48,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Running a certificate authority | An offline root signs an issuing authority limited to shop.internal; the issuer applies a policy, and a name constraint still holds when the policy is skipped. |
-| 2. Issuing from a signing request | The request carries only the public key and proves possession; a forged request, a name that belongs to another team and a mixed request are all refused. |
-| 3. Revocation: taking a certificate back | A revoked certificate is refused by a client that checks a current list, accepted by one that never checks, and refused by a strict client when the list is out of date. |
-| 4. Short-lived certificates instead of revocation | A 24-hour certificate renews at two thirds of its life with a new key: 4 renewals in 72 hours and no failed check, and a stopped job simply expires; the inventory flags what needs attention. |
-| 5. The bill | The root key signed 3 times and stays offline; revoking the issuing authority with the root's list refuses every certificate below it; the audit log holds 18 decisions, 6 of them refusals. |
+| 1. Running a certificate authority | An offline root signs an issuing authority limited to shop.internal; it issues www.shop.internal as serial 1000, a client checks the chain in seven steps, the policy refuses three bad requests, and the name constraint still refuses pay.example when the policy is skipped. |
+| 2. Issuing from a signing request | payments-team's request carries only the public key; the authority makes five checks in order and signs serial 1002 with exactly that key; a forged request and another team's names are refused; orders-team gets a client certificate. |
+| 3. Revocation: taking a certificate back | The day-10 list revokes serial 1002 until day 17; on day 11 a checking client refuses it and a client that never checks accepts it; on day 20 the stale list makes a strict client refuse even www, until a fresh list arrives. |
+| 4. Short-lived certificates instead of revocation | A 24-hour certificate is renewed at two thirds of its life, 16 hours: renewals at hours 16, 32, 48 and 64, five different keys, no failed check; when the job stops, the last one ends at hour 88 and is refused as EXPIRED. |
+| 5. The bill | The root key signs four times in all and stays offline; its day-40 list revokes the issuing CA, so www.shop.internal is refused on day 41; the audit log holds 18 decisions, 6 of them refusals. |
 
 ## Test
 
@@ -59,11 +60,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `DemoRunsTest`, `LocalCaTest`. Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run.
+20 tests in `DemoRunsTest`, `LocalCaTest`. Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 
-The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. Keys are random and never printed, so the demo prints the same text on every run.
+The certificates and revocation lists are real DER, built with Bouncy Castle and validated by the JDK's own PKIX implementation. The teams, the clock and the renewal job are small models. `ChainSteps` redoes the validator's checks by hand so each can be printed, and a test proves it reaches the JDK's exact verdict. Keys are random and never printed; serials count up from 1000 and the clock is fixed, so the demo prints the same text on every run.
 
 ## Technologies and versions
 
@@ -122,7 +123,7 @@ A request is refused at the first failing check.
 
 ## What it costs
 
-- **The root key must stay offline.** It signs three times in the whole demo; a stolen root key means every client has to be changed.
+- **The root key must stay offline.** It signs four times in the whole demo; a stolen root key means every client has to be changed.
 - **Revocation needs publishing and checking.** The authority must publish lists on time and every client must fetch and enforce them, or the list does nothing.
 - **Short-lived certificates need automation.** Every service needs a request, a renewal job and a deployment step, which is what ACME does.
 - **Name constraints are only as good as the clients.** A client that ignores them accepts the stray certificate, so test the clients you use.

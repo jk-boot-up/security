@@ -15,6 +15,7 @@ src/main/java/com/jk/explore/security/validation/
 ├── Quantity.java        How many of one item: a whole number from 1 to 99, written with digits only
 ├── Rejected.java        A value refused at the trust boundary
 ├── Sku.java             A product code: three capital letters, a dash and four digits, such as SHO-1042
+├── Steps.java           A teaching class: redoes the checks of {@link Quantity#parse} and {@link Username#parse} one step at a time, so the demo can show how a value is read
 ├── Text.java            Small helpers shared by the value types: limits first, then canonical form, then character rules
 ├── TrustingShop.java    The checkout that trusts what arrives because the page already checked it, including the price in a hidden field
 ├── Username.java        A login name in its one canonical form
@@ -55,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Where validation belongs | The page refuses a quantity of -3, but the same request sent without the page gives a total of -269.70 and a hidden price of 0.01 gives 0.02; the server-side checkout refuses both. |
-| 2. Say what is allowed, and parse into types | Quantities, product codes, e-mail addresses, country codes and amounts each have one allowed shape; 0, 1e2, sho-1042, ben@@shop.example, ZZ and 19.505 are refused, and four bad fields are reported at once. |
-| 3. Canonicalise before validating | A raw-text registry accepts full-width ａｎａ and ANA as new accounts; the canonical one folds them to ana and refuses them, refuses invisible and control characters, and NFC makes José typed two ways equal. |
-| 4. Limits are validation too | A 1000000-byte body is refused after reading 16385 bytes, a 10000-line cart and a 10000-character address are refused, and the pattern (a+)+$ needs 2097130 steps for 20 a's against 21 for the linear check. |
-| 5. The bill: what validation does not do | A valid review can still be markup, a valid surname can hold a quote, refusals never repeat raw input, and a limit of 99 refuses a wholesale order of 150. |
+| 1. Where validation belongs | The page refuses a quantity of -3, but the same request sent without the page gives 89.90 x -3 = -269.70, and a hidden price of 0.01 gives 0.02 instead of 179.80; the checkout that validates on the server refuses both and prices an honest order from the catalogue. |
+| 2. Say what is allowed, and parse into types | Each field has one allowed shape: "7" becomes Quantity[value=7], "Ben@Shop.EXAMPLE" becomes Email[value=Ben@shop.example] and "19.50" becomes Money[amount=19.50], while 0, 1e2, sho-1042, ben@@shop.example, ZZ and 19.505 are refused; a form with four bad fields gets all four problems at once. |
+| 3. Canonicalise before validating | A raw-text registry gives three accounts to ana, full-width ａｎａ and ANA; NFKC, strip and lower-case turn all three into ana, so the canonical registry refuses two as already taken; hidden and look-alike letters are refused, José typed two ways is equal after NFC, and a look-alike of the staff name is refused by its skeleton. |
+| 4. Limits are validation too | A 1000000-byte body is refused after reading 16385 bytes, a 10000-line cart and a 10003-character address are refused; (a+)+$ tries all 4 splits of aaa! and takes 2036, 65519 and 2097130 steps for 10, 15 and 20 a's (about 32 times more per 5 a's), against 21 steps for a+$ in one pass. |
+| 5. The bill: what validation does not do | The display names <b>great</b> and O'Brien are both accepted, and are still markup and a quote; the error for a bad e-mail address does not repeat the input; a limit of 99 refuses a wholesale order of 150. |
 
 ## Test
 
@@ -67,7 +68,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-31 tests in `CanonicalTest`, `CheckoutTest`, `DemoRunsTest`, `LimitsTest`, `ValueTypesTest`. Every rule is checked with parameterized tests of accepted and refused values. The regular-expression cost is counted in steps rather than timed, so the golden output is the same on every machine.
+37 tests in `CanonicalTest`, `CheckoutTest`, `DemoRunsTest`, `LimitsTest`, `StepsTest`, `ValueTypesTest`. Every rule is checked with parameterized tests of accepted and refused values. The regular-expression cost is counted in steps rather than timed, so the golden output is the same on every machine.
 
 ## What the simulation got right, and what it left out
 

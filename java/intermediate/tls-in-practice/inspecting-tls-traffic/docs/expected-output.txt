@@ -1,26 +1,75 @@
-== 1. What the wire shows ==
-hello values in the clear -> client random 3bd68db307915645..., server random 363791a138986206...
-client -> server: 70 bytes, starts 1703030041 (application data)
-server -> client: 52 bytes, starts 170303002f (application data)
-contains the word "password"? false
-decrypted without any key -> []
-
-== 2. Writing a key log ==
-SSLKEYLOGFILE not set -> Optional.empty
-SSLKEYLOGFILE=/tmp/keys.log in development -> Optional[/tmp/keys.log]
-SSLKEYLOGFILE=/tmp/keys.log in production -> refused: SSLKEYLOGFILE is set in production; refusing to start
+ONE. What the wire shows.
+THE CONNECTION (an online store's login, TLS 1.3 style):
+  client sends  POST /login HTTP/1.1 | user=ana&password=hunter2
+  server sends  HTTP/1.1 200 OK | session=7f3a
+THE CAPTURE (what anyone on the network records):
+  client random     3bd68db307915645... (in the clear)
+  server random     363791a138986206... (in the clear)
+  client -> server  70 bytes, 17 03 03 00 41 ...
+  server -> client  52 bytes, 17 03 03 00 2f ...
+THE RECORD HEADER, WORKED OUT (client -> server):
+  17       type 23: application data
+  03 03    version 3.3, the same in every TLS 1.3 record
+  00 41    length 65 = 48 text + 1 inner type + 16 tag
+  total    5 header + 65 = 70 bytes
+THE RESULT (with no key):
+  contains "password"?  false
+  decrypted             []
+TWO. Writing a key log.
+THE SETTINGS (the client's environment):
+  SSLKEYLOGFILE not set           no key log
+  SSLKEYLOGFILE, APP_ENV=dev      /tmp/keys.log
+  SSLKEYLOGFILE, APP_ENV=production
+    refused: SSLKEYLOGFILE is set in production; refusing to start
+THE KEY LOG (two lines for this connection):
   CLIENT_TRAFFIC_SECRET_0 3bd68db30791... 7c6da57caa88...
   SERVER_TRAFFIC_SECRET_0 3bd68db30791... ea2a4ed1b2fa...
-
-== 3. Reading the capture with the key log ==
+THE LINE, PART BY PART:
+  label          CLIENT_TRAFFIC_SECRET_0
+  client random  3bd68db30791... (32 bytes)
+                 the capture's: 3bd68db30791... same
+  secret         7c6da57caa88... (32 bytes, one direction)
+THREE. Reading the capture with the key log.
+THE LOOKUP (the capture's client random in the log):
+  client random            3bd68db30791...
+  CLIENT_TRAFFIC_SECRET_0  7c6da57caa88... found
+  SERVER_TRAFFIC_SECRET_0  ea2a4ed1b2fa... found
+FROM SECRET TO KEY, WORKED OUT (client direction):
+  key    Expand-Label(secret, "key", 16)  cfeb456056d9d85d...
+  iv     Expand-Label(secret, "iv", 12)   6d3d06a138e98f67...
+  nonce  iv XOR record number: record 0 ends db a7
+                               record 1 ends db a6
+  AES-128-GCM opens the record, the header is checked too
+THE RESULT (the records, opened):
   client: POST /login HTTP/1.1 | user=ana&password=hunter2
   server: HTTP/1.1 200 OK | session=7f3a
-
-== 4. A key log opens its own connections and no others ==
-session two with session one's key log -> []
-session two with its own lines -> [client: GET /orders HTTP/1.1, server: HTTP/1.1 200 OK | 3 orders]
-only the client line of session one -> [client: POST /login HTTP/1.1 | user=ana&password=hunter2]
-
-== 5. Why the server's own key is a different matter ==
-recorded last year, static RSA key exchange; the server key leaks today -> [client: POST /login HTTP/1.1 | user=ana&password=hunter2, server: HTTP/1.1 200 OK | session=7f3a]
-recorded last year, ephemeral key exchange; the same key leaks today -> []
+FOUR. A key log opens its own connections and no others.
+THE SECOND CONNECTION (another customer):
+  client random  1ccd6b949daf... (session one: 3bd68db30791...)
+TRY 1: session two, with session one's key log
+  [] (nothing opens)
+TRY 2: session two, with its own two lines added
+  client: GET /orders HTTP/1.1
+  server: HTTP/1.1 200 OK | 3 orders
+TRY 3: session one, with only its CLIENT line
+  client: POST /login HTTP/1.1 | user=ana&password=hunter2
+THE RESULT:
+  a line opens one direction of one connection, no more
+FIVE. Why the server's own key is a different matter.
+THE RECORDINGS (made last year):
+  static RSA  the client's secret, encrypted to the server key:
+              256 bytes on the wire
+  ECDHE       two public values of 32 and 32 bytes:
+              8d0e655ac863... and 2af6fb559353...
+              the shared secret is never sent
+THE LEAK (today): the server's long-term RSA private key
+THE RESULT:
+  static RSA, opened with the leaked key:
+    client: POST /login HTTP/1.1 | user=ana&password=hunter2
+    server: HTTP/1.1 200 OK | session=7f3a
+  ECDHE, opened with the same key:
+    [] (nothing opens)
+WHY, WORKED OUT:
+  static RSA  the key decrypts the 256 bytes: the secret
+  ECDHE       the secret needs a private value of the
+              handshake, thrown away when it ended

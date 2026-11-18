@@ -49,7 +49,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `AssessorTest` checks the status rules, the catalogue and the parsing of test reports, including one that tries an external entity, with the JDK only.
+- `AssessorTest` checks the status rules, the catalogue and the parsing of test reports, including one that tries an external entity; `StatusStepsTest` and `FrameworksTest` check the teaching class and the ids, all with the JDK only.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

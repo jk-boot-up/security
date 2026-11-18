@@ -41,10 +41,10 @@ Learners put secrets where they are convenient, and the convenient places are th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 19, all passing |
+| Demo output | 95 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:18, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

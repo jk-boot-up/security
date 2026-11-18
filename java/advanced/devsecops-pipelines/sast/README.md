@@ -4,11 +4,13 @@
 src/main/java/com/jk/explore/security/sast/
 ├── Finding.java       One result of a scan: the rule, the file name and the line
 ├── Marker.java        The truth about a line of the code under test, written in a comment: {@code // VULN sql-direct} or {@code // SAFE sql-prepared}
-├── SastDemo.java      
+├── RuleFile.java      Reads the patterns of one rule out of a Semgrep rule file: what is a source, a sink and a sanitizer
+├── SastDemo.java      "found" or "missed" for a flaw, "flagged" or "quiet" for a safe line
 ├── Score.java         What a rule set got right on the lines the code under test marks, for the markers whose id starts with a prefix
 ├── Semgrep.java       The real Semgrep command line, run with rules from files, no account and no metrics
 ├── Sh.java            Runs a program and returns what it printed, whether it worked or not
 ├── Suppressions.java  The comments that switch a rule off for a line
+├── TaintSteps.java    A teaching class: follows input through a few lines of code the way a taint rule does, by hand
 └── Venv.java          A Python virtual environment under build/ with Semgrep installed with pip the first time
 ```
 
@@ -43,11 +45,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The code under test | Six files hold 7 planted flaws and 7 safe look-alikes, each marked in a comment. |
-| 2. Pattern against taint | On the SQL the pattern rule finds 4 of 4 and flags 3 of 4 safe lines; the taint rule finds 3 of 4 and flags 1 of 4. |
-| 3. Tests for the rules | semgrep --test passes 4 of 4 checks, and a rule with its sanitizer removed passes only 3 of 4. |
-| 4. Triage | A false alarm is suppressed with a reason and an owner, and a build check refuses a suppression without them. |
-| 5. The bill | A taint rule follows input inside a method; the sink in another file is missed. |
+| 1. One flaw, as a taint rule sees it | Three lines of AccountController (22 to 24): name comes from request.getParameter, sql is built from name, and executeQuery(sql) runs it. The rule sql-taint names the source, the sink and the sanitizers; followed by hand, the taint reaches the sink on line 24, and Semgrep reports sql-taint at AccountController:24. |
+| 2. Pattern against taint | On the 8 SQL lines the pattern rule finds 4 of 4 flaws and flags 3 of 4 safe lines (recall 4/4 = 100%, precision 4/7 = 57%); the taint rule finds 3 of 4 and flags 1 of 4 (recall 3/4 = 75%, precision 3/4 = 75%): it misses sql-other-file and flags sql-allowlisted. |
+| 3. Every flaw class with the taint rules | The taint rules (sql, command, path) and a weak-hash pattern report 7 findings: 6 on planted flaws and 1 on the allowlisted column. By class: sql 3 of 4, command 1 of 1, path 1 of 1, weak-hash 1 of 1; all 6 of 7 flaws found, 1 of 7 safe lines flagged. |
+| 4. Tests for the rules | rules/taint.java marks 6 lines that must be flagged (// ruleid:) and 5 that must not (// ok:). semgrep --test: 4 of 4 checks pass, pattern.yml has no test. With the sanitizer Integer.parseInt(...) removed, sql-taint fails: expected 10 16, reported 10 16 22, so 3 of 4 pass; line 22 is the parsed number. |
+| 5. Triage | semgrep --error reports 7 findings (6 real, 1 false) with exit code 1. A suppression above line 56 names the rule, the reason and the owner: 6 findings, still exit code 1, 1 of 1 well written. A second suppression with no reason makes 2, 1 well written, and the build check fails. Validate.java: 0 findings, exit code 0. |
 
 ## Test
 
@@ -55,7 +57,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `MarkerAndSuppressionsTest`, `ScoreTest`. The scoring, the markers and the suppression check are tested with no tools. The demo runs Semgrep (./gradlew integrationTest).
+16 tests in `DemoRunsTest`, `MarkerAndSuppressionsTest`, `ScoreTest`, `TeachingStepsTest`. The scoring, the markers, the suppression check, the rule-file reader, the hand-worked taint steps and the reading of semgrep --test output are tested with no tools. The demo runs Semgrep, pinned to 1.182.1 (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

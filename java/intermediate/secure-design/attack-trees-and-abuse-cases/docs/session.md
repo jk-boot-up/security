@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: The tree | 7 min |
 | 0:17 | Act 2: What the tree says about the attacker | 7 min |
 | 0:24 | Act 3: Each defence on its own | 7 min |
-| 0:31 | Act 4: A plan: always cut the cheapest path, then look again | 7 min |
+| 0:31 | Act 4: A plan: cut the cheapest path, then look again | 7 min |
 | 0:38 | Act 5: Abuse cases as tests | 7 min |
 | 0:45 | Exercises | 15 min |
 

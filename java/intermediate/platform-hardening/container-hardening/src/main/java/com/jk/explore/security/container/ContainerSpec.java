@@ -24,7 +24,7 @@ public record ContainerSpec(String name, String user, boolean privileged, Set<St
 
     /** The configuration found in many tutorials: privileged, the Docker socket and the host network, "to make it work". */
     public static ContainerSpec reckless() {
-        return new ContainerSpec("reckless", "root", true, Set.of("ALL"), false, false, true, Seccomp.UNCONFINED, List.of("/var/run/docker.sock", "/etc"), true, true,
+        return new ContainerSpec("reckless", "root", true, Set.of("ALL"), false, false, true, Seccomp.UNCONFINED, List.of(Attacker.DOCKER_SOCKET, "/etc"), true, true,
                 0, 0, false, true, "shop-app:latest");
     }
 
@@ -90,6 +90,7 @@ public record ContainerSpec(String name, String user, boolean privileged, Set<St
     }
 
     public boolean has(String capability) {
-        return privileged || capabilities.contains("ALL") || capabilities.contains(capability);
+        return privileged || capabilities.contains("ALL")
+                || capabilities.contains(capability);
     }
 }

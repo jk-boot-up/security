@@ -1,53 +1,119 @@
 ONE. Where validation belongs.
-  a shop that trusts the page: the same request sent without it, a quantity of -3: total -269.70  <- A NEGATIVE TOTAL IS A REFUND
-  the service with constraints on its parameter: [place.checkout.lines[0].quantity: must be greater than or equal to 1]
-  and with no form at all: [place.checkout: must not be null]
-  an honest order: accepted true, total 179.80 from the catalogue
-  the form has no price at all, so there is nothing for a hidden field to set: [email, country, postalCode, login, lines]
-  the constraints are written once, on the type, and run wherever the type is checked: at the controller, the service or a test
+  THE REQUEST, SENT WITHOUT THE PAGE:
+    cart         SHO-1042 x -3
+    fields       email, country, postalCode, login, lines
+                 (no price field: the catalogue has the price)
+  BEFORE THE FIX (a shop that trusts the page):
+    total        89.90 x -3 = -269.70  <- A REFUND
+  AFTER THE FIX (constraints on the service's parameter):
+    cart -3      place.checkout.lines[0].quantity
+                 must be greater than or equal to 1
+    no form      place.checkout: must not be null
+    honest       accepted, 89.90 x 2 = 179.80
+  HOW THE PATH place.checkout.lines[0].quantity IS BUILT:
+    place        method
+    checkout     parameter
+    lines        property
+    quantity     property, element 0 of the list before it
+    message      from @Min(1) on Line.quantity
 TWO. Say what is allowed, in annotations.
-  quantity 7: accepted
-  quantity 0: refused (must be greater than or equal to 1)
-  quantity 100: refused (must be less than or equal to 99)
-  sku "SHO-1042": accepted
-  sku "sho-1042": refused (must match "[A-Z]{3}-\d{4}")
-  sku "SHO-1042;": refused (must match "[A-Z]{3}-\d{4}")
-  email "Ben@Shop.EXAMPLE": accepted
-  email "ben@@shop.example": refused (must be a well-formed email address)
-  email "ben@localhost": accepted
-  the built-in @Email takes ben@localhost, which the shop's own rule refuses  <- A BUILT-IN CHECK IS WIDER THAN YOUR RULE: ADD A @Pattern FOR WHAT YOU REQUIRE
-  country "DE": accepted
-  country "ZZ": refused (a two-letter country code such as IN or DE)
-  country "de": refused (a two-letter country code such as IN or DE)
-  a form with several bad fields reports all of them at once: 5, [country, email, lines[0].quantity, lines[0].sku, login]
-  the person fixes everything in one go, and an attacker learns nothing more than the messages say
+  THE RULES, WRITTEN ON THE RECORDS:
+    quantity     @Min(1) @Max(99)
+    sku          @NotNull @Pattern([A-Z]{3}-\d{4}) @InStock
+    email        @NotBlank @Size(max=254) @Email
+    country      @NotNull @Country
+  QUANTITY (THE INPUT, THEN THE RESULT):
+    7                    accepted
+    0                    refused: must be greater than or equal to 1
+    100                  refused: must be less than or equal to 99
+  SKU:
+    "SHO-1042"           accepted
+    "sho-1042"           refused: must match "[A-Z]{3}-\d{4}"
+    "SHO-1042;"          refused: must match "[A-Z]{3}-\d{4}"
+  EMAIL:
+    "Ben@Shop.EXAMPLE"   accepted
+    "ben@@shop.example"  refused: must be a well-formed email address
+    "ben@localhost"      accepted  <- WIDER THAN THE SHOP NEEDS
+  COUNTRY:
+    "DE"   accepted
+    "ZZ"   refused: a two-letter country code such as IN or DE
+    "de"   refused: a two-letter country code such as IN or DE
+  THE INPUT, A FORM WITH SEVERAL BAD FIELDS:
+    email        ben@@shop.example
+    country      ZZ
+    login        Ben K
+    cart         sho-1042 x 0
+  THE RESULT, 5 PROBLEMS AT ONCE:
+    country: a two-letter country code such as IN or DE
+    email: must be a well-formed email address
+    lines[0].quantity: must be greater than or equal to 1
+    lines[0].sku: must match "[A-Z]{3}-\d{4}"
+    login: must match "[a-z0-9._-]+"
 THREE. Your own constraints, across fields, and in an order.
-  a login with a zero-width space inside: the invisible-character rule says refused (no control or invisible characters, in normal form C); the whole login rule says refused (must match "[a-z0-9._-]+")
-  a login with a line break: the invisible-character rule says refused (no control or invisible characters, in normal form C); the whole login rule says refused (must match "[a-z0-9._-]+")
-  a login with capitals: the invisible-character rule says accepted; the whole login rule says refused (must match "[a-z0-9._-]+")
-  a login with Cyrillic е in place of e: the invisible-character rule says accepted; the whole login rule says refused (must match "[a-z0-9._-]+")
-  a login with o with an accent, typed as two characters: the invisible-character rule says refused (no control or invisible characters, in normal form C); the whole login rule says refused (must match "[a-z0-9._-]+")
-  no single rule catches everything: the pattern keeps logins to plain lower-case letters, and the custom rule keeps whatever else is allowed in normal form
-  a postal code that does not fit its country (DE, 1011): [postalCode: does not look like a postal code of that country]
-  the same code with IN, 110001: []
-  a sku in the wrong shape: [lines[0].sku: must match "[A-Z]{3}-\d{4}"], and the catalogue was asked 0 times
-  a sku in the right shape that nobody sells: [lines[0].sku: not in the catalogue], and the catalogue was asked 1 time
-  groups put the checks in order: limits, then shape, then the ones that cost a lookup, each only if the one before found nothing wrong
+  THE INPUT, FIVE LOGINS:
+    ben[U+200B]k      a zero-width space
+    ben[U+000A]k      a line break
+    BenK              capitals
+    b[U+0435]n.k      Cyrillic е in place of e
+    jose[U+0301]      é typed as two characters
+  THE RESULT:          @NoInvisible  all the login's rules
+    ben[U+200B]k      refused       refused
+    ben[U+000A]k      refused       refused
+    BenK              accepted      refused
+    b[U+0435]n.k      accepted      refused
+    jose[U+0301]      refused       refused
+    caught       3 of 5 by @NoInvisible, 5 of 5 by all the rules
+  THE INPUT, A RULE ACROSS TWO FIELDS:
+    DE 1011      DE codes match \d{5}
+    IN 110001    IN codes match \d{6}
+  THE RESULT, ON THE POSTAL CODE:
+    DE 1011      postalCode: not a postal code of that country
+    IN 110001    accepted
+  HOW THE GROUPS ORDER THE CHECKS (each runs if all before passed):
+    1 Limits     sizes, before anything looks inside
+    2 Default    shapes: @Pattern, @Email, @Min ...
+    3 Expensive  @InStock: a catalogue lookup
+  THE INPUT, TWO PRODUCT CODES:
+    sho-1042     the wrong shape
+    SHO-9999     the right shape, but not sold
+  THE RESULT:
+    sho-1042     0 lookups: must match "[A-Z]{3}-\d{4}"
+    SHO-9999     1 lookup:  not in the catalogue
 FOUR. Limits are validation too.
-  a cart of 10000 lines: [lines: size must be between 0 and 50], and the catalogue was asked 0 times
-  an e-mail address of 10013 characters: [email: size must be between 0 and 254]
-  the pattern ((a+)+)+b on 8 a's and a !: 2264 steps
-  the pattern ((a+)+)+b on 12 a's and a !: 36808 steps
-  the pattern ((a+)+)+b on 16 a's and a !: 589752 steps
-  four more characters multiply the work by sixteen, so each one doubles it  <- A FEW DOZEN CHARACTERS CAN STOP A SERVER (ReDoS)
-  the same pattern on 5000 a's and a !, with @Size(max = 20) in the first group: [code: size must be between 0 and 20], 0 steps
-  the JDK remembers its way through the simpler (a+)+$ and needs only quadratic time; one more level of nesting is exponential again, so a safe-looking pattern is not a safe pattern
-  so: a length limit that runs before any pattern, and no nested repetition in a pattern that reads input
+  THE INPUT, TWO OVERSIZED VALUES:
+    cart         10000 lines
+    e-mail       10013 characters
+  THE RESULT, STOPPED IN THE Limits GROUP:
+    cart         lines: size must be between 0 and 50, 0 lookups
+    e-mail       email: size must be between 0 and 254
+  BEFORE THE FIX, ((a+)+)+b ON n a's AND A !:
+    8 a's        2264 steps
+    12 a's       36808 steps  (x 16.3)
+    16 a's       589752 steps  (x 16.0)
+    4 more a's: about 2^4 = 16 times the work  <- ReDoS
+  AFTER THE FIX, @Size(max = 20) IN THE Limits GROUP:
+    5000 a's     code: size must be between 0 and 20, 0 steps
+  WHY TWO LEVELS: THE JDK ON THE SIMPLER (a+)+$:
+    8 a's        109 steps
+    16 a's       349 steps  (x 3.2)
+    32 a's       1213 steps  (x 3.5)
+    twice the a's, 3 to 4 times the work: not doubling per a
 FIVE. The bill: what validation does not do.
-  a review title "<b>great</b>" is 12 characters: [title: '<b>great</b>' is not 3 to 10 characters]
-  the message repeats the visitor's text, markup and all: true  <- NEVER SEND RAW INPUT BACK IN A MESSAGE: ENCODE IT, OR LEAVE IT OUT
-  a surname O'Brien and a title <b>ok</b> are valid text; encoding on output and parameters in the query are still the code's job
-  a coupon written into a constraint's own message template, "${1+1}": Hibernate Validator 9 gives "the coupon ${1+1} does not exist"
-  the same constraint on a validator set to allow method calls in templates, as old versions did: "the coupon 2 does not exist" and "the coupon ab does not exist"  <- THE VISITOR'S TEXT IS RUN AS CODE
-  passed as a message parameter, the same text stays text even there: "the coupon ${1+1} does not exist"
-  validation narrows what reaches the code; each rule is also a business decision, and the people who write the messages are not the people who write the rules
+  THE INPUT, A REVIEW TITLE:
+    title        <b>great</b> (12 characters)
+  THE RESULT, A MESSAGE THAT REPEATS THE VALUE:
+    title: '<b>great</b>' is not 3 to 10 characters
+    repeats it?  true  <- MARKUP IN AN ERROR MESSAGE
+  THE INPUT, A COUPON PUT INTO A MESSAGE TEMPLATE:
+    ${1+1}
+    ${'a'.concat('b')}
+  BEFORE THE FIX (templates may call methods, as old versions did):
+    ${1+1}              the coupon 2 does not exist
+    ${'a'.concat('b')}  the coupon ab does not exist
+    the visitor's text was run as code  <- EXPRESSION INJECTION
+  AFTER THE FIX:
+    default      the coupon ${1+1} does not exist
+    parameter    the coupon ${1+1} does not exist
+  SO:
+    valid text still needs encoding on output and query parameters;
+    each rule is a business decision, written down

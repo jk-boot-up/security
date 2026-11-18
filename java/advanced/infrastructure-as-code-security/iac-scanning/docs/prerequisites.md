@@ -3,7 +3,8 @@
 ## Required
 
 - Java basics
-- Python 3, Trivy and Docker
+- Python 3 (for Checkov)
+- Docker (for the pinned Trivy and KICS images)
 
 ## Explicitly not required
 
@@ -13,7 +14,6 @@
 
 - A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.
 - python3
-- trivy
 - docker
 - About an hour for the session guide.
 

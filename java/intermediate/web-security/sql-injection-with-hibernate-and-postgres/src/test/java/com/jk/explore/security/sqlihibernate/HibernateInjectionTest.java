@@ -102,5 +102,6 @@ class HibernateInjectionTest {
         assertTrue(refused.getCause().getMessage().contains("permission denied for table users"));
         assertThrows(RuntimeException.class, () -> careless.jpql(SqlHibernateDemo.JPQL_ORACLE_TRUE, "p.name"));
         assertFalse(careless.nativeSql("Kettle").isEmpty());
+        assertEquals(List.of("Prototype Toaster"), careless.jpql(SqlHibernateDemo.JPQL_BYPASS, "p.name"));
     }
 }

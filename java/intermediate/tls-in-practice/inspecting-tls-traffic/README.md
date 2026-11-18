@@ -52,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the wire shows | An observer sees the hello values and two encrypted records of 70 and 52 bytes; the plaintext, including the word password, is nowhere, and without keys nothing can be decrypted. |
-| 2. Writing a key log | The key log variable is ignored when unset, honoured in development and refused in production; each connection gets a client line and a server line named by the client random. |
-| 3. Reading the capture with the key log | With the log the capture reads POST /login with user=ana&password=hunter2, and the reply with the session. |
-| 4. A key log opens its own connections and no others | Session one's log reads nothing of session two; session two reads with its own lines; with only the client line of session one, only the client's records open. |
-| 5. Why the server's own key is a different matter | A server key that leaks a year later decrypts a recorded static-RSA connection completely and an ephemeral one not at all. |
+| 1. What the wire shows | A login is sent over a TLS 1.3 style connection. The capture shows the two hello randoms in the clear and two records of 70 and 52 bytes; the header 17 03 03 00 41 says application data, version 3.3, length 65 = 48 text + 1 inner type + 16 tag. With no key, the word password is nowhere and nothing opens. |
+| 2. Writing a key log | SSLKEYLOGFILE makes a client write two lines per connection, CLIENT_TRAFFIC_SECRET_0 and SERVER_TRAFFIC_SECRET_0, each with the 32-byte client random and the 32-byte secret of one direction. The shop's client honours it in development and refuses to start with it in production. |
+| 3. Reading the capture with the key log | The capture's client random finds both lines of the log. The secret gives the AES key by HKDF-Expand-Label(secret, "key", 16) and the IV by Expand-Label(secret, "iv", 12); each record's nonce is the IV XOR its number. AES-128-GCM then opens both records, and the password appears. |
+| 4. A key log opens its own connections and no others | A second customer's connection has its own client random (1ccd6b949daf...), so session one's log opens nothing in it; with its own two lines added, both of its records open; and session one with only its CLIENT line opens the client's record and not the server's. |
+| 5. Why the server's own key is a different matter | A recording made last year with static RSA key exchange carries the client's secret encrypted to the server key (256 bytes); when that key leaks, both records open. An ECDHE recording carries only two 32-byte public values; the same leaked key opens nothing. That is forward secrecy. |
 
 ## Test
 
@@ -64,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `TlsLogTest`. Keys come from a labelled generator and the RSA key is never printed, so the demo prints the same text on every run.
+14 tests in `DemoRunsTest`, `TlsLogTest`. Keys come from a labelled generator and the RSA key is never printed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

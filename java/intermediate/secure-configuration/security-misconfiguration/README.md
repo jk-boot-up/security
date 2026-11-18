@@ -8,7 +8,7 @@ src/main/java/com/jk/explore/security/misconfig/
 ├── MisconfigDemo.java            Runs the online store story in five numbered acts and prints exact, repeatable results
 ├── ProfileDrift.java             Compares a production settings file with the hardened baseline and with development
 ├── Profiles.java                 The settings files the demo uses: what the store ships with, a hardened production profile, and a production profile copied from development
-├── Secrets.java                  Password comparison in constant time, and the list of defaults that attackers try first
+├── Secrets.java                  Password comparison in constant time, and the rules a production admin password must meet
 ├── StartupGate.java              Checks run before the store opens its port
 ├── StoreConfig.java              The store's settings, read from a properties file
 └── StoreServer.java              The online store on the loopback interface
@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The store started with its shipped defaults | The default admin password works, the debug page shows the secret, the static folder lists a backup file, errors show stack traces, and the checker scores the store 0 of 8. |
-| 2. Secure defaults, and a gate at startup | The hardened profile passes all 8 checks, and the startup gate refuses to start a production store whose admin password is a default or empty. |
-| 3. Drift: development settings that reach production | A production file copied from development still has the debug page and detailed errors on and a test setting present; the drift check fails the deployment, and the gate would refuse to start it. |
-| 4. Banners, methods and file permissions | The shipped store names its product and version and echoes requests to TRACE; the hardened one names nothing and refuses TRACE; a settings file with rw-r--r-- is readable by other users, rw------- is not. |
-| 5. The bill: a baseline that must be checked again and again | A new feature adds a setting the baseline has never seen, which is flagged for review; checks belong in CI, at startup and against the live store; a passing score means only that the checks pass. |
+| 1. The store started with its shipped defaults | The shipped settings file turns on a default password, a debug page, a listing, stack traces, a banner, TRACE and a test setting; four requests show the admin login, the secret, a backup file and a stack trace; the checker scores the store 0 of 8. |
+| 2. Secure defaults, and a gate at startup | The hardened file states every setting with the risky ones off; the same eight checks now all pass, 8 of 8; the startup gate refuses admin, an empty password and a 10-character one, and starts with the 44-character secret. |
+| 3. Drift: development settings that reach production | Production is the development file with 5 settings changed; debug.endpoint and errors.detailed are still true in both, test.fake-payments is still there; the drift check fails the deployment and the gate would refuse it; the hardened profile shows no drift. |
+| 4. Banners, methods and file permissions | The shipped store's Server header names ShopServer/1.4.2 (Java 25), the hardened one sends none; TRACE with a cookie is echoed back by the shipped store and refused with 405 by the hardened one; a settings file with rw-r--r-- lets other users read the secret, rw------- does not. |
+| 5. The bill: a baseline that must be checked again and again | A new feature adds uploads.max-size=unlimited, which the baseline has never seen, so the drift check flags it for review; the baseline grows with the store; the checks run in CI, at startup and on a schedule; passing means only these 8 checks pass. |
 
 ## Test
 
@@ -58,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `DemoRunsTest`, `GateAndDriftTest`, `StoreAndCheckerTest`. The store runs on a random loopback port that is never printed, settings files get explicit permissions, and the production secret is a fixed demo value, so the golden output is the same on every run.
+18 tests in `DemoRunsTest`, `GateAndDriftTest`, `StoreAndCheckerTest`. The store runs on a random loopback port that is never printed, settings files get explicit permissions, and the production secret is a fixed demo value, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 

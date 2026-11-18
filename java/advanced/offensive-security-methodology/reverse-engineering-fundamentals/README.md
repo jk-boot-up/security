@@ -4,10 +4,11 @@
 src/main/java/com/jk/explore/security/reverseeng/
 ├── Patcher.java                 Changes class files: the method that checks a key is replaced by one that says yes
 ├── Pool.java                    What can be read from class files without running them, with the JDK's own class file API: strings, names and the shape of methods
-├── ReverseEngineeringDemo.java  
+├── ReverseEngineeringDemo.java  Takes a bank's desktop client apart the way an analyst would: run it, read it, decompile it, patch it, then do it again on an obfuscated copy
 ├── Sample.java                  A small program of the bank, compiled from source into class files, and run from a class loader so that its behaviour can be compared after changes
 ├── Sh.java                      Runs a program and returns what it printed, whether it worked or not
-└── Tools.java                   The two tools of the JDK world that read class files: javap (in the JDK) and the CFR decompiler (a jar, downloaded once and checked)
+├── Tools.java                   The two tools of the JDK world that read class files: javap (in the JDK) and the CFR decompiler (a jar, downloaded once and checked)
+└── XorSteps.java                Redoes by hand what the obfuscated client's decoder (a.c.d) does: two hex digits make a byte, and XOR 0x5A gives the character
 ```
 
 **A bank's desktop client of 3 class files keeps its licence key in the constant pool, where 3 strings name a key, a licence or an address; javap shows the String.equals comparison and the decompiler gives back 19 lines of source for the 20 of the original; one method replaced by 'return true' makes a wrong key and no key pass; an obfuscated copy with one-letter names and encoded strings behaves identically and shows 0 of those strings, but its decompiled check is still readable, its own decoder gives back all 3 strings, and its key check is found by shape although it is called a and is patched the same way.**
@@ -41,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The program | A bank's desktop client of 3 class files accepts one key and refuses the rest. |
-| 2. Reading it without running it | 3 strings in the constant pool name a key, a licence or an address, and javap shows the comparison. |
-| 3. Decompiling it | CFR gives back 19 lines for the 20 of the original source, with the key and the comparison. |
-| 4. Changing it | One method replaced by 'return true' makes a wrong key, or no key, pass. |
-| 5. Obfuscation | Short names and encoded strings leave 0 strings to read, but the logic, the decoder and the check's shape give it all away. |
+| 1. The program | A bank's desktop client of 3 class files: the right key gives a statement line, a wrong key or no key is denied. |
+| 2. Reading it without running it | 7 strings in the constant pool, 3 of them naming a key, a licence or an address; 10 of 13 names are readable; javap shows the key loaded by ldc and compared by String.equals and ifeq. |
+| 3. Decompiling it | CFR turns Licence.class back into Java: the key and the logic come back, only the parameter name is lost; 19 non-blank lines against 20. |
+| 4. Changing it | Patcher replaces check's 12 instructions (19 bytes) by iconst_1, ireturn (2 bytes): a wrong key and no key are now licensed. |
+| 5. Obfuscation | One-letter names and XOR-encoded strings: 0 of 13 names readable and 0 strings name a key, but XOR 0x5a decodes them, the decompiled check is readable, and the check is found by shape and patched the same way. |
 
 ## Test
 
@@ -53,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-8 tests in `ClassFileTest`, `DemoRunsTest`. The class file reading, the patching and the sample are tested with the JDK only. The demo also runs javap and CFR (./gradlew integrationTest).
+12 tests in `ClassFileTest`, `DemoRunsTest`, `StepsTest`. The class file reading, the patching and the sample are tested with the JDK only. The demo also runs javap and CFR (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

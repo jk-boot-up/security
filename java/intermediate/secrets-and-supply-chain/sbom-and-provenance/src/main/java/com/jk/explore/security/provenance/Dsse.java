@@ -21,7 +21,8 @@ final class Dsse {
     /** PAE(type, body) = "DSSEv1" SP LEN(type) SP type SP LEN(body) SP body, with lengths in bytes as decimal ASCII. */
     static byte[] pae(String payloadType, byte[] body) {
         byte[] type = payloadType.getBytes(StandardCharsets.UTF_8);
-        byte[] head = ("DSSEv1 " + type.length + " " + payloadType + " " + body.length + " ").getBytes(StandardCharsets.UTF_8);
+        byte[] head = ("DSSEv1 " + type.length + " " + payloadType + " " + body.length + " ")
+                .getBytes(StandardCharsets.UTF_8);
         byte[] out = new byte[head.length + body.length];
         System.arraycopy(head, 0, out, 0, head.length);
         System.arraycopy(body, 0, out, head.length, body.length);

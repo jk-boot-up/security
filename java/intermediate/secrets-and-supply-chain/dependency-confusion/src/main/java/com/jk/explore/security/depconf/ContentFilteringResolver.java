@@ -16,12 +16,21 @@ public final class ContentFilteringResolver implements Resolver {
         this.internalName = internalName;
     }
 
+    /** The only repositories that may supply this name: the private ones for an internal name, the public ones otherwise. */
+    public List<Repository> allowedFor(String name, List<Repository> repositories) {
+        boolean internal = internalName.test(name);
+        return repositories.stream().filter(r -> internal != r.isPublic()).toList();
+    }
+
+    public boolean isInternal(String name) {
+        return internalName.test(name);
+    }
+
     @Override
     public Resolved resolve(String name, VersionRange range, List<Repository> repositories) {
         boolean internal = internalName.test(name);
-        List<Repository> allowed = repositories.stream().filter(r -> internal != r.isPublic()).toList();
         try {
-            return inner.resolve(name, range, allowed);
+            return inner.resolve(name, range, allowedFor(name, repositories));
         } catch (ResolutionException e) {
             throw new ResolutionException(name + (internal ? " is an internal name; the private repository has no " : " is not an internal name; the public repository has no ") + range);
         }

@@ -16,7 +16,7 @@ domain_note = ""
 youtube_description = "A real PostgreSQL 18 in Docker: two withdrawals that read before either writes and pay out 160 from 100, a check constraint and a conditional update, SELECT FOR UPDATE with another session waiting in pg_stat_activity, NOWAIT, lock_timeout and SKIP LOCKED, READ COMMITTED against REPEATABLE READ and a retry, write skew that only SERIALIZABLE stops, Hibernate 7 optimistic locking with a version column, a pessimistic lock, a one-time payment key, a deadlock that PostgreSQL cancels, and a lock in the memory of one server."
 thumb_lines = ["RACES WITH", "POSTGRESQL"]
 thumb_code = "select ... for update"
-youtube_title = "Race Conditions with PostgreSQL and Hibernate: Row Locks, Isolation Levels and Optimistic Locking (CWE-362)"
+youtube_title = "Race Conditions with PostgreSQL and Hibernate: Row Locks, Isolation, Optimistic Locking (CWE-362)"
 youtube_tags = ["race condition", "postgresql", "row lock", "select for update", "isolation level", "write skew", "optimistic locking", "hibernate", "cwe-362", "java"]
 
 [readme]
@@ -64,88 +64,233 @@ test_note = "The tests start one PostgreSQL for the whole class and remove it (.
 
 [[act]]
 title = "Check, then act: two requests in the gap"
-summary = "Two withdrawals that read before either writes pay out 160 from 100; a check constraint, a conditional update and a one-statement claim close the gap."
+summary = "Two withdrawals of 80 that both read 100 before either writes pay out 160 from 100 in a real PostgreSQL 18; a check constraint (20 - 80 = -60 < 0, 23514) and a condition inside the update (B changes 0 rows) refuse the second; a coupon claimed in one statement is used once."
 detail = """
-ana has 100 and sends two withdrawals of 80. A and B both read 100, both checks pass, both write the balance they worked out: the bank paid out 160 from a balance of 100, and the balance says 20. With the rule in the table, balance int check (balance >= 0), and the update relative to what is there, the second is refused by the database with 23514. With the check inside the update, where balance >= 80, A changes one row and B none. A single-use coupon checked, applied and marked used by two requests that both saw used = false gives a discount of 40; claimed in one statement, where used = false, A claims 1 and B 0.
+The input: ANA-1 holds 100, and A and B each withdraw 80 on their own connection: select the balance, check it in Java, update. In the order A reads, B reads, A writes, B writes: both read 100 and both checks 100 >= 80 are true; A writes 20 and commits, B writes 20 and commits. The result: 160 paid out from a balance of 100, and the balance is 20.
+After the fix, one: the rule lives in the table, balance int check (balance >= 0), and the update is relative, set balance = balance - 80. A takes 100 - 80 = 20; B would make 20 - 80 = -60, which breaks the check, so PostgreSQL refuses it with 23514 check_violation. Paid out 80.
+After the fix, two: the check is inside the update, ... where id = 'ANA-1' and balance >= 80. A changes 1 row; B changes 0 rows, because 20 >= 80 is false, and so knows it was refused.
+A single-use coupon SPRING20 read by both as used = false gives 20 + 20 = 40 off. Claimed in one statement, set used = true where ... and used = false, A gets 1 row and B 0 rows.
+"""
+figure = "check_then_act"
+figure_title = "Two withdrawals in a real database, and two fixes"
+figure_speech = """
+First demo: check, then act, in a real Postgres database. [[slnc 400]] At the top, the four statements, in their order. [[slnc 300]] A selects the balance and reads one hundred. [[slnc 300]] B does the same, and also reads one hundred. [[slnc 300]] Both check, in Java, that one hundred covers eighty. [[slnc 300]] Then A writes twenty, and B writes twenty. [[slnc 300]] The bank paid out one hundred and sixty, from one hundred. [[slnc 700]]
+At the bottom, two fixes that put the rule in the database. [[slnc 300]] On the left, the table itself says the balance can never be below zero. [[slnc 300]] The update subtracts from what is there now. [[slnc 300]] For B, that is twenty minus eighty, minus sixty, so Postgres refuses it with error two three five one four. [[slnc 700]]
+On the right, the check moves inside the update: only where the balance is at least eighty. [[slnc 300]] A changes one row. [[slnc 300]] B changes none, and the zero tells B it was refused.
 """
 speech = """
-First demo: check, then act. [[slnc 400]] Two withdrawals both read a hundred. [[slnc 600]]
-Both checks pass before either writes, and the bank pays out a hundred and sixty. [[slnc 300]] A constraint in the table, or a condition inside the update, refuses the second.
+Here is the real output. [[slnc 400]] Two withdrawals of eighty, on two connections. [[slnc 300]] Each one selects the balance, checks it in Java, and updates. [[slnc 300]] Both read one hundred, and both checks are true. [[slnc 300]] Both write twenty. [[slnc 300]] One hundred and sixty is paid out, from one hundred.
+[[page]]
+After the fix, one: a check constraint, and an update relative to what is there. [[slnc 300]] B would leave minus sixty, so it gets check violation. [[slnc 500]] After the fix, two: the condition inside the update. [[slnc 300]] A changes one row, B changes zero rows. [[slnc 300]] Either way, eighty is paid out.
+[[page]]
+The coupon. [[slnc 300]] Both requests read used equals false, so both give twenty off: forty. [[slnc 400]] Claimed in one statement, where used is still false, A changes one row, and B none.
 """
 rows = { race = "active wrong" }
 console = [
-    ["A reads 100, B reads 100, both pay 80: 160 paid out of 100", "bad"],
-    ["check (balance >= 0) with a relative update: B refused (23514)", "ok"],
-    ["where balance >= 80: A changed 1 row, B changed 0", "ok"],
+    ["THE REQUESTS (ANA-1 holds 100, in PostgreSQL 18):", "code"],
+    ["  A and B      withdraw 80 each, on two connections at once", "muted"],
+    ["  each         selects the balance, checks it in Java, updates", "muted"],
+    ["THE STEPS (A reads, B reads, A writes, B writes):", "code"],
+    ["  A reads      100, checks 100 >= 80: true", "muted"],
+    ["  B reads      100, checks 100 >= 80: true", "muted"],
+    ["  A writes     balance = 20 (100 - 80), commits", "muted"],
+    ["  B writes     balance = 20 (100 - 80), commits", "muted"],
+    ["THE RESULT:", "code"],
+    ["  paid out     160 from a balance of 100  <- BOTH CHECKS PASSED", "bad"],
+    ["  balance      20", "muted"],
+    ["---", ""],
+    ["AFTER THE FIX, ONE: THE RULE IN THE TABLE:", "code"],
+    ["  column       balance int check (balance >= 0)", "ok"],
+    ["  update       set balance = balance - 80", "ok"],
+    ["  A            100 - 80 = 20: paid", "ok"],
+    ["  B            20 - 80 = -60 < 0: 23514 check_violation", "ok"],
+    ["  paid out     80, balance 20", "ok"],
+    ["AFTER THE FIX, TWO: THE CHECK INSIDE THE UPDATE:", "code"],
+    ["  update       ... where id = 'ANA-1' and balance >= 80", "ok"],
+    ["  A            1 row changed: paid", "amber"],
+    ["  B            0 rows changed (20 >= 80 is false): refused", "amber"],
+    ["  paid out     80", "ok"],
+    ["---", ""],
+    ["A SINGLE-USE COUPON SPRING20, 20 OFF (BEFORE THE FIX):", "code"],
+    ["  A, B read    used = false and false", "muted"],
+    ["  discount     20 + 20 = 40  <- USED TWICE", "bad"],
+    ["AFTER THE FIX: CLAIMED IN ONE STATEMENT:", "code"],
+    ["  update       set used = true where ... and used = false", "ok"],
+    ["  A            1 row: claimed, gets 20 off", "ok"],
+    ["  B            0 rows: already used, refused", "ok"],
 ]
 
 [[act]]
 title = "Row locks: making the check and the write one step"
-summary = "SELECT FOR UPDATE makes the second request wait and then see the first; NOWAIT, a timeout and SKIP LOCKED are the other ways to meet a lock."
+summary = "With select ... for update, A locks ANA-1 and reads 100, B waits (pg_stat_activity shows the wait), A pays 80 and commits, and B then reads 20 and refuses: paid out 80, balance 20; nowait refuses at once with 55P03, lock_timeout gives up after 300 ms, and skip locked takes the next free row."
 detail = """
-A selects the account for update and reads 100. B asks for the same row and waits: pg_stat_activity shows a Lock wait. A pays out 80 and commits; then B reads 20 and is refused. With NOWAIT, B is refused at once with 55P03. With lock_timeout of 300 ms, B waits at least 300 ms and gives up. With SKIP LOCKED, B takes the next row that nobody holds, as workers do on a queue.
+A runs select ... for update on ANA-1: it locks the row and reads 100. B asks for the same row and waits; pg_stat_activity shows B waiting for a lock (true). A pays out 80 and commits, which releases the lock. B then gets the row, reads 20, and 20 >= 80 is false, so B refuses. The result: paid out 80, balance 20.
+When B should not wait while A holds the row: for update nowait refuses at once with 55P03 lock_not_available; lock_timeout of 300 ms waits that long and then gives up with 55P03; skip locked takes the next row that nobody holds, here BEN-2, as workers do on a queue.
+"""
+figure = "row_lock"
+figure_title = "A row lock: B waits, then sees what A wrote"
+figure_speech = """
+Second demo: a row lock. [[slnc 400]] A selects the account for update. [[slnc 300]] That locks the row, and A reads one hundred. [[slnc 300]] B asks for the same row. [[slnc 300]] The row is locked, so B waits. [[slnc 300]] The amber bar is the time B spends waiting. [[slnc 300]] Postgres shows it in its activity view, as a lock wait. [[slnc 700]]
+A pays out eighty and commits. [[slnc 300]] The commit releases the lock. [[slnc 300]] Now B gets the row, and reads twenty, the value A wrote. [[slnc 300]] Twenty does not cover eighty, so B refuses. [[slnc 700]]
+At the bottom, three ways not to wait. [[slnc 300]] No wait refuses at once. [[slnc 300]] A lock timeout waits three hundred milliseconds, then gives up. [[slnc 300]] And skip locked takes the next free row instead, as workers do when they share a queue.
 """
 speech = """
-Second demo: row locks. [[slnc 400]] A selects the account for update. B asks for the same row, and waits. [[slnc 600]]
-When A commits, B reads the new balance, and is refused. [[slnc 300]] No wait, a timeout, or skip locked are the other ways to meet a lock.
+Here is the output. [[slnc 300]] A locks the row and reads one hundred. [[slnc 300]] B waits. [[slnc 300]] A pays and commits, and B reads twenty, and refuses. [[slnc 300]] Paid out eighty. [[slnc 500]] With no wait, B is refused at once, with five five P zero three, lock not available. [[slnc 300]] With a lock timeout, it waits three hundred milliseconds first. [[slnc 300]] And skip locked takes ben's row instead.
 """
 rows = { lock = "active ok" }
 console = [
-    ["B waits behind A (pg_stat_activity: Lock)", "ok"],
-    ["after A commits, B reads 20: refused", "ok"],
-    ["NOWAIT: 55P03 at once; lock_timeout: 55P03 after 300 ms", "ok"],
+    ["THE STEPS (select ... for update):", "code"],
+    ["  A            locks the row ANA-1 and reads 100", "muted"],
+    ["  B            asks for the same row: waiting true", "muted"],
+    ["  A            pays out 80 and commits: the lock is released", "muted"],
+    ["  B            gets the row, reads 20, 20 >= 80: false, refuses", "ok"],
+    ["THE RESULT:", "code"],
+    ["  paid out     80, balance 20", "muted"],
+    ["WHEN B SHOULD NOT WAIT (A HOLDS THE ROW):", "code"],
+    ["  nowait       refused at once: 55P03 lock_not_available", "ok"],
+    ["  timeout      lock_timeout 300 ms, waited it: true, gave up: 55P03", "muted"],
+    ["  skip locked  takes the next free row: BEN-2 true", "muted"],
 ]
 
 [[act]]
 title = "Isolation levels"
-summary = "READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it; only SERIALIZABLE stops write skew."
+summary = "Under READ COMMITTED a relative update after B's commit is applied to the new value, 70 - 30 = 40; under REPEATABLE READ it is refused with 40001 and A retries to 40; two transactions that each take 150 from a different row of a total of 200 leave -100 under REPEATABLE READ (write skew), and SERIALIZABLE refuses the second, total 50."
 detail = """
-Under READ COMMITTED, A read 100, B took 30 and committed, and A's update of balance - 30 is applied to the new value: balance 40. Under REPEATABLE READ A keeps its snapshot and the update is refused with 40001, could not serialize access; A starts again and succeeds. Two accounts that must stay at 0 or more in total: under REPEATABLE READ both see 200, each takes 150 from a different account, both commit and the total is -100: write skew. Under SERIALIZABLE B is refused with 40001 and the total is 50. A stronger level makes the database refuse some interleavings, and the application must retry what it refuses.
+READ COMMITTED, the default: A reads 100; B takes 30 and commits, leaving 70; A's update, balance - 30, is applied to the new value: 70 - 30 = 40.
+REPEATABLE READ, the same steps: A reads 100 and keeps that snapshot; B takes 30 and commits; A's update is refused with 40001 serialization_failure, "could not serialize access due to concurrent update". A retries from the start, in 1 attempt: 70 - 30 = 40. The caller must be able to retry.
+One rule over two rows: ANA-1 and ANA-2 hold 100 each and the total must stay at 0 or more. A and B each read the total, 200, and see room for 150; A takes 150 from ANA-1 and B 150 from ANA-2. Under REPEATABLE READ both commit: 200 - 150 - 150 = -100, write skew, because neither update touched the other's row. Under SERIALIZABLE, B is refused with 40001, and the total is 200 - 150 = 50.
+"""
+figure = "isolation"
+figure_title = "Isolation levels, and write skew over two rows"
+figure_speech = """
+Third demo: isolation levels. [[slnc 400]] At the top left, read committed, the default. [[slnc 300]] A reads one hundred. [[slnc 300]] B takes thirty and commits. [[slnc 300]] A's update takes thirty from what is there now, seventy, so the balance is forty. [[slnc 600]]
+At the top right, repeatable read. [[slnc 300]] A keeps the snapshot it read. [[slnc 300]] When it tries to update a row that changed since then, Postgres refuses, with four zero zero zero one. [[slnc 300]] A must start again, and then it succeeds. [[slnc 700]]
+At the bottom, one rule over two rows: the total must stay at zero or more. [[slnc 300]] Both transactions see a total of two hundred. [[slnc 300]] Each takes one hundred and fifty, from a different row. [[slnc 300]] On the left, under repeatable read, neither update touched the other's row, so both commit. [[slnc 300]] The total is minus one hundred. [[slnc 300]] That is write skew. [[slnc 300]] On the right, serializable notices, and refuses the second.
 """
 speech = """
-Third demo: isolation levels. [[slnc 400]] Repeatable read refuses an update of a row that changed under it. [[slnc 600]]
-Two accounts, two requests, two different rows: write skew passes at repeatable read, and only serializable stops it. [[slnc 300]] The caller must be able to retry.
+Read committed: A read one hundred, B took thirty, and A's update was applied to seventy: forty. [[slnc 400]] Repeatable read: the same steps, but A's update is refused, with serialization failure. [[slnc 300]] Could not serialize access due to concurrent update. [[slnc 300]] A retries from the start, and gets forty.
+[[page]]
+One rule over two rows. [[slnc 300]] Under repeatable read, both see two hundred, and both commit. [[slnc 300]] Two hundred minus one fifty, minus one fifty, is minus one hundred: write skew. [[slnc 400]] Under serializable, B is refused, and the total stays at fifty.
 """
-rows = { isolation = "active ok" }
+rows = { isolation = "active amber" }
 console = [
-    ["REPEATABLE READ: 40001, A starts again and succeeds", "ok"],
-    ["REPEATABLE READ: write skew, total -100", "bad"],
-    ["SERIALIZABLE: B refused (40001), total 50", "ok"],
+    ["READ COMMITTED (THE DEFAULT), EACH TAKES 30:", "code"],
+    ["  A reads      100", "muted"],
+    ["  B            takes 30 and commits: 70", "muted"],
+    ["  A updates    balance - 30 on the new value: 70 - 30 = 40", "muted"],
+    ["REPEATABLE READ, THE SAME STEPS:", "code"],
+    ["  A reads      100, and keeps that snapshot", "muted"],
+    ["  B            takes 30 and commits: 70", "muted"],
+    ["  A updates    refused: 40001 serialization_failure", "ok"],
+    ["  message      could not serialize access due to concurrent update", "muted"],
+    ["  A retries    from the start (1 attempt): 70 - 30 = 40", "muted"],
+    ["---", ""],
+    ["ONE RULE OVER TWO ROWS (ANA-1 100, ANA-2 100, TOTAL >= 0):", "code"],
+    ["  A and B      each read the total, then take 150 from one row", "muted"],
+    ["BEFORE THE FIX: REPEATABLE READ:", "code"],
+    ["  A and B see  total 200 and 200: room for 150 each", "muted"],
+    ["  A            takes 150 from ANA-1, commits", "muted"],
+    ["  B            takes 150 from ANA-2, commits", "muted"],
+    ["  total        200 - 150 - 150 = -100  <- WRITE SKEW", "bad"],
+    ["AFTER THE FIX: SERIALIZABLE:", "code"],
+    ["  A and B see  total 200 and 200: room for 150 each", "ok"],
+    ["  A            takes 150 from ANA-1, commits", "ok"],
+    ["  B            refused: 40001 serialization_failure", "ok"],
+    ["  total        200 - 150 = 50", "ok"],
 ]
 
 [[act]]
 title = "Optimistic locking with Hibernate, and one-time keys"
-summary = "A version column makes the update conditional; a payment key claimed in the same transaction as the money runs once."
+summary = "Both sessions load balance 100 at version 0; A's update sets balance 20 and version 0 + 1 = 1 where version = 0; B's update still asks for version 0, changes no row and gets an OptimisticLockException, and its retry loads 20 and refuses; a payment key inserted twice at once runs once, ana 100 - 70 = 30."
 detail = """
-A and B both load the account: balance 100 and 100, version 0 and 0. A pays 80 and commits with update hib_account set balance=?,version=? where id=? and version=?. B pays 80 on what it loaded and its commit is refused with an OptimisticLockException. B starts again, loads balance 20 at version 1, and the rule refuses. A pessimistic write lock sends select ... for no key update. The same payment key arriving twice at once: A claims the key and moves 70 in one transaction, B with the same key waits for A and then finds the key taken; ana has 30.
+With Hibernate 7 and a @Version column, A and B both load ANA-1: balance 100, version 0. A pays 80 and commits with update hib_account set balance=?,version=? where id=? and version=?: balance 20, version 0 + 1 = 1, where version = 0, which changes 1 row. B pays 80 on what it loaded and commits: its update asks for version 0, but the row is at version 1, so it changes 0 rows and Hibernate throws an OptimisticLockException. B retries: it loads 20 at version 1, and 20 >= 80 is false.
+A pessimistic write lock from Hibernate sends select ... for no key update of ha1_0.
+One payment key, rent-october, is the primary key of payments. A inserts it (1 row) and moves 70 in one transaction; B inserts the same key at the same time and waits for A; A commits the key and the money together; B's insert then changes 0 rows, so nothing moves. Ana has 100 - 70 = 30.
+"""
+figure = "versions"
+figure_title = "A version number, and a payment key"
+figure_speech = """
+Fourth demo: optimistic locking, with Hibernate. [[slnc 400]] The account row has a version number. [[slnc 300]] A and B both load it at version zero, with a balance of one hundred. [[slnc 600]]
+A commits first. [[slnc 300]] Hibernate's update says: set the balance and the version, where the id matches, and the version is still zero. [[slnc 300]] It is, so one row changes: balance twenty, version one. [[slnc 600]]
+Then B commits what it loaded. [[slnc 300]] Its update also asks for version zero. [[slnc 300]] But the row is now at version one, so no row changes, and Hibernate throws an optimistic lock exception. [[slnc 300]] B loads again, sees twenty, and refuses. [[slnc 700]]
+At the bottom, a payment key. [[slnc 300]] The key is the primary key of the payments table. [[slnc 300]] A inserts it and moves the money, in one transaction. [[slnc 300]] B's copy waits, then finds the key taken, and moves nothing.
 """
 speech = """
-Fourth demo: optimistic locking with Hibernate. [[slnc 400]] The update says where id and where version. [[slnc 600]]
-The second writer touches no row and is refused. [[slnc 300]] A one time key, claimed in the same transaction as the money, runs the payment once.
+Here is the output. [[slnc 300]] Both load balance one hundred, version zero. [[slnc 300]] A commits with an update that asks for version zero, and moves it to one. [[slnc 400]] B commits on what it loaded. [[slnc 300]] The row is at version one, so zero rows change, and B gets an optimistic lock exception. [[slnc 300]] B's retry loads twenty, and refuses.
+[[page]]
+A pessimistic lock from Hibernate is select for no key update. [[slnc 400]] Then the payment key, sent twice at once. [[slnc 300]] A inserts it and moves seventy. [[slnc 300]] B waits for A. [[slnc 300]] A commits the key and the money together, and B's insert changes zero rows. [[slnc 300]] Ana has thirty.
 """
 rows = { hibernate = "active ok" }
 console = [
-    ["update ... where id=? and version=?", "ok"],
-    ["B: OptimisticLockException; B starts again and is refused by the rule", "ok"],
-    ["the same key twice: A moves 70, B finds the key taken", "ok"],
+    ["BOTH LOAD THE ACCOUNT (Hibernate 7, a @Version column):", "code"],
+    ["  A            balance 100, version 0", "muted"],
+    ["  B            balance 100, version 0", "muted"],
+    ["A PAYS 80 (true) AND COMMITS:", "code"],
+    ["  sql          update hib_account set balance=?,version=?", "muted"],
+    ["               where id=? and version=?", "muted"],
+    ["  values       balance 20, version 0 + 1 = 1, where version = 0", "muted"],
+    ["B PAYS 80 (true) ON WHAT IT LOADED, AND COMMITS:", "code"],
+    ["  where        version = 0, but the row is at 1: 0 rows", "muted"],
+    ["  commit       refused: OptimisticLockException", "ok"],
+    ["  B retries    loads 20 at version 1, 20 >= 80: false", "muted"],
+    ["---", ""],
+    ["A PESSIMISTIC WRITE LOCK FROM HIBERNATE SENDS:", "code"],
+    ["  sql          select ... for no key update of ha1_0", "muted"],
+    ["ONE PAYMENT KEY, SENT TWICE AT ONCE (KEY IS THE PRIMARY KEY):", "code"],
+    ["  A            inserts rent-october: 1 row, moves 70", "muted"],
+    ["  B            inserts the same key: waits for A true", "amber"],
+    ["  A            commits the key and the money together", "muted"],
+    ["  B            0 rows: the key is taken, nothing moves", "muted"],
+    ["  ana          100 - 70 = 30", "muted"],
 ]
 
 [[act]]
 title = "The bill"
-summary = "Opposite lock order deadlocks, locks in one server's memory protect nothing in another, and a transaction that waits for a person keeps everyone waiting."
+summary = "Two transfers that each lock their own sender first deadlock, and PostgreSQL cancels 1 with 40P01 while the other is done; one lock order (order by id) finishes both; two servers' own locks pay out 80 + 80 = 160 from 100; a row locked while a person confirms makes B give up after 300 ms; 40001 and 40P01 are retried, 23514 is refused."
 detail = """
-Two transfers in opposite directions, each locking its own sender first: PostgreSQL finds the cycle and cancels exactly one with 40P01, and the other finishes. With every lock taken in one order, order by id, both finish. Two servers, each with a lock of its own in its own memory, pay out 160 from 100. A request that locks the account and then waits for a person to confirm keeps everyone else waiting: B gives up with 55P03. So: keep transactions short, lock in one order, retry on 40001 and 40P01, and let the database enforce the rules that must always hold.
+Two transfers, each locking its own sender first: A locks ANA-1 and then asks for BEN-2, B locks BEN-2 and then asks for ANA-1. PostgreSQL finds the cycle and cancels 1 of them with 40P01 deadlock_detected; the other is done, and the cancelled one must be retried. With one lock order for everyone, order by id ... for update, both are done.
+Two servers, each with a lock in its own memory, pay out 80 + 80 = 160 from 100: the locks never meet. A row locked while a person confirms makes B give up after 300 ms with 55P03: keep transactions short.
+What each error code asks of the application: 23514 check_violation, refuse and do not retry; 55P03 lock_not_available, try again later; 40001 serialization_failure and 40P01 deadlock_detected, retry the transaction.
+"""
+figure = "the_bill"
+figure_title = "A deadlock, and what each error code asks"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] On the left, two transfers in opposite directions. [[slnc 300]] A holds ana's row, and waits for ben's. [[slnc 300]] B holds ben's row, and waits for ana's. [[slnc 300]] That is a cycle: a deadlock. [[slnc 300]] Postgres finds it, and cancels one of them with four zero P zero one. [[slnc 300]] The other one finishes. [[slnc 300]] The cancelled one must run again. [[slnc 300]] When every transfer locks in the same order, by account id, there is no cycle. [[slnc 700]]
+On the right, the error codes this video met, and what each one asks of the application. [[slnc 300]] Two three five one four is a broken rule: refuse, and do not retry. [[slnc 300]] Five five P zero three is a lock that is busy: try again later. [[slnc 300]] Four zero zero zero one and four zero P zero one are timing: retry the whole transaction. [[slnc 600]]
+And locks in two servers' own memory never meet: both pay out.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Two transfers that lock in opposite orders deadlock, and the database cancels one. [[slnc 600]]
-A lock in one server's memory protects nothing in another. [[slnc 300]] And a transaction that waits for a person keeps everyone waiting.
+Here is the output. [[slnc 300]] Each transfer locks its own sender first. [[slnc 300]] Postgres finds the cycle and cancels one, with deadlock detected, and the other is done. [[slnc 300]] With one lock order, both are done. [[slnc 400]] And two servers, each with its own lock, pay out one hundred and sixty from one hundred.
+[[page]]
+A row locked while a person confirms: B gives up after three hundred milliseconds. [[slnc 300]] Keep transactions short. [[slnc 400]] And the table of error codes: refuse a check violation, try a busy lock later, and retry serialization failures and deadlocks.
 """
-rows = { bill = "active wrong" }
+rows = { bill = "active amber" }
 console = [
-    ["opposite lock order: one is cancelled (40P01)", "bad"],
-    ["two servers with their own locks: 160 paid out of 100", "bad"],
-    ["a lock held while a person decides: B gives up (55P03)", "bad"],
+    ["TWO TRANSFERS, EACH LOCKING ITS OWN SENDER FIRST:", "code"],
+    ["  A            locks ANA-1, then asks for BEN-2", "muted"],
+    ["  B            locks BEN-2, then asks for ANA-1", "muted"],
+    ["  PostgreSQL   finds the cycle, cancels 1: 40P01 deadlock_detected", "amber"],
+    ["  the other    done  <- RETRY THE CANCELLED ONE", "bad"],
+    ["AFTER THE FIX: ONE LOCK ORDER (ORDER BY ID ... FOR UPDATE):", "code"],
+    ["  A and B      done and done", "ok"],
+    ["TWO SERVERS, EACH WITH A LOCK IN ITS OWN MEMORY:", "code"],
+    ["  paid out     80 + 80 = 160 from 100  <- THE LOCKS NEVER MEET", "bad"],
+    ["---", ""],
+    ["A ROW LOCKED WHILE A PERSON CONFIRMS:", "code"],
+    ["  B            gave up after 300 ms: 55P03  <- KEEP IT SHORT", "bad"],
+    ["WHAT EACH ERROR CODE ASKS OF THE APPLICATION:", "code"],
+    ["  23514  check_violation        refuse, do not retry", "ok"],
+    ["  55P03  lock_not_available     try again later", "muted"],
+    ["  40001  serialization_failure  retry the transaction", "muted"],
+    ["  40P01  deadlock_detected      retry the transaction", "amber"],
 ]
+
+
+[highlight]
+console_green = ["AFTER THE FIX"]
+console_rose = ["BEFORE THE FIX", "A SINGLE-USE", "TWO TRANSFERS", "TWO SERVERS", "A ROW LOCKED", "B PAYS"]
+console_amber = ["THE RESULT", "WHEN B", "REPEATABLE READ", "ONE RULE", "WHAT EACH", "A PESSIMISTIC", "A PAYS"]
+console_cyan = ["THE REQUEST", "THE STEPS", "READ COMMITTED", "BOTH LOAD", "ONE PAYMENT"]
 
 [animation]
 subtitle = "A bank, two requests at once, and a database that can close the gap."
@@ -225,7 +370,7 @@ nongoals = [
 problem = """
 Requests that are correct one at a time are wrong at the same time.
 """
-roles = [["The database", "`Db`"], ["The Hibernate side", "`Hib`, `HibAccount`"], ["Entry point", "`RaceConditionsDemo`"]]
+roles = [["The database", "`Db`"], ["The Hibernate side", "`Hib`, `HibAccount`"], ["What each error code asks", "`SqlStates`"], ["Entry point", "`RaceConditionsDemo`"]]
 requirements = [
     "A real PostgreSQL runs in Docker and is removed at the end.",
     "The interleavings are scripted so that the output is the same on every run.",
@@ -356,6 +501,7 @@ out_of_scope = [
 tests = [
     "`RaceConditionsTest` runs real sessions against PostgreSQL for the lost update, the constraint and conditional update, the lock and its waits, the isolation levels, write skew, the Hibernate version, the one-time key and the deadlock.",
     "`DemoRunsTest` compares the whole demo with the golden output.",
+    "`SqlStatesTest` and `HibAccountTest` need no database: which error codes are retried, and the withdrawal rule on a loaded account.",
 ]
 next = """
 The next project in this module, secrets-in-errors-and-logs-with-logback, moves from what the database refuses to what the logs reveal.
@@ -395,60 +541,172 @@ residual = "A flood of requests for one row"
 
 [poster]
 headline = [["RACES WITH", "text"], ["POSTGRESQL", "accent"]]
-taglines = [["Two requests meet in the gap between a read and a write; the database can close it with a ", "gold"]]
-before = { code = "A reads 100, B reads 100, both pay 80: 160 paid out ", note = "Check, then act: two requests in the gap", tag = "BEFORE" }
-after = { code = "select ... for update", note = "The bill", tag = "AFTER" }
+taglines = [["The database can close the gap, at a price", "gold"]]
+before = { code = "A reads 100, B reads 100: 160 paid", note = "Check, then act", tag = "BEFORE" }
+after = { code = "select ... for update", note = "One step in the database", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "Race Conditions with PostgreSQL and Hibernate"
-narration = "Hello, and welcome. [[slnc 400]] This video explains race conditions, with PostgreSQL and Hibernate, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A race condition is two requests meeting in the gap between a check and a write. [[slnc 300]] Both read a balance of a hundred, both see enough money, and the bank pays out a hundred and sixty. [[slnc 300]] The database can close that gap with a constraint, a lock, an isolation level, or a version number, and each one has a price. [[slnc 600]] Think of two cashiers who both check the same account, before either one writes in the ledger. [[slnc 600]] Our example is a bank."
+narration = """Hello, and welcome. [[slnc 400]] This video explains race conditions, with PostgreSQL and Hibernate, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A race condition is two requests meeting in the gap between a check and a write. [[slnc 300]] Both read a balance of a hundred, both see enough money, and the bank pays out a hundred and sixty. [[slnc 300]] The database can close that gap with a constraint, a lock, an isolation level, or a version number, and each one has a price. [[slnc 600]] Think of two cashiers who both check the same account, before either one writes in the ledger. [[slnc 600]] Our example is a bank."""
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
-body = ["A customer withdraws from one account", "on a phone and a laptop at the same moment.", "", "The demo plays the two requests", "against a real PostgreSQL in Docker,", "with plain JDBC and with Hibernate,", "and tries every way to close the gap."]
-narration = "Here is the scenario. [[slnc 400]] A bank customer withdraws from the same account, on a phone and on a laptop, at the same moment. [[slnc 500]] The demo plays the two requests against a real PostgreSQL database in Docker, with plain J D B C and with Hibernate. [[slnc 300]] It controls exactly when each one reads and writes. [[slnc 500]] Then it tries every way to close the gap, and shows what each one costs."
+body = ["A customer withdraws from one account", "on a phone and a laptop at the same moment.", "", "The demo plays the two requests", "against a real PostgreSQL 18 in Docker,", "with plain JDBC and with Hibernate,", "in a written order of statements,", "and tries every way to close the gap."]
+narration = """Here is the scenario. [[slnc 400]] A bank customer withdraws from the same account, on a phone and on a laptop, at the same moment. [[slnc 500]] The demo plays the two requests against a real PostgreSQL database in Docker, with plain J D B C and with Hibernate. [[slnc 300]] It controls exactly when each one reads and writes, so every run prints the same result. [[slnc 500]] Then it tries every way to close the gap, and shows what each one costs."""
 
 [[scene]]
-key = "03-acts"
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Transaction: statements that commit together", "Check constraint: a rule the table enforces", "Row lock: select ... for update", "Isolation level: what one transaction sees of another", "Write skew: two rows, one rule, both commit", "Optimistic locking: a version number on the row"]
+narration = """Before the demos, the words. [[slnc 500]] A transaction is a group of statements that commit together, or not at all. [[slnc 500]] A check constraint is a rule the table itself enforces, for every program. [[slnc 500]] A row lock, taken with select for update, makes other writers of that row wait. [[slnc 500]] An isolation level says how much one transaction sees of another one's changes. [[slnc 500]] Write skew is two transactions that each change a different row, and together break a rule over both. [[slnc 500]] And optimistic locking stores a version number on the row, and refuses an update made on an old version."""
+
+[[scene]]
+key = "04-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "05-four-ways"
+kind = "figure"
+title = "Four ways the database closes the gap"
+body = "four_ways"
+narration = """Let's see the core idea on one example. [[slnc 400]] A has just taken eighty from a balance of one hundred. [[slnc 300]] Now B asks for eighty too. [[slnc 300]] Without help, B would read the old balance and pay out again. [[slnc 700]]
+Here are four ways to tell the database the rule. [[slnc 300]] First, a rule in the table: the balance can never be below zero. [[slnc 300]] B's update would leave minus sixty, so it fails with a check violation. [[slnc 500]] Second, the check inside the update: only where the balance covers eighty. [[slnc 300]] B's update changes no row. [[slnc 500]] Third, a row lock. [[slnc 300]] B waits until A commits, then reads twenty and refuses. [[slnc 500]] Fourth, a version column. [[slnc 300]] B's update asks for the version it loaded, finds none, and Hibernate refuses it. [[slnc 600]]
+In every column, the check and the write became one step, and only eighty is paid out."""
+
+[[scene]]
+key = "06-acts"
 kind = "acts"
 title = "Acts"
 narration = "unused"
 
 [[scene]]
-key = "04-costs"
+key = "07-costs"
 kind = "bullets"
 title = "What It Costs"
 body = ["Locks make requests wait", "Stronger isolation means retries", "Optimistic locking hands the conflict back", "Locks in different orders deadlock", "A transaction that waits for a person blocks everyone"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Locks make other requests wait. [[slnc 500]] Stronger isolation means the database refuses more, so callers must retry. [[slnc 500]] Optimistic locking hands the conflict back to the caller, or the customer. [[slnc 500]] Locks taken in different orders can deadlock. [[slnc 300]] And a transaction that waits for a person keeps everyone else waiting."
+narration = """Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Locks make other requests wait. [[slnc 500]] Stronger isolation means the database refuses more, so callers must retry. [[slnc 500]] Optimistic locking hands the conflict back to the caller, or the customer. [[slnc 500]] Locks taken in different orders can deadlock. [[slnc 300]] And a transaction that waits for a person keeps everyone else waiting."""
 
 [[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Db: PostgreSQL in Docker, and plain JDBC sessions", "Hib: Hibernate on the same database", "HibAccount: the account entity, with @Version", "RaceConditionsDemo: runs the five demos", "  and decides who reads and writes when"]
-narration = "Here is who does what in the code. [[slnc 400]] Db starts PostgreSQL in Docker, and opens the plain J D B C sessions that play the two requests. [[slnc 500]] Hib sets up Hibernate on the same database. [[slnc 300]] HibAccount is the account entity, with a version column. [[slnc 500]] And RaceConditionsDemo runs the five demos, and decides exactly when each request reads and writes."
-
-[[scene]]
-key = "06-recognise"
+key = "08-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
-body = ["A coupon used twice, or a double payout", "@Version on an entity", "SELECT ... FOR UPDATE", "\"could not serialize access\" or", "  \"deadlock detected\" in a log"]
-narration = "You have probably met this already. [[slnc 400]] A coupon used twice, or a payout made twice, is a race that someone won. [[slnc 500]] A version annotation on an entity is optimistic locking. [[slnc 500]] Select for update is a row lock. [[slnc 500]] And could not serialize access, or deadlock detected, in a log, is the database refusing, and asking the caller to try again."
+body = ["A coupon used twice, or a double payout", "@Version on an entity", "select ... for update in a repository", "\"could not serialize access\" or", "  \"deadlock detected\" in a log"]
+narration = """You have probably met this already. [[slnc 400]] A coupon used twice, or a payout made twice, is a race that someone won. [[slnc 500]] A version annotation on an entity is optimistic locking. [[slnc 500]] Select for update in a repository query is a row lock. [[slnc 500]] And could not serialize access, or deadlock detected, in a log, is the database refusing, and asking the caller to try again."""
 
 [[scene]]
-key = "07-verdict"
+key = "09-verdict"
 kind = "bullets"
 title = "How To Use It"
 body = ["Put the rule in a constraint", "Make the check and the write one statement", "Lock in one order, when you must lock", "Pick the isolation your rule needs, and retry", "Keep transactions short", "Never trust a lock in one server's memory"]
-narration = "So, how do you use it? [[slnc 400]] Put the rule, like a balance that never goes below zero, in a constraint. [[slnc 300]] Make the check and the write a single statement. [[slnc 500]] When you must lock, always lock in the same order. [[slnc 500]] Choose the isolation level your rule needs, and retry what the database refuses. [[slnc 300]] Keep transactions short. [[slnc 500]] And never rely on a lock in the memory of one server."
+narration = """So, how do you use it? [[slnc 400]] Put the rule, like a balance that never goes below zero, in a constraint. [[slnc 300]] Make the check and the write a single statement. [[slnc 500]] When you must lock, always lock in the same order. [[slnc 500]] Choose the isolation level your rule needs, and retry what the database refuses. [[slnc 300]] Keep transactions short. [[slnc 500]] And never rely on a lock in the memory of one server."""
 
 [[scene]]
-key = "08-outro"
+key = "10-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
+key = "11-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Make a coupon single-use", "with a unique constraint."]
-narration = "That's race conditions with PostgreSQL and Hibernate. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rule that must always hold belongs where every writer must pass: in the schema, in one statement, or behind a lock that the database enforces. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a unique constraint, and use it to make a coupon single-use. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+narration = """That's race conditions with PostgreSQL and Hibernate. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A rule that must always hold belongs where every writer must pass: in the schema, in one statement, or behind a lock that the database enforces. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with Docker. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a unique constraint, and use it to make a coupon single-use. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"""
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Most of the work is done by the database, so the classes are small. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Db"
+what = "a real PostgreSQL in Docker, and its tables"
+[[class.part]]
+title = "the rule lives in the table"
+code = """
+"create table accounts (id text primary key, balance int not null check (balance >= 0), paid_out int not null default 0)",
+"""
+speech = """The accounts table carries the rule itself: the balance can never be below zero. [[slnc 300]] Every program that writes to it, careful or not, must pass that check."""
+[[class.part]]
+title = "sessions that wait for each other"
+code = """
+Connection c = DriverManager.getConnection(url(), p);
+c.setAutoCommit(false);
+"""
+speech = """Each request is a real connection with auto commit off. [[slnc 300]] Its locks last until it commits, so the demo can make another session wait, and watch it wait."""
+
+[[class]]
+name = "RaceConditionsDemo"
+what = "the statements, in a written order"
+[[class.part]]
+title = "the check inside the update"
+code = """
+static final String DRAW = "update accounts set balance = balance - 80, paid_out = paid_out + 80 where id = 'ANA-1'";
+static final String DRAW_IF_COVERED = DRAW + " and balance >= 80";
+"""
+speech = """The update subtracts from what is there now, not from a value read earlier. [[slnc 300]] With the extra condition, it changes one row or none, and the count tells the caller which."""
+[[class.part]]
+title = "retry only what timing caused"
+code = """
+} catch (SQLException e) {
+    if (!SqlStates.retry(e.getSQLState())) {
+        throw e;
+    }
+"""
+speech = """A refused transaction is run again from the start, but only for the codes that mean bad timing. [[slnc 300]] Anything else is a real error, and goes to the caller."""
+
+[[class]]
+name = "HibAccount"
+what = "the account entity, with a version column"
+[[class.part]]
+title = "@Version"
+code = """
+@Version
+private long version;
+"""
+speech = """One annotation. [[slnc 300]] Hibernate adds the version to the where clause of every update, and adds one to it. [[slnc 300]] An update on an old version changes no row, and Hibernate throws."""
+
+[[class]]
+name = "SqlStates"
+what = "a teaching class: what each error code asks"
+[[class.part]]
+title = "codes, names and what to do"
+code = """
+KNOWN.put("23514", new Meaning("check_violation", "refuse, do not retry", false));
+KNOWN.put("55P03", new Meaning("lock_not_available", "try again later", false));
+KNOWN.put("40001", new Meaning("serialization_failure", "retry the transaction", true));
+KNOWN.put("40P01", new Meaning("deadlock_detected", "retry the transaction", true));
+"""
+speech = """The four error codes this video met. [[slnc 300]] Only serialization failures and deadlocks are worth retrying at once. [[slnc 300]] A unit test checks the table, with no database."""
+
+[[acronym]]
+short = "SQL"
+long = "Structured Query Language: how programs ask a database"
+say = "S Q L is structured query language, the language programs use to read and change a database."
+[[acronym]]
+short = "SQLSTATE"
+long = "the five-character SQL error code, such as 40001"
+say = "An S Q L state is the five character error code a database returns, such as four zero zero zero one."
+[[acronym]]
+short = "JDBC"
+long = "Java Database Connectivity: Java's database API"
+say = "J D B C is Java database connectivity, the standard way Java code talks to a database."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is an application programming interface: the calls a library or service offers to programs."
+[[acronym]]
+short = "ORM"
+long = "Object-Relational Mapping, what Hibernate does"
+say = "O R M is object relational mapping: Hibernate turns rows into Java objects, and changes into update statements."
+[[acronym]]
+short = "ID"
+long = "identifier: the key of a row, such as ANA-1"
+say = "I D means identifier, the key of a row, such as ana one."
+

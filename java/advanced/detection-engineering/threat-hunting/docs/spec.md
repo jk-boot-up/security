@@ -38,10 +38,10 @@ Teams wait for alerts and do not look for what the alerts miss, or they hunt wit
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 9, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 13, all passing |
+| Demo output | 105 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:42, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

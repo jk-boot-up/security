@@ -24,17 +24,24 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Policy as Code, Explained</h1>
 <h2>The idea in one sentence</h2>
 <p>A policy that cannot say no to what it did not expect is not a policy.</p>
-<h2>The 5 acts</h2>
+<h2>The 4 acts</h2>
 <h3>1. Deny by default</h3>
-<p>Each request has the rules a reviewer expects it to break: a foreign registry, a latest tag, no security context, privileged, no limits, no owner label, host network, a ClusterRoleBinding, the default namespace, three mistakes at once, an empty object and a Deployment with no containers. The good request is allowed; the others are denied with the right rule numbers. The policy agrees on 13 of 13.</p>
-<h3>2. The holes</h3>
-<p>Without the two guard rules the policy allows an empty object and a Deployment with no containers. The same trap in a list of what is forbidden: the rule compares a field to false, the field is missing, the comparison is undefined and the container passes. The policy that asks for what is required denies the container with no security context and no limits: R3 and R5.</p>
+<p>The rules in policy/main.rego are twelve deny rules, each with a comment that names it: R1 an allowed kind, R2 the bank's registry, R3 runAsNonRoot is true, R4 not privileged, R5 a cpu limit and a memory limit, R6 an owner label, R7 no host network, R8 no latest tag, R9 not the default namespace, R1 a kind at all, and R10 at least one container.
+The input "three mistakes" is the good request with the image docker.io/library/nginx:latest and no securityContext. The result is the set of messages of data.main.deny: R2 (a foreign registry), R3 (may run as root) and R8 (the latest tag). Allow is true only when there are no messages, so allow is false.
+For each of the 13 requests a reviewer wrote down the rules it breaks. The policy's answers are the same for all 13.</p>
+<h3>2. The holes: a missing field</h3>
+<p>Before the fix, the draft has ten deny rules. It allows the empty object (the reviewer expects R1) and the Deployment with no containers (the reviewer expects R10), so it agrees on 11 of 13.
+How the empty object is read: object.kind is undefined; the line not object.kind in allowed_kinds is undefined too, so the rule body fails and no message is made. The line not object.kind is true. How the Deployment with no containers is read: count(containers) is 0, so every rule that loops over the containers has nothing to check, and count(containers) == 0 is true.
+After the fix, two rules ask for what is required: R1 a kind at all (not object.kind) and R10 at least one container (count(containers) == 0). The policy agrees on 13 of 13.
+The same trap in a list of what is forbidden: for the good request with no securityContext and no limits, c.securityContext.runAsNonRoot is undefined, so naive.rego's runAsNonRoot == false is undefined and it allows the container. main.rego's not runAsNonRoot == true is true, so it denies with R3 and R5.</p>
 <h3>3. Testing the policy and its tests</h3>
-<p>opa test runs the Rego tests: 17 of 17. To test the tests, each of the 12 deny rules is switched off in turn and the suite is run again. Three tests notice 2 mutants, one test for each rule notices 8, and the full suite notices 12. The four it misses are the cases a happy-path test never reaches: only the cpu limit missing, only the memory limit, no kind, no containers.</p>
+<p>The input is policy/main_test.rego: opa test runs 17 tests and all pass.
+How a mutant is made: rule 5 of 12 (R5: a cpu limit) starts with deny contains msg if; the mutant renames it to deny_off contains msg if. Nobody asks for deny_off, so the rule is switched off. If no test fails, no test checks that rule.
+The result, per rule: 3 tests (the good request and the two R1 tests) notice 2 mutants, the two R1 rules. 13 tests, one for each rule, notice 8: they miss the cpu limit alone, the memory limit alone, a kind at all, and at least one container. All 17 tests notice all 12.</p>
 <h3>4. In the cluster and in the build</h3>
-<p>The same file reads an AdmissionReview and plain manifests. A Deployment from docker.io with a latest tag is not allowed, with 2 reasons; the good one is. Conftest on three files exits 1 and lists the failures by file. A new rule for a writable root filesystem is a warning first (exit 0, 1 warning) and a denial after (exit 1).</p>
-<h3>5. The bill</h3>
-<p>A policy is reviewed, versioned and tested, and its tests are tested. A missing field must mean deny. Roll a rule out as a warning before it denies. The cost is a language to learn, a second program of tests, and an engine in the request path.</p>
+<p>The input in the cluster is an AdmissionReview (apiVersion admission.k8s.io/v1) with uid 705ab4f5 and a Deployment named payments whose image is docker.io/library/nginx:latest. The result is the response: allowed false, with the reasons R2 (a foreign registry) and R8 (the latest tag). The good Deployment gets allowed true.
+The input in the build is three files: a-payments.yaml with registry.bank.example/payments:2.3.1, b-cart.yaml with registry.bank.example/payments:latest, and c-legacy.yaml with docker.io/library/nginx:latest. Conftest passes the first, fails b-cart.yaml on R8 and c-legacy.yaml on R2 and R8, and exits 1, so the build stops.
+A new rule, R11, asks for a read-only root filesystem, which payments.yaml does not set. First as a warning (warn contains msg): exit 0, 1 warning, 0 failures, the build goes on. Later as a denial (deny contains msg): exit 1, 0 warnings, 1 failure, the build stops.</p>
 <h2>The verdict</h2>
 <p>Ask for what is required, deny when a field is missing, test every rule with a case it must deny and one it must allow, test the tests by switching rules off, and roll out a new rule as a warning.</p>
 <h2>How to recognise this in code you did not write</h2>

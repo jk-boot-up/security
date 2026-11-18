@@ -14,12 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Thymeleaf escapes by default | 7 min |
-| 0:17 | Act 2: th:utext, the one switch that turns escaping off | 7 min |
-| 0:24 | Act 3: The other places a value can go | 7 min |
-| 0:31 | Act 4: A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: Thymeleaf escapes by default | 8 min |
+| 0:18 | Act 2: th:utext, the one switch that turns escaping off | 8 min |
+| 0:26 | Act 3: The other places a value can go | 8 min |
+| 0:34 | Act 4: A strict Content-Security-Policy from Spring Security | 8 min |
+| 0:42 | Exercises | 18 min |
 
 ## Walkthrough
 

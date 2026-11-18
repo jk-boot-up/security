@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-/** The real cosign command line, with a key pair that lives in a temporary directory and nowhere else. */
+/** The real cosign command line (the pinned release from Tools), with a key pair that lives in a temporary directory and nowhere else. */
 final class Cosign implements SignatureCheck {
 
     /** A key pair in a directory. */
@@ -25,19 +25,19 @@ final class Cosign implements SignatureCheck {
 
     static Keys generate() throws IOException, InterruptedException {
         Path dir = Scratch.dir("cosignkeys");
-        Sh.must(dir, ENV, List.of("cosign", "generate-key-pair"));
+        Sh.must(dir, ENV, List.of(Tools.cosign(), "generate-key-pair"));
         return new Keys(dir);
     }
 
     static void sign(Keys keys, Path file, Path signature) throws IOException, InterruptedException {
-        Sh.must(null, ENV, List.of("cosign", "sign-blob", "--key", keys.privateKey().toString(), "--tlog-upload=false", "--use-signing-config=false",
+        Sh.must(null, ENV, List.of(Tools.cosign(), "sign-blob", "--key", keys.privateKey().toString(), "--tlog-upload=false", "--use-signing-config=false",
                 "--new-bundle-format=false", "--yes", "--output-signature", signature.toString(), file.toString()));
     }
 
     @Override
     public boolean verify(Path publicKey, Path file, Path signature) {
         try {
-            return Sh.run(null, ENV, List.of("cosign", "verify-blob", "--key", publicKey.toString(), "--signature", signature.toString(),
+            return Sh.run(null, ENV, List.of(Tools.cosign(), "verify-blob", "--key", publicKey.toString(), "--signature", signature.toString(),
                     "--insecure-ignore-tlog=true", file.toString())).ok();
         } catch (IOException e) {
             return false;

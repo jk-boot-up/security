@@ -50,6 +50,33 @@ final class Git {
         must("commit", "-q", "-m", message);
     }
 
+    /** The commit ids, oldest first, so a commit can be named by its number (1, 2, ...). */
+    List<String> ids() throws IOException, InterruptedException {
+        return List.of(must("rev-list", "--reverse", "--all").strip().split("\n"));
+    }
+
+    /** One line added or removed by a commit. */
+    record Change(int commit, boolean added, String file, String line) {
+    }
+
+    /** Every line any commit added or removed, with the commit's number. */
+    List<Change> changes() throws IOException, InterruptedException {
+        List<String> ids = ids();
+        List<Change> changes = new ArrayList<>();
+        int commit = 0;
+        String file = "";
+        for (String line : must("log", "--all", "-p", "--format=commit %H", "-U0").split("\n")) {
+            if (line.startsWith("commit ")) {
+                commit = ids.indexOf(line.substring(7)) + 1;
+            } else if (line.startsWith("--- a/") || line.startsWith("+++ b/")) {
+                file = line.substring(6);
+            } else if ((line.startsWith("+") || line.startsWith("-")) && !line.startsWith("+++") && !line.startsWith("---")) {
+                changes.add(new Change(commit, line.startsWith("+"), file, line.substring(1)));
+            }
+        }
+        return changes;
+    }
+
     int commits() throws IOException, InterruptedException {
         return Integer.parseInt(must("rev-list", "--count", "--all").strip());
     }

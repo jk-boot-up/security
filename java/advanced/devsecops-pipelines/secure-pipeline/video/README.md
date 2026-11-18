@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> A local release pipeline in Java for a bank's Gradle library: reproducible builds, cosign signatures, SLSA-style provenance, gates for secrets, dependencies, tests and signatures that fail closed when a tool is missing or crashes, and a deploy step that refuses forged releases.
+> A local release pipeline in Java for a bank's Gradle library: reproducible builds, cosign signatures checked again with the JDK, SLSA-style provenance, gates for secrets, dependencies, tests and signatures that fail closed when a tool is missing or crashes, and a deploy step that refuses forged releases.

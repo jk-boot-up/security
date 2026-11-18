@@ -32,8 +32,8 @@ final class Monitor {
             int versionStart = text.indexOf("version=") + 8;
             String version = text.substring(versionStart, text.indexOf('\n', versionStart));
             if (!knownDigests.contains(digest)) {
-                findings.add("entry " + i + ": version " + version + " signed with " + keyId + ", digest " + digest.substring(0, 16)
-                        + " is not a release the store made");
+                findings.add("entry " + i + ": " + version + " by " + keyId
+                        + ", sha256 " + digest.substring(0, 16));
             }
         }
         return findings;

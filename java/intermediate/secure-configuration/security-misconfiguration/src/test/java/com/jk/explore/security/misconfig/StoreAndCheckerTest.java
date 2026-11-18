@@ -76,6 +76,19 @@ class StoreAndCheckerTest {
     }
 
     @Test
+    void traceEchoesTheCookieOnlyWhenSwitchedOn() throws Exception {
+        try (StoreServer shipped = StoreServer.start(StoreConfig.from(Profiles.shipped()));
+                StoreServer hardened = StoreServer.start(StoreConfig.from(Profiles.hardened()))) {
+            ConfigChecker.Reply echo = new ConfigChecker(shipped.port()).send("TRACE", "/", null, "Cookie", "session=x1");
+            assertEquals(200, echo.status());
+            assertTrue(echo.body().contains("Cookie: session=x1"));
+            ConfigChecker.Reply refused = new ConfigChecker(hardened.port()).send("TRACE", "/", null, "Cookie", "session=x1");
+            assertEquals(405, refused.status());
+            assertFalse(refused.body().contains("session=x1"));
+        }
+    }
+
+    @Test
     void staticFilesServeButTheFolderDoesNotList() throws Exception {
         try (StoreServer hardened = StoreServer.start(StoreConfig.from(Profiles.hardened()))) {
             ConfigChecker checker = new ConfigChecker(hardened.port());

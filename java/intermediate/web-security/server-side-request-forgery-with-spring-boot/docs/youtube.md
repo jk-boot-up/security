@@ -17,16 +17,40 @@ Chapters:
 ```
 00:00 Introduction
 00:54 The Scenario
-01:31 Act One — Importing an image from a web address
-01:47 Act Two — The server fetches whatever it is told
-02:09 Act Three — A blocklist of names is easy to walk around
-02:36 Act Four — Check the address the connection really uses
-03:00 Act Five — Limits, and why checking and then connecting is not enough
-03:32 What It Costs
-04:12 Who Does What
-04:48 Where You Have Seen It
-05:22 How To Use It
-06:00 Thanks for Watching
+01:31 The Words
+02:21 What the Letters Stand For
+03:21 What the Letters Stand For (continued)
+03:57 The shop stands inside
+04:54 From the form to the fetch
+05:50 Act One — The shop's import form works
+06:03 Act One — The shop's import form works
+06:16 Three addresses that point inside
+07:05 Act Two — The server fetches whatever it is told
+07:24 One address, many spellings
+08:15 Act Three — A blocklist of names is easy to walk around
+08:25 Act Three — A blocklist of names is easy to walk around
+08:37 Act Three — A blocklist of names is easy to walk around
+09:05 Check every answer, connect to the one you checked
+09:58 Act Four — Check the address the connection really uses
+10:15 Act Four — Check the address the connection really uses
+10:24 Act Four — Check the address the connection really uses
+10:44 Four limits, four refusals
+11:34 Act Five — Limits on what is fetched
+11:43 Act Five — Limits on what is fetched
+11:49 Two lookups, two answers
+12:43 Act Six — A second lookup can give a different answer
+13:04 Act Six — A second lookup can give a different answer
+13:17 What It Costs
+13:57 Where You Have Seen It
+14:31 How To Use It
+15:09 The Java Classes
+15:22 ImportController — POST /import
+15:37 NaiveImporter — the name is looked up for every hop
+15:52 GuardedImporter — every answer must be public
+16:08 GuardedImporter — connect, then judge the redirect again
+16:20 Fetcher — the client is told not to follow
+16:36 AddressPolicy — judged from the address
+16:48 Thanks for Watching
 ```
 
 ## Tags

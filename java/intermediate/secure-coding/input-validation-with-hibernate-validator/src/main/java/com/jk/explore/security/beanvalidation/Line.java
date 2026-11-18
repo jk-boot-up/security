@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 
 /** One line of a cart. */
 public record Line(
-        @NotNull @Pattern(regexp = "[A-Z]{3}-\\d{4}") @InStock(groups = Basic.Expensive.class) String sku,
+        @NotNull @Pattern(regexp = "[A-Z]{3}-\\d{4}")
+        @InStock(groups = Basic.Expensive.class)
+        String sku,
         @Min(1) @Max(99) int quantity) {
 }

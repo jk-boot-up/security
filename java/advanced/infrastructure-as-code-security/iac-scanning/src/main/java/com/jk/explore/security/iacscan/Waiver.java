@@ -12,7 +12,8 @@ public record Waiver(String rule, String resource, String owner, String reason, 
     }
 
     boolean covers(Finding f, LocalDate today) {
-        return valid() && rule.equals(f.rule()) && resource.equals(f.resource()) && !today.isAfter(expires);
+        return valid() && rule.equals(f.rule()) && resource.equals(f.resource())
+                && !today.isAfter(expires);
     }
 
     /** The findings that remain after the waivers that are valid and not yet expired on that day. */

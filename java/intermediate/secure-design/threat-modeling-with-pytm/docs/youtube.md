@@ -4,7 +4,7 @@ Prepared text for YouTube Studio. **Nothing is uploaded until the author has rev
 
 ## Title
 
-Threat Modeling with pytm: 113 Threats, Answers That Change the Findings, Diagrams and Reports (OWASP A06)
+Threat Modeling with pytm: 113 Threats, Answers That Change Findings, Diagrams, Reports (OWASP A06)
 
 ## Description
 
@@ -16,17 +16,43 @@ Chapters:
 
 ```
 00:00 Introduction
-01:33 The Scenario
-01:50 Act One — The bank, written for pytm
-02:11 Act Two — What pytm finds when nothing is said
-02:28 Act Three — Every answer changes the findings
-02:49 Act Four — A diagram and a report
-03:07 Act Five — The bill
-03:26 What It Costs
-03:50 Who Does What
-04:08 Where You Have Seen It
-04:29 How To Use It
-04:49 Thanks for Watching
+00:56 The Scenario
+01:28 The Words
+02:15 What the Letters Stand For
+03:16 What the Letters Stand For (continued)
+04:08 What the Letters Stand For (continued)
+04:45 One threat, one element, one answer
+05:48 The bank as pytm sees it
+06:52 Act One — The bank, written for pytm
+07:08 Act One — The bank, written for pytm
+07:23 Act One — The bank, written for pytm
+07:41 Act One — The bank, written for pytm
+08:01 Act One — The bank, written for pytm
+08:24 170 findings, out of the threats for each kind
+09:19 Act Two — What pytm finds when nothing is said
+09:41 Act Two — What pytm finds when nothing is said
+10:00 Act Two — What pytm finds when nothing is said
+10:18 More answers, fewer findings
+11:15 Act Three — Every answer changes the findings
+11:28 Act Three — Every answer changes the findings
+11:47 Act Three — Every answer changes the findings
+12:06 Act Three — Every answer changes the findings
+12:25 One model, three outputs
+13:10 Act Four — A diagram and a report
+13:32 Act Four — A diagram and a report
+13:47 A change, and a finding that does not apply
+14:51 Act Five — The bill
+15:11 Act Five — The bill
+15:37 What It Costs
+16:13 Where You Have Seen It
+16:43 How To Use It
+17:16 The Java Classes
+17:31 Design — one element, one flow
+17:50 Answers — a stage adds control lines
+18:08 Writer — one line per element and per flow
+18:24 Pytm — the findings of one model
+18:46 Condition — or, and, not, as in Python
+19:07 Thanks for Watching
 ```
 
 ## Tags
@@ -48,7 +74,7 @@ Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
-- [ ] title is at most 100 characters — FIX (106)
+- [ ] title is at most 100 characters — ok (99)
 - [ ] tags are at most 500 characters in total — ok (147)
 - [ ] description is at most 5,000 characters — ok (594)
 - [ ] chapters start at 00:00 and there are at least three

@@ -8,6 +8,7 @@ src/main/java/com/jk/explore/security/attacktree/
 ├── BankConfig.java      The properties of the bank system that the abuse cases test
 ├── BankTree.java        The attack tree for "move money out of Ana's account" at the online bank, as it is before any of the defences below
 ├── Defence.java         A defence the bank could buy: what it costs, and what it does to the leaves of the tree (a factor for the attacker's cost and one for the chance of success; a probability factor of 0 removes the step)
+├── GateSteps.java       A teaching class: works out one gate by hand, with the real numbers, the way Analysis computes it
 ├── Node.java            A node of an attack tree: either a leaf (one step an attacker takes) or a gate (OR: any child will do; AND: every child is needed)
 └── Planner.java         Chooses defences by what they do to the tree: at each step, the one that most raises the cheapest attack
 ```
@@ -23,7 +24,7 @@ That is a missing ownership check, and no password policy or one-time code would
 The project then does the thing that makes trees useful in practice:
 - **Price the defences** (ownership check, CSRF tokens, breached-password check, app-based one-time codes, passkeys, a strict content security policy, fast patching, dual control) and see what each one does to the tree on its own: no single one fixes it.
 - **Cut the cheapest path, then look again.** After the ownership check, the cheapest path moves to leaked-password reuse and CSRF at 100 EUR; after passkeys, to a script injection at 2,000 EUR; after a content security policy, to a software flaw at 6,000 EUR. Each round shows the next weakest door.
-- **Write abuse cases as tests.** "As Mallory I transfer from Ana's account by changing the account number" is a check that *fails* on the weak bank and passes when the ownership check exists. Eight abuse cases cover thirteen of the tree's fourteen steps.
+- **Write abuse cases as tests.** "As Mallory I change the account number to Ana's" is a check that *fails* on the weak bank and passes when the ownership check exists. Eight abuse cases cover thirteen of the tree's fourteen steps. The AND and OR arithmetic is written out step by step with the real numbers by the teaching class `GateSteps`, which a test checks against the analysis for every gate.
 
 **Maps to:** OWASP Top 10 (2025) A06 Insecure Design · OWASP ASVS 5.0, V1 architecture and design requirements · Bruce Schneier, *Attack Trees* (1999) · NIST SSDF PW.1 (design software to meet security requirements) · OWASP Threat Modeling.
 
@@ -45,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The tree | One goal, 14 attacker steps in four branches: log in as Ana, abuse the transfer call, bribe an employee, or break in through the software. |
-| 2. What the tree says about the attacker | The cheapest way in costs 50 EUR (change the account number), and the chance that some way works is 97%. |
-| 3. Each defence on its own | The ownership check raises the cheapest path from 50 to 100 EUR for 2,000 EUR; no other defence alone moves it, and the passkey, the most expensive, leaves it at 50. |
-| 4. A plan: always cut the cheapest path, then look again | Ownership check (2,000 EUR) → 100 EUR; CSRF tokens (5,000 EUR in all) → still 100 EUR via the leaked-password path; passkeys (45,000 EUR) → 2,000 EUR via a script injection; a strict CSP (55,000 EUR) → 6,000 EUR via the software. |
-| 5. Abuse cases as tests | All 8 abuse cases fail on the bank as it is; after the plan 2 still fail (the insider and the unpatched library); 13 of the tree's 14 steps have an executable abuse case. |
+| 1. The tree | One goal, 14 attacker steps in four branches (log in as Ana, abuse the transfer call, bribe an employee, break in through the software), each step with a cost to the attacker and a chance that it works. |
+| 2. What the tree says about the attacker | Worked out: the phishing AND gate costs 300 + 50 = 350 EUR at 0.9 x 0.2 = 18%; the log-in OR gate costs min(350, 100, 1,600, 2,000) = 100 EUR at 1 - (1-0.18)(1-0.12)(1-0.045)(1-0.05) = 35%; the root's cheapest way in is 50 EUR via B1, and some way works with 97%. |
+| 3. Each defence on its own | Eight priced defences, each applied alone: only OWN (2,000 EUR) moves the cheapest way, to 100 EUR at 75%; worked out on the transfer branch, OWN removes B1 and leaves the forged request at 100 + 0 = 100 EUR and 48%; PASSKEY alone, at 40,000 EUR, still leaves 50 EUR via B1. |
+| 4. A plan: cut the cheapest path, then look again | Aiming for a cheapest attack of at least 5,000 EUR, the plan picks OWN, CSRF, PASSKEY and CSP: the cheapest way goes 50, 100, 100, 2,000, 6,000 EUR, the chance 97% to 28%, the failing abuse cases 8, 7, 6, 3, 2 of 8, for 55,000 EUR on 4 of 8 defences. |
+| 5. Abuse cases as tests | Each abuse case is a check that passes only when the bank refuses the abuse: all 8 fail on the bank as it is; after the plan (csp, csrf, ownership, passkey) 6 pass and AC7 and AC8 still fail; 13 of the 14 steps have a test, D2 has none. |
 
 ## Test
 
@@ -57,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `AttackTreeTest`, `DemoRunsTest`. Everything is fixed data, so the demo prints the same text on every run.
+15 tests in `AttackTreeTest`, `DemoRunsTest`, `GateStepsTest`. Everything is fixed data, so the demo prints the same text on every run. GateStepsTest checks the worked-out arithmetic of every gate against Analysis.
 
 ## What the simulation got right, and what it left out
 

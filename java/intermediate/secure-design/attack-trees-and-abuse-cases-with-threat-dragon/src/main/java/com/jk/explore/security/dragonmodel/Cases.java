@@ -19,6 +19,17 @@ public final class Cases {
             return cost <= 5000 ? "Medium" : "Low";
         }
 
+        /** Which part of the rule decided the severity. */
+        public String because() {
+            if (cost <= 500) {
+                return "cost <= 500 EUR";
+            }
+            if (chance >= 0.5) {
+                return "chance >= 50%";
+            }
+            return cost <= 5000 ? "cost <= 5,000 EUR" : "cost > 5,000 EUR";
+        }
+
         public String score() {
             return String.format("cost %,.0f EUR, chance %.0f%%", cost, chance * 100);
         }
@@ -45,13 +56,20 @@ public final class Cases {
     public static List<Entry> all(Node tree) {
         List<Entry> out = new ArrayList<>();
         for (AbuseCase c : AbuseCase.all()) {
-            List<Node.Leaf> leaves = new ArrayList<>();
-            collect(tree, c.id(), leaves);
+            List<Node.Leaf> leaves = steps(tree, c.id());
             double cost = leaves.stream().mapToDouble(Node.Leaf::cost).sum();
-            double chance = leaves.stream().mapToDouble(Node.Leaf::probability).reduce(1.0, (a, b) -> a * b);
+            double chance = leaves.stream().mapToDouble(Node.Leaf::probability)
+                    .reduce(1.0, (a, b) -> a * b);
             out.add(new Entry(c.id(), PLACE.get(c.id())[0], PLACE.get(c.id())[1], ANSWERS.get(c.id()), cost, chance));
         }
         return out;
+    }
+
+    /** The leaves of the tree that one abuse case checks. */
+    public static List<Node.Leaf> steps(Node tree, String abuseCase) {
+        List<Node.Leaf> leaves = new ArrayList<>();
+        collect(tree, abuseCase, leaves);
+        return leaves;
     }
 
     private static void collect(Node n, String abuseCase, List<Node.Leaf> into) {

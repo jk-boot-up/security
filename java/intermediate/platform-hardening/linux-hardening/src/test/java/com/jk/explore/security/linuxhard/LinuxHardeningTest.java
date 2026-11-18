@@ -121,7 +121,7 @@ class LinuxHardeningTest {
     @Test
     void theMechanicalFixesChangeOnlyPermissions() throws IOException {
         List<Finding> before = scanner.scan();
-        int applied = scanner.applyPermissionFixes(before);
+        int applied = scanner.applyPermissionFixes(before).size();
         assertEquals(7, applied);
         assertEquals(0640, Modes.of(host.root().resolve("etc/shadow")));
         assertEquals(0600, Modes.of(host.root().resolve("etc/ssh/ssh_host_ed25519_key")));
@@ -132,7 +132,7 @@ class LinuxHardeningTest {
         assertEquals(0664, Modes.of(host.root().resolve("var/www/uploads/readme.txt")));
         assertTrue(scanner.scan().stream().noneMatch(Finding::fixable));
         assertEquals(13, scanner.scan().size());
-        assertEquals(0, scanner.applyPermissionFixes(scanner.scan()));
+        assertEquals(0, scanner.applyPermissionFixes(scanner.scan()).size());
     }
 
     @Test
@@ -166,5 +166,27 @@ class LinuxHardeningTest {
             assumeTrue(false, "links are not available here");
         }
         assertFalse(scanner.scan().stream().anyMatch(x -> x.subject().equals("/opt/app/shadow-link")));
+    }
+
+    @Test
+    void eachFixShowsHowTheNewModeIsMade() {
+        List<Fix> fixes = scanner.applyPermissionFixes(scanner.scan());
+        Fix shell = fixes.stream().filter(x -> x.path().equals("/tmp/.hidden-shell")).findFirst().orElseThrow();
+        assertEquals("4755 - 4000 = 0755", shell.steps());
+        Fix shadow = fixes.stream().filter(x -> x.path().equals("/etc/shadow")).findFirst().orElseThrow();
+        assertEquals("0644 & 0640 = 0640", shadow.steps());
+    }
+
+    @Test
+    void aLaterChangeIsCaughtAndFailsTheBuild() throws IOException {
+        scanner.applyPermissionFixes(scanner.scan());
+        host.hardenByHand();
+        BuildGate gate = new BuildGate(Severity.HIGH);
+        assertTrue(gate.passes(scanner.scan()));
+        host.regress();
+        List<Finding> f = scanner.scan();
+        assertEquals(2, f.size());
+        assertTrue(has(f, "world-writable-dir", "/var/www/uploads") && has(f, "default-account", "test"));
+        assertFalse(gate.passes(f));
     }
 }

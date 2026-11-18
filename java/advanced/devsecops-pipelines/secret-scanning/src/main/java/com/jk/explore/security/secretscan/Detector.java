@@ -21,6 +21,9 @@ public final class Detector {
             new Rule("source-token", Pattern.compile("gh[pousr]_[A-Za-z0-9]{36}")),
             new Rule("password-assignment", Pattern.compile("(?i)(?:password|passwd|secret)\\s*[=:]\\s*(\\S{6,})")));
 
+    /** Bits per character from which a long word counts as a secret; hex (16 symbols, at most 4 bits) never reaches it. */
+    static final double THRESHOLD = 4.2;
+
     private static final Pattern WORD = Pattern.compile("[A-Za-z0-9+/_=-]{24,}");
 
     /** Shannon entropy in bits per character. */
@@ -51,7 +54,7 @@ public final class Detector {
         while (w.find()) {
             String word = w.group();
             boolean alreadyNamed = found.stream().anyMatch(f -> f.text().contains(word));
-            if (!alreadyNamed && entropy(word) >= 4.2) {
+            if (!alreadyNamed && entropy(word) >= THRESHOLD) {
                 found.add(new Finding("high-entropy-string", file, word));
             }
         }
@@ -73,11 +76,16 @@ public final class Detector {
     List<Finding> scanHistory(Git repo) throws IOException, InterruptedException {
         List<Finding> found = new ArrayList<>();
         String file = "";
-        for (String line : repo.must("log", "--all", "-p", "--format=", "-U0").split("\n")) {
-            if (line.startsWith("+++ b/")) {
+        String commit = "";
+        for (String line : repo.must("log", "--all", "-p", "--format=commit %H", "-U0").split("\n")) {
+            if (line.startsWith("commit ")) {
+                commit = line.substring(7);
+            } else if (line.startsWith("+++ b/")) {
                 file = line.substring(6);
             } else if (line.startsWith("+") && !line.startsWith("+++")) {
-                found.addAll(scanText(file, line.substring(1)));
+                for (Finding f : scanText(file, line.substring(1))) {
+                    found.add(new Finding(f.rule(), f.file(), f.text(), commit));
+                }
             }
         }
         return found;

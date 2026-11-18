@@ -16,14 +16,14 @@ By the end of the session you can:
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: Signing in through the bank | 7 min |
 | 0:17 | Act 2: A valid signature is not the same as the bank's signature | 7 min |
-| 0:24 | Act 3: A valid signature on one assertion, and another one read | 7 min |
+| 0:24 | Act 3: Signature wrapping: one assertion checked, another read | 7 min |
 | 0:31 | Act 4: The statement itself is checked | 7 min |
 | 0:38 | Act 5: The bill: keys, metadata and XML | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run act two and ask what the shop compares the signature with. In act four ask what a replay would need to succeed. In act five ask who must be told before the bank rotates its key.
+Run act one and follow the two signatures checked by hand with the key from the bank's metadata. In act two ask what the shop compares the signature with. In act four ask what a replay would need to succeed. In act five ask who must be told before the bank rotates its key.
 
 ## Exercises
 

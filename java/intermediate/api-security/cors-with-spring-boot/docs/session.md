@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: No policy: a page may send, but not read | 7 min |
-| 0:17 | Act 2: Policies that look like fixes | 7 min |
-| 0:24 | Act 3: An exact allow-list | 7 min |
-| 0:31 | Act 4: Where the policy is registered | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: With no policy, a page may send but not read | 7 min |
+| 0:17 | Act 2: Four policies that look like fixes | 7 min |
+| 0:24 | Act 3: An exact allow-list names one partner | 7 min |
+| 0:31 | Act 4: The policy must sit before the login check | 7 min |
+| 0:38 | Act 5: CORS is a browser rule, not a defence | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

@@ -22,6 +22,11 @@ public final class SafeApi implements Api {
         this.reads = new RateLimiter(clock, 100, 100.0 / 60);     // 100 rows, then 100 a minute
     }
 
+    /** The read budget, so the demo can show how many tokens a caller has left. */
+    RateLimiter reads() {
+        return reads;
+    }
+
     @Override
     public ApiResponse patchProfile(String user, String accountId, Map<String, Object> body) {
         int wait = writes.tryTake(user, 1);

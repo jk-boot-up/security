@@ -9,6 +9,7 @@ src/main/java/com/jk/explore/security/sqlihibernate/
 ├── Shop.java              The shop's database and the two database users it connects as
 ├── SortColumn.java        The only things a customer may sort by
 ├── SqlHibernateDemo.java  Runs the product search story against a real PostgreSQL in four numbered acts and prints exact, repeatable results
+├── SqlLog.java            Hibernate hands every SQL statement to this inspector just before it goes to the driver, so the demo can print what was really sent
 └── UnsafeSearch.java      The first version of the product search, written three ways
 ```
 
@@ -44,10 +45,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A search that works | Concatenated JPQL answers an honest search for Kettle with two products. |
-| 2. Hibernate does not stop a quote | A quote shows the unlisted product, asks questions about the account table in JPQL, and a native union returns every email and password hash. |
-| 3. Parameters keep text as text | Named parameters in JPQL and native SQL and the Criteria API return nothing for every payload; a sort key outside the list falls back to the default. |
-| 4. Few rights limit the damage | As shop_search, which may only read products, the same injections are refused by PostgreSQL with permission denied for table users. |
+| 1. A search that works | The products table holds four products, one not for sale, and the users table two accounts; the customer types Kettle; the JPQL as built becomes SQL on the products table and finds the Blue Kettle and the Red Kettle. |
+| 2. Hibernate does not stop a quote | A quote shows the unlisted Prototype Toaster; the same hole asks the users table yes or no questions through the Account entity; a native union returns both e-mail addresses with their password hashes. |
+| 3. Parameters keep text as text | The fixed JPQL has :term, which Hibernate sends as ?; every payload becomes a value that matches nothing, in JPQL, native SQL and the Criteria API; a sort key outside the list falls back to order by p.name. |
+| 4. Few rights limit the damage | shop_search may read only products, as PostgreSQL reports; the union and the account question are refused with permission denied for table users, but the quote attack still shows the toaster: only parameters fix the flaw. |
 
 ## Test
 
@@ -55,11 +56,11 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `HibernateInjectionTest`, `SortColumnTest`. Unit tests need nothing; the PostgreSQL tests are tagged `integration` and run with `./gradlew integrationTest`. They start a container and always remove it.
+21 tests in `DemoRunsTest`, `HibernateInjectionTest`, `HibernateTranslationTest`, `NoDatabase`, `QueryTextTest`, `SortColumnTest`. Unit tests need nothing: they check the query text and let Hibernate translate every query into SQL with no database behind it. The PostgreSQL tests are tagged `integration` and run with `./gradlew integrationTest`. They start a container and always remove it.
 
 ## What the simulation got right, and what it left out
 
-Everything runs for real: Hibernate 7.4 builds and runs the queries and PostgreSQL 18 enforces its permissions. Only the data is small and fixed. The container uses a random loopback port and is removed on exit, so the demo prints the same text on every run.
+Everything runs for real: Hibernate 7.4 builds and runs the queries and PostgreSQL 18 enforces its permissions. A statement inspector (`SqlLog`) keeps the SQL Hibernate sends, so the demo prints the JPQL as built next to the SQL that reached the database. Only the data is small and fixed. The container uses a random loopback port and is removed on exit, so the demo prints the same text on every run.
 
 ## Technologies and versions
 

@@ -36,6 +36,23 @@ class ReportAndProbeTest {
     }
 
     @Test
+    void theReportSaysWhereEachWeaknessShows() {
+        var where = TestSsl.evidence(TestSsl.parse(WEAK_REPORT));
+        assertEquals("finding TLS1, LOW", where.get(Weakness.TLS_1_0));
+        assertEquals("finding LUCKY13, LOW", where.get(Weakness.CBC_SHA1));
+        assertEquals("table row NULL-SHA, CRITICAL", where.get(Weakness.NULL_CIPHER));
+        assertEquals("only the Kx column: RSA, 2 rows", where.get(Weakness.STATIC_RSA));
+        assertEquals("only the Kx column: DH 1024", where.get(Weakness.SMALL_DH));
+    }
+
+    @Test
+    void aTableColumnIsPaddedAndNamesAreShort() {
+        assertEquals("weak    found", TlsAttacksDemo.col("weak", 8, "found"));
+        assertEquals("a-long-key found", TlsAttacksDemo.col("a-long-key", 4, "found"));
+        assertEquals("TLS 1.0, DH 1024 bits", TlsAttacksDemo.names(EnumSet.of(Weakness.TLS_1_0, Weakness.SMALL_DH)));
+    }
+
+    @Test
     void theStrongServerShowsNone() {
         List<TestSsl.Finding> findings = TestSsl.parse(STRONG_REPORT);
         assertTrue(TestSsl.detect(findings).isEmpty());
@@ -69,11 +86,12 @@ class ReportAndProbeTest {
     }
 
     @Test
-    void onlyOpenSsl3And4AreAccepted() {
-        assertTrue(Openssl.isModern("OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)"));
-        assertTrue(Openssl.isModern("OpenSSL 4.0.3 29 Sep 2026"));
-        assertFalse(Openssl.isModern("LibreSSL 3.3.6"));
-        assertFalse(Openssl.isModern("OpenSSL 1.1.1w  11 Sep 2023"));
+    void onlyThePinnedOpenSslSeriesIsAccepted() {
+        assertTrue(Openssl.isPinned("OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)"));
+        assertFalse(Openssl.isPinned("OpenSSL 4.0.3 29 Sep 2026"));
+        assertFalse(Openssl.isPinned("OpenSSL 3.5.0 8 Apr 2025"));
+        assertFalse(Openssl.isPinned("LibreSSL 3.3.6"));
+        assertFalse(Openssl.isPinned("OpenSSL 1.1.1w  11 Sep 2023"));
     }
 
     @Test

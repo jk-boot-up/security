@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. OAuth gives access; OpenID Connect adds who signed in | The store sends Ana to the bank with openid scope, state, nonce and PKCE; the reply holds an ID token for the store and an access token for the API; an access token is refused as a sign-in. |
-| 2. Checking the ID token | Spring Security's decoder refuses a key never published, an issuer with an extra slash, another issuer or audience, a missing azp, an expired token, no subject and alg none. |
-| 3. Discovery and keys | The store is configured with one issuer; discovery refuses a document that names another issuer but not one whose keys are elsewhere; a second signing key is picked up by itself. |
-| 4. Who signed in: issuer and subject, never the email | A wallet user with Ana's unverified e-mail address takes over her account in a store that keys accounts by e-mail; keyed by issuer and subject Mallory gets a new account. |
-| 5. Signing out, and the bill | Sign-out at the store reaches Keycloak with id_token_hint; Keycloak's back-channel logout ends the laptop's session and leaves the phone's; a made-up logout token and an ID token are refused. |
+| 1. OAuth gives access; OpenID Connect adds who signed in | Spring Security sends Ana to Keycloak with response_type code, scope openid email, a state, a nonce and an S256 PKCE challenge; she signs in at Keycloak, the store redeems the code; the ID token (19 claims) names her as the bank realm and her subject; the access token offered as a sign-in, a reply without openid, and a callback from another sign-in are all refused. |
+| 2. Checking the ID token | A test provider signs an ID token with RS256 (a 42-character header part, a 132-character claims part, a 256-byte signature); Spring Security checks the signature, the time with 30 seconds of skew, then iss, sub, aud and azp; one thing changed at a time is refused, except azp store-web and 29 seconds past expiry. |
+| 3. Discovery and keys | From one issuer-uri Spring Security reads Keycloak's metadata and checks that it names that issuer; forged metadata naming another issuer is refused, but keys on another site are accepted, so the issuer address must be https and trusted; Keycloak adds a key and the store fetches it on its own. |
+| 4. Who signed in: issuer and subject, never the email | The bank and the wallet realms both give the address ana@mail.example, only the bank verified; keyed by e-mail address Mallory gets Ana's account; keyed by issuer and subject she gets a new account; userinfo answers Ana's access token with her subject and refuses the ID token. |
+| 5. Signing out, and the bill | Ana's sign-out ends the store's session and sends her browser to Keycloak's logout with id_token_hint and post_logout_redirect_uri; Keycloak ends the laptop's session and posts a logout token, which ends only the laptop's store session; a made-up token and an ID token are refused. |
 
 ## Test
 
@@ -58,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-33 tests in `DemoRunsTest`, `KeycloakLoginTest`, `ProviderChecksTest`, `RealmFilesTest`. The tests that need Keycloak are tagged integration and share one container per class (./gradlew integrationTest). The realm file tests and the ID token checks against a local provider need no Docker.
+35 tests in `DemoRunsTest`, `GoldenOutputTest`, `KeycloakLoginTest`, `ProviderChecksTest`, `RealmFilesTest`. The tests that need Keycloak are tagged integration and share one container per class (./gradlew integrationTest). The realm file tests and the ID token checks against a local provider need no Docker.
 
 ## What the simulation got right, and what it left out
 

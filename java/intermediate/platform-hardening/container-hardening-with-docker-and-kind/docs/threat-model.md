@@ -51,6 +51,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `ParsingTest` checks the readers of probe output and admission messages, the stages and the manifests, on text.
+- `ReportTest` checks, with no tools, how the capability mask is read (Docker's default 00000000a80425fb), the facts, the count, the steps and that every line fits.
 - `HardeningTest` runs thirteen real attempts in containers started in each way, and the three pods in a real kind cluster.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

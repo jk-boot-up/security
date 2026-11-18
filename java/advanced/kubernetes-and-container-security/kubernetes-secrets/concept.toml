@@ -62,93 +62,229 @@ This is the third project of the [kubernetes-and-container-security](..) module,
 twin = """
 The cluster, etcd, the encryption configuration, OpenBao and the tokens are real. OpenBao runs in development mode and the encryption key is a local file. The demo prints yes/no, counts and HTTP codes, never ids or tokens.
 """
-test_note = "The token reader, the etcd value check, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest)."
+test_note = "The token reader, the etcd value check, the base64 steps, the encryption configuration and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest) from a kind node image pinned by digest."
 
 [[act]]
 title = "Base64 is not encryption"
-summary = "A Secret's value decodes with no key and a role that may only list secrets reads it."
+summary = "The card key comes back from the API as base64, ZGVtby1jYXJk..., which decodes with no key: four characters are four places in a fixed alphabet, 24 bits, three bytes. The auditor, who may only list secrets, reads it (yes); an account with no rule cannot (no)."
 detail = """
-The card key stored in a Secret comes back as base64 and decodes at once. The auditor ServiceAccount may only list secrets and reads the value (yes); a ServiceAccount with no rule on secrets cannot (no).
+The input is a Secret payments/card-key with the key demo-card-vault-key-001. The API returns data.key = ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=.
+How base64 is undone, on the first four characters: Z G V t are places 25, 6, 21 and 45 in the alphabet; as 6 bits each they are 011001 000110 010101 101101; the same 24 bits cut into 8 are 01100100 01100101 01101101, the bytes 100 101 109, "dem". No key is used anywhere.
+The result: the auditor ServiceAccount, whose Role allows only list on secrets, reads the value (yes), because a list returns every item with its data; the ServiceAccount nobody, with no rule, is refused (no).
+"""
+figure = "who_reads"
+figure_title = "The Secret as typed, as the API returns it, and who reads it"
+figure_speech = """
+First demo: base64 is not encryption. [[slnc 400]] At the top left, the input: the Secret the bank created. [[slnc 300]] Its name is payments slash card key, and its value is the card key, demo card vault key zero zero one. [[slnc 600]]
+At the top right, what the A P I gives back. [[slnc 300]] The same value, in base64. [[slnc 300]] It looks scrambled, but as we just saw, anyone can turn it back, with no key. [[slnc 700]]
+At the bottom, the result: who can read it. [[slnc 300]] The auditor's role allows only one verb on secrets: list. [[slnc 300]] But a list returns every secret with its data, so the auditor reads the card key. [[slnc 300]] The account called nobody has no rule on secrets, and it is refused. [[slnc 600]]
+So the right to list secrets is the right to read them.
 """
 speech = """
-First demo: base64. [[slnc 400]] The value decodes with no key. [[slnc 600]] A role that may only list secrets reads it.
+Here is the real output. [[slnc 400]] The secret as it was created, then what the A P I returns: the base64 text. [[slnc 400]] Then how base64 is undone, on the first four characters. [[slnc 300]] Each character is a place in the alphabet, six bits each. [[slnc 300]] Cut into eight bits, they are the bytes one hundred, one hundred and one, and one hundred and nine: d, e, m. [[slnc 300]] The whole value decodes to the card key.
+[[page]]
+Who can read it. [[slnc 300]] The auditor, who may only list secrets, reads the value: yes. [[slnc 300]] The account with no rule: no.
 """
 rows = { base64 = "active wrong" }
 console = [
-    ["key=ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=", "bad"],
-    ["decoded with no key", "bad"],
-    ["auditor reads the value: yes", "bad"],
+    ["THE SECRET (kubectl create secret generic):", "code"],
+    ["  name   payments/card-key", "muted"],
+    ["  key    demo-card-vault-key-001", "muted"],
+    ["WHAT THE API RETURNS (data.key):", "code"],
+    ["  ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=", "muted"],
+    ["HOW BASE64 IS UNDONE (first 4 characters, no key):", "code"],
+    ["  characters  Z, G, V, t", "muted"],
+    ["  place in    25 6 21 45 (A=0 ... Z=25, a=26 ... z=51)", "muted"],
+    ["  6 bits      011001 000110 010101 101101", "muted"],
+    ["  8 bits      01100100 01100101 01101101", "muted"],
+    ["  bytes       100 101 109 = \"dem\"", "muted"],
+    ["  all of it   demo-card-vault-key-001", "bad"],
+    ["---", ""],
+    ["WHO CAN READ IT:", "code"],
+    ["  auditor (may only list secrets)  reads the value: yes", "bad"],
+    ["  nobody (no rule on secrets)      reads the value: no", "ok"],
 ]
 
 [[act]]
-title = "Raw etcd, before"
-summary = "Read with etcdctl, the stored value holds the key as plain text."
+title = "Raw etcd, before encryption"
+summary = "etcdctl reads /registry/secrets/payments/card-key straight out of etcd: the value starts with k8s and a zero byte, and the card key is there as plain text, behind the bytes 0a 03 'key' 12 17, where 0x17 = 23 is its length. 0 of 2 secrets are encrypted."
 detail = """
-etcdctl inside the etcd pod reads /registry/secrets/payments/card-key. The value contains the card key as plain text (yes), not even as base64 (no), and not every secret in etcd is encrypted (no).
+The input: etcdctl, run inside the etcd pod, reads the key /registry/secrets/payments/card-key, the value exactly as the API server wrote it.
+The result: the value starts with k8s, a zero byte and the protobuf form of the object (v1, Secret). The card key is in it as plain text (yes); not even its base64 form is there (no), because protobuf stores bytes.
+The 7 bytes in front of the card key, in hex: 0a 03 is field 1, length 3; 6b 65 79 is "key", the name in data; 12 17 is field 2, length 0x17 = 23; then the 23 characters of the card key. Of the 2 secrets in etcd, 0 are encrypted.
+"""
+figure = "etcd_bytes"
+figure_title = "The bytes etcd holds in front of the card key"
+figure_speech = """
+Second demo: the raw value in etcd, before any encryption. [[slnc 400]] At the top, the input: e t c d c t l reads the key of the card key secret, straight out of the database. [[slnc 300]] The value starts with k eight s and a zero byte: this is how Kubernetes marks a value in protobuf, a compact binary form. [[slnc 700]]
+In the middle, the result: the seven bytes in front of the card key, in hex. [[slnc 300]] Zero A, zero three: field one, three bytes long. [[slnc 300]] Six B, six five, seven nine: the letters k, e, y, the name of the entry. [[slnc 300]] One two, one seven: field two, and its length. [[slnc 300]] Hex one seven is twenty three, exactly the length of the card key, which follows as plain text. [[slnc 700]]
+So anyone with a copy of etcd, or of its backup, reads the card key straight off the disk.
 """
 speech = """
-Second demo: etcd. [[slnc 400]] Read the raw value. [[slnc 600]] The key is there as plain text.
+Here is the output. [[slnc 400]] The read, then what etcd holds. [[slnc 300]] It starts with k eight s, and the card key is there as plain text: yes. [[slnc 300]] Not even the base64 form: protobuf stores the raw bytes. [[slnc 400]] The seven bytes in front of the card key: a field number and a length, the name key, then field two, twenty three bytes long.
+[[page]]
+Every secret in etcd: of the two secrets in etcd, none is encrypted.
 """
 rows = { etcd = "active wrong" }
 console = [
-    ["etcdctl get /registry/secrets/payments/card-key", "ok"],
-    ["plain text in etcd: yes", "bad"],
-    ["every secret encrypted: no", "bad"],
+    ["THE READ (etcdctl, inside the etcd pod):", "code"],
+    ["  get /registry/secrets/payments/card-key", "muted"],
+    ["WHAT ETCD HOLDS:", "code"],
+    ["  starts with      k8s.....v1..Secret..  (. = not a letter)", "muted"],
+    ["  the card key     as plain text: yes", "bad"],
+    ["  its base64 form  no", "muted"],
+    ["THE 7 BYTES IN FRONT OF THE CARD KEY (hex):", "code"],
+    ["  0a 03     field 1, length 3", "muted"],
+    ["  6b 65 79  \"key\", the name in data", "muted"],
+    ["  12 17     field 2, length 0x17 = 23", "muted"],
+    ["  then      demo-card-vault-key-001 (23 characters)", "bad"],
+    ["---", ""],
+    ["EVERY SECRET IN ETCD:", "code"],
+    ["  encrypted   0 of 2", "bad"],
 ]
 
 [[act]]
 title = "Encryption at rest"
-summary = "After a restart with aescbc only new secrets are encrypted; a rewrite encrypts the rest."
+summary = "The API server restarts with an EncryptionConfiguration: aescbc with a 32-byte key1 first, identity second. card-key, written before, stays plain; card-key-2 is stored as k8s:enc:aescbc:v1:key1 and bytes that look random (1 of 3). After kubectl replace of every secret: 3 of 3, the card key nowhere in etcd. The key is a file on the node and the auditor still reads the value."
 detail = """
-The API server restarts with an EncryptionConfiguration. card-key stays plain text, card-key-2 is stored as k8s:enc:aescbc with no plain text. After every secret is rewritten, every secret in etcd is encrypted and the card key is nowhere in etcd. The key is a file on the node, and the auditor still reads the value.
+The input: an EncryptionConfiguration for secrets with two providers: aescbc with key1 (32 random bytes, never printed) first, then identity, which still reads values stored plain. The API server is restarted to read it.
+The result before the rewrite: card-key, written before, is still plain text (yes); card-key-2, written after, is encrypted (yes) with no plain text (no); kubectl returns it as before (yes); 1 of 3 secrets is encrypted.
+How the encrypted value reads: it starts with k8s:enc:aescbc:v1:key1: — k8s:enc (encrypted by the API server), aescbc (the provider, AES in CBC mode), v1 (its format), key1 (the key's name) — then bytes that look random, with no "Secret" in them.
+After kubectl replace of every secret, card-key is encrypted too, 3 of 3 are encrypted, and the card key is nowhere in etcd. What it does not change: the key is a file on the control-plane node (yes), and the auditor still reads the value (yes).
+"""
+figure = "encryption_counts"
+figure_title = "Encrypted secrets at each step, and the prefix"
+figure_speech = """
+Third demo: encryption at rest. [[slnc 400]] The input is a configuration file: encrypt secrets with A E S in C B C mode, under a key named key one, and still read old values stored plain. [[slnc 700]]
+At the top, the result, step by step. [[slnc 300]] Before the configuration, none of the two secrets is encrypted. [[slnc 300]] After the A P I server restarts, only the new secret is encrypted: one of three. [[slnc 300]] The old card key stays plain text, because nothing wrote it again. [[slnc 300]] After every secret is replaced, all three are encrypted. [[slnc 700]]
+At the bottom, how an encrypted value starts. [[slnc 300]] k eight s colon e n c: the A P I server encrypted it. [[slnc 300]] A E S C B C: the provider. [[slnc 300]] v one: its format. [[slnc 300]] And key one: the name of the key that opens it. [[slnc 300]] After that come bytes that look random.
 """
 speech = """
-Third demo: encryption at rest. [[slnc 400]] New secrets are encrypted, old ones are not until rewritten. [[slnc 600]] It protects the disk, not the reader.
+The configuration: secrets, A E S C B C first with a thirty two byte key, then identity. [[slnc 400]] Before the rewrite, the old card key is still plain text, the new one is encrypted. [[slnc 300]] kubectl still returns it as before, because the A P I server decrypts on the way out. [[slnc 300]] One of three secrets is encrypted.
+[[page]]
+What etcd holds for the new secret: the prefix, part by part, then bytes that look random. [[slnc 400]] After every secret is replaced, three of three are encrypted, and the card key is nowhere in etcd.
+[[page]]
+What it does not change. [[slnc 300]] The key is a file on the control plane node. [[slnc 300]] And the auditor still reads the value, because the A P I server decrypts for anyone allowed to read.
 """
 rows = { rest = "active ok" }
 console = [
-    ["card-key, written before: plain text: yes", "bad"],
-    ["card-key-2: encrypted: yes", "ok"],
-    ["every secret encrypted: yes", "ok"],
+    ["THE ENCRYPTION CONFIGURATION (the API server restarted):", "code"],
+    ["  resources   secrets", "muted"],
+    ["  provider 1  aescbc, key1: 32 random bytes, not printed", "muted"],
+    ["  provider 2  identity: reads what was stored plain", "muted"],
+    ["BEFORE THE REWRITE:", "code"],
+    ["  card-key (written before)  plain text: yes", "bad"],
+    ["  card-key-2 (written after)  encrypted: yes, plain text: no", "ok"],
+    ["  kubectl returns card-key-2 as before: yes", "muted"],
+    ["  secrets encrypted  1 of 3", "bad"],
+    ["---", ""],
+    ["WHAT ETCD HOLDS FOR card-key-2:", "code"],
+    ["  starts with  k8s:enc:aescbc:v1:key1:", "muted"],
+    ["  k8s:enc   encrypted by the API server", "muted"],
+    ["  aescbc    the provider: AES in CBC mode", "muted"],
+    ["  v1        the provider's format version", "muted"],
+    ["  key1      the key's name in the configuration", "muted"],
+    ["  then      bytes that look random; \"Secret\" in them: no", "muted"],
+    ["AFTER THE REWRITE (kubectl replace of every secret):", "code"],
+    ["  card-key  encrypted: yes, plain text: no", "ok"],
+    ["  secrets encrypted  3 of 3", "ok"],
+    ["  the card key anywhere in etcd: no", "ok"],
+    ["---", ""],
+    ["WHAT IT DOES NOT CHANGE:", "code"],
+    ["  the key is a file on the control-plane node: yes", "bad"],
+    ["  the auditor still reads the value: yes", "bad"],
 ]
 
 [[act]]
 title = "OpenBao and a 10 second token"
-summary = "The password is outside Kubernetes; a pod logs in with its ServiceAccount token and gets 10 seconds."
+summary = "OpenBao holds the database password (in no Secret, not in etcd). Its role lets only payments/payments-app log in, with audience openbao, for 10 seconds. The pod sends its token (sub system:serviceaccount:payments:payments-app): HTTP 200, a token of 10 seconds; it reads the password (200); 12 seconds later 12 > 10, HTTP 403; other-app gets HTTP 403."
 detail = """
-OpenBao holds the database password: no Secret and no etcd value contains it. payments-app logs in with its ServiceAccount token (HTTP 200), gets a token of 10 seconds and reads the password (200). other-app is refused (403), and the same token is refused 12 seconds later (403).
+The input: an OpenBao role auth/kubernetes/role/payments for the ServiceAccount payments/payments-app, audience openbao, policy payments-read (read secret/data/payments/db), tokens of 10 seconds. The database password is in OpenBao, in no Kubernetes Secret and not in etcd.
+The request: payments-app sends the token the kubelet put in its pod: sub system:serviceaccount:payments:payments-app, aud openbao. OpenBao asks the API server who it belongs to (a TokenReview).
+The response: HTTP 200, an OpenBao token for 10 seconds with the policies default and payments-read. Read at once: HTTP 200 and the right value. Read again 12 seconds later: 12 > 10, the token has expired, HTTP 403. other-app logs in with its own token (sub ...:other-app) and gets HTTP 403: it is not the role's ServiceAccount.
+"""
+figure = "openbao_timeline"
+figure_title = "The login, its answer, and the token's ten seconds"
+figure_speech = """
+Fourth demo: the database password lives outside Kubernetes, in open bao, a secrets server. [[slnc 400]] At the top left, the request. [[slnc 300]] The pod sends the token Kubernetes gave it. [[slnc 300]] Its subject names the service account payments app, and its audience is open bao. [[slnc 600]]
+At the top right, the response. [[slnc 300]] H T T P two hundred, and an open bao token that lasts ten seconds, with the policy that may read the password. [[slnc 700]]
+At the bottom, that token on a time line. [[slnc 300]] Green while it is valid, red once its ten seconds are over. [[slnc 300]] Read at once: two hundred. [[slnc 300]] Read twelve seconds later: twelve is more than ten, so four oh three. [[slnc 600]]
+And the other app, with its own valid token, is refused: it is not the service account the role names.
 """
 speech = """
-Fourth demo: OpenBao. [[slnc 400]] The pod proves who it is with its ServiceAccount token. [[slnc 600]] It gets a token for ten seconds, and then it is refused.
+The role in open bao: who may log in, the audience, the policy, and a token of ten seconds. [[slnc 400]] The password is in open bao only: in no Kubernetes secret, and not in etcd. [[slnc 400]] The login: the pod's token, its subject and audience. [[slnc 300]] The response: H T T P two hundred, ten seconds, and the policies.
+[[page]]
+Reading the password with that token: two hundred at once. [[slnc 300]] Twelve seconds later, four oh three. [[slnc 400]] Another pod logs in with its own token, and gets four oh three.
 """
 rows = { openbao = "active ok" }
 console = [
-    ["login: HTTP 200, 10 seconds", "ok"],
-    ["other-app: HTTP 403", "ok"],
-    ["12 seconds later: HTTP 403", "ok"],
+    ["THE ROLE IN OPENBAO (auth/kubernetes/role/payments):", "code"],
+    ["  who       ServiceAccount payments/payments-app", "muted"],
+    ["  audience  openbao", "muted"],
+    ["  policy    payments-read: read secret/data/payments/db", "muted"],
+    ["  token     10 seconds", "muted"],
+    ["WHERE THE DATABASE PASSWORD IS:", "code"],
+    ["  in OpenBao: yes, in a Kubernetes Secret: no, in etcd: no", "ok"],
+    ["THE LOGIN (payments-app sends its pod's token):", "code"],
+    ["  sub       system:serviceaccount:payments:payments-app", "muted"],
+    ["  aud       openbao", "muted"],
+    ["THE RESPONSE:", "code"],
+    ["  HTTP 200, a token for 10 seconds", "ok"],
+    ["  policies  default, payments-read", "muted"],
+    ["---", ""],
+    ["READING THE PASSWORD WITH THAT TOKEN:", "code"],
+    ["  at once     HTTP 200, the right value: yes", "ok"],
+    ["  12 s later  12 > 10, expired: HTTP 403", "ok"],
+    ["ANOTHER POD LOGS IN (other-app):", "code"],
+    ["  sub       system:serviceaccount:payments:other-app", "muted"],
+    ["  HTTP 403: not the role's ServiceAccount", "ok"],
 ]
 
 [[act]]
 title = "A bound ServiceAccount token"
-summary = "A token tied to a pod and an audience for 600 seconds, against the old token Secret that never expires."
+summary = "kubectl create token gives a token whose claims are read with no key: exp - iat = 600 seconds, audience openbao, pod report-job. The old token Secret has 6 claims, no exp and no aud: it never expires. While report-job runs the API server accepts both; once the pod is deleted, the bound token is refused (no) and the old one still accepted (yes)."
 detail = """
-kubectl create token gives a token with a lifetime of 600 seconds, the audience openbao and the pod report-job. The old token Secret has no expiry and no pod. When the pod is deleted the API server stops accepting the bound token (no) and still accepts the old one (yes).
+The input: kubectl create token payments-app for 10 minutes, audience openbao, bound to the pod report-job; and a Secret of type service-account-token, the old kind, that Kubernetes fills with a token.
+How the lifetime is worked out: a JWT is signed, not encrypted, so its claims are read with no key. The bound token has the claims aud exp iat iss jti kubernetes.io nbf sub; exp - iat = 600 seconds; audience openbao; pod report-job. The old token has 6 claims, with no exp and no aud: it never expires and is tied to no pod.
+The result, asked of the API server with a TokenReview: while report-job runs, both are accepted; after the pod is deleted, the bound token is refused (no) and the old one is still accepted (yes).
+"""
+figure = "tokens_compare"
+figure_title = "The bound token and the old token Secret, side by side"
+figure_speech = """
+Fifth demo: two kinds of service account token. [[slnc 400]] On the left, a bound token, made with kubectl create token. [[slnc 300]] Like every J W T, it is signed, not encrypted, so its claims can be read with no key. [[slnc 300]] Expiry minus issue time is six hundred seconds, ten minutes. [[slnc 300]] Its audience is open bao, and it is tied to the pod report job. [[slnc 600]]
+On the right, the old kind: a token kept in a secret. [[slnc 300]] It has no expiry claim, no audience, and no pod. [[slnc 300]] It never expires. [[slnc 700]]
+At the bottom, the result: what the A P I server answers. [[slnc 300]] While the pod runs, it accepts both. [[slnc 300]] After the pod is deleted, it refuses the bound token, and still accepts the old one.
 """
 speech = """
-Fifth demo: bound tokens. [[slnc 400]] Tied to a pod, to an audience and to ten minutes. [[slnc 600]] The old token never expires.
+The bound token: its claims, a lifetime of six hundred seconds, the audience open bao, and the pod report job. [[slnc 400]] The old token: six claims, no expiry and no audience, so it never expires, and no pod. [[slnc 400]] The A P I server's answer: both accepted while the pod runs. [[slnc 300]] After it is deleted, the bound token no, the old one yes.
 """
 rows = { bound = "active ok" }
 console = [
-    ["lifetime 600 seconds, tied to the pod", "ok"],
-    ["the old token: no expiry", "bad"],
-    ["pod deleted: bound no, old yes", "ok"],
+    ["THE BOUND TOKEN (kubectl create token, 10 minutes):", "code"],
+    ["  claims    aud exp iat iss jti kubernetes.io nbf sub", "muted"],
+    ["  lifetime  exp - iat = 600 seconds", "ok"],
+    ["  audience  openbao", "muted"],
+    ["  pod       report-job", "muted"],
+    ["THE OLD TOKEN (a Secret of type service-account-token):", "code"],
+    ["  claims    6, among them exp: no, aud: no", "bad"],
+    ["  lifetime  no exp: it never expires", "bad"],
+    ["  pod       none", "muted"],
+    ["THE API SERVER'S ANSWER (a TokenReview of each):", "code"],
+    ["  while report-job runs  bound: yes, old: yes", "muted"],
+    ["  after it is deleted    bound: no, old: yes", "bad"],
 ]
+
+[highlight]
+console_green = ["AFTER THE REWRITE", "THE RESPONSE", "THE BOUND TOKEN"]
+console_rose = ["WHO CAN READ IT", "WHAT ETCD HOLDS", "BEFORE THE REWRITE", "WHAT IT DOES NOT", "THE OLD TOKEN", "EVERY SECRET"]
+console_amber = ["HOW BASE64", "THE 7 BYTES", "READING THE PASSWORD", "THE API SERVER'S", "ANOTHER POD"]
+console_cyan = ["THE SECRET", "WHAT THE API", "THE READ", "THE ENCRYPTION", "THE ROLE", "WHERE THE", "THE LOGIN"]
 
 [animation]
 subtitle = "A bank's card key, from base64 to a ten second token."
 boxes = [
     ["base64", "Base64 is not encryption", "decoded"],
-    ["etcd", "Raw etcd, before", "plain text"],
+    ["etcd", "Raw etcd, before encryption", "plain text"],
     ["rest", "Encryption at rest", "aescbc"],
     ["openbao", "OpenBao and a 10 second token", "HTTP 403"],
     ["bound", "A bound ServiceAccount token", "600 s"],
@@ -225,7 +361,7 @@ nongoals = [
 problem = """
 Secrets are believed to be encrypted because they are called secrets, and tokens are left to live forever.
 """
-roles = [["The cluster and etcd reads", "`Cluster`"], ["The encryption configuration", "`Encryption`"], ["A raw etcd value", "`Stored`"], ["A ServiceAccount token", "`Jwt`"], ["OpenBao setup and calls", "`OpenBao`"], ["The manifests", "`Manifests`"], ["Entry point", "`KubernetesSecretsDemo`"]]
+roles = [["The cluster and etcd reads", "`Cluster`"], ["The encryption configuration", "`Encryption`"], ["A raw etcd value", "`Stored`"], ["Base64 undone by hand", "`Base64Steps`"], ["A ServiceAccount token", "`Jwt`"], ["OpenBao setup and calls", "`OpenBao`"], ["The manifests", "`Manifests`"], ["Entry point", "`KubernetesSecretsDemo`"]]
 requirements = [
     "A Secret's value is recovered with no key.",
     "Before encryption etcd holds the value as plain text.",
@@ -350,7 +486,7 @@ out_of_scope = [
     "A KMS provider and key rotation.",
 ]
 tests = [
-    "`JwtTest`, `StoredAndEncryptionTest` and `HttpAndManifestsTest` check the parts with no tools.",
+    "`JwtTest`, `StoredAndEncryptionTest`, `TeachingStepsTest` and `HttpAndManifestsTest` check the parts with no tools.",
     "`DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).",
 ]
 next = """
@@ -383,7 +519,7 @@ residual = "The seconds before expiry"
 
 [poster]
 headline = [["KUBERNETES", "text"], ["SECRETS", "accent"]]
-taglines = [["Why a Kubernetes Secret is only base64, how to read it raw out of etcd before and after en", "gold"]]
+taglines = [["Base64, raw etcd, encryption at rest, short-lived tokens", "gold"]]
 before = { code = "card-key in etcd: plain text: yes", note = "A plain Secret", tag = "BEFORE" }
 after = { code = "card-key-2: encrypted: yes", note = "Encryption at rest", tag = "AFTER" }
 
@@ -399,6 +535,29 @@ kind = "bullets"
 title = "The Scenario"
 body = ["A bank's card key in a Kubernetes Secret,", "on a real kind cluster.", "", "The demo reads it with an auditor's role,", "and raw out of etcd, before and after", "encryption at rest.", "", "Then moves a password to OpenBao,", "behind 10-second tokens."]
 narration = "Here is the scenario. [[slnc 400]] A bank puts its card key in a Kubernetes Secret, on a real cluster made with kind. [[slnc 500]] The demo reads it the way an auditor's role can, and raw out of etcd, the cluster's database, before and after encryption at rest is switched on. [[slnc 500]] Then it moves a database password to open bao, and lets a pod read it only with a token that lasts ten seconds."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Secret: a Kubernetes object for small sensitive values", "base64: an encoding of bytes as text, no key", "etcd: the database behind the API server", "Encryption at rest: the API server encrypts before etcd", "ServiceAccount: the identity a pod runs as", "OpenBao: an open source secrets server"]
+narration = """Before the demos, the words. [[slnc 500]] A Secret is a Kubernetes object for small sensitive values, like a key or a password. [[slnc 500]] Base64 writes any bytes as plain letters and digits; it uses no key. [[slnc 500]] etcd is the database behind the A P I server, where every object is stored. [[slnc 500]] Encryption at rest means the A P I server encrypts a value before it writes it to etcd. [[slnc 500]] A service account is the identity a pod runs as, proved by a signed token. [[slnc 500]] And open bao is an open source secrets server, a fork of HashiCorp Vault."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-base64"
+kind = "figure"
+title = "How base64 is undone, with no key"
+body = "base64_steps"
+narration = """Let's see the core idea on one example: undoing base64. [[slnc 400]] At the top, the input: the card key as the A P I returns it. [[slnc 300]] Take its first four characters: Z, G, V, and small t. [[slnc 600]]
+Each one is a place in a fixed alphabet: capital A is zero, capital Z is twenty five, small a is twenty six. [[slnc 300]] So Z is twenty five, G is six, V is twenty one, and small t is forty five. [[slnc 300]] Each place is written with six bits. [[slnc 700]]
+Put the four groups side by side: twenty four bits. [[slnc 300]] Cut them into three groups of eight: three bytes. [[slnc 300]] One hundred, one hundred and one, and one hundred and nine: the letters d, e, m. [[slnc 600]]
+Do the same for the rest, and the whole card key comes out. [[slnc 300]] A fixed table and some regrouping of bits: there is no key anywhere."""
 
 [[scene]]
 key = "03-acts"
@@ -417,8 +576,8 @@ narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] E
 key = "05-roles"
 kind = "bullets"
 title = "Who Does What"
-body = ["Cluster, Manifests: kind and the bank's objects", "Stored: reads raw values out of etcd", "Encryption: switches on encryption at rest", "OpenBao, Jwt, Http: the secrets server and tokens", "KubernetesSecretsDemo: runs the demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Cluster and Manifests make the kind cluster, and the bank's secret, roles, and pods. [[slnc 500]] Stored reads raw values out of etcd, with etcdctl inside the etcd pod. [[slnc 300]] Encryption restarts the A P I server with an encryption configuration, and rewrites the secrets. [[slnc 500]] OpenBao, Jwt, and Http set up open bao, and log a pod in with its service account token. [[slnc 300]] And KubernetesSecretsDemo runs the demos."
+body = ["Cluster, Manifests: kind and the bank's objects", "Stored, Base64Steps: raw etcd values, base64 by hand", "Encryption: switches on encryption at rest", "OpenBao, Jwt, Http: the secrets server and tokens", "KubernetesSecretsDemo: runs the demos"]
+narration = "Here is who does what in the code. [[slnc 400]] Cluster and Manifests make the kind cluster, and the bank's secret, roles, and pods. [[slnc 500]] Stored reads raw values out of etcd, with etcdctl inside the etcd pod, and Base64Steps undoes base64 by hand. [[slnc 300]] Encryption restarts the A P I server with an encryption configuration, and rewrites the secrets. [[slnc 500]] OpenBao, Jwt, and Http set up open bao, and log a pod in with its service account token. [[slnc 300]] And KubernetesSecretsDemo runs the demos."
 
 [[scene]]
 key = "06-recognise"
@@ -435,9 +594,161 @@ body = ["Treat base64 as plain text", "Never grant list or get on secrets lightl
 narration = "So, how do you use it? [[slnc 400]] Treat base64 as plain text. [[slnc 300]] Never grant list or get on secrets lightly. [[slnc 500]] Switch on encryption at rest, with a key kept in a key management service, and rewrite the old secrets. [[slnc 500]] Keep the most valuable secrets out of the cluster, in a secrets server. [[slnc 300]] And use only short-lived tokens bound to one pod and one audience."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a second key, make it first,", "and rewrite the secrets."]
 narration = "That's Kubernetes Secrets. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A Secret is only base64, encryption at rest protects the disk and not the reader, and the safest secret is one that never enters the cluster and is reached with a token that lasts seconds. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second encryption key, make it the first, and rewrite the secrets. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The cluster, etcd and open bao are real; the classes drive them, and two small teaching classes redo by hand what the demo prints. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Cluster"
+what = "a kind cluster, etcd reads, and the API server restart"
+[[class.part]]
+title = "read a value straight out of etcd"
+code = """
+Stored etcdValue(String key) throws IOException, InterruptedException {
+    return new Stored(etcd("get", key, "--print-value-only"));
+"""
+speech = """e t c d c t l runs inside the etcd pod, with the cluster's own certificates. [[slnc 300]] It returns the value exactly as the A P I server wrote it, with no decryption."""
+[[class.part]]
+title = "switch on encryption at rest"
+code = """
+Files.writeString(encDir.resolve("enc.yaml"), Encryption.aescbc(key));
+...
+Sh.must(List.of("docker", "exec", node(), "sh", "-c", restart));
+"""
+speech = """The new configuration is written to a folder the A P I server reads. [[slnc 300]] Moving its manifest away and back makes the kubelet restart it, and it reads the file again."""
+
+[[class]]
+name = "Encryption"
+what = "the EncryptionConfiguration file"
+[[class.part]]
+title = "aescbc first, identity last"
+code = """
+- aescbc:
+    keys:
+      - name: key1
+        secret: %s
+- identity: {}
+"""
+speech = """The first provider encrypts every new write. [[slnc 300]] Identity stays last, so values stored before can still be read. [[slnc 300]] That is why old secrets stay plain until they are written again."""
+
+[[class]]
+name = "Stored"
+what = "a raw etcd value: encrypted or not, and its bytes"
+[[class.part]]
+title = "encrypted means the marker is there"
+code = """
+boolean encrypted() {
+    return raw.contains(Encryption.MARKER);
+"""
+speech = """An encrypted value starts with k eight s colon e n c, the provider and the key name. [[slnc 300]] A plain one does not."""
+[[class.part]]
+title = "the bytes in front of a text"
+code = """
+int at = raw.indexOf(text);
+...
+for (int i = at - n; i < at; i++) {
+    bytes.add((int) raw.charAt(i));
+"""
+speech = """It finds the card key in the value and returns the bytes in front of it. [[slnc 300]] The demo prints them in hex: field numbers and lengths."""
+
+[[class]]
+name = "Base64Steps"
+what = "a teaching class: base64 undone by hand"
+[[class.part]]
+title = "4 places of 6 bits, 3 bytes of 8"
+code = """
+int v = ALPHABET.indexOf(c);
+values.add(v);
+bits24 = (bits24 << 6) | v;
+...
+List<Integer> bytes = List.of(bits24 >> 16 & 0xff, bits24 >> 8 & 0xff, bits24 & 0xff);
+"""
+speech = """Each character's place in the alphabet is six bits. [[slnc 300]] Four of them make twenty four bits, cut into three bytes. [[slnc 300]] A test checks that it gives what Java's own base64 decoder gives."""
+
+[[class]]
+name = "OpenBao"
+what = "the role, the login and the read"
+[[class.part]]
+title = "a role for one ServiceAccount, 10 second tokens"
+code = """
+String role = "bao write auth/kubernetes/role/payments"
+        + " bound_service_account_names=" + serviceAccount
+        + " bound_service_account_namespaces=" + namespace
+        + " audience=" + Manifests.AUDIENCE
+        + " token_policies=" + POLICY
+        + " token_ttl=" + TOKEN_TTL_SECONDS + "s token_max_ttl=" + TOKEN_TTL_SECONDS + "s";
+"""
+speech = """The role names the one service account and namespace that may log in, the audience the token must carry, and the policy. [[slnc 300]] Token T T L and max T T L are both ten seconds, so a token cannot be renewed past that."""
+
+[[class]]
+name = "Jwt"
+what = "the claims of a token, read with no key"
+[[class.part]]
+title = "lifetime and pod"
+code = """
+return hasExpiry() ? claims.path("exp").asLong() - claims.path("iat").asLong() : -1;
+...
+return claims.path("kubernetes.io").path("pod").path("name").asString("");
+"""
+speech = """The lifetime is expiry minus issue time, or minus one when there is no expiry. [[slnc 300]] A bound token names its pod inside the kubernetes dot i o claim."""
+
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: here, the Kubernetes API server"
+say = "A P I is application programming interface. Here it is the Kubernetes A P I server, that every kubectl command talks to."
+[[acronym]]
+short = "etcd"
+long = "the key-value database where Kubernetes stores every object"
+say = "etcd is the key value database where Kubernetes keeps every object, secrets included."
+[[acronym]]
+short = "AES, CBC"
+long = "Advanced Encryption Standard; Cipher Block Chaining, one of its modes"
+say = "A E S is the advanced encryption standard. C B C is cipher block chaining, one of its modes. A E S C B C is the provider that encrypts the secrets."
+[[acronym]]
+short = "KMS"
+long = "Key Management Service: keeps the key outside the cluster"
+say = "K M S is key management service: a separate service that keeps the encryption key outside the cluster."
+[[acronym]]
+short = "RBAC"
+long = "Role-Based Access Control: Roles and RoleBindings"
+say = "R B A C is role based access control: roles that list verbs like get and list, bound to accounts."
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: signed claims, readable by anyone"
+say = "J W T is jay son web token: a set of claims, signed but not encrypted, so anyone can read them."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation"
+say = "jay son is JavaScript object notation, the text format of the claims."
+[[acronym]]
+short = "base64"
+long = "an encoding of bytes as text, 64 characters, 6 bits each"
+say = "Base64 writes bytes as text with sixty four characters, six bits each."
+[[acronym]]
+short = "TTL"
+long = "Time To Live: how long a token stays valid"
+say = "T T L is time to live: how long a token stays valid."
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol: 200 is OK, 403 is Forbidden"
+say = "H T T P is the hypertext transfer protocol. Code two hundred means O K; four oh three means forbidden."
+[[acronym]]
+short = "sub, aud, exp, iat"
+long = "JWT claims: subject, audience, expiry, issued at"
+say = "In a token, sub is the subject, aud the audience, exp the expiry time, and i a t the time it was issued."
+[[acronym]]
+short = "hex"
+long = "hexadecimal: base 16, two digits per byte (0x17 = 23)"
+say = "Hex is hexadecimal, base sixteen: two digits per byte. Hex one seven is twenty three."

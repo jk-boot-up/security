@@ -50,6 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `RulesAsCodeTest`, `SigmaTest`, `EngineTest`, `CorpusTest`, `ScoreTest` and `CoverageTest` check the rules, tests, mutants and scoring with no tools.
+- `OfflineOutputTest` compares acts one to five with the golden output, and checks the condition worked out by `ConditionSteps` against the rule.
 - `DemoRunsTest` runs pySigma and OpenSearch and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

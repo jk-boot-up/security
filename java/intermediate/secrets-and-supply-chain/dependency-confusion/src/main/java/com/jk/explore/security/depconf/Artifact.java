@@ -18,11 +18,17 @@ public record Artifact(String name, Version version, String content, String inst
         return new Artifact(name, version, content, script);
     }
 
+    /** The three lines the digest covers: name@version, the contents, the install script (empty when there is none). */
+    public String digestInput() {
+        String script = installScript == null ? "" : installScript;
+        return name + "@" + version + "\n" + content + "\n" + script;
+    }
+
     public String digest() {
         try {
             MessageDigest d = MessageDigest.getInstance("SHA-256");
-            d.update((name + "@" + version + "\n" + content + "\n" + installScript).getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(d.digest());
+            byte[] bytes = digestInput().getBytes(StandardCharsets.UTF_8);
+            return HexFormat.of().formatHex(d.digest(bytes));
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

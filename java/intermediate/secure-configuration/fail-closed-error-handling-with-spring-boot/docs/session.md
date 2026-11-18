@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: Failing open | 7 min |
 | 0:17 | Act 2: Failing closed | 7 min |
 | 0:24 | Act 3: Failing halfway | 7 min |
-| 0:31 | Act 4: What the customer is told | 7 min |
+| 0:31 | Act 4: What the customer is told, and what the log keeps | 7 min |
 | 0:38 | Act 5: The bill, and how to pay it | 7 min |
 | 0:45 | Exercises | 15 min |
 

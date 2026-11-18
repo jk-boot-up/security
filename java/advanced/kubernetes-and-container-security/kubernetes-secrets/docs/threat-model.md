@@ -50,7 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `JwtTest`, `StoredAndEncryptionTest` and `HttpAndManifestsTest` check the parts with no tools.
+- `JwtTest`, `StoredAndEncryptionTest`, `TeachingStepsTest` and `HttpAndManifestsTest` check the parts with no tools.
 - `DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

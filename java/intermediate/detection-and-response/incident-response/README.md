@@ -15,7 +15,7 @@ src/main/java/com/jk/explore/security/ir/
 At 01:00 an attacker gets into the shop's web server through a flaw in the application. They read the database password from its configuration, from 01:20 copy the customer table at a thousand rows a minute (50,000 customers in all), and at 01:40 leave **three ways back in**: a cron job and an SSH key on
 the web server, and a hidden admin account in the shop's own admin panel. This project replays that same incident **three times**, with different preparation and a different response, and compares the outcomes.
 
-The structure is the NIST SP 800-61 incident lifecycle, which this project makes concrete:
+The structure is the incident lifecycle of NIST SP 800-61 Rev. 2 (Rev. 3, from 2025, maps the same work to the CSF 2.0 functions), which this project makes concrete:
 - **Prepare:** six things decided before anything happens (runbook, alert on unusual database reads, logs kept centrally for at least a week, a way to snapshot memory and disk, a known-good image to rebuild from, tested backups). With none of them the breach is found by a customer after three days; with an alert it is found in 30 minutes.
 - **Detect and analyse:** scope the incident from logs. Without logs that reach back to the start, nobody knows what the attacker did or which accounts they created.
 - **Contain:** stop the damage. **Isolate** the host from the network (which keeps its memory) rather than rebooting it (which destroys memory evidence and leaves the persistence).
@@ -23,7 +23,7 @@ The structure is the NIST SP 800-61 incident lifecycle, which this project makes
 - **Recover:** reconnect, and watch. An attacker with one remaining foothold comes back within hours.
 - **Learn:** the review table compares the three runs on time to detect, data lost, evidence, root cause, outage and recurrence.
 
-**Maps to:** NIST SP 800-61 (Computer Security Incident Handling Guide) · NIST CSF Respond and Recover · OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · ISO/IEC 27035 · SANS PICERL (Preparation, Identification, Containment, Eradication, Recovery, Lessons learned).
+**Maps to:** NIST SP 800-61 Rev. 2 and Rev. 3 (incident response) · NIST CSF Respond and Recover · OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · ISO/IEC 27035 · SANS PICERL (Preparation, Identification, Containment, Eradication, Recovery, Lessons learned).
 
 ## The idea in everyday terms
 
@@ -44,12 +44,12 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The attack | 01:00 entry through a flaw, 01:05 the database password, 01:20 copying starts at 1000 rows a minute out of 50000, 01:40 three ways back in. |
-| 2. What was prepared | Nothing: 0 of 6; an alert only: 1 of 6; everything: 6 of 6. |
-| 3. Response A: nothing prepared, and a panicked fix | A customer finds the breach on day 3; the fix is a reboot and a changed password, and two hours after going back online the attacker returns through the cron job. |
-| 4. Response B: an alert, but no plan | The alert comes at 01:30 and isolation at 01:35 stops the copying at 15000 rows; but a hand rebuild, no scope, an unrotated password and an unpatched flaw leave three ways in, and the attacker returns. |
-| 5. Response C: the playbook | Isolate and kill sessions (15000 rows), capture evidence, scope from logs, rotate the password, disable svc-backup, patch, rebuild from the image, reconnect, and two quiet hours. |
-| 6. The review | A was found after 3 days with all data copied and 4 ways in open; B and C stopped the copying at 15000 rows, but only C kept evidence, knows the root cause, left no way in, and recovered. |
+| 1. The attack | 01:00 entry through a flaw, 01:05 the database password, from 01:20 the customer table goes at 1000 rows a minute (50000 / 1000 = 50 minutes, all gone at 02:10), and at 01:40 three more ways back in: five in all, each closed by its own action. |
+| 2. What was prepared | Six things decided before the attack: nothing has 0 of 6 and is found by a customer after 3 x 24 x 60 = 4320 minutes (day 3 01:00); alert only has 1 of 6 and full has 6 of 6, and both find it after 30 minutes (01:30). |
+| 3. Response A: nothing prepared, and a panicked fix | Before: day 3 01:00, all 50000 rows gone, 5 of 5 ways open. The response reboots web01, rotates the password and reconnects. After: 4 of 5 ways open, no evidence, out of service 01:03 to 01:23 = 20 min, and the attacker comes back through the cron job. |
+| 4. Response B: an alert, but no plan | Before: 01:30, (01:30 - 01:20) x 1000 = 10000 rows gone, 5 of 5 ways open. The response isolates web01, rebuilds it by hand in two hours and reconnects. After: (01:35 - 01:20) x 1000 = 15000 rows, 3 of 5 ways open, no evidence, 130 minutes out of service, and the attacker comes back through svc-backup. |
+| 5. Response C: the playbook | Before: the same 01:30 alert and 10000 rows. Eleven steps: contain (isolate, end the session), capture evidence, scope from logs, rotate, disable svc-backup, patch, rebuild from the image, reconnect, watch. After: 15000 rows, 0 of 5 ways open, evidence and root cause kept, 130 minutes out of service, no return. |
+| 6. The review | A: found after 3 days, never stopped, 4 ways open, no evidence, returned. B: 30 min, 15000 rows, 3 ways open, returned. C: 30 min, 15000 rows, 0 ways open, evidence, root cause, recovered. B and C do the same first two steps and part ways at step 3: B rebuilds by hand, C kills the database sessions. |
 
 ## Test
 
@@ -57,7 +57,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `IncidentTest`. The attacker is scripted and the clock is simulated, so the demo prints the same text on every run.
+20 tests in `DemoRunsTest`, `IncidentTest`. The attacker is scripted and the clock is simulated, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

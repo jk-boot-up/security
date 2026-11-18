@@ -33,9 +33,12 @@ final class Server implements AutoCloseable {
 
     Server(Lab lab, Profile profile) throws IOException, InterruptedException {
         this.port = freePort();
-        List<String> cmd = new ArrayList<>(lab.openssl().command("s_server", "-accept", "127.0.0.1:" + port,
+        List<String> cmd = new ArrayList<>(lab.openssl().command("s_server",
+                "-accept", "127.0.0.1:" + port,
                 "-cert", lab.cert().toString(), "-key", lab.key().toString(),
-                "-cipher", profile.ciphers, "-min_protocol", profile.minProtocol, "-serverpref", "-www", "-quiet"));
+                "-cipher", profile.ciphers,
+                "-min_protocol", profile.minProtocol,
+                "-serverpref", "-www", "-quiet"));
         if (profile != Profile.STRONG) {
             cmd.addAll(List.of("-dhparam", lab.dhParams().toString()));
         }

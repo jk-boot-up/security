@@ -17,17 +17,47 @@ Chapters:
 ```
 00:00 Introduction
 00:50 The Scenario
-01:21 Act One — Downloading an invoice
-01:36 Act Two — A name with dot-dot leaves the folder
-01:55 Act Three — A text check on the path is not a path check
-02:14 Act Four — Names, paths and links, all checked
-02:40 Act Five — Uploads
-03:06 Act Six — Where to send the customer next
-03:26 What It Costs
-04:04 Who Does What
-04:44 Where You Have Seen It
-05:18 How To Use It
-05:52 Thanks for Watching
+01:21 The Words
+02:06 What the Letters Stand For
+03:10 What the Letters Stand For (continued)
+04:09 A name that walks out of its folder
+05:09 The folders, one request, one path
+06:08 Act One — An honest name downloads one invoice
+06:20 Act One — An honest name downloads one invoice
+06:35 Two dots cancel the folder before them
+07:39 Act Two — A name with .. climbs out of the folder
+07:57 Act Two — A name with .. climbs out of the folder
+08:06 Same letters, different folder
+09:07 Act Three — A text check is not a path check
+09:21 Act Three — A text check is not a path check
+09:36 Six requests, four layers
+10:59 Act Four — The fixed version checks in four layers
+11:09 Act Four — The fixed version checks in four layers
+11:31 Act Four — The fixed version checks in four layers
+11:50 Dot-dot is refused; the link is served
+12:51 Act Five — Spring's static handler follows a link
+13:05 Three uploads, saved as they came
+14:11 Act Six — The naive upload trusts the customer's name
+14:24 Act Six — The naive upload trusts the customer's name
+14:38 The bytes and the size decide; the name does not
+15:49 Act Seven — The fixed upload decides for itself
+16:06 Act Seven — The fixed upload decides for itself
+16:21 Act Seven — The fixed upload decides for itself
+16:31 Where each link sends the customer
+17:39 Act Eight — Return links stay on our own site
+17:52 Act Eight — Return links stay on our own site
+18:06 What It Costs
+18:44 Where You Have Seen It
+19:18 How To Use It
+19:53 The Java Classes
+20:06 FilesController — a parameter, and getOriginalFilename()
+20:22 PrefixDownloads — a text prefix
+20:34 SafeDownloads — no second decode; shape, path, real path
+20:59 StoreConfig — a static resource handler
+21:12 Sniffer — magic bytes
+21:32 SafeUploads — the server's own name
+21:49 ReturnLink — only a path on our site
+22:06 Thanks for Watching
 ```
 
 ## Tags

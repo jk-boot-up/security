@@ -44,15 +44,16 @@ The online bank and Ana's account. The demo takes the abuse cases of the attack 
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. The tree, as a Threat Dragon model | Thirteen cells and eight threats, one for each abuse case, with a STRIDE type and a severity from the tree's cost and chance. |
-| 2. Checked by Threat Dragon's own validator | The image's schema and Ajv accept the bank's file and refuse four ways of breaking it, each with the editor's own message. |
-| 3. The plan, step by step, in the file | OWN, CSRF, PASSKEY and CSP take the open threats from 8 to 2, in step with the failing abuse cases, and every file stays valid. |
-| 4. Checks the schema cannot make | A mitigated threat with no defence, a stale flag, a lost flow end and a wrong count are each found by a rule of their own. |
-| 5. The editor, and the bill | The image's server starts on a loopback port with a local session only; threats are flat, and nothing in the file is a test. |
+| 1. The bank as a Threat Dragon diagram | The program writes one diagram of 13 cells: 2 trust boundaries, 2 actors, 3 processes, 1 store and 5 flows. Each of the 8 abuse cases becomes one threat on the cell it hits, with a STRIDE type, all Open; threatTop is 8. |
+| 2. From the tree's numbers to a severity | AC1 needs both of its steps (an AND): cost 300 + 50 = 350 EUR, chance 90% x 20% = 18%, so High, because cost <= 500 EUR. All 8: High 4 (AC1, AC2, AC5, AC6), Medium 3 (AC3, AC4, AC8), Low 1 (AC7). |
+| 3. Checked by Threat Dragon's own validator | The image owasp/threat-dragon:v2.6.2 carries the model's schema and the Ajv that checks it. bank.json is valid; no-title, short-type, no-id and tiny are each refused, with the path and the editor's own message. |
+| 4. The plan, step by step, in the file | The plan of the plain project, OWN, CSRF, PASSKEY and CSP, takes the open threats in the file 8, 7, 6, 3, 2, in step with the failing abuse cases, and every file stays valid. AC1 to AC6 become Mitigated, each naming its defence; AC7 needs DUAL and AC8 needs PATCH, not in the plan. |
+| 5. Checks the schema cannot make | Ten rules of the program's own check the file: the plan's files have 0 problems before and after. The last file, broken four ways, passes the schema each time, and each breakage is found by a rule of its own. |
+| 6. The editor, and the bill | The image's server answers on a loopback port: /healthz 200, the page 200 titled OWASP Threat Dragon, only a local session offered, and its model API 401 when not signed in. The bill: the tree has 6 AND and 3 OR gates and the file has none, cost and chance are text, and the file holds no tests. |
 
 ## Test
 
@@ -60,7 +61,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `DragonTest`, `ModelTest`. The model, its rules and the tree are tested with no Docker. The validator and the server tests run the owasp/threat-dragon image (./gradlew integrationTest).
+16 tests in `DemoRunsTest`, `DragonTest`, `ModelTest`. The model, its rules and the tree are tested with no Docker. The validator and the server tests run the owasp/threat-dragon image (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

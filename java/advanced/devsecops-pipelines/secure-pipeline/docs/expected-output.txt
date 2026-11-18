@@ -1,48 +1,129 @@
---- the same commit built twice, in two clean checkouts in two directories
-preserveFileTimestamps = false, reproducibleFileOrder = true: jars identical: yes
-preserveFileTimestamps = true, reproducibleFileOrder = false: jars identical: no, same entries: yes, entries with other content: 0, file times differ: yes
-build path written into the jar: jars identical: no, entries with other content: 1 (build-info.properties), file times differ: no
-Gradle 9 archives are reproducible by default, so the first case is also what an unset build does
-the fix: preserveFileTimestamps = false, reproducibleFileOrder = true, and nothing about the machine in the jar
---- signing with cosign (a key pair made for this run)
-the release passed all gates: yes
-jar signature verifies with the public key: yes
-provenance signature verifies with the public key: yes
-the jar with one bit changed verifies: no
-the signature checked with the public key of another key pair verifies: no
---- provenance (an in-toto statement with a SLSA v1 predicate)
-builder id: https://bank.example/securepipe/builder/v1
-build command: gradlew jar
-inputs recorded: 3 (source commit and tree, build.gradle, 1 dependency)
-subject digest equals the SHA-256 of the jar: yes
-source commit equals the commit that was checked out: yes
-source tree equals the tree of that commit: yes
-the provenance of the previous release names this commit: no
-provenance edited to name another commit still verifies: no
---- a pipeline with 4 gates (secret scan, dependency check, unit tests, signature check)
-clean change: 4 of 4 gates passed, deployable: yes
-planted failing test: stopped at unit tests, gates passed before: 2
-planted vulnerable dependency: stopped at dependency check, gates passed before: 1
-planted committed secret: stopped at secret scan, gates passed before: 0
-planted unsigned artifact: stopped at signature check, gates passed before: 3
-planted jar altered after signing: stopped at signature check, gates passed before: 3
-planted signed with an unknown key: stopped at signature check, gates passed before: 3
-planted failures: 6, stopped: 6, let through: 0
-each one stopped at the gate that owns the flaw: yes
---- a gate whose tool is missing or crashes
-gitleaks is not installed (committed secret): fails closed: stopped at secret scan; fails open: released
-gitleaks crashes on its configuration (committed secret): fails closed: stopped at secret scan; fails open: released
-trivy has no vulnerability database (vulnerable dependency): fails closed: stopped at dependency check; fails open: released
-broken tools: 3, stopped by the pipeline that fails closed: 3, released by the pipeline that fails open: 3
---- deploy accepts only a release that verifies (signature, provenance, digest, source)
-the release the pipeline made: accepted
-forged 1, jar swapped, genuine signatures kept: refused at artifact signature
-forged 2, own build with matching provenance, signed with its own key: refused at artifact signature
-forged 3, the genuine previous release replayed: refused at source commit
-forged releases: 3, refused: 3, jars in production: 1
---- the bill
-the pipeline here is a sequence of stages driven from Java, with the tools a Gitea and Woodpecker setup would call
-a signature says who built a file, provenance says from what, and neither says the source was good
-a gate that cannot answer must be a gate that says no
-every key above lived in a temporary directory
-key files left on disk after the run: no
+ONE. The same commit, built twice.
+  THE INPUT (bank-ledger, commit 7feddf9e3682):
+    two clean checkouts in two directories, 2 seconds apart
+    each one built with gradlew jar, in 3 settings:
+    fixed       preserveFileTimestamps false, order fixed
+    file times  preserveFileTimestamps true, order from disk
+    build path  fixed, and the build path in the jar
+  THE RESULT, BUILD 1 AGAINST BUILD 2:
+    setting     same SHA-256  entries  other bytes  file times
+    fixed       yes           5 = 5    0            same
+    file times  no            5 = 5    0            differ
+    build path  no            6 = 6    1            same
+  THE FILE TIMES IN THE JARS:
+    fixed: every entry has the time 1980-02-01 00:00
+    file times: each entry has the time of its own build
+  THE BUILD PATH IN THE JAR:
+    build-info.properties holds
+      build 1  builtIn=<checkout 1>
+      build 2  builtIn=<checkout 2>
+  THE FIX:
+    fixed archive settings (Gradle 9's default),
+    and nothing about the machine in the jar
+TWO. Sign the jar, and check the signature.
+  THE INPUT:
+    bank-ledger.jar, built from commit 7feddf9e3682
+    the release passed all 4 gates: yes
+    a key pair made for this run: cosign.key, cosign.pub
+    the key in cosign.pub: EC, 256 bits (the curve P-256)
+  HOW THE SIGNATURE IS MADE (cosign sign-blob):
+    1. the SHA-256 of all the bytes of the jar
+    2. ECDSA signs that digest with cosign.key
+    3. bank-ledger.jar.sig holds the signature, in base64
+  THE CHECK (cosign verify-blob, then the JDK alone):
+    what is checked                    cosign  JDK
+    the jar as built                   yes     yes
+    the jar, one bit changed           no      no
+    the jar, checked with another key  no      no
+    provenance.json as built           yes     yes
+THREE. Say where it came from.
+  THE STATEMENT (provenance.json):
+    _type          https://in-toto.io/Statement/v1
+    predicateType  https://slsa.dev/provenance/v1
+    subject        bank-ledger.jar, its SHA-256
+    builder id     https://bank.example/securepipe/builder/v1
+    command        gradlew jar
+  THE INPUTS IT RECORDS (3):
+    the source      commit 7feddf9e3682, tree a209b03297dd
+    the build file  build.gradle, sha256 9895030fa19b
+    a dependency    pkg:maven/commons-codec/commons-codec@1.17.1
+  THE CHECKS:
+    subject = the SHA-256 of the jar             yes
+    commit = the commit that was checked out     yes
+    tree = the tree of that commit               yes
+  TWO THAT DO NOT MATCH:
+    the previous release names commit 0ada0140f8f3: not this one
+    the statement edited to name commit 000000000000
+      its signature still verifies: no
+FOUR. Four gates, and six planted flaws.
+  THE GATES, IN ORDER (the tool, its exit code for found):
+    1 secret scan       gitleaks git, exit 7
+    2 dependency check  trivy sbom, exit 3
+    3 unit tests        gradlew test, exit 1
+    4 signature check   the 7 checks of the verifier
+  THE CLEAN CHANGE:
+    4 of 4 gates passed, deployable: yes
+  THE PLANTED FLAWS:
+    failing test        the fee is amount / 10, not / 100
+    vulnerable library  commons-text 1.9 in build.gradle
+    committed secret    an access key in a properties file
+    unsigned jar        the signing step is skipped
+    jar altered         one bit changed after signing
+    unknown key         signed with the attacker's key
+  WHERE EACH ONE STOPPED (gates passed before it):
+    failing test        unit tests        2
+    vulnerable library  dependency check  1
+    committed secret    secret scan       0
+    unsigned jar        signature check   3
+    jar altered         signature check   3
+    unknown key         signature check   3
+    stopped 6 of 6, each at the gate that owns it: yes
+  WHAT EACH GATE SAW:
+    unit tests: 2 of 4 failed
+      feeIsOnePercentRoundedDown: expected 100, got 1000
+      transferTakesTheFee: expected 89900, got 89000
+      the fee of 10000: 10000 / 10 = 1000, not 10000 / 100 = 100
+    dependency check: CVE-2022-42889, CRITICAL, commons-text 1.9
+    secret scan: aws-access-token in config/payments.properties:2
+    signature check, unsigned jar: files present
+    signature check, jar altered: artifact signature
+    signature check, unknown key: artifact signature
+FIVE. A gate whose tool cannot answer.
+  THE INPUT: THREE BROKEN TOOLS, EACH ON A FLAWED CHANGE:
+    gitleaks missing   no gitleaks program, committed secret
+    gitleaks crashes   its configuration is not TOML, same change
+    trivy has no data  an empty database, vulnerable library
+  WHAT EACH TOOL GAVE BACK (found would be the exit above):
+    gitleaks missing   no program  outcome ERROR
+    gitleaks crashes   exit 1      outcome ERROR
+    trivy has no data  exit 1      outcome ERROR
+  THE RESULT, THE SAME ERROR IN TWO PIPELINES:
+    broken tool        fails closed                 fails open
+    gitleaks missing   stopped at secret scan       released
+    gitleaks crashes   stopped at secret scan       released
+    trivy has no data  stopped at dependency check  released
+    fails closed: 3 of 3 stopped; fails open: 3 of 3 released
+SIX. Deploy only what verifies.
+  THE POLICY (what deploy trusts before it looks):
+    the public key cosign.pub of the pipeline
+    builder https://bank.example/securepipe/builder/v1
+    commit 7feddf9e3682, tree a209b03297dd
+  THE 7 CHECKS, IN ORDER (the first that fails refuses):
+    1 files present            5 builder
+    2 artifact signature       6 source commit
+    3 provenance signature     7 source tree
+    4 artifact digest
+  THE RELEASES OFFERED:
+    genuine   the release the pipeline made
+    forged 1  the jar swapped, the genuine signatures kept
+    forged 2  an own build and provenance, its own key
+    forged 3  the genuine previous release, commit 0ada0140f8f3
+  THE ANSWERS (checks passed, then the answer):
+    genuine   7 of 7  accepted
+    forged 1  1 of 7  refused at artifact signature
+    forged 2  1 of 7  refused at artifact signature
+    forged 3  5 of 7  refused at source commit
+    jars in production: 1
+  THE KEYS:
+    both key pairs lived in a temporary directory
+    key files left on disk after the run: no

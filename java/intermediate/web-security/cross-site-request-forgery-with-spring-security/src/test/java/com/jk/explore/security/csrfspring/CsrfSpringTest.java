@@ -129,4 +129,24 @@ class CsrfSpringTest {
             assertTrue(String.join("|", ana.signIn("ana", "X-CSRF-TOKEN", ana.formToken()).setCookies()).contains("SameSite=Lax"));
         }
     }
+
+    @Test
+    void theMaskingStepsByHandMatchSpringSecurity() throws Exception {
+        try (var bank = CsrfSpringDemo.start("synchronizer")) {
+            Browser ana = new Browser(bank.port());
+            ana.signIn("ana", "X-CSRF-TOKEN", ana.formToken());
+            String page1 = ana.formToken();
+            String page2 = ana.formToken();
+            assertEquals(96, page1.length());
+            String token = TokenMask.unmask(page1);
+            assertEquals(36, token.length());
+            assertEquals(token, TokenMask.unmask(page2));
+            byte[] random = new byte[36];
+            java.util.Arrays.fill(random, (byte) 0x5c);
+            String byHand = TokenMask.mask(token, random);
+            assertEquals(token, TokenMask.unmask(byHand));
+            assertEquals(200, ana.post("/transfer", CsrfSpringDemo.HONEST, "X-CSRF-TOKEN", byHand).status());
+            assertEquals(403, ana.post("/transfer", CsrfSpringDemo.HONEST, "X-CSRF-TOKEN", TokenMask.mask(token.replace('-', '+'), random)).status());
+        }
+    }
 }

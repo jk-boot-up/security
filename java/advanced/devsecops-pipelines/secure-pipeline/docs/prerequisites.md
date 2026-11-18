@@ -3,8 +3,8 @@
 ## Required
 
 - Java and Gradle basics
-- git, gitleaks, trivy and cosign installed
-- A network once, for the trivy database
+- git installed
+- A network once: the pinned gitleaks, trivy and cosign releases and the trivy database are downloaded into build/ and the cache
 
 ## Explicitly not required
 
@@ -14,7 +14,7 @@
 ## What you will need
 
 - A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.
-- brew install gitleaks trivy cosign
+- brew install git (the other tools are downloaded by the demo)
 - About an hour for the session guide.
 
 ## Tech stack and versions

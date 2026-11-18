@@ -25,6 +25,7 @@ Detections are written and judged by how quiet they are, with no truth to compar
 | Tests and mutants | `RuleTests`, `Mutator` |
 | ATT&CK matrix | `Coverage` |
 | pySigma and OpenSearch | `Pysigma`, `OpenSearch` |
+| Each selection answered (teaching) | `ConditionSteps` |
 | Entry point | `DetectionAsCodeDemo` |
 
 ## Requirements
@@ -42,10 +43,10 @@ Detections are written and judged by how quiet they are, with no truth to compar
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 35, all passing |
-| Demo output | 82 lines, identical on every run |
+| Tests | 38, all passing |
+| Demo output | 160 lines, identical on every run |
 | Acts | 6 |
-| Video | 05:27, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:21, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

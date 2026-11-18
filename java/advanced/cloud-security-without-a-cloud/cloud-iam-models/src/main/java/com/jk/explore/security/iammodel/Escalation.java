@@ -14,6 +14,8 @@ public final class Escalation {
     public record World(String account, List<Principal> users, List<Role> roles, Map<String, String> policyOf) {
     }
 
+    private static final String FUNCTION = "arn:aws:lambda:::function:f";
+
     private Escalation() {
     }
 
@@ -44,8 +46,10 @@ public final class Escalation {
             return;
         }
         for (Role admin : w.roles()) {
-            if (isAdmin(sessionOf(admin), w.account()) && can(p, "iam:PassRole", admin.arn(), w.account()) && can(p, "lambda:CreateFunction", "arn:aws:lambda:::function:f", w.account())
-                    && can(p, "lambda:InvokeFunction", "arn:aws:lambda:::function:f", w.account())) {
+            boolean passes = can(p, "iam:PassRole", admin.arn(), w.account());
+            boolean creates = can(p, "lambda:CreateFunction", FUNCTION, w.account());
+            boolean invokes = can(p, "lambda:InvokeFunction", FUNCTION, w.account());
+            if (isAdmin(sessionOf(admin), w.account()) && passes && creates && invokes) {
                 out.add(name + " -> iam:PassRole(" + admin.name() + ") + lambda:CreateFunction + lambda:InvokeFunction => administrator");
             }
         }

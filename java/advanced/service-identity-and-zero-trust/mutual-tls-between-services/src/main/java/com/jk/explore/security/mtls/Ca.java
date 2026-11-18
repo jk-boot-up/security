@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** A real private certificate authority: step-ca running on this machine, driven with the step command line. Also makes a second, unrelated authority with step. */
+/** A real private certificate authority: step-ca (the pinned release in StepTools), driven with the step command line. Also makes a second, unrelated authority with step. */
 final class Ca implements AutoCloseable {
 
     private final Path work;
@@ -48,14 +48,14 @@ final class Ca implements AutoCloseable {
         url = "https://localhost:" + port;
         Path password = this.work.resolve("password");
         Files.writeString(password, HexFormat.of().formatHex(new SecureRandom().generateSeed(16)));
-        Sh.must(this.work, env, List.of("step", "ca", "init", "--name", "Bank Internal CA", "--dns", "localhost", "--address", "127.0.0.1:" + port,
+        Sh.must(this.work, env, List.of(StepTools.step(), "ca", "init", "--name", "Bank Internal CA", "--dns", "localhost", "--address", "127.0.0.1:" + port,
                 "--provisioner", "admin", "--password-file", password.toString(), "--provisioner-password-file", password.toString(), "--deployment-type", "standalone"));
         tune(home.resolve("config/ca.json"));
         connect = List.of("--ca-url", url, "--root", root().toString());
-        process = new ProcessBuilder("step-ca", home.resolve("config/ca.json").toString(), "--password-file", password.toString())
+        process = new ProcessBuilder(StepTools.stepCa(), home.resolve("config/ca.json").toString(), "--password-file", password.toString())
                 .directory(this.work.toFile()).redirectErrorStream(true).redirectOutput(this.work.resolve("ca.log").toFile()).start();
         for (int i = 0; ; i++) {
-            if (Sh.run(this.work, env, concat(List.of("step", "ca", "health"), connect)).output().trim().equals("ok")) {
+            if (Sh.run(this.work, env, concat(List.of(StepTools.step(), "ca", "health"), connect)).output().trim().equals("ok")) {
                 break;
             }
             if (i > 100) {
@@ -97,7 +97,7 @@ final class Ca implements AutoCloseable {
 
     /** A certificate for a name (the subject), with the service identity as a URI in the SAN and optional host names, valid for the given seconds. */
     Credential issue(String base, String subject, List<String> sans, int seconds) throws IOException, InterruptedException, GeneralSecurityException {
-        List<String> cmd = new java.util.ArrayList<>(List.of("step", "ca", "certificate", subject, base + ".crt", base + ".key",
+        List<String> cmd = new java.util.ArrayList<>(List.of(StepTools.step(), "ca", "certificate", subject, base + ".crt", base + ".key",
                 "--provisioner", "admin", "--provisioner-password-file", "password", "--not-after", seconds + "s", "--force"));
         for (String san : sans) {
             cmd.add("--san");
@@ -110,13 +110,13 @@ final class Ca implements AutoCloseable {
     /** Asks the CA for a new certificate for the same key, written to another file; the old one stays valid until its own expiry. */
     Credential renew(String from, String to) throws IOException, InterruptedException, GeneralSecurityException {
         Files.copy(work.resolve(from + ".key"), work.resolve(to + ".key"), StandardCopyOption.REPLACE_EXISTING);
-        Sh.must(work, env, concat(List.of("step", "ca", "renew", from + ".crt", from + ".key", "--out", to + ".crt", "--force"), connect));
+        Sh.must(work, env, concat(List.of(StepTools.step(), "ca", "renew", from + ".crt", from + ".key", "--out", to + ".crt", "--force"), connect));
         return pkcs8(to);
     }
 
     /** Revokes with the CA; the CA only records it. */
     void revoke(String base) throws IOException, InterruptedException {
-        Sh.must(work, env, concat(List.of("step", "ca", "revoke", "--cert", base + ".crt", "--key", base + ".key"), connect));
+        Sh.must(work, env, concat(List.of(StepTools.step(), "ca", "revoke", "--cert", base + ".crt", "--key", base + ".key"), connect));
     }
 
     /** The serial numbers on the CA's revocation list, checked against the intermediate's signature. */
@@ -137,9 +137,9 @@ final class Ca implements AutoCloseable {
         Path caCrt = work.resolve("other-ca.crt");
         Path caKey = work.resolve("other-ca.key");
         if (!Files.exists(caCrt)) {
-            Sh.must(work, env, List.of("step", "certificate", "create", "Partner Bank CA", caCrt.toString(), caKey.toString(), "--profile", "root-ca", "--no-password", "--insecure", "--force"));
+            Sh.must(work, env, List.of(StepTools.step(), "certificate", "create", "Partner Bank CA", caCrt.toString(), caKey.toString(), "--profile", "root-ca", "--no-password", "--insecure", "--force"));
         }
-        Sh.must(work, env, List.of("step", "certificate", "create", subject, base + ".crt", base + ".key", "--profile", "leaf", "--ca", caCrt.toString(), "--ca-key", caKey.toString(),
+        Sh.must(work, env, List.of(StepTools.step(), "certificate", "create", subject, base + ".crt", base + ".key", "--profile", "leaf", "--ca", caCrt.toString(), "--ca-key", caKey.toString(),
                 "--san", san, "--not-after", "1h", "--no-password", "--insecure", "--force"));
         return pkcs8(base);
     }
@@ -149,7 +149,7 @@ final class Ca implements AutoCloseable {
     }
 
     private Credential pkcs8(String base) throws IOException, InterruptedException, GeneralSecurityException {
-        Sh.must(work, env, List.of("step", "crypto", "key", "format", "--pkcs8", "--no-password", "--insecure", "--force", "--out", base + ".p8", base + ".key"));
+        Sh.must(work, env, List.of(StepTools.step(), "crypto", "key", "format", "--pkcs8", "--no-password", "--insecure", "--force", "--out", base + ".p8", base + ".key"));
         return Credential.load(work.resolve(base + ".crt"), work.resolve(base + ".p8"));
     }
 

@@ -84,7 +84,7 @@ class RelyingPartyTest {
     @Test
     void anotherOriginIsRefused() {
         RelyingParty.Options options = bank.startSignIn("ana", false);
-        assertEquals("origin https://bank-example.test is not https://bank.example",
+        assertEquals("wrong origin https://bank-example.test",
                 bank.finishSignIn("ana", answerWith(options.challenge(), ClientData.GET, "https://bank-example.test", RP, false)).reason());
     }
 
@@ -135,7 +135,7 @@ class RelyingPartyTest {
         assertTrue(bank.finishSignIn("ana", answer(bank.startSignIn("ana", false), false)).accepted());
         RelyingParty.Options options = bank.startSignIn("ana", false);
         Authenticator.Assertion fromCopy = new Browser(copy).get(ORIGIN, RP, options.challenge(), options.allowed(), false).assertion().orElseThrow();
-        assertEquals("counter 2 is not above 2: possible cloned authenticator", bank.finishSignIn("ana", fromCopy).reason());
+        assertEquals("counter 2 is not above 2: a cloned key?", bank.finishSignIn("ana", fromCopy).reason());
         assertEquals("passkey suspended after a counter went backwards", bank.finishSignIn("ana", answer(bank.startSignIn("ana", false), false)).reason());
     }
 

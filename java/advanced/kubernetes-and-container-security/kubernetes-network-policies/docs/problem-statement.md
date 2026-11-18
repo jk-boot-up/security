@@ -2,7 +2,7 @@
 
 ## The scenario
 
-A bank wants its database reachable only from the api, and wants to know that it is.
+An online store wants its payments database reachable only from the api, and wants to know that it is.
 
 ## The naive version
 

@@ -5,6 +5,6 @@ public record Outcome(Attack attack, boolean possible, String reason) {
 
     @Override
     public String toString() {
-        return String.format("%-22s %-9s %s", attack.id(), possible ? "POSSIBLE" : "blocked", reason);
+        return String.format("%-19s %-8s %s", attack.id(), possible ? "POSSIBLE" : "blocked", reason);
     }
 }

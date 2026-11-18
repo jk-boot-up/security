@@ -9,35 +9,36 @@ after checking its size, while output encoding, query parameters and access chec
 
 ### 1. Where validation belongs
 
-The checkout page refuses a quantity of -3 before sending. The same request, sent without the page to a shop that trusts the page, gives a total of -269.70: a negative total is a refund.
-A hidden price field changed to 0.01 gives a total of 0.02 instead of 179.80: the customer set the price. The checkout that validates on the server refuses the quantity (digits only)
-and the price field (not a field of this form), and an honest order is accepted with a total of 179.80 from the catalogue.
+The input is a checkout request sent without the page: sku=SHO-1042 quantity=-3. The page would have refused it, but a shop that trusts the page takes the catalogue price 89.90 and charges 89.90 x -3 = -269.70: a refund.
+The second request keeps quantity 2 and adds a hidden field price=0.01, so the trusting shop charges 0.01 x 2 = 0.02 instead of 179.80.
+After the fix, the checkout validates on the server: the quantity is refused (quantity: digits only), the price field is refused (price: not a field of this form), and an honest order costs 89.90 x 2 = 179.80 from the catalogue.
+How the server reads a quantity: the length is checked first (at most 3 characters), then the characters (digits only, so '-' is refused), then the range 1 to 99; "2" becomes Quantity[value=2].
 
 ### 2. Say what is allowed, and parse into types
 
-Each field has one allowed shape, and a value that passes becomes a type that cannot hold anything else. A quantity is 1 to 99 in digits, so 0, 1e2 and " 5" are refused. A product code is three
-capital letters, a dash and four digits. An e-mail address keeps its local part and lower-cases its domain; ben@@shop.example and ben@localhost are refused. A country is an ISO code, so ZZ
-and lower-case de are refused. Money is an exact decimal with at most two places, so 19.505, -5 and NaN are refused. A form with four bad fields reports all four at once.
+The input is one raw string per field; the result is either a typed value or the rule it broke. A quantity is digits only from 1 to 99: "7" becomes Quantity[value=7]; "0", "1e2" and " 5" are refused.
+A product code (SKU) is 3 capital letters, a dash and 4 digits; "sho-1042" is refused, and "SHO-1042;" is longer than 8 characters. An e-mail address keeps its local part and lower-cases its domain: "Ben@Shop.EXAMPLE" becomes Ben@shop.example; ben@@shop.example and ben@localhost are refused.
+A country is a two-letter ISO code the JDK knows, so ZZ and lower-case de are refused. An amount is exact, with at most two decimals, so 19.505, -5 and NaN are refused.
+A form with four bad fields (country=Mars email=x quantity=lots sku=shoes) gets 4 problems reported at once, each naming the field and the rule, never the raw value.
 
 ### 3. Canonicalise before validating
 
-With ana registered, a registry that compares raw text also accepts the full-width ａｎａ and ANA in capitals: two accounts for one name. The canonical registry normalises with NFKC, trims and
-lower-cases without the machine's locale, so the full-width spelling is ana, and is refused as already taken. A zero-width space or a line break inside a name is refused, and so is a Cyrillic
-letter in place of a Latin one, because login names are kept to plain letters. José typed with one accented letter and with e plus a combining accent are different raw text and equal after NFC.
-A display name may use any script, but "Shоp Suppоrt" written with Cyrillic o is refused as a look-alike of the staff name.
+The input is three spellings of one name: plain ana (U+0061 U+006E U+0061), full-width (U+FF41 U+FF4E U+FF41) and capitals ANA. Before the fix, a registry that compares raw text gives each one a new account.
+How the canonical form is made: NFKC folds the full-width letters into ana, strip removes spaces at the ends, and lower-case (with Locale.ROOT) gives ana. After the fix, the registry compares canonical names: the plain spelling gets the account and the other two are refused as already taken.
+A zero-width space (U+200B) or a line break (U+000A) inside a name is refused (no control or invisible characters), and a Cyrillic а (U+0430) in place of a is refused because login names are kept to plain letters.
+José typed with one letter é (U+00E9) and with e plus a combining accent (U+0065 U+0301) is different raw text and equal after NFC. A display name may use any script, but "Shоp Suppоrt" with Cyrillic o has the skeleton "shop support" and is refused as reserved for the shop's staff; "José Martín" is accepted.
 
 ### 4. Limits are validation too
 
-A request body of 1000000 bytes is refused after reading only 16385 of them, one more than the limit. A cart of 10000 lines and an e-mail address of 10000 characters are refused before any other
-work. The pattern (a+)+$ on 10 a's and a ! takes 2036 steps to fail, on 15 a's 65519 steps and on 20 a's 2097130 steps: each extra character roughly doubles the work, so a few dozen characters can
-stop a server (ReDoS). The same rule written without nesting, checked in one pass, takes 21 steps. So: no nested repetition in patterns that read input, and a length limit before any pattern runs.
+The input is three oversized values: a request body of 1000000 bytes, a cart of 10000 lines and an e-mail address of 10003 characters. The result: the body is refused after reading 16385 bytes, one more than the limit of 16384; the cart is refused (more than 50 lines) and the address (longer than 254 characters), before any other work.
+How (a+)+$ reads aaa!: the inner and outer repetitions can split the a's as (aaa), (aa)(a), (a)(aa) or (a)(a)(a); each split fails at the !, so the engine tries all 4 = 2^(3-1), in 11 steps.
+Before the fix, (a+)+$ on 10, 15 and 20 a's and a ! takes 2036, 65519 and 2097130 steps: five more a's cost about 2^5 = 32 times the work (ReDoS). After the fix, a+$ checked in one pass takes 21 steps for 20 a's and a !, and a length limit runs before any pattern.
 
 ### 5. The bill: what validation does not do
 
-A review "<b>great</b>" is valid text and still markup, so it is encoded on output. A surname O'Brien is valid and contains a quote, so the database layer binds values as parameters and never
-pastes them into query text. A refused e-mail address with a line break and markup gives the message "email: not a valid address", without repeating the raw input. A wholesale order of 150 is
-refused by a limit of 99: a limit stricter than the business turns customers away, so each rule is a written business decision. Validation narrows what reaches the code; encoding,
-parameters and access checks still do their own jobs.
+The input is two display names, <b>great</b> and O'Brien. The result: both are accepted, because both are allowed names, yet the first is still markup, so it is encoded on output, and the second has a quote, so the database layer binds it as a parameter.
+A bad e-mail address with a line break and markup gets the message "email: not a valid address", which does not repeat the input (repeats it? false).
+A wholesale order of 150 is refused (from 1 to 99): a limit stricter than the business turns a customer away, so each limit is a written business decision. Validation narrows what reaches the code; encoding, parameters and access checks still do their jobs.
 
 ## The verdict
 

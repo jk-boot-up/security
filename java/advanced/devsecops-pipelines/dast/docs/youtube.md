@@ -16,17 +16,37 @@ Chapters:
 
 ```
 00:00 Introduction
-01:33 The Scenario
-01:52 Act One — The application under test
-02:03 Act Two — Passive and anonymous scans
-02:19 Act Three — A logged-in scan
-02:28 Act Four — The fixed application
-02:41 Act Five — The bill
-02:51 What It Costs
-03:24 Who Does What
-03:44 Where You Have Seen It
-04:05 How To Use It
-04:23 Thanks for Watching
+00:48 The Scenario
+01:23 The Words
+02:02 What the Letters Stand For
+02:55 What the Letters Stand For (continued)
+03:18 One site, three scans
+04:11 One attack string, two answers
+05:07 Act One — One attack, worked out by hand
+05:26 Act One — One attack, worked out by hand
+05:38 Nine planted flaws, page by page
+06:30 Act Two — The application, and a passive scan
+06:39 Act Two — The application, and a passive scan
+06:51 Three requests, and the database doing a sum
+07:42 Act Three — An active scan, without a login
+08:08 Act Three — An active scan, without a login
+08:16 With the session, the admin page too
+09:02 Act Four — An active scan that is logged in
+09:21 Act Four — An active scan that is logged in
+09:31 Alerts by risk, before and after the fixes
+10:20 Act Five — The fixed application
+10:43 What It Costs
+11:22 Who Does What
+12:03 Where You Have Seen It
+12:31 How To Use It
+13:04 The Java Classes
+13:16 BankApp — output, escaped only when fixed
+13:30 BankApp — a query glued from a string, or bound
+13:41 Flaw — raised when the alert is on its path
+13:54 Probe — the same attack strings
+14:14 Zap — the session cookie, and the chosen rules
+14:28 Zap — a pinned image
+14:35 Thanks for Watching
 ```
 
 ## Tags

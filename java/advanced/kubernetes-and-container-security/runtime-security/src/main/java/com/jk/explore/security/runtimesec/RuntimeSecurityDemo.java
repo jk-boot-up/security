@@ -2,74 +2,157 @@ package com.jk.explore.security.runtimesec;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class RuntimeSecurityDemo {
 
+    /** How long a command keeps its input open, so the sensor still finds its container when it reads the record. */
+    private static final long HOLD = 8_000;
+
+    private final StringBuilder out = new StringBuilder();
+    private String outsideIp = "";
+
     public static void main(String[] args) throws Exception {
         System.out.print(run());
+    }
+
+    public static String run() throws Exception {
+        return new RuntimeSecurityDemo().demo();
     }
 
     static String yesNo(boolean b) {
         return b ? "yes" : "no";
     }
 
-    static String describe(Set<Alert> alerts, String outsideIp) {
-        if (alerts.isEmpty()) {
-            return "alerts: 0\n";
-        }
-        return "alerts: " + alerts.size() + "\n" + alerts.stream()
-                .map(a -> "  " + a.rule() + " in " + a.pod() + ": " + a.detail().replace(outsideIp, "the outside server"))
-                .collect(Collectors.joining("\n", "", "\n"));
+    private void act(String heading) {
+        out.append(heading).append('\n');
     }
 
-    public static String run() throws Exception {
-        StringBuilder out = new StringBuilder();
-        Path rules = Path.of("rules");
-        out.append("--- Falco on this machine\n");
-        out.append("the kernel of the Docker VM has BTF (type information): " + yesNo(Falco.kernelHasBtf()) + "\n");
-        out.append("Falco " + Falco.IMAGE.substring(Falco.IMAGE.indexOf(':') + 1) + " with the modern eBPF driver: " + Falco.tryDriver() + "\n");
-        String yaml = Files.readString(rules.resolve("bank-runtime-rules.yaml"));
-        out.append("the bank's " + Falco.countRules(yaml) + " Falco rules accepted by falco --validate: " + yesNo(Falco.validates(rules, "bank-runtime-rules.yaml")) + "\n");
-        out.append("so the demo applies the same three tests to Linux audit records of the same kernel\n");
+    /** A labelled section of an act: its header, then its lines. */
+    private void section(String header, List<String> lines) {
+        out.append("  ").append(header).append('\n');
+        lines.forEach(l -> out.append("    ").append(l).append('\n'));
+    }
 
-        try (Lab lab = new Lab()) {
-            out.append("--- the service doing its work\n");
-            lab.cluster.exec(Pods.API, "wget", "-q", "-O", "/dev/null", "http://localhost:8080/");
-            lab.cluster.execWithInput(Pods.API, "settled payment\n", 4_000, "tee", "/var/log/payments/audit.log");
-            lab.cluster.execWithInput(Pods.API, "", 4_000, "nc", "-w", "2", "ledger-db", "5432");
-            List<String> seen = List.of("exec", "write", "connect");
-            Set<String> kinds = lab.seenFrom(Pods.API);
-            out.append("a call to itself, a write to its log folder and a call to the ledger service; the sensor saw: "
-                    + seen.stream().map(k -> k + " " + yesNo(kinds.contains(k))).collect(Collectors.joining(", ")) + "\n");
-            out.append(describe(lab.newAlerts(), lab.outsideIp));
+    private void section(String header, String... lines) {
+        section(header, List.of(lines));
+    }
 
-            out.append("--- a shell in the container\n");
-            Sh.Result id = lab.cluster.execWithInput(Pods.API, "id -u\n", 4_000, "sh");
-            out.append("someone opens a shell with kubectl exec and types id -u: it answers " + id.output().trim() + "\n");
-            out.append(describe(lab.newAlerts(), lab.outsideIp));
+    static String kv(String key, Object value) {
+        return String.format("%-10s %s", key, value);
+    }
 
-            out.append("--- a write where the service never writes\n");
-            lab.cluster.execWithInput(Pods.API, "#!/bin/sh\n", 4_000, "tee", "/usr/bin/miner");
-            out.append("a program is written to /usr/bin; the log folder is written the same way and is expected\n");
-            out.append(describe(lab.newAlerts(), lab.outsideIp));
-
-            out.append("--- a connection to an address the service never calls\n");
-            lab.cluster.execWithInput(Pods.API, "", 4_000, "nc", "-w", "2", lab.outsideIp, "4444");
-            out.append("a connection to a server outside the cluster; the ledger service was called before and is expected\n");
-            out.append(describe(lab.newAlerts(), lab.outsideIp));
-
-            out.append("--- prevent and detect\n");
-            Sh.Result ro = lab.cluster.execWithInput(Pods.API_RO, "#!/bin/sh\n", 4_000, "tee", "/usr/bin/miner");
-            out.append("the same write in a pod with a read-only root file system: " + (ro.ok() ? "worked" : "refused") + "\n");
-            out.append(describe(lab.newAlerts(), lab.outsideIp));
+    /** The alerts as rule, pod and detail lines; addresses are named, never printed. */
+    static List<String> alerts(Set<Alert> alerts, String outsideIp) {
+        if (alerts.isEmpty()) {
+            return List.of("none");
         }
-        out.append("--- the bill\n");
-        out.append("a detector sees what happened and prevents nothing: a read-only root and a network policy refuse, a rule tells you someone tried\n");
-        out.append("this sensor looks up the container of a process after the fact, so a process that has already exited can be missed; Falco reads it in the kernel event\n");
-        out.append("every rule needs a baseline of what the service does, and a new feature makes the baseline wrong\n");
+        List<String> lines = new ArrayList<>();
+        for (Alert a : alerts) {
+            lines.add(kv("rule", a.rule()));
+            lines.add(kv("pod", a.pod()));
+            lines.add(kv("detail", outsideIp.isEmpty() ? a.detail() : a.detail().replace(outsideIp, "the outside server")));
+        }
+        return lines;
+    }
+
+    private String demo() throws Exception {
+        falco();
+        try (Lab lab = new Lab()) {
+            outsideIp = lab.outsideIp;
+            work(lab);
+            shell(lab);
+            write(lab);
+            connect(lab);
+        }
         return out.toString();
+    }
+
+    private void falco() throws Exception {
+        act("ONE. Falco on this machine.");
+        Path rules = Path.of("rules");
+        String yaml = Files.readString(rules.resolve("bank-runtime-rules.yaml"));
+        section("THE RULES (rules/bank-runtime-rules.yaml):", Falco.ruleNames(yaml));
+        section("FALCO " + Falco.version() + " CHECKS THE RULES (falco --validate):",
+                kv("accepted", yesNo(Falco.validates(rules, "bank-runtime-rules.yaml"))));
+        section("FALCO'S DRIVER ON THIS KERNEL:",
+                kv("BTF", yesNo(Falco.kernelHasBtf()) + " (the kernel's type information)"),
+                kv("driver", "modern eBPF"),
+                kv("result", Falco.tryDriver()));
+        section("SO THE SAME THREE TESTS RUN ON LINUX AUDIT RECORDS:",
+                String.format("%-8s %-17s -> %s", "exec", "a program starts", Rules.SHELL),
+                String.format("%-8s %-17s -> %s", "write", "a file is written", Rules.WRITE),
+                String.format("%-8s %-17s -> %s", "connect", "a connection", Rules.CONNECT));
+    }
+
+    private void work(Lab lab) throws Exception {
+        act("TWO. The payments service doing its normal work.");
+        section("THE BASELINE (what " + Pods.API + " is expected to do):",
+                kv("writes", String.join(", ", lab.baseline.writablePrefixes())),
+                kv("connects", lab.baseline.allowedIps().size() + " addresses: the ledger-db service, the DNS"),
+                kv("shells", "none: it is started as httpd, not by a shell"));
+        section("THE WORK (three commands in " + Pods.API + "):",
+                String.format("%-32s %s", "wget http://localhost:8080/", "a call to itself"),
+                String.format("%-32s %s", "tee /var/log/payments/audit.log", "a write to its log"),
+                String.format("%-32s %s", "nc ledger-db 5432", "a call to the ledger"));
+        lab.cluster.exec(Pods.API, "wget", "-q", "-O", "/dev/null", "http://localhost:8080/");
+        lab.cluster.execWithInput(Pods.API, "settled payment\n", HOLD, "tee", "/var/log/payments/audit.log");
+        lab.cluster.execWithInput(Pods.API, "", HOLD, "nc", "-w", "2", Pods.LEDGER, "5432");
+        Set<String> kinds = lab.seenFrom(Pods.API);
+        section("WHAT THE SENSOR SAW (audit records of the pod):",
+                List.of("exec", "write", "connect").stream().map(k -> kv(k, yesNo(kinds.contains(k)))).toList());
+        section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
+        Event ledger = lab.lastConnect(Pods.API, 5432);
+        List<String> how = new ArrayList<>(Audit.explain(Audit.saddr(lab.sensor.log(), ledger.id())));
+        how.add(kv("process", ledger.comm() + ", in container cri-containerd-<64 hex>"));
+        how.add(kv("pod", Pods.API + " (kubectl maps the container to it)"));
+        how.add(kv("baseline", "the ledger-db address is on it: no alert"));
+        section("HOW ONE RECORD IS READ (the call to the ledger):", how);
+    }
+
+    private void shell(Lab lab) throws Exception {
+        act("THREE. A shell in the container.");
+        section("THE ACTION (someone with kubectl exec rights):",
+                "kubectl exec -i " + Pods.API + " -- sh", "then types: id -u");
+        Sh.Result id = lab.cluster.execWithInput(Pods.API, "id -u\n", HOLD, "sh");
+        section("WHAT THE SHELL ANSWERED:", kv("id -u", id.output().trim() + " (the root user)"));
+        section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
+        section("WHY:", kv("exec", "a process named sh started"),
+                kv("shells", String.join(" ", Rules.SHELLS.stream().sorted().toList())),
+                kv("baseline", "no shell, so every shell is an alert"));
+    }
+
+    private void write(Lab lab) throws Exception {
+        act("FOUR. A write where the service never writes.");
+        section("THE ACTION (in " + Pods.API + "):", "tee /usr/bin/miner   a program, written to /usr/bin");
+        lab.cluster.execWithInput(Pods.API, "#!/bin/sh\n", HOLD, "tee", "/usr/bin/miner");
+        section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
+        section("WHY:", kv("path", "/usr/bin/miner"),
+                kv("allowed", String.join(", ", lab.baseline.writablePrefixes())),
+                kv("starts", "with none of them, so it is an alert"));
+        section("THE SAME ACTION (in " + Pods.API_RO + ", read-only root):", "tee /usr/bin/miner");
+        Sh.Result ro = lab.cluster.execWithInput(Pods.API_RO, "#!/bin/sh\n", HOLD, "tee", "/usr/bin/miner");
+        section("WHAT THE KERNEL ANSWERED:", ro.ok() ? "written" : "refused: " + ro.output().lines()
+                .filter(l -> l.contains("Read-only")).findFirst().map(l -> l.substring(l.lastIndexOf(':') + 1).strip()).orElse("an error"));
+        Set<Alert> refused = lab.newAlerts();
+        section("THE ALERTS:", alerts(refused, outsideIp));
+        section("WHY THE DETAIL IS A FOLDER:", "a refused open names no file, only the folder");
+    }
+
+    private void connect(Lab lab) throws Exception {
+        act("FIVE. A connection the service never makes.");
+        section("THE ACTION (in " + Pods.API + "):", "nc <the outside server> 4444   a server outside the cluster");
+        lab.cluster.execWithInput(Pods.API, "", HOLD, "nc", "-w", "2", lab.outsideIp, "4444");
+        section("THE ALERTS:", alerts(lab.newAlerts(), outsideIp));
+        Event e = lab.lastConnect(Pods.API, 4444);
+        if (e == null) {
+            section("HOW THE RECORD IS READ:", "the sensor kept no record of this connection");
+            return;
+        }
+        List<String> how = new ArrayList<>(Audit.explain(Audit.saddr(lab.sensor.log(), e.id())));
+        how.add(kv("baseline", lab.baseline.allowedIps().size() + " addresses; this one is not among them"));
+        section("HOW THE RECORD IS READ:", how);
     }
 }

@@ -1,14 +1,14 @@
 package com.jk.explore.security.provenance;
 
-/** The deployment gate's answer, with the reason. */
-record Verdict(boolean allowed, String reason) {
+/** The deployment gate's answer: deployed, or refused at one numbered check, with the reason. */
+record Verdict(boolean allowed, int failedCheck, String reason) {
 
     static Verdict allow() {
-        return new Verdict(true, "all checks pass");
+        return new Verdict(true, 0, "all checks pass");
     }
 
-    static Verdict refuse(String reason) {
-        return new Verdict(false, reason);
+    static Verdict refuse(int failedCheck, String reason) {
+        return new Verdict(false, failedCheck, reason);
     }
 
     @Override

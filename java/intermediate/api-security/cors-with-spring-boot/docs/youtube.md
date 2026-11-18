@@ -16,17 +16,34 @@ Chapters:
 
 ```
 00:00 Introduction
-01:33 The Scenario
-01:54 Act One — No policy: a page may send, but not read
-02:23 Act Two — Policies that look like fixes
-02:54 Act Three — An exact allow-list
-03:27 Act Four — Where the policy is registered
-03:55 Act Five — The bill
-04:26 What It Costs
-04:50 Who Does What
-05:14 Where You Have Seen It
-05:30 How To Use It
-05:55 Thanks for Watching
+00:55 The Scenario
+01:31 The Words
+02:13 What the Letters Stand For
+03:19 Where Spring checks CORS, and where it refuses
+04:16 Sending is not reading
+05:15 Act One — With no policy, a page may send but not read
+05:31 Act One — With no policy, a page may send but not read
+05:49 Four policies, three origins, who reads the balance
+06:53 Act Two — Four policies that look like fixes
+07:12 Act Two — Four policies that look like fixes
+07:23 Act Two — Four policies that look like fixes
+07:39 One partner on the list, and what each page gets
+08:29 Act Three — An exact allow-list names one partner
+08:43 Act Three — An exact allow-list names one partner
+08:58 Act Three — An exact allow-list names one partner
+09:15 The same list, registered in two places
+10:01 Act Four — The policy must sit before the login check
+10:27 A browser rule, and a caller with no browser
+11:19 Act Five — CORS is a browser rule, not a defence
+11:43 What It Costs
+12:21 Where You Have Seen It
+12:55 How To Use It
+13:30 The Java Classes
+13:45 CorsSettings — the unsafe policies, and the exact list
+14:05 BankSecurity — http.cors, or addCorsMappings
+14:26 Browser — simple requests, and the read check
+14:44 BankController — the log behind every route
+14:57 Thanks for Watching
 ```
 
 ## Tags

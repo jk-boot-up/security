@@ -26,12 +26,13 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── KeycloakLab.java       One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank and wallet realms imported from {@code infra/} and removed on close
 ├── Refusals.java          Why the shop refused sign-ins, most recent last
 ├── Running.java           The shop, a Spring Boot application on a loopback port chosen before Keycloak started, trusting the identity provider of one Keycloak realm
-├── SamlKeycloakDemo.java  Runs the shop's single sign-on story in five numbered acts against a real Keycloak in Docker and a real Spring Security SAML 2.0 service provider
+├── SamlKeycloakDemo.java  Runs the shop's single sign-on story in five acts, each split into labelled sections (the input, then the result), against a real Keycloak in Docker and a real Spring Security SAML 2.0 service provider
 ├── SamlTools.java         What an attacker does to a signed SAML response, with the JDK's own XML tools: read it, change a name, take signatures off, put a second assertion beside the signed one, and sign with a key of the attacker's own
 ├── ShopApp.java           The shop, a SAML 2.0 service provider: it sends shoppers to the bank's identity provider and believes only what the bank signs
 ├── ShopController.java    Who is signed in, as the signed statement says
 ├── ShopSecurity.java      SAML 2.0 login: {@code /saml2/authenticate/keycloak} sends the shopper to Keycloak with an authentication request, and {@code /login/saml2/sso/keycloak} receives the response
-└── Shopper.java           A customer's browser as far as this lesson needs one
+├── Shopper.java           A customer's browser as far as this lesson needs one
+└── SignatureByHand.java   A teaching class: what OpenSAML does with each signature, redone with the plain JDK so the demo can print it
 </code></pre>
 <p><strong>Spring Security's SAML 2.0 service provider, on OpenSAML, trusts only the key in the identity provider's metadata, reads only assertions that key signed, and checks the request it answers, its audience and its dates; edited, self-signed, wrapped, unsigned and foreign-signed responses are all refused, and the cost is that metadata is read once, so a key rotation at the bank must reach the shop before the bank starts signing with it.</strong></p>
 <p>The plain <a href="../saml-basics">saml-basics</a> project builds a service provider with a trusting, a pinned and a strict reader. This one uses what a real Spring Boot shop uses: <strong>Spring Security 7</strong>'s <code>saml2Login()</code> on <strong>OpenSAML 5</strong>, against a real <strong>Keycloak 26.8</strong> SAML identity provider in Docker. It needs Docker; its tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
@@ -60,30 +61,30 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <tbody>
 <tr>
 <td>1. Signing in through the bank</td>
-<td>The shop sends an unsigned authentication request; the bank answers with a response signed as a whole and an assertion signed on its own, for this shop and this request only.</td>
+<td>The shop sends an unsigned AuthnRequest from its entity id; the bank's realm answers with a response that names ana, answers that request, is for this shop and lasts 2 seconds, signed twice (the Response and the Assertion); both signatures check out by hand with the bank's 2048-bit RSA key from its metadata, and Ana is signed in.</td>
 </tr>
 <tr>
 <td>2. A valid signature is not the same as the bank's signature</td>
-<td>An edited name, a response self-signed with a valid key of the attacker's, and a genuine response signed by the wallet are all refused as invalid_signature.</td>
+<td>An edited name breaks both digests; a response the attacker signs with their own key verifies with that key but not with the bank's; a genuine response from the wallet realm, answering the shop's request, is signed by the wallet; all three are refused with invalid_signature.</td>
 </tr>
 <tr>
-<td>3. A valid signature on one assertion, and another one read</td>
-<td>An unsigned admin assertion beside the bank's signed one, no signature at all, and a DOCTYPE are all refused.</td>
+<td>3. Signature wrapping: one assertion checked, another read</td>
+<td>An unsigned admin assertion placed before the bank's signed one, or after it, no signature at all, and a response with a DOCTYPE are all refused by Spring Security with OpenSAML (invalid_signature, malformed_response_data).</td>
 </tr>
 <tr>
 <td>4. The statement itself is checked</td>
-<td>A replayed response, an expired assertion and a response signed for another shop are refused even though their signatures are the bank's.</td>
+<td>A genuine response signs Ana in once; the same response replayed from another browser or the same one is refused (invalid_in_response_to), so is one posted 4 seconds after issue when it lasts 2 with 1 second of skew, and one the bank signed for another shop (invalid_assertion).</td>
 </tr>
 <tr>
 <td>5. The bill: keys, metadata and XML</td>
-<td>The shop reads the bank's metadata once; when the bank adds a signing key every shopper is refused until the shop reads the metadata again.</td>
+<td>The shop reads the bank's metadata once at start and signs Ana in; the bank adds a new signing key (HTTP 201) and every shopper is refused with invalid_signature until the shop reloads the metadata and signs Ana in again.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>21 tests in <code>DemoRunsTest</code>, <code>RealmFilesTest</code>, <code>SamlFlowTest</code>, <code>SamlToolsTest</code>. The tests that need Keycloak are tagged integration and share one container and one shop per class (./gradlew integrationTest). The attacker's tools and the realm files are tested without Docker.</p>
+<p>25 tests in <code>DemoRunsTest</code>, <code>RealmFilesTest</code>, <code>SamlFlowTest</code>, <code>SamlToolsTest</code>, <code>SignatureByHandTest</code>. The tests that need Keycloak are tagged integration and share one container and one shop per class (./gradlew integrationTest). The attacker's tools, the realm files and SignatureByHand (the digest and RSA checks redone by hand agree with the JDK's XML signature validation) are tested without Docker.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>Keycloak is a real container bound to 127.0.0.1 on a free port, with a bank realm and a wallet realm imported from infra/ and the shop's port written into a temporary copy. The shop is a real Spring Boot application. The browser keeps cookies and submits the pages' automatic forms. The attacker's changes use the JDK's own XML and XML signature tools. Ports, ids, keys and signatures are never printed.</p>
 <h2>Technologies and versions</h2>
@@ -213,7 +214,7 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <li>An error such as "Invalid InResponseTo" or "Invalid signature" after a key change.</li>
 </ul>
 <h2>Where this sits</h2>
-<p>This is the tools version of <a href="../saml-basics">saml-basics</a>, in the <a href="..">identity-and-access</a> module. It follows the same four attacks and adds the key rotation, against a real identity provider.</p></main><script>
+<p>This is the tools version of <a href="../saml-basics">saml-basics</a>, in the <a href="..">identity-and-access</a> module. It follows the same attacks and adds the key rotation, against a real identity provider.</p></main><script>
 (function(){var r=document.documentElement,k="security-theme";
 function set(t){if(t)r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
 document.querySelectorAll(".themes button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===(t||"")))});}

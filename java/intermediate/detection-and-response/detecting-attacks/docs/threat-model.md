@@ -51,7 +51,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `DetectionTest` checks each rule on hand-made logs with their near misses, the shape of the synthetic day, the tuned set's numbers, the effect of thresholds and the allow-list, and the scoring rule.
+- `DetectionTest` checks each rule on hand-made logs with their near misses, the shape of the synthetic day, the tuned set's numbers, the effect of thresholds and the allow-list, the scoring rule, the peaks behind the safe range, the travel speed, and that every false alert has a look-alike.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

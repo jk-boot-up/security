@@ -16,18 +16,47 @@ Chapters:
 
 ```
 00:00 Introduction
-01:12 The Scenario
-01:33 The Words
-02:04 Act One — Check, then act
-02:49 Act Two — Making the check and the write one step
-03:38 Act Three — Sending the same request twice
-04:19 Act Four — Rules the server must keep
-05:08 Act Five — The bill
-05:51 Ways to Close the Gap
-06:20 Who Does What
-06:51 Where You Have Seen It
-07:19 How To Use It
-07:48 Thanks for Watching
+01:22 The Scenario
+01:59 The Words
+02:43 What the Letters Stand For
+03:25 Two withdrawals, one gap
+04:34 Every order of the two withdrawals' steps
+05:38 Act One — Check, then act
+06:03 Act One — Check, then act
+06:22 Act One — Check, then act
+06:36 Act One — Check, then act
+06:52 A lock and a compare-and-set, step by step
+08:06 Act Two — Making the check and the write one step
+08:26 Act Two — Making the check and the write one step
+08:49 Act Two — Making the check and the write one step
+09:07 Act Two — Making the check and the write one step
+09:26 A payment sent twice, without and with a key
+10:40 Act Three — Sending the same request twice
+11:02 Act Three — Sending the same request twice
+11:27 Three rules the server keeps, before and after
+12:48 Act Four — Rules the server must keep
+13:07 Act Four — Rules the server must keep
+13:32 Act Four — Rules the server must keep
+13:56 Two lock orders, and two servers with their own locks
+15:07 Act Five — The bill
+15:25 Act Five — The bill
+15:43 Act Five — The bill
+16:08 Ways to Close the Gap
+16:37 What It Costs
+17:11 Where You Have Seen It
+17:40 How To Use It
+18:09 The Java Classes
+18:21 Interleaving — one letter, one step
+18:39 NaiveWithdrawal — read, check, write
+18:52 LockedWithdrawal — wait for the lock, then read
+19:08 Ledger and CasWithdrawal — compare, then set, in one step
+19:23 Ledger and CasWithdrawal — on failure, start again
+19:33 Bank — claim the key in one step
+19:51 Bank — rules the server keeps
+20:01 Checkout — the server's price, one coupon
+20:15 Order — each step from the right state only
+20:29 LockingTransfer — the smaller account first
+20:44 Thanks for Watching
 ```
 
 ## Tags

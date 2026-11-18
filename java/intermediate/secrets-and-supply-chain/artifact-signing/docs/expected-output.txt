@@ -1,40 +1,103 @@
 ONE. A deployment that runs whatever arrives.
-  the release team builds shop-app-2.4.0.jar: 2440 bytes, sha256 4577e6b10a2f145d
-  the deployment downloads it from a mirror where one byte was changed: sha256 6d6cca4f654956e0
-  the trusting deployment step: accepted (deployed shop-app-2.4.0.jar without checking it)  <- AN ALTERED JAR IS RUNNING
-  a digest published next to the file does not help: whoever can change the file can change the digest beside it
+  BEFORE THE MIRROR (what the release team built):
+    file      shop-app-2.4.0.jar, 2440 bytes
+    byte 700  '/' (0x2f)
+    sha256    4577e6b10a2f145d...
+  AFTER THE MIRROR (what the deployment downloaded):
+    file      shop-app-2.4.0.jar, 2440 bytes
+    byte 700  '.' (0x2e)  <- ONE BIT FLIPPED
+    sha256    6d6cca4f654956e0...  <- A NEW DIGEST
+  THE TRUSTING DEPLOYMENT STEP:
+    accepted  deployed shop-app-2.4.0.jar without checking it
+    <- AN ALTERED JAR IS RUNNING
+  WHY A DIGEST NEXT TO THE FILE DOES NOT HELP:
+    whoever can change the file can change the digest beside it
 TWO. A signed release, checked before it runs.
-  the statement: name=shop-app version=2.4.0 channel=stable sha256=4577e6b10a2f145d... signed-day=120
-  signed with stable-2026a: an Ed25519 signature of 64 bytes, the same on every run: 6caf4ae3bad1f0aa...
-  the deployment pins the public key of stable-2026a and checks before it deploys
-  the real jar: accepted (signed by stable-2026a for shop-app 2.4.0)
-  the jar with one byte changed: refused (the artifact does not match the signed digest)
-  the statement edited to version 2.4.1, signature kept: refused (the signature does not match)
-  signed by another key that calls itself stable-2026a: refused (the signature does not match)
-  signed by a key the deployment does not know: refused (unknown key attacker-1)
-  no signature at all: refused (no signature)
-THREE. Signing keys: one per channel, rotated with an overlap, revoked.
-  a beta build signed with beta-2026a, offered to the stable deployment: refused (key beta-2026a signs for beta, not stable)
-  day 100: stable-2026b is added, and both stable keys are trusted while the build moves over
-  signed on day 110 with stable-2026a: accepted (signed by stable-2026a for shop-app 2.4.0)
-  signed on day 110 with stable-2026b: accepted (signed by stable-2026b for shop-app 2.4.0)
-  day 130: stable-2026a is revoked
-  a release it signed on day 120, before the revocation: accepted (signed by stable-2026a for shop-app 2.4.0)
-  a release it signed on day 140: refused (signed on day 140, after key stable-2026a was revoked on day 130)
-  but the signer writes the day: a thief with the old key signs a different jar on day 150 and dates it day 120: accepted (signed by stable-2026a for shop-app 2.4.0)  <- A BACKDATED SIGNATURE
+  BEFORE SIGNING (the statement, 151 bytes of text):
+    release-statement/v1
+    name=shop-app
+    version=2.4.0
+    channel=stable
+    sha256=4577e6b10a2f145d... (64 hex digits)
+    signed-day=120
+  AFTER SIGNING (Ed25519 with the key stable-2026a):
+    public key  797d4b479b52e839... (32 bytes)
+    signature   6caf4ae3bad1f0aa... (64 bytes)
+    again       the same signature: Ed25519 is deterministic
+  HOW THE DEPLOYMENT CHECKS (it pins stable-2026a):
+    1 parse    the statement is in its one exact form
+    2 key      the key id is one the deployment pinned
+    3 verify   Ed25519(public key, statement, signature)
+    4 channel  the key and the statement are for stable
+    5 dates    signed while the key was trusted
+    6 digest   sha256(jar) equals the signed sha256
+  THE RESULTS:
+    the real jar      accepted  signed by stable-2026a
+    one byte changed  refused   jar differs from the signed digest
+    edited to 2.4.1   refused   bad signature
+    a forged key      refused   bad signature
+    an unknown key    refused   unknown key attacker-1
+    no signature      refused   no signature
+THREE. Signing keys: per channel, rotated, revoked.
+  A BETA BUILD, OFFERED TO THE STABLE DEPLOYMENT:
+    beta-2026a  refused   beta-2026a signs beta, not stable
+  THE ROTATION (the stable keys, by day):
+    stable-2026a  trusted from day 0, revoked on day 130
+    stable-2026b  added on day 100
+    the overlap   130 - 100 = 30 days, day 100 to 129
+  SIGNED ON A DAY, THE VERDICT:
+    day 110  stable-2026a  accepted  signed by stable-2026a
+    day 110  stable-2026b  accepted  signed by stable-2026b
+    day 120  stable-2026a  accepted  signed by stable-2026a
+    day 140  stable-2026a  refused   signed day 140, revoked day 130
+  BEFORE: A THIEF WITH stable-2026a, ON DAY 150:
+    jar       a different one, sha256 14669a56d76a94fc...
+    writes    signed-day=120, before the revocation
+  AFTER: THE VERDICT:
+    accepted  signed by stable-2026a
+    <- A BACKDATED SIGNATURE: THE SIGNER WRITES THE DAY
 FOUR. A public log that every signature must be in.
-  the store logs its releases: 2.3.0 on day 90 and 2.4.0 on day 120; the log's head: size 2, root c1e815c249fdd097..., signed by the log: true
-  the proof that 2.4.0 is in the log: 1 hash, and it checks against the signed head: true
-  the deployment, now requiring a log entry: accepted (signed by stable-2026a for shop-app 2.4.0, logged as entry 1)
-  the thief's backdated jar, not logged: refused (the signature is not in the public log)
-  the thief's backdated jar, logged on day 150: refused (logged on day 150, after key stable-2026a was revoked on day 130)  <- THE LOG'S DAY, NOT THE SIGNER'S
-  the store's monitor reads the log and reports: entry 2: version 2.4.0 signed with stable-2026a, digest 14669a56d76a94fc is not a release the store made
-  a log operator who hides the entry from the monitor shows two views, both signed by the log, both of size 3: roots f230f49e340792fc... and 92f28850530761dd...
-  each view still extends the earlier head of size 2: true and true
-  but two signed heads of the same size with different roots cannot both be true: the monitor and the customer compare heads, and the fork is proved: true
+  THE LOG (each entry: key id, statement, signature):
+    entry 0  2.3.0 by stable-2026a, logged day 90, 227 bytes
+    entry 1  2.4.0 by stable-2026a, logged day 120, 228 bytes
+  HOW THE ROOT IS MADE (a Merkle tree, RFC 9162):
+    leaf 0  sha256(00 || entry 0)       = 05e76fd5f6c4ca1a
+    leaf 1  sha256(00 || entry 1)       = cf27ce9d14a8e52d
+    root    sha256(01 || leaf 0 || leaf 1) = c1e815c249fdd097
+  THE SIGNED HEAD:
+    size    2
+    root    c1e815c249fdd097...
+    signed  by the log's own key: true
+  THE PROOF THAT ENTRY 1 IS IN THE LOG (1 hash):
+    proof     leaf 0 = 05e76fd5f6c4ca1a
+    redo      sha256(01 || proof || leaf 1) = c1e815c249fdd097
+    checks    equals the signed root: true
+  THE DEPLOYMENT, NOW REQUIRING A LOG ENTRY:
+    the real 2.4.0    accepted  signed by stable-2026a, entry 1
+    thief, not logged refused   not in the public log
+    thief, logged     refused   logged day 150, revoked day 130
+    <- THE LOG'S DAY COUNTS, NOT THE DAY THE SIGNER WROTE
+  THE STORE'S MONITOR (signed with its keys, never released):
+    entry 2: 2.4.0 by stable-2026a, sha256 14669a56d76a94fc
+  A LOG THAT HIDES ENTRY 2 SHOWS TWO VIEWS OF SIZE 3:
+    monitor   entry 2 = the beta build, root f230f49e340792fc
+    customer  entry 2 = the thief's jar, root 92f28850530761dd
+  HOW EACH VIEW EXTENDS THE HEAD OF SIZE 2 (proof: leaf 2):
+    monitor   sha256(01 || c1e815c2 || 73de63d6) = f230f49e340792fc
+    customer  sha256(01 || c1e815c2 || 9386a157) = 92f28850530761dd
+    both      consistent with the old head: true and true
+  THE MONITOR AND THE CUSTOMER COMPARE HEADS:
+    same size  3 = 3, but two different roots, both signed
+    fork       proved: true  <- ONE LOG, TWO HISTORIES
 FIVE. The bill.
-  the gate refuses an unsigned jar: refused (no signature)
-  but it protects only the paths that pass through it: a jar copied straight onto a server never meets the gate
-  the signing key is the crown jewel: here it comes from a fixed demo seed; in practice it stays in a hardware module, and each signing is approved and logged
-  rotation is a project: every deployment must trust the new key before the old one is revoked, here an overlap of 30 days
-  keyless signing replaces long-lived keys with short-lived certificates tied to an identity and recorded in a public log: the -with-cosign version
+  THE GATE GUARDS ONE PATH:
+    an unsigned jar   refused   no signature
+    copied by hand    never meets the gate: lock the other paths
+  THE SIGNING KEY IS THE CROWN JEWEL:
+    here         made from a fixed demo seed
+    in practice  in a hardware module; each use approved
+  ROTATION IS A PROJECT:
+    every deployment trusts the new key before the old one
+    is revoked: here an overlap of 30 days
+  KEYLESS SIGNING (the -with-cosign version):
+    short-lived certificates tied to an identity, in a public log

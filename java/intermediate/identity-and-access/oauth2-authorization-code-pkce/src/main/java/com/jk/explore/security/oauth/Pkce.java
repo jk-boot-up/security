@@ -29,7 +29,8 @@ final class Pkce {
     /** The S256 challenge: BASE64URL(SHA-256(ASCII(verifier))). */
     static String challenge(String verifier) {
         try {
-            return base64Url(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+            byte[] ascii = verifier.getBytes(StandardCharsets.US_ASCII);
+            return base64Url(MessageDigest.getInstance("SHA-256").digest(ascii));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is part of every Java runtime", e);
         }
@@ -55,7 +56,9 @@ final class Pkce {
         if (!wellFormed(verifier)) {
             return false;
         }
-        return MessageDigest.isEqual(challenge.getBytes(StandardCharsets.US_ASCII), challenge(verifier).getBytes(StandardCharsets.US_ASCII));
+        byte[] stored = challenge.getBytes(StandardCharsets.US_ASCII);
+        byte[] fromVerifier = challenge(verifier).getBytes(StandardCharsets.US_ASCII);
+        return MessageDigest.isEqual(stored, fromVerifier);
     }
 
     static String base64Url(byte[] bytes) {

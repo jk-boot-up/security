@@ -2,6 +2,10 @@ package com.jk.explore.security.pytmmodel;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.TreeSet;
 
 /** Writes the Python file that pytm reads: the design as pytm objects, plus the answers of a stage. */
 public final class Writer {
@@ -42,5 +46,15 @@ public final class Writer {
         out.add("");
         out.add("tm.process()");
         return String.join("\n", out) + "\n";
+    }
+
+    /** The answers a model sets to True for one element (its variable name), read back from the Python: what pytm's conditions see. */
+    public static Set<String> trueAnswers(String python, String id) {
+        Set<String> out = new TreeSet<>();
+        Matcher m = Pattern.compile("^" + id + "\\.(?:controls\\.)?(\\w+) = True$", Pattern.MULTILINE).matcher(python);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        return out;
     }
 }

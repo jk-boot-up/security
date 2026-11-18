@@ -4,7 +4,7 @@
 
 - Java basics
 - Python 3 (for the Moto and Checkov virtual environment)
-- Trivy
+- Docker (for the pinned Trivy image)
 
 ## Explicitly not required
 
@@ -15,7 +15,7 @@
 
 - A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.
 - python3
-- trivy
+- docker
 - About an hour for the session guide.
 
 ## Tech stack and versions

@@ -35,10 +35,10 @@ Developers read objects from bytes that the customer can change, and the bytes c
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 17 lines, identical on every run |
+| Tests | 12, all passing |
+| Demo output | 74 lines, identical on every run |
 | Acts | 4 |
-| Video | 06:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:22, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -3,16 +3,19 @@
 ```
 src/main/java/com/jk/explore/security/tlsservers/
 ├── Caddy.java           A real Caddy on loopback ports, with its own local certificate authority, run in a folder of its own
+├── ChainCheck.java      The two checks a client makes on the certificate a server sends, redone by hand: who signed it, and whom it names
+├── Headers.java         Two header rules redone by hand: which add_header lines nginx applies to a location, and what an HSTS max-age means
 ├── Https.java           A small HTTPS client over a socket: the address is 127.0.0.1, the name is whatever the test says, so names under .localhost need no resolver
 ├── LocalCa.java         A root made with the step command, and certificates it signs directly; nginx has no CA of its own
+├── Negotiation.java     How client and server pick a protocol version, redone by hand: the highest version both of them speak, or none
 ├── Nginx.java           A real nginx on loopback ports, with a configuration written for each case, run in a folder of its own
 ├── Procs.java           Small helpers for running programs
-└── TlsServersDemo.java  
+└── TlsServersDemo.java  Starts a real nginx and a real Caddy on loopback ports in front of the same shop and prints what a client sees
 ```
 
 **A real nginx serves the shop with a certificate from a local root and needs a line for each choice (protocol versions, hiding the version, HSTS, a reload after each new certificate), where a location's own add_header silently replaces the server's HSTS; a real Caddy makes its own local authority and 12-hour certificates, redirects and renews by itself; and neither staples an OCSP answer when the certificate names no responder.**
 
-This project puts the same small shop behind two real servers, **nginx** and **Caddy** (`brew install nginx caddy`), both started by the demo on loopback ports, and reads the result with a small HTTPS client written with the JDK. For nginx, the certificate comes from a local root made with the `step` command. Caddy makes its own. Nothing is installed globally and no Docker is needed; the tests are tagged `integration`: `./gradlew integrationTest`.
+This project puts the same small shop behind two real servers, **nginx** and **Caddy** (`brew install nginx caddy`), both started by the demo on loopback ports, and reads the result with a small HTTPS client written with the JDK. For nginx, the certificate comes from a local root made with the `step` command. Caddy makes its own. Nothing is installed globally and no Docker is needed. Three small classes redo by hand what the client and the servers decide (`ChainCheck`, `Negotiation`, `Headers`); `./gradlew test` checks them with no server, and the tests that start nginx and Caddy are tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **nginx with a certificate from a local authority.** A client that trusts the lab's root gets `200` over TLS 1.3; a client with only its default roots refuses; a name the certificate does not carry is refused; http is sent on with a `301`; the `Server` header gives the exact version until `server_tokens off`.
@@ -41,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. nginx with a certificate from the local authority | A client with the lab's root gets the page over TLS 1.3; the default roots, a wrong name and plain http each get their own answer. |
-| 2. Which protocol versions it speaks | The default accepts a client that offers only TLS 1.2; one line makes the server refuse it. |
-| 3. HSTS, and the add_header trap | The header is absent by default and sent over https only; a location's own add_header replaces the server's, and the page loses HSTS. |
-| 4. Caddy makes its own certificates | A Caddyfile that names only the site gives a local authority, 12-hour certificates, a redirect and automatic renewal. |
-| 5. The bill | Stapling needs a responder; nginx serves the old certificate until it is reloaded; every client needs the right root. |
+| 1. nginx with a certificate from the local authority | nginx serves a certificate signed by the lab's root: a client that trusts that root gets the page over TLS 1.3; one with only the default roots, or asking for another name, is refused; plain http gets a 301; server_tokens off hides the version. |
+| 2. Which protocol versions it speaks | The default ssl_protocols TLSv1.2 TLSv1.3 serves an old client that offers only 1.2; ssl_protocols TLSv1.3 leaves nothing in common with it, and it is refused. |
+| 3. HSTS, and the add_header trap | One add_header line in the server block sends HSTS for 365 days; a location with an add_header of its own drops it, until the line is repeated there. |
+| 4. Caddy makes its own certificates | A short site block gives a local authority, a 12-hour certificate, a 308 redirect and Server: Caddy; TLS 1.2 is accepted by default and HSTS needs a header line. |
+| 5. The bill | ssl_stapling on staples nothing, because neither certificate names an OCSP responder; a new certificate on disk is served by nginx only after nginx -s reload. |
 
 ## Test
 
@@ -53,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `TlsServersTest`. The tests start one nginx and one Caddy for the whole class (./gradlew integrationTest). They need nginx, caddy and the step command.
+21 tests in `DemoRunsTest`, `HttpsResponseTest`, `RulesByHandTest`, `TlsServersTest`. The unit tests (./gradlew test) check the rules redone by hand (ChainCheck, Negotiation, Headers) against certificates made once with step, with no server. The integration tests start one nginx and one Caddy (./gradlew integrationTest) and need nginx, caddy and the step command.
 
 ## What the simulation got right, and what it left out
 
-nginx and Caddy are the real programs, in temporary folders, on free loopback ports. Names under .localhost need no resolver because the client connects to 127.0.0.1 and sends the name as the server name. Ports, serial numbers and dates are never printed; the demo takes about half a minute.
+nginx and Caddy are the real programs, in temporary folders, on free loopback ports. Names under .localhost need no resolver because the client connects to 127.0.0.1 and sends the name as the server name. Ports, the temporary folder, serial numbers, dates and the nginx version are printed as placeholders, so the output is the same on every run; the demo takes about ten seconds.
 
 ## Technologies and versions
 
@@ -92,7 +95,7 @@ One client, two servers, two authorities.
 
 ### Where each piece sits
 
-Two server wrappers, a root, and a client.
+Two server wrappers, a root, a client, and three rules redone by hand.
 
 ![The classes and what they hold](docs/images/class-diagram.png)
 

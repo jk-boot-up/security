@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.SplittableRandom;
 
 /**
- * One synthetic Monday for a bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a
+ * One synthetic Monday for an online bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a
  * holiday, ticketed admin grants and one break-glass grant, and four real attacks. The random generator is seeded, so every run is the same.
  */
 public final class Scenario {
@@ -17,6 +17,31 @@ public final class Scenario {
     static final City[] HOMES = {City.PARIS, City.BERLIN, City.LONDON, City.MADRID, City.NEW_YORK};
     static final String VPN_EGRESS = "198.18.0.1";
     static final Set<String> APPROVERS = Set.of("ops1", "ops2");
+
+    /** The four attacks hidden in the day, by the label their events carry (ground truth, used only for scoring). */
+    static final java.util.Map<String, String> ATTACKS = new java.util.TreeMap<>(java.util.Map.of(
+            "A", "spraying", "B", "brute force", "C", "impossible travel", "D", "privilege change"));
+
+    /** The normal behaviour that resembles an attack, as a label and what happens. */
+    static final List<String[]> LOOK_ALIKES = List.of(
+            new String[] {"typing mistakes", "1 or 2 failures, then a success"},
+            new String[] {"forgotten passwords", "u010, u011: 6 failures each at 09:10"},
+            new String[] {"VPN users", "u020 to u024: New York, then Frankfurt"},
+            new String[] {"phone address", "u033: Madrid, then Frankfurt at 08:20"},
+            new String[] {"a real traveller", "u030: Paris 08:00, New York 17:00"},
+            new String[] {"break-glass grant", "u060 made admin at 03:00, no ticket"});
+
+    /** Which look-alike explains a false alert about this subject (an account or an address); scoring only. */
+    static String lookAlike(String subject) {
+        return switch (subject) {
+            case "u010", "u011" -> "forgotten passwords";
+            case "u020", "u021", "u022", "u023", "u024" -> "VPN users";
+            case "u033" -> "phone address";
+            case "u030" -> "a real traveller";
+            case "u060" -> "break-glass grant";
+            default -> "typing mistakes";
+        };
+    }
 
     private Scenario() {
     }

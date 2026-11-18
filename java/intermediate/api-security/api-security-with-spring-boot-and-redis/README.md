@@ -6,7 +6,7 @@ src/main/java/com/jk/explore/security/apispring/
 ├── AccountView.java              What a customer may see of their own account: no role, no limit, no risk score, no full card number, no PIN hash
 ├── ApiApp.java                   
 ├── ApiSecurity.java              Callers sign in with a header, so there are no cookies to forge and no session; the budget is counted per signed-in caller
-├── ApiSpringDemo.java            Runs the bank API story in five numbered sections against real Spring Boot servers and a real Redis in Docker, all on the loopback interface
+├── ApiSpringDemo.java            Runs the bank API story in five numbered acts against real Spring Boot servers and a real Redis in Docker, all on the loopback interface
 ├── Bank.java                     300 customers in memory
 ├── Client.java                   An app that calls the bank's API with a customer's credentials in a header
 ├── DirectoryEntry.java           What the customer directory shows of anyone: an id and a name
@@ -54,11 +54,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The first version | Binding the body to the stored record lets a customer become an admin, the response is the whole record, a page size of a million returns every customer, and a thousand requests are all answered. |
-| 2. A request model | A record names the two fields a customer may change, unknown fields are a 400, values are validated, and nothing is applied from a refused body. |
-| 3. A response model and a page ceiling | A response record has five fields and a masked card, the directory shows id and name only, a page is capped at 50, and size 0 and no login are refused. |
-| 4. The budget runs out, and refills | A token bucket per caller in Redis, taken by one Lua script: 50 answered, then 429 with Retry-After 1s, a refill from the clock, and a separate bucket for each caller. |
-| 5. The bill | Two servers with in-memory budgets answer 100 of 1000 requests, with the budget in Redis 50; when Redis stops answering the API refuses with 503. |
+| 1. The first version | @RequestBody Account binds role admin and a credit limit of 100000000 onto Ana's record; the answer is the stored record with 9 fields; a page size of a million returns 300 x 9 = 2700 values; 1000 requests are all answered. |
+| 2. A request model | UpdateProfileRequest names displayName (1 to 40 characters) and email (an e-mail address, at most 80); fail-on-unknown-properties refuses any other field with 400 unknown field; bad values get 400 invalid; the role stays customer. |
+| 3. A response model and a page ceiling | GET /accounts/acc-0001 returns an AccountView of 5 fields with the card as ****0001; the page size is min(1000000, 50) = 50 directory entries of 2 fields; size=0 gets 400 and no login gets 401. |
+| 4. The budget runs out, and refills | Each caller's bucket in Redis holds 50 tokens and refills 1 a second; of 1000 requests at one moment 50 are answered and 950 get 429 with Retry-After: 1, worked out as ceil((1 - 0) / 0.001) = 1000 ms = 1 second; ben has his own bucket. |
+| 5. The bill | Two servers with a budget each in memory answer 50 + 50 = 100 of 1000 requests, twice the budget; with one budget in Redis, 25 + 25 = 50; when Redis stops answering the API refuses with 503, and answers again when Redis is back. |
 
 ## Test
 
@@ -66,7 +66,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-19 tests in `ApiSpringTest`, `DemoRunsTest`, `RedisLimiterTest`. Most tests run without Docker with the budget in memory; the tests of the Redis budget and the full demo start a real Redis and are tagged integration (./gradlew integrationTest). Nothing printed changes between runs.
+22 tests in `ApiSpringTest`, `DemoRunsTest`, `RedisLimiterTest`, `WorkedOutTest`. Most tests run without Docker with the budget in memory; the tests of the Redis budget and the full demo start a real Redis and are tagged integration (./gradlew integrationTest). Nothing printed changes between runs.
 
 ## What the simulation got right, and what it left out
 

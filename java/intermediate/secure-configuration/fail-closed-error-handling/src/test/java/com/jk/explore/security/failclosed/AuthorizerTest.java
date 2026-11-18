@@ -12,7 +12,7 @@ class AuthorizerTest {
     private static final Payment RISKY = new Payment("P-2", "4111111111111111", "unknown-electronics", 150_000);
 
     private SafeAuthorizer safe(SimClock clock, FraudService fraud, SecurityLog log) {
-        return new SafeAuthorizer(fraud, clock, 200_000, new References(), log);
+        return new SafeAuthorizer(fraud, 200_000, new References(), log);
     }
 
     @Test

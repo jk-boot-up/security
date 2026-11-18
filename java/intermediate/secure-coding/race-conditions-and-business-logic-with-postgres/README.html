@@ -26,7 +26,8 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 ├── Db.java                  A real PostgreSQL 18 in a container on a free loopback port, removed on close, and the small things every act needs from it
 ├── Hib.java                 Hibernate ORM 7 against the lab's database, remembering every SQL statement it sends
 ├── HibAccount.java          An account as Hibernate sees it: the version column is what makes the update conditional
-└── RaceConditionsDemo.java  Runs on a thread of its own, so that the caller can watch it wait
+├── RaceConditionsDemo.java  The online bank's races, run against a real PostgreSQL 18 in Docker, in five numbered acts
+└── SqlStates.java           The PostgreSQL error codes (SQLSTATE) this lesson meets, and what the application should do about each one
 </code></pre>
 <p><strong>In a real PostgreSQL 18 two withdrawals that read before either writes pay out 160 from 100; a check constraint and a conditional update, a row lock with wait, NOWAIT, a timeout and SKIP LOCKED, REPEATABLE READ and SERIALIZABLE against write skew, a Hibernate @Version column and a one-time key claimed in the same transaction as the money each close the gap in their own way, but they bring retries, deadlocks that PostgreSQL cancels, and waits behind a person, and a lock in one server's memory protects nothing in another.</strong></p>
 <p>The plain <a href="../race-conditions-and-business-logic">race-conditions-and-business-logic</a> project shows the gap between a check and a write with a scripted interleaving and its own locks. This one runs it against a real <strong>PostgreSQL 18</strong> in Docker, with plain JDBC and <strong>Hibernate ORM 7</strong>. It needs Docker; the tests are tagged <code>integration</code>: <code>./gradlew integrationTest</code>.</p>
@@ -55,30 +56,30 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <tbody>
 <tr>
 <td>1. Check, then act: two requests in the gap</td>
-<td>Two withdrawals that read before either writes pay out 160 from 100; a check constraint, a conditional update and a one-statement claim close the gap.</td>
+<td>Two withdrawals of 80 that both read 100 before either writes pay out 160 from 100 in a real PostgreSQL 18; a check constraint (20 - 80 = -60 &lt; 0, 23514) and a condition inside the update (B changes 0 rows) refuse the second; a coupon claimed in one statement is used once.</td>
 </tr>
 <tr>
 <td>2. Row locks: making the check and the write one step</td>
-<td>SELECT FOR UPDATE makes the second request wait and then see the first; NOWAIT, a timeout and SKIP LOCKED are the other ways to meet a lock.</td>
+<td>With select ... for update, A locks ANA-1 and reads 100, B waits (pg_stat_activity shows the wait), A pays 80 and commits, and B then reads 20 and refuses: paid out 80, balance 20; nowait refuses at once with 55P03, lock_timeout gives up after 300 ms, and skip locked takes the next free row.</td>
 </tr>
 <tr>
 <td>3. Isolation levels</td>
-<td>READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it; only SERIALIZABLE stops write skew.</td>
+<td>Under READ COMMITTED a relative update after B's commit is applied to the new value, 70 - 30 = 40; under REPEATABLE READ it is refused with 40001 and A retries to 40; two transactions that each take 150 from a different row of a total of 200 leave -100 under REPEATABLE READ (write skew), and SERIALIZABLE refuses the second, total 50.</td>
 </tr>
 <tr>
 <td>4. Optimistic locking with Hibernate, and one-time keys</td>
-<td>A version column makes the update conditional; a payment key claimed in the same transaction as the money runs once.</td>
+<td>Both sessions load balance 100 at version 0; A's update sets balance 20 and version 0 + 1 = 1 where version = 0; B's update still asks for version 0, changes no row and gets an OptimisticLockException, and its retry loads 20 and refuses; a payment key inserted twice at once runs once, ana 100 - 70 = 30.</td>
 </tr>
 <tr>
 <td>5. The bill</td>
-<td>Opposite lock order deadlocks, locks in one server's memory protect nothing in another, and a transaction that waits for a person keeps everyone waiting.</td>
+<td>Two transfers that each lock their own sender first deadlock, and PostgreSQL cancels 1 with 40P01 while the other is done; one lock order (order by id) finishes both; two servers' own locks pay out 80 + 80 = 160 from 100; a row locked while a person confirms makes B give up after 300 ms; 40001 and 40P01 are retried, 23514 is refused.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>11 tests in <code>DemoRunsTest</code>, <code>RaceConditionsTest</code>. The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker.</p>
+<p>17 tests in <code>DemoRunsTest</code>, <code>HibAccountTest</code>, <code>RaceConditionsTest</code>, <code>SqlStatesTest</code>. The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>PostgreSQL 18.6 is the real server in a container on a free loopback port, started with a short deadlock timeout and removed at the end. The sessions are real connections; the interleavings are scripted, so that the output is the same on every run. Ports and container names are never printed; the demo takes about thirty seconds.</p>
 <h2>Technologies and versions</h2>

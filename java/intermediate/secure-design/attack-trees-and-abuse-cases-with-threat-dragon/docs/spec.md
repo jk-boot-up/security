@@ -38,10 +38,10 @@ Threats written in a document are far from the flows they concern, and nobody kn
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 45 lines, identical on every run |
-| Acts | 5 |
-| Video | 05:48, 1920×1080, narrated in the amy-slow voice |
+| Tests | 16, all passing |
+| Demo output | 155 lines, identical on every run |
+| Acts | 6 |
+| Video | 18:43, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

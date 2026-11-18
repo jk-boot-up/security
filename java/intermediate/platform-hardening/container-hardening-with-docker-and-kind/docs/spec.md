@@ -21,6 +21,7 @@ Containers are started with options copied from tutorials, and nobody measures w
 | The image and containers | `Image`, `Run` |
 | The attempts | `Probes` |
 | The cluster | `Cluster`, `Pods` |
+| The printout and a teaching class | `Report`, `Capabilities` |
 | Entry point | `ContainerHardeningDemo` |
 
 ## Requirements
@@ -36,10 +37,10 @@ Containers are started with options copied from tutorials, and nobody measures w
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 52 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:10, 1920×1080, narrated in the amy-slow voice |
+| Tests | 24, all passing |
+| Demo output | 190 lines, identical on every run |
+| Acts | 6 |
+| Video | 19:30, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

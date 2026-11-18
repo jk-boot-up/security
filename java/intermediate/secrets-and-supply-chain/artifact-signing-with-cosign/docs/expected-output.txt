@@ -1,39 +1,79 @@
 ONE. A deployment that runs whatever a tag points at.
-  the release team pushes the image as shop/app:2.4.0 to the registry: the tag points at one digest, the checksum of that image's manifest
-  the deployment pulls by tag: it gets exactly that image: true
-  someone with push rights, or a registry that is not what it was, pushes a different image under the same tag: the digests differ: true
-  the deployment pulls by tag again: it gets the other image: true  <- A TAG IS A NAME, NOT A CHECKSUM
-  the deployment pulls by the digest it was given: it gets the release: true, but only if the digest itself came from somewhere that cannot be changed
+  BEFORE (the release team pushes shop/app:2.4.0):
+    tag 2.4.0   -> digest A, the release
+    a digest    sha256 of the image's manifest: a checksum
+    pull 2.4.0  gets the release: true
+  AFTER (someone with push rights reuses the tag):
+    tag 2.4.0   -> digest B, another image
+    the same?   digest A = digest B: false
+    pull 2.4.0  gets the release: false  <- A TAG IS A NAME
+    pull by A   gets the release: true
+  WHY A DIGEST ALONE IS NOT ENOUGH:
+    it must come from somewhere that cannot be changed
 TWO. A signed release, checked before it runs.
-  the release pipeline signs the image digest with the release key: signed
-  the signature is stored in the same registry, next to the image, as one more tag: true
-  the deployment pins the public key of the release key and checks before it deploys: accepted (signed by the release key)
-  the tag is moved to the attacker's image; the same gate: refused (no signature for this digest)
-  the attacker signs their own image with a key of their own: refused (no signature that this key made)
-  a key the deployment does not know is not trusted, however well the signature was made
-  the tag is put back; the gate: accepted (signed by the release key)
+  BEFORE SIGNING (what cosign signs for digest A):
+    type     https://sigstore.dev/cosign/sign/v1
+    digest   docker-manifest-digest = digest A
+    for      docker-reference = .../shop/app@<digest A>
+    claims   (none)
+  AFTER SIGNING (with the release key):
+    signed     true
+    stored as  one more tag: sha256-<digest A>
+    the tag    not signed: the payload names the digest
+  THE GATE (pins release.pub, resolves the tag):
+    tag -> digest A         accepted  signed by the release key
+    moved -> digest B       refused   no signature for this digest
+    digest B, attacker key  refused   not signed by this key
+    back -> digest A        accepted  signed by the release key
 THREE. Signed claims, and keys that rotate.
-  the release signs the digest again with the claims channel=stable and version=2.4.0
-  a gate that requires channel=stable: accepted (signed by the release key)
-  a gate that requires channel=beta: refused (the signed claims do not say what the gate requires)  (the claims are signed with the image, so they cannot be edited)
-  a beta build, signed by the same key with channel=beta, offered to the stable gate: refused (the signed claims do not say what the gate requires)
-  the 'next' key is added to the gate while the build moves over; the gate trusts [release, next]: a release signed by the old key: accepted (signed by the release key)
-  the same digest signed with the next key: accepted (signed by the next key)
-  the old key is retired: a gate that trusts only [next] and a digest signed only by 'release': refused (no signature that this key made)
-  a thief with the retired 'old' key signs a new image today: a gate that still trusts 'old': accepted (signed by the old key)  <- A SIGNATURE CARRIES NO TIME; WITHOUT A LOG THERE IS NO REVOCATION DAY
-  a gate that dropped 'old': refused (no signature that this key made)
+  BEFORE (digest A signed again, with claims):
+    claims   channel=stable version=2.4.0
+    signed   inside the payload: they cannot be edited
+    a beta   digest C, claims channel=beta
+  AFTER (gates that require a claim):
+    stable gate, digest A   accepted  signed by the release key
+    beta gate, digest A     refused   claims do not match the gate
+    stable gate, digest C   refused   claims do not match the gate
+  THE ROTATION (from the release key to next):
+    trusts both, digest A   accepted  signed by the release key
+    trusts next, digest A   accepted  signed by the next key
+    trusts next, digest C   refused   not signed by this key
+  BEFORE: A THIEF WITH THE RETIRED old KEY, TODAY:
+    image    digest D, signed with old
+    time     none: a signature carries no date
+  AFTER: THE GATES:
+    still trusts old        accepted  signed by the old key
+    <- NO LOG, SO NO DAY TO REVOKE FROM
+    dropped old             refused   not signed by this key
 FOUR. Signed statements about how the image was built.
-  the CI system signs a provenance statement for the digest: the builder is https://ci.shop.example, the source is a commit: attested
-  the gate verifies the attestation with the release key: accepted, and reads the builder: https://ci.shop.example
-  the gate's own rule, builder must be the CI system: accepted
-  an image built on a laptop and attested by the same key: the signature verifies, the builder is https://laptop.local, and the gate's own rule: refused  <- A SIGNATURE SAYS WHO SIGNED, THE RULE SAYS WHAT WAS SIGNED
-  an image whose provenance only the attacker's key signed, with the CI system named as builder: the gate, which trusts the release key: refused (no signature that this key made)
-  the release key's attestation of one image, offered for another digest: refused (no signature for this digest)
-  the public transparency log is left out here, because this lab is local; with it, every signature would also be recorded where a monitor can read it
+  BEFORE (the provenance the CI system signs):
+    image    digest A
+    builder  https://ci.shop.example
+    source   git+https://git.shop.example/shop@abc123
+    signed   with the release key, type slsaprovenance: true
+  AFTER (the signature, then the gate's rule: builder = CI):
+    image          signature  builder                 rule
+    digest A       accepted   https://ci.shop.example accepted
+    digest E       accepted   https://laptop.local    refused
+    <- A SIGNATURE SAYS WHO; THE RULE CHECKS WHAT
+  FORGED AND BORROWED ATTESTATIONS:
+    signed by attacker     refused   not signed by this key
+    for digest F instead   refused   no signature for this digest
+  LEFT OUT IN THIS LOCAL LAB:
+    the public transparency log, where a monitor reads
+    every signature
 FIVE. The bill.
-  the gate refuses an unsigned image: refused (no signature for this digest)
-  but it protects only the paths that pass through it: a pull straight from the registry gets the unsigned image: true
-  the signing key is the crown jewel: with a wrong passphrase it cannot sign: refused
-  rotation is a project: every gate must trust the new key before the old one is dropped, and nothing marks the day an old signature was made
-  keyless signing replaces long-lived keys with short-lived certificates tied to an identity and recorded in a public log; it needs the public Fulcio and Rekor services, which a local lab does not have
-  cosign 3 is moving offline signing behind a signing config, so the flags used here may change
+  THE GATE GUARDS ONE PATH:
+    unsigned image    refused   no signature for this digest
+    a direct pull     gets digest F anyway: true
+  THE SIGNING KEY IS THE CROWN JEWEL:
+    wrong passphrase  cannot sign
+  ROTATION IS A PROJECT:
+    every gate trusts the new key before the old one goes,
+    and nothing marks the day an old signature was made
+  KEYLESS SIGNING:
+    short-lived certificates tied to an identity, logged
+    in public: needs the Fulcio and Rekor services
+  COSIGN 3:
+    offline signing moves behind a signing config,
+    so the flags used here may change

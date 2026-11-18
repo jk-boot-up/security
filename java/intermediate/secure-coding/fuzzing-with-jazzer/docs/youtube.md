@@ -16,17 +16,38 @@ Chapters:
 
 ```
 00:00 Introduction
-01:34 The Scenario
-01:49 Act One — The example tests pass
-02:04 Act Two — The real Jazzer
-02:21 Act Three — Guided by coverage, and by what you give it
-02:43 Act Four — From crash to fix
-03:00 Act Five — What fuzzing finds besides crashes, and what it does not
-03:21 What It Costs
-03:45 Who Does What
-04:12 Where You Have Seen It
-04:31 How To Use It
-04:55 Thanks for Watching
+00:51 The Scenario
+01:22 The Words
+01:52 What the Letters Stand For
+02:40 What Jazzer does
+03:29 Six example tests pass; one line nobody tested crashes
+04:22 Act One — The example tests pass
+04:42 Act One — The example tests pass
+04:58 Three findings, and which missing field each one is
+05:56 Act Two — The real Jazzer
+06:15 Act Two — The real Jazzer
+06:37 The seeds take the fuzzer past checks it cannot guess
+07:39 Act Three — Guided by coverage, and by what you give it
+08:02 Act Three — Guided by coverage, and by what you give it
+08:19 Shorter, then plainer, then fixed
+09:14 Act Four — From crash to fix
+09:25 Act Four — From crash to fix
+09:43 Act Four — From crash to fix
+09:55 A vulnerability that is not a crash, and what is not found
+10:55 Act Five — What fuzzing finds besides crashes, and what it does not
+11:09 Act Five — What fuzzing finds besides crashes, and what it does not
+11:31 What It Costs
+12:07 Where You Have Seen It
+12:38 How To Use It
+13:11 The Java Classes
+13:23 OrderLineCareless — hand the input to one parser
+13:36 Parsers — a refusal is not a finding
+13:47 Parsers — the search box, careless and fixed
+14:01 JazzerRun — the command line
+14:14 JazzerRun — reading a finding
+14:24 Minimizer — plainer: A for a capital, 0 for a digit
+14:37 OrderLine — the overflow, and its fix
+14:51 Thanks for Watching
 ```
 
 ## Tags

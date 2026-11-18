@@ -22,10 +22,13 @@ final class Lab implements AutoCloseable {
     static final String SPIRE_VERSION = "1.15.5";
     // SHA-256 of the official spire-1.15.5-linux-arm64-musl.tar.gz release (from its published sha256sum), checked before it is unpacked and run.
     static final String SPIRE_SHA256 = "451baba77cba6a0b2cdd3ca8b589589418b88673867d2da7f8dac9099252b372";
-    static final String IMAGE = "eclipse-temurin:25-jre";
+    /** The workloads' Java image, pinned by digest. */
+    static final String IMAGE = "eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f";
     static final String DOMAIN = "bank.example";
     static final String NODE = "spiffe://" + DOMAIN + "/node/lab";
     static final int SVID_TTL_SECONDS = 20;
+    /** SPIRE starts an SVID's validity this many seconds before it is issued, to forgive a clock that is a little behind. */
+    static final int BACKDATE_SECONDS = 10;
     /** The operating system user each workload runs as. SPIRE tells the workloads apart by this number. */
     static final Map<String, Integer> UIDS = Map.of("ledger", 2001, "payments", 2002, "reporting", 2003, "attacker", 2004);
 
@@ -116,8 +119,10 @@ final class Lab implements AutoCloseable {
 
     /** The registration entry: this SPIFFE ID goes to a process the agent sees running as this user. The workload's own claims are never consulted. */
     void createEntry(String workload) throws IOException, InterruptedException {
-        server("entry", "create", "-parentID", NODE, "-spiffeID", "spiffe://" + DOMAIN + "/" + workload,
-                "-selector", "unix:uid:" + UIDS.get(workload), "-x509SVIDTTL", Integer.toString(SVID_TTL_SECONDS));
+        server("entry", "create", "-parentID", NODE,
+                "-spiffeID", "spiffe://" + DOMAIN + "/" + workload,
+                "-selector", "unix:uid:" + UIDS.get(workload),
+                "-x509SVIDTTL", Integer.toString(SVID_TTL_SECONDS));
     }
 
     void deleteEntry(String workload) throws IOException, InterruptedException {

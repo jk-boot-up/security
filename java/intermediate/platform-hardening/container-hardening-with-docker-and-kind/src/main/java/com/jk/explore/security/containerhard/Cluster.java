@@ -41,7 +41,9 @@ public final class Cluster implements AutoCloseable {
     /** A namespace that enforces the given Pod Security Standard ("privileged", "baseline" or "restricted") and warns about the given one. */
     void namespace(String name, String enforce, String warn) throws IOException, InterruptedException {
         kubectl("create", "namespace", name);
-        kubectl("label", "namespace", name, "pod-security.kubernetes.io/enforce=" + enforce, "pod-security.kubernetes.io/warn=" + warn, "--overwrite");
+        kubectl("label", "namespace", name,
+                "pod-security.kubernetes.io/enforce=" + enforce,
+                "pod-security.kubernetes.io/warn=" + warn, "--overwrite");
     }
 
     /** The thirteen attempts, run inside a running pod as the user the pod runs as. */

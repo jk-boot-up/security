@@ -39,10 +39,10 @@ Servers fetch customer-supplied addresses from inside a trusted network, and che
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 33, all passing |
-| Demo output | 35 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:55, 1920×1080, narrated in the amy-slow voice |
+| Tests | 35, all passing |
+| Demo output | 134 lines, identical on every run |
+| Acts | 6 |
+| Video | 17:44, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

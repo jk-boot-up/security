@@ -3,6 +3,7 @@ package com.jk.explore.security.localca;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -16,6 +17,7 @@ final class ShortLived {
     private final CertificateAuthority authority;
     private final String requester;
     private final String name;
+    private final List<X509Certificate> history = new ArrayList<>();
     private X509Certificate current;
     private int renewals;
     private boolean jobRunning = true;
@@ -41,6 +43,7 @@ final class ShortLived {
         if (current == null || !now.isBefore(renewAt(current))) {
             boolean first = current == null;
             current = authority.issue(Csr.create(Keys.newPair(), List.of(name)), requester, Profile.SHORT_LIVED, LIFETIME, now);
+            history.add(current);
             if (!first) {
                 renewals++;
             }
@@ -55,6 +58,11 @@ final class ShortLived {
 
     X509Certificate current() {
         return current;
+    }
+
+    /** Every certificate the job obtained, first one included. */
+    List<X509Certificate> history() {
+        return List.copyOf(history);
     }
 
     int renewals() {

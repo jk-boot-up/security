@@ -18,6 +18,12 @@ class ScannersTest {
     }
 
     @Test
+    void firstNamesTheFirstCheckThatFailedOrADash() {
+        assertEquals("B", Scanners.first(Set.of("B", "C"), java.util.List.of("A", "B", "C")));
+        assertEquals("-", Scanners.first(Set.of("B"), java.util.List.of()));
+    }
+
+    @Test
     void everyRuleHasAMappingForEachTool() {
         assertEquals(8, Scanners.CHECKOV.size());
         assertEquals(Scanners.CHECKOV.keySet(), Scanners.TRIVY.keySet());

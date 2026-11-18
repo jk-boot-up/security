@@ -11,16 +11,24 @@ public final class Rules {
     private Rules() {
     }
 
+    /**
+     * The tag of an image name: what follows the last ':' or '@' in its last part, after the last '/'. Empty when
+     * there is none, and then Kubernetes pulls "latest".
+     */
+    static String tag(String image) {
+        String last = image.substring(image.lastIndexOf('/') + 1);
+        int at = Math.max(last.lastIndexOf(':'), last.lastIndexOf('@'));
+        return at < 0 ? "" : last.substring(at + 1);
+    }
+
     public static final List<Rule> ALL = List.of(
             new Rule("K1", "privileged container", c -> c.security().path("privileged").asBoolean(false),
                     "securityContext: {privileged: true}", "securityContext: {privileged: false}"),
             new Rule("K2", "may run as root", c -> !c.security().path("runAsNonRoot").asBoolean(false) && !c.pod().path("securityContext").path("runAsNonRoot").asBoolean(false),
                     "imagePullPolicy: Always", "securityContext: {runAsNonRoot: true}"),
             new Rule("K3", "image is latest or has no tag", c -> {
-                String image = c.container().path("image").asString("");
-                int slash = image.lastIndexOf('/');
-                String last = image.substring(slash + 1);
-                return !last.contains(":") && !last.contains("@") || last.endsWith(":latest");
+                String tag = tag(c.container().path("image").asString(""));
+                return tag.isEmpty() || tag.equals("latest");
             }, "image: shop/orders", "image: shop/web:1.8.2"),
             new Rule("K4", "no cpu and memory limits", c -> !c.container().path("resources").path("limits").has("memory") || !c.container().path("resources").path("limits").has("cpu"),
                     "imagePullPolicy: Always", "resources: {limits: {cpu: 1, memory: 1Gi}}"),

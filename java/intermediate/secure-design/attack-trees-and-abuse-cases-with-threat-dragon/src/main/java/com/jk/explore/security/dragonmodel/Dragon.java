@@ -46,7 +46,9 @@ public final class Dragon implements AutoCloseable {
         for (Map.Entry<String, String> f : files.entrySet()) {
             Files.writeString(work.resolve(f.getKey()), f.getValue());
         }
-        List<String> command = new ArrayList<>(List.of("docker", "run", "--rm", "-v", work + ":/m:ro", "--entrypoint", "node", IMAGE, "/m/validate-model.js"));
+        List<String> command = new ArrayList<>(List.of("docker", "run", "--rm",
+                "-v", work + ":/m:ro", "--entrypoint", "node",
+                IMAGE, "/m/validate-model.js"));
         files.keySet().forEach(name -> command.add("/m/" + name));
         String out = Sh.run(command);
         JsonNode result = JSON.readTree(out.lines().filter(l -> l.startsWith("{")).findFirst().orElseThrow());

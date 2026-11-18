@@ -4,7 +4,8 @@
 src/main/java/com/jk/explore/security/netiso/
 ├── Intent.java                What the design says may talk: pairs of services
 ├── Lab.java                   Real Docker networks and containers: each service is a container of the alpine image running busybox nc on its port (listening for ever, one connection after another), attached to the networks the layout gives it
-├── NetworkIsolationDemo.java  
+├── Layout.java                A network layout on paper: which services are on which network, and which networks are internal (no route out)
+├── NetworkIsolationDemo.java  Builds each layout with real Docker networks and containers, measures what reaches what, and prints the measurement next to what the layout works out on paper
 ├── Service.java               One service of the shop: a name, the port it listens on and what it is
 └── Sh.java                    The docker command, as a program
 ```
@@ -40,11 +41,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. One flat network | A taken-over front reaches the database, the cache, the admin panel and the build server; 15 of 15 pairs can talk. |
-| 2. Three networks: front, back, management | The front reaches only the application, but members of one network reach each other: 8 pairs, 2 of them unwanted. |
-| 3. The design as code, and a layout built from it | One internal network for each wanted pair measures exactly 6 pairs; a service joined to one more network is drift. |
-| 4. The edge: what is published, and what can leave | Only the front is published to the host, and only the front can reach a server on the internet side. |
-| 5. The bill | Pivots, reachable is not authorised, the Docker socket beats every rule, and a diagram of the network is a wish. |
+| 1. One flat network | Six containers on one Docker network: the taken-over front reaches every other service, and 15 of 15 pairs can talk where the design wants 6. |
+| 2. Three networks: front, back, management | Front, back and management networks cut the pairs to 8 and the front reaches only the application, but everything on the back network reaches everything else on it: 2 extra pairs. |
+| 3. The design as code, and a layout built from it | The intent is 6 pairs; a layout with one internal network per pair measures exactly 6 pairs, and a service joined to one more network is found as drift: extra db-web. |
+| 4. The edge: what is published, and what can leave | Only the front is published to the host, and only the front can reach a server on the internet side: internal networks have no way out. |
+| 5. The bill | The pivots are the services on several networks (app is on four); reachable is not authorised; the Docker socket beats every rule; one network per pair costs 7 networks for 6 services. |
 
 ## Test
 
@@ -52,7 +53,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-8 tests in `DemoRunsTest`, `IntentTest`, `IsolationTest`. The intent and the comparison are tested with no Docker. The rest create real networks and containers and remove them (./gradlew integrationTest).
+13 tests in `DemoRunsTest`, `IntentTest`, `IsolationTest`, `LayoutTest`. The intent, the comparison and the layout worked out on paper are tested with no Docker. The rest create real networks and containers and remove them (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

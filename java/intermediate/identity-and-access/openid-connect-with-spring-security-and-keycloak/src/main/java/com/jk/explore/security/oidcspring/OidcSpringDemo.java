@@ -51,6 +51,24 @@ public class OidcSpringDemo {
         out.append(text).append('\n');
     }
 
+    /** A section header: what follows is one input or one result. */
+    private static void section(StringBuilder out, String header) {
+        line(out, "  " + header);
+    }
+
+    private static void item(StringBuilder out, String text) {
+        line(out, "    " + text);
+    }
+
+    private static String pad(String text, int width) {
+        return String.format("%-" + width + "s", text);
+    }
+
+    /** Keycloak's address changes with its port, so it is printed as a placeholder. */
+    static String local(String text) {
+        return String.valueOf(text).replaceAll("http://127\\.0\\.0\\.1:\\d+", "<keycloak>");
+    }
+
     static Map<String, Object> json(String body) {
         return JSON.readValue(body, new TypeReference<Map<String, Object>>() {
         });
@@ -66,26 +84,52 @@ public class OidcSpringDemo {
         Shopper ana = new Shopper();
         HttpResponse<String> start = ana.once(store.url() + "/oauth2/authorization/bank");
         String authorize = start.headers().firstValue("Location").orElseThrow();
-        line(out, "  the store sends Ana to the bank with scope \"" + param(authorize, "scope") + "\", and a state, a nonce and a PKCE challenge kept for her browser: "
-                + (param(authorize, "state") != null && param(authorize, "nonce") != null && "S256".equals(param(authorize, "code_challenge_method"))));
+        section(out, "THE REQUEST (the store sends Ana's browser to Keycloak):");
+        item(out, local(authorize.substring(0, authorize.indexOf('?'))));
+        item(out, pad("response_type", 23) + param(authorize, "response_type"));
+        item(out, pad("client_id", 23) + param(authorize, "client_id"));
+        item(out, pad("scope", 23) + param(authorize, "scope"));
+        item(out, pad("state", 23) + (param(authorize, "state") != null ? "<random, kept in her session>" : "missing"));
+        item(out, pad("nonce", 23) + (param(authorize, "nonce") != null ? "<random, kept in her session>" : "missing"));
+        item(out, pad("code_challenge", 23) + (param(authorize, "code_challenge") != null ? "<SHA-256 of a random verifier>" : "missing"));
+        item(out, pad("code_challenge_method", 23) + param(authorize, "code_challenge_method"));
         Shopper.Page page = ana.navigate(store.url() + "/oauth2/authorization/bank", "ana", "demo-password");
         Map<String, Object> me = json(ana.get(store.url() + "/me").body());
         String nonceSent = param(page.hops().get(1), "nonce");
-        line(out, "  Ana signs in at Keycloak, never at the store; the store redeems the code itself and starts her session: " + page.hops().stream().anyMatch(h -> h.contains("/login/oauth2/code/bank?")));
-        line(out, "  the ID token's claims: " + me.get("claims"));
-        line(out, "  Ana is signed in to the store as " + String.valueOf(me.get("issuer")).replaceAll("^http://127.0.0.1:\\d+", "<keycloak>") + " | " + me.get("subject")
-                + ", with the e-mail address " + me.get("email") + " (verified: " + me.get("emailVerified") + ")");
-        line(out, "  the nonce in her ID token is the one the store sent in this sign-in: " + (nonceSent != null && nonceSent.equals(me.get("nonce"))));
+        section(out, "THE SIGN-IN:");
+        item(out, "Ana types her password at Keycloak, not the store: " + page.hops().get(1).startsWith(keycloak.base()));
+        item(out, "the store redeems the code, server to server: " + page.hops().stream().anyMatch(h -> h.contains("/login/oauth2/code/bank?")));
         Tokens.Reply reply = tokens.signIn("bank", "ana", "openid email");
         Map<String, Object> idClaims = Tokens.claims(reply.string("id_token"));
         Map<String, Object> accessClaims = Tokens.claims(reply.string("access_token"));
-        line(out, "  the reply holds two tokens: an ID token for the store (typ " + idClaims.get("typ") + ", audience " + idClaims.get("aud") + ") and an access token for the bank's API (typ "
-                + accessClaims.get("typ") + ", audience claim: " + accessClaims.containsKey("aud") + ")");
+        @SuppressWarnings("unchecked")
+        List<String> names = new java.util.ArrayList<>((java.util.Collection<String>) me.get("claims"));
+        List<String> shown = List.of("iss", "sub", "aud", "azp", "typ", "nonce", "email", "email_verified");
+        section(out, "THE ID TOKEN'S CLAIMS (" + names.size() + " claims, as the store sees them):");
+        item(out, pad("iss", 7) + local(String.valueOf(me.get("issuer"))));
+        item(out, pad("sub", 7) + me.get("subject"));
+        item(out, pad("aud", 7) + idClaims.get("aud") + ", azp " + idClaims.get("azp") + ", typ " + idClaims.get("typ"));
+        item(out, pad("nonce", 7) + "<random>, the one sent in this sign-in: " + (nonceSent != null && nonceSent.equals(me.get("nonce"))));
+        item(out, pad("email", 7) + me.get("email") + ", email_verified " + me.get("emailVerified"));
+        names.removeAll(shown);
+        item(out, pad("also", 7) + String.join(", ", names.subList(0, Math.min(6, names.size()))) + ",");
+        item(out, pad("", 7) + String.join(", ", names.subList(Math.min(6, names.size()), names.size())));
+        section(out, "THE RESULT:");
+        item(out, "Ana is signed in to the store as");
+        item(out, local(String.valueOf(me.get("issuer"))) + " | " + me.get("subject"));
+        section(out, "THE TWO TOKENS IN THE REPLY (Keycloak's token endpoint):");
+        item(out, pad("ID token", 14) + pad("typ " + idClaims.get("typ"), 12) + "aud " + idClaims.get("aud") + ": for the store");
+        item(out, pad("access token", 14) + pad("typ " + accessClaims.get("typ"), 12) + (accessClaims.containsKey("aud") ? "aud " + accessClaims.get("aud") : "no aud claim")
+                + ": for the API");
         JwtDecoder decoder = new OidcIdTokenDecoderFactory().createDecoder(store.bean(ClientRegistrationRepository.class).findByRegistrationId("bank"));
-        line(out, "  the access token handed to the store as proof of sign-in: " + refusal(() -> decoder.decode(reply.string("access_token"))) + "  <- AN ACCESS TOKEN SAYS WHAT IS ALLOWED, NOT WHO SIGNED IN");
+        section(out, "THE ACCESS TOKEN, OFFERED AS PROOF OF SIGN-IN:");
+        item(out, refusal(() -> decoder.decode(reply.string("access_token"))));
+        item(out, "<- AN ACCESS TOKEN SAYS WHAT IS ALLOWED, NOT WHO");
         Tokens.Reply noOpenid = tokens.signIn("bank", "ana", "email");
-        line(out, "  a sign-in that asks without the openid scope: no ID token in the reply: " + (noOpenid.string("id_token") == null) + ", only API access");
-        line(out, "  a callback from another sign-in, carried to Ana's browser: " + wrongState(store));
+        section(out, "A SIGN-IN WITHOUT THE openid SCOPE (scope email):");
+        item(out, "no ID token in the reply: " + (noOpenid.string("id_token") == null) + "; only API access");
+        section(out, "A CALLBACK FROM ANOTHER SIGN-IN, IN ANA'S BROWSER:");
+        item(out, wrongState(store));
     }
 
     /** Mallory signs in and her callback address, with her own state, is opened in Ana's browser, which started its own sign-in. */
@@ -95,19 +139,21 @@ public class OidcSpringDemo {
         Shopper anaBrowser = new Shopper();
         anaBrowser.once(store.url() + "/oauth2/authorization/bank");
         Shopper.Page result = anaBrowser.get(callback.url());
-        return result.url().contains("error") || result.status() >= 400 ? "refused (no sign-in started by this browser has that state)" : "accepted";
+        return result.url().contains("error") || result.status() >= 400 ? "refused: no sign-in in this browser has that state" : "accepted";
     }
 
+    /** Spring Security's own message, with its long fixed prefixes shortened so that a line fits on a slide. */
     private static String refusal(java.util.concurrent.Callable<Object> attempt) {
         try {
             attempt.call();
             return "accepted";
         } catch (Exception e) {
-            String text = String.valueOf(e.getMessage()).replace("An error occurred while attempting to decode the Jwt: ", "").replaceAll("\\s+", " ");
+            String text = String.valueOf(e.getMessage()).replace("An error occurred while attempting to decode the Jwt: ", "")
+                    .replace("The ID Token contains invalid claims: ", "invalid claims ").replaceAll("\\s+", " ");
             if (text.startsWith("Jwt expired at")) {
                 text = "expired";
             }
-            return "refused (" + text + ")";
+            return "refused: " + text;
         }
     }
 
@@ -118,58 +164,121 @@ public class OidcSpringDemo {
         OidcIdTokenDecoderFactory factory = new OidcIdTokenDecoderFactory();
         factory.setJwtValidatorFactory(r -> {
             OidcIdTokenValidator oidc = new OidcIdTokenValidator(r);
-            oidc.setClockSkew(Duration.ofSeconds(30));
-            return new DelegatingOAuth2TokenValidator<>(new JwtTimestampValidator(Duration.ofSeconds(30)), oidc);
+            oidc.setClockSkew(SKEW);
+            return new DelegatingOAuth2TokenValidator<>(new JwtTimestampValidator(SKEW), oidc);
         });
         return factory.createDecoder(registration);
     }
 
+    static final Duration SKEW = Duration.ofSeconds(30);
+
     private static void act2CheckTheIdToken(StringBuilder out, Running store, LocalProvider p) throws JOSEException {
         line(out, "TWO. Checking the ID token, as OpenID Connect Core requires.");
         JwtDecoder decoder = labDecoder(p);
-        line(out, "  the bank's own ID token: " + verdict(decoder, p.sign(p.claims().build())));
-        line(out, "  the same claims signed with a key the bank never published, under the bank's key id: " + verdict(decoder, p.signWithAnotherKey(p.claims().build())));
-        line(out, "  issuer https://bank.example/ with one extra slash: " + verdict(decoder, p.sign(p.claims().issuer("https://bank.example/").build())));
-        line(out, "  issuer https://wallet.example, signed by the bank: " + verdict(decoder, p.sign(p.claims().issuer("https://wallet.example").build())));
-        line(out, "  audience budget-app: " + verdict(decoder, p.sign(p.claims().audience("budget-app").build())));
+        section(out, "THE STORE'S SETTINGS (every ID token is checked against them):");
+        item(out, pad("issuer", 12) + LocalProvider.ISSUER);
+        item(out, pad("client_id", 12) + LocalProvider.CLIENT);
+        item(out, pad("keys", 12) + "the provider's jwks.json, key " + p.keyId());
+        item(out, pad("clock skew", 12) + SKEW.toSeconds() + " seconds");
+        JWTClaimsSet good = p.claims().build();
+        String token = p.sign(good);
+        String[] parts = token.split("\\.");
+        section(out, "BEFORE SIGNING (a test provider makes the ID token):");
+        item(out, "header  " + new String(java.util.Base64.getUrlDecoder().decode(parts[0]), java.nio.charset.StandardCharsets.UTF_8));
+        item(out, "claims  " + String.join(", ", new java.util.TreeSet<>(good.getClaims().keySet()))
+                + "; exp = iat + " + (good.getExpirationTime().getTime() - good.getIssueTime().getTime()) / 1000 + " s");
+        section(out, "HOW IT IS SIGNED (step by step):");
+        item(out, "1. header part = base64url(header)");
+        item(out, "   " + parts[0] + " (" + parts[0].length() + " chars)");
+        item(out, "2. claims part = base64url(claims): " + parts[1].length() + " chars");
+        item(out, "3. signing input = header part + \".\" + claims part");
+        item(out, "4. signature = RSA(private key, SHA-256(signing input))");
+        item(out, "   a " + p.keySize() + "-bit key gives " + java.util.Base64.getUrlDecoder().decode(parts[2]).length + " bytes = "
+                + parts[2].length() + " base64url chars");
+        section(out, "HOW SPRING SECURITY CHECKS IT (in this order):");
+        item(out, "1. the signature, with the published key named by kid");
+        item(out, "2. exp and iat against now, with " + SKEW.toSeconds() + " seconds of skew");
+        item(out, "3. iss exactly, sub present, aud has store-web, azp");
+        section(out, "THE RESULT:");
+        item(out, verdict(decoder, token));
+
+        section(out, "ONE THING CHANGED AT A TIME (the input, then the result):");
+        item(out, "signed with a key the bank never published, kid lab-key");
+        item(out, "  -> " + verdict(decoder, p.signWithAnotherKey(good)));
+        item(out, "iss https://bank.example/ (one extra slash)");
+        item(out, "  -> " + verdict(decoder, p.sign(p.claims().issuer("https://bank.example/").build())));
+        item(out, "iss https://wallet.example, signed by the bank");
+        item(out, "  -> " + verdict(decoder, p.sign(p.claims().issuer("https://wallet.example").build())));
+        item(out, "aud budget-app");
+        item(out, "  -> " + verdict(decoder, p.sign(p.claims().audience("budget-app").build())));
         JWTClaimsSet.Builder two = p.claims().audience(List.of("store-web", "budget-app"));
-        line(out, "  audiences store-web and budget-app, with no azp: " + verdict(decoder, p.sign(two.build())) + "; with azp store-web: " + verdict(decoder, p.sign(two.claim("azp", "store-web").build())));
-        line(out, "  29 seconds past its expiry, inside the 30 second skew: " + verdict(decoder, p.sign(p.expiredSecondsAgo(29).build())) + "; 31 seconds past: " + verdict(decoder, p.sign(p.expiredSecondsAgo(31).build())));
-        line(out, "  no subject: " + verdict(decoder, p.sign(p.claims().subject(null).build())));
-        line(out, "  a header saying alg none: " + verdict(decoder, p.unsigned(p.claims().build())));
-        line(out, "  the nonce is checked by the sign-in itself, against the one kept in the browser's session, and the state with it: see one");
+        item(out, "aud [store-web, budget-app], no azp");
+        item(out, "  -> " + verdict(decoder, p.sign(two.build())));
+        item(out, "aud [store-web, budget-app], azp store-web");
+        item(out, "  -> " + verdict(decoder, p.sign(two.claim("azp", "store-web").build())));
+        section(out, "THE SUBJECT, THE HEADER AND THE NONCE (input, then result):");
+        item(out, "no sub claim");
+        item(out, "  -> " + verdict(decoder, p.sign(p.claims().subject(null).build())));
+        item(out, "header {\"alg\":\"none\"}, no signature");
+        item(out, "  -> " + verdict(decoder, p.unsigned(good)));
+        item(out, "the nonce: checked by the sign-in itself, with the state,");
+        item(out, "  against the one kept in the browser's session (act one)");
+        section(out, "THE TIME CHECK (skew " + SKEW.toSeconds() + " seconds):");
+        for (long late : new long[] {29, 31}) {
+            item(out, "exp = now - " + late + " s: now " + (late < SKEW.toSeconds() ? "<" : ">") + " exp + " + SKEW.toSeconds());
+            item(out, "  -> " + verdict(decoder, p.sign(p.expiredSecondsAgo(late).build())));
+        }
     }
 
     private static String verdict(JwtDecoder decoder, String token) {
-        String r = refusal(() -> decoder.decode(token));
-        return r.equals("accepted") ? "accepted" : r;
+        return refusal(() -> decoder.decode(token));
     }
 
     private static void act3DiscoveryAndKeys(StringBuilder out, KeycloakLab keycloak, Running store, Tokens tokens, LocalProvider p) throws Exception {
         line(out, "THREE. Discovery and keys.");
-        line(out, "  the store is configured with one value, the issuer <keycloak>/realms/bank");
-        ClientRegistration found = ClientRegistrations.fromIssuerLocation(keycloak.issuer("bank")).clientId("store-web").build();
-        line(out, "  it reads <keycloak>/realms/bank/.well-known/openid-configuration, which names the issuer it asked for: " + keycloak.issuer("bank").equals(found.getProviderDetails().getIssuerUri()));
-        line(out, "  the authorization, token and key addresses all start with the issuer's own address: "
+        String issuer = keycloak.issuer("bank");
+        section(out, "THE CONFIGURATION (the store knows one value):");
+        item(out, "issuer-uri " + local(issuer));
+        section(out, "THE REQUEST:");
+        item(out, "GET " + local(issuer) + "/.well-known/");
+        item(out, "    openid-configuration");
+        ClientRegistration found = ClientRegistrations.fromIssuerLocation(issuer).clientId("store-web").build();
+        Map<String, Object> metadata = found.getProviderDetails().getConfigurationMetadata();
+        section(out, "THE RESPONSE (the fields the store uses; <iss> = issuer):");
+        item(out, pad("issuer", 23) + local(String.valueOf(metadata.get("issuer"))));
+        for (String name : List.of("authorization_endpoint", "token_endpoint", "jwks_uri", "end_session_endpoint")) {
+            item(out, pad(name, 23) + String.valueOf(metadata.get(name)).replace(issuer, "<iss>"));
+        }
+        section(out, "THE CHECKS:");
+        item(out, "issuer equals the configured issuer: " + issuer.equals(found.getProviderDetails().getIssuerUri()));
+        item(out, "the addresses start with the issuer's own address: "
                 + (found.getProviderDetails().getAuthorizationUri().startsWith(keycloak.base()) && found.getProviderDetails().getTokenUri().startsWith(keycloak.base())
                         && found.getProviderDetails().getJwkSetUri().startsWith(keycloak.base())));
+        section(out, "FORGED METADATA (a test provider; input, then result):");
         p.serveDiscovery("https://wallet.example", p.jwksUri());
-        line(out, "  a document at that address naming the issuer https://wallet.example: " + refusalOf(() -> ClientRegistrations.fromIssuerLocation(p.issuerAddress()).clientId("x").build()));
+        item(out, "issuer https://wallet.example");
+        item(out, "  -> " + refusalOf(() -> ClientRegistrations.fromIssuerLocation(p.issuerAddress()).clientId("x").build()));
+        item(out, "  <- ONE PROVIDER CANNOT POSE AS ANOTHER");
         p.serveDiscovery(p.issuerAddress(), "https://keys.example/jwks.json");
         ClientRegistration elsewhere = ClientRegistrations.fromIssuerLocation(p.issuerAddress()).clientId("x").build();
-        line(out, "  a document whose keys are on https://keys.example: accepted by Spring Security: " + "https://keys.example/jwks.json".equals(elsewhere.getProviderDetails().getJwkSetUri())
-                + "  <- IT CHECKS THE ISSUER, NOT WHERE THE KEYS ARE: THE ISSUER ADDRESS MUST BE https AND TRUSTED");
+        item(out, "jwks_uri https://keys.example/jwks.json");
+        item(out, "  -> accepted by Spring Security: " + "https://keys.example/jwks.json".equals(elsewhere.getProviderDetails().getJwkSetUri()));
+        item(out, "  <- IT CHECKS THE ISSUER, NOT WHERE THE KEYS ARE,");
+        item(out, "  <- SO THE ISSUER ADDRESS MUST BE https AND TRUSTED");
         int before = LocalProvider.kidsOf(keycloak.certs("bank")).size();
         JwtDecoder decoder = new OidcIdTokenDecoderFactory().createDecoder(store.bean(ClientRegistrationRepository.class).findByRegistrationId("bank"));
         String oldToken = tokens.signIn("bank", "ana", "openid email").string("id_token");
-        line(out, "  Keycloak publishes " + before + " signing key; a token signed with it: " + refusal(() -> decoder.decode(oldToken)));
+        section(out, "KEY ROTATION (step by step, on the real Keycloak):");
+        item(out, "1. Keycloak publishes " + before + " signing key");
+        item(out, "   a token signed with it: " + refusal(() -> decoder.decode(oldToken)));
         keycloak.addSigningKey("bank");
         int after = LocalProvider.kidsOf(keycloak.certs("bank")).size();
         String newToken = tokens.signIn("bank", "ana", "openid email").string("id_token");
-        line(out, "  the bank adds a second key and signs new tokens with it; it now publishes " + after + ", and the new token names a key id the store has not seen: "
+        item(out, "2. the bank adds a key and signs new tokens with it");
+        item(out, "   keys published: " + after + "; the new token's kid is new: "
                 + !Tokens.header(newToken).get("kid").equals(Tokens.header(oldToken).get("kid")));
-        line(out, "  the store reloads the key set on its own: a token signed with the old key: " + refusal(() -> decoder.decode(oldToken)) + "; with the new key: " + refusal(() -> decoder.decode(newToken)));
-        line(out, "  over real HTTP on this machine: metadata and keys loaded: true, an ID token from that provider accepted: " + !refusal(() -> decoder.decode(newToken)).startsWith("refused"));
+        item(out, "3. the store reloads the key set on its own");
+        item(out, "   old key's token: " + refusal(() -> decoder.decode(oldToken)) + "; new key's: " + refusal(() -> decoder.decode(newToken)));
     }
 
     private static String refusalOf(java.util.concurrent.Callable<Object> attempt) {
@@ -177,7 +286,7 @@ public class OidcSpringDemo {
             attempt.call();
             return "accepted";
         } catch (Exception e) {
-            return e.getMessage() != null && e.getMessage().startsWith("The Issuer") ? "refused (the metadata names another issuer)  <- ONE PROVIDER CANNOT POSE AS ANOTHER" : "refused (" + e.getMessage() + ")";
+            return e.getMessage() != null && e.getMessage().startsWith("The Issuer") ? "refused: the metadata names another issuer" : "refused: " + e.getMessage();
         }
     }
 
@@ -189,15 +298,26 @@ public class OidcSpringDemo {
         mallory.navigate(store.url() + "/oauth2/authorization/wallet", "mal", "demo-password");
         Map<String, Object> anaMe = json(ana.get(store.url() + "/me").body());
         Map<String, Object> malMe = json(mallory.get(store.url() + "/me").body());
-        line(out, "  the bank says " + anaMe.get("subject") + " has the e-mail address " + anaMe.get("email") + ", verified: " + anaMe.get("emailVerified"));
-        line(out, "  the wallet says its user " + malMe.get("subject") + " also has the e-mail address " + malMe.get("email") + ", verified: " + malMe.get("emailVerified"));
-        line(out, "  a store that keys accounts by e-mail address: Mallory signs in with the wallet and gets: " + json(mallory.get(store.url() + "/account?keyedBy=email").body()).get("account") + "  <- ACCOUNT TAKEOVER");
-        line(out, "  keyed by issuer and subject: Ana gets " + json(ana.get(store.url() + "/account?keyedBy=subject").body()).get("account") + ", Mallory gets "
-                + json(mallory.get(store.url() + "/account?keyedBy=subject").body()).get("account"));
+        section(out, "THE TWO PROVIDERS SAY (realm, subject, e-mail address):");
+        item(out, pad("bank", 8) + anaMe.get("subject"));
+        item(out, pad("", 8) + anaMe.get("email") + ", verified " + anaMe.get("emailVerified"));
+        item(out, pad("wallet", 8) + malMe.get("subject"));
+        item(out, pad("", 8) + malMe.get("email") + ", verified " + malMe.get("emailVerified"));
+        section(out, "BEFORE THE FIX (the store keys accounts by e-mail address):");
+        item(out, "Mallory signs in with the wallet and gets:");
+        item(out, "  " + json(mallory.get(store.url() + "/account?keyedBy=email").body()).get("account") + "  <- ACCOUNT TAKEOVER");
+        section(out, "AFTER THE FIX (accounts keyed by issuer and subject):");
+        item(out, "Ana gets: " + json(ana.get(store.url() + "/account?keyedBy=subject").body()).get("account"));
+        item(out, "Mallory gets:");
+        item(out, "  " + json(mallory.get(store.url() + "/account?keyedBy=subject").body()).get("account"));
         Tokens.Reply reply = tokens.signIn("bank", "ana", "openid email");
         HttpResponse<String> info = tokens.userinfo(reply.string("access_token"));
-        line(out, "  userinfo with Ana's access token: " + info.statusCode() + ", sub " + json(info.body()).get("sub") + ", the same subject as the ID token: " + json(info.body()).get("sub").equals(Tokens.claims(reply.string("id_token")).get("sub")));
-        line(out, "  userinfo with the ID token instead: " + (tokens.userinfo(reply.string("id_token")).statusCode() == 401 ? "refused (401)" : "accepted"));
+        section(out, "THE USERINFO REQUEST (input, then result):");
+        item(out, "Ana's access token");
+        item(out, "  -> " + info.statusCode() + ", sub " + json(info.body()).get("sub"));
+        item(out, "  -> the same subject as the ID token: " + json(info.body()).get("sub").equals(Tokens.claims(reply.string("id_token")).get("sub")));
+        item(out, "the ID token instead");
+        item(out, "  -> " + (tokens.userinfo(reply.string("id_token")).statusCode() == 401 ? "refused (401)" : "accepted"));
     }
 
     private static void act5SigningOut(StringBuilder out, KeycloakLab keycloak, Running store, Tokens tokens) throws Exception {
@@ -206,13 +326,16 @@ public class OidcSpringDemo {
         ana.navigate(store.url() + "/oauth2/authorization/bank", "ana", "demo-password");
         String csrf = String.valueOf(json(ana.get(store.url() + "/csrf").body()).get("token"));
         Shopper.Page logout = ana.post(store.url() + "/logout", "_csrf=" + Shopper.enc(csrf));
-        line(out, "  Ana signs out at the store: the store's session ended: " + (ana.get(store.url() + "/me").status() == 401));
-        line(out, "  her browser is sent to <keycloak>/realms/bank/protocol/openid-connect/logout with id_token_hint, post_logout_redirect_uri: "
+        section(out, "ANA SIGNS OUT AT THE STORE (RP-initiated logout):");
+        item(out, "the store's session ended: " + (ana.get(store.url() + "/me").status() == 401));
+        item(out, "her browser is sent to");
+        item(out, local(logout.url().substring(0, logout.url().indexOf('?'))));
+        item(out, "with id_token_hint and post_logout_redirect_uri: "
                 + (logout.url().contains("/protocol/openid-connect/logout") && logout.url().contains("id_token_hint=") && logout.url().contains("post_logout_redirect_uri=")));
         Shopper.Page back = ana.navigate(logout.url(), null, null);
-        line(out, "  Keycloak ends its session and sends the browser back to the store: " + back.url().startsWith(store.url() + "/"));
+        item(out, "Keycloak ends its session, sends her back: " + back.url().startsWith(store.url() + "/"));
         Shopper.Page again = ana.get(store.url() + "/oauth2/authorization/bank");
-        line(out, "  signing in again asks for her password again: " + again.body().contains("kc-form-login"));
+        item(out, "signing in again asks for her password: " + again.body().contains("kc-form-login"));
 
         Shopper laptop = new Shopper();
         Shopper phone = new Shopper();
@@ -220,7 +343,8 @@ public class OidcSpringDemo {
         phone.navigate(store.url() + "/oauth2/authorization/bank", "ana", "demo-password");
         String laptopSession = String.valueOf(json(laptop.get(store.url() + "/me").body()).get("sid"));
         String phoneSession = String.valueOf(json(phone.get(store.url() + "/me").body()).get("sid"));
-        line(out, "  Ana is signed in on a laptop and a phone: two Keycloak sessions: " + !laptopSession.equals(phoneSession));
+        section(out, "BEFORE THE LOGOUT TOKEN (Ana on a laptop and a phone):");
+        item(out, "two Keycloak sessions, two sids: " + !laptopSession.equals(phoneSession));
         int ended = keycloak.endSession("bank", laptopSession);
         boolean laptopOut = false;
         for (int i = 0; i < 40 && !laptopOut; i++) {
@@ -229,17 +353,25 @@ public class OidcSpringDemo {
                 Thread.sleep(250);
             }
         }
-        line(out, "  Keycloak ends the laptop's session (" + ended + ") and sends the store a back-channel logout token: the laptop signed in: " + !laptopOut
-                + ", the phone signed in: " + (phone.get(store.url() + "/me").status() == 200));
+        section(out, "THE LOGOUT TOKEN (Keycloak, server to server):");
+        item(out, "Keycloak ends the laptop's session (answer " + ended + ")");
+        item(out, "and POSTs a logout token with that sid to the store:");
+        item(out, "/logout/connect/back-channel/bank");
+        section(out, "AFTER THE LOGOUT TOKEN:");
+        item(out, "laptop signed in: " + !laptopOut + "; phone signed in: " + (phone.get(store.url() + "/me").status() == 200));
         Tokens.Reply reply = tokens.signIn("bank", "ana", "openid email");
         java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
-        for (String[] bad : List.of(new String[] {"a made-up logout token", "not.a.token"}, new String[] {"an ID token sent as a logout token", reply.string("id_token")})) {
+        section(out, "BROKEN LOGOUT TOKENS (input, then result):");
+        for (String[] bad : List.of(new String[] {"a made-up logout token, not.a.token", "not.a.token"}, new String[] {"an ID token sent as a logout token", reply.string("id_token")})) {
             int status = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(store.url() + "/logout/connect/back-channel/bank")).header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString("logout_token=" + Shopper.enc(bad[1]))).build(), java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode();
-            line(out, "  " + bad[0] + ": refused (the store answered " + status + ")" + ", the phone still signed in: " + (phone.get(store.url() + "/me").status() == 200));
+            item(out, bad[0]);
+            item(out, "  -> refused, the store answered " + status + "; phone still in: " + (phone.get(store.url() + "/me").status() == 200));
         }
-        line(out, "  OpenID Connect has many checks and options, so production code uses a certified library and a real provider");
-        line(out, "  the ID token is for the store only: never send it to an API, and never take an access token as a sign-in");
-        line(out, "  signing out must reach every party: the store, the provider, and through back-channel logout every other application");
+        section(out, "THE BILL:");
+        item(out, "many checks and options: use a certified library");
+        item(out, "the ID token stays in the store; never take an access token");
+        item(out, "  as a sign-in");
+        item(out, "sign-out must reach the store, the provider and every app");
     }
 }

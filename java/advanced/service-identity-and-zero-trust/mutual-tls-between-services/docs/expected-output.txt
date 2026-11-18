@@ -1,35 +1,75 @@
---- the private CA and the identity in a certificate
-certificates issued by step-ca for the ledger and 3 callers; chain sent by a caller: 2 certificates (leaf and intermediate)
-subject name: CN=svc-payments-7, identity the ledger uses: payments (the URI in the SAN, not the name)
---- who gets in
-no client certificate: handshake refused
-a certificate from another CA that names itself payments: handshake refused
-requests that reached the ledger's own code in those two calls: 0
-a ledger whose certificate names another host, called by payments (the client checks the server too): handshake refused
-payments, POST /transfers: 200
-payments, GET /statements: 403
-reporting, GET /statements: 200
-reporting, POST /transfers: 403
-fraud-engine (valid certificate, no rule), POST /transfers: 403
---- identity, not the network
-allow the trusted network: payments and reporting both on the same host, POST /transfers allowed for 2 of 2
-allow by certificate identity: the same two callers, allowed for 1 of 2
---- rotation: a certificate that lives 8 seconds
-lifetime of the certificate: 8 seconds, accepted now: yes
-a second CA is not in the server's trust file: handshake refused
-renewed halfway through its life: new serial number yes, later expiry yes
-the server reloaded its certificate and trust file without a restart: clients now see a new server certificate yes
-the second CA after adding it to the trust file: 200 (it can now mint any identity, payments included)
-the first certificate after its expiry: handshake refused, requests that reached the ledger's own code: 0
-the renewed certificate: 200
-calls made on new connections during the renewal and the reload: at least 20 yes, failed 0
---- a compromised certificate
-a copy of the certificate and key, used from another process: 200
-revoked at the CA, on its revocation list: yes
-the same certificate at the ledger afterwards: 200
-after the ledger loads the revocation list: 403, certificate revoked
-the payments certificate that was not revoked: 200
---- the bill
-the CA records a revocation but a server that does not read the list never learns of it: the certificate works until it expires
-a short lifetime is the revocation that always works, and it costs a renewal job that must not fail
-a CA in the trust file can mint any identity: the trust file is part of the policy
+ONE. The identity in a certificate.
+  THE INPUT: WHAT step-ca ISSUED (subject, then the URI SAN):
+    ledger        CN=ledger              DNS localhost
+    payments      CN=svc-payments-7      spiffe://bank/payments
+    reporting     CN=svc-reporting-2     spiffe://bank/reporting
+    fraud-engine  CN=svc-fraud-engine-1  spiffe://bank/fraud-engine
+  THE CHAIN payments SENDS (2 certificates), CHECKED BY HAND:
+    1 svc-payments-7
+      issuer Bank Internal CA Intermediate CA, verified: yes
+    2 Bank Internal CA Intermediate CA
+      issuer Bank Internal CA Root CA, verified: yes
+    the root Bank Internal CA Root CA: in trust.pem (1 root)
+    trusted by hand: yes
+  HOW THE LEDGER READS THE IDENTITY:
+    the subject CN=svc-payments-7: not used
+    the SAN URI spiffe://bank/payments
+    remove the prefix spiffe://bank/: payments
+  THE KEY AND THE LIFETIME OF payments:
+    key EC, signed with SHA256withECDSA
+    notAfter - notBefore = 600 seconds = 10 minutes
+TWO. Who gets through the handshake.
+  THE CALLS (POST /transfers):
+    1 no client certificate
+    2 a certificate that names URI spiffe://bank/payments
+      issued by Partner Bank CA
+    3 payments, to a ledger whose certificate names
+      DNS ledger-old.bank.internal (asked for: localhost)
+  THE RESULT:
+    1 handshake refused (the ledger wants a certificate)
+    2 handshake refused (its issuer is not in trust.pem)
+    requests that reached the ledger's own code: 0
+    3 handshake refused by the client (the name does not fit)
+THREE. Allowed by identity, not by the network.
+  THE LEDGER'S RULES:
+    POST /transfers  payments
+    GET /statements  reporting
+  THE REQUESTS AND THE ANSWERS:
+    payments      POST /transfers  200  done for payments
+    payments      GET /statements  403  may not GET /statements
+    reporting     GET /statements  200  done for reporting
+    reporting     POST /transfers  403  may not POST /transfers
+    fraud-engine  POST /transfers  403  may not POST /transfers
+  THE SAME TWO CALLERS ON ONE HOST, POST /transfers:
+    allowed because they are on the network:  2 of 2
+    allowed by the identity in the certificate: 1 of 2
+FOUR. Rotation: a certificate that lives 8 seconds.
+  THE INPUT:
+    payments' certificate, notAfter - notBefore = 8 seconds
+    accepted now: yes
+    a caller keeps calling on new connections meanwhile
+  THE RENEWAL, HALFWAY THROUGH ITS LIFE:
+    new serial number: yes, later expiry: yes
+  THE SERVER RELOADS, WITHOUT A RESTART:
+    a renewed server certificate: clients see it: yes
+    roots in trust.pem: 1, then 2 (Partner Bank CA added)
+    Partner Bank CA's payments: handshake refused before, 200 after
+  THE RESULT:
+    the first certificate after its expiry: handshake refused
+      requests that reached the ledger's own code: 0
+    the renewed certificate: 200
+    calls meanwhile: at least 20: yes, failed: 0
+FIVE. A stolen certificate, and revocation.
+  THE INPUT:
+    a copy of payments' certificate and key, from another process
+    it calls POST /transfers: 200
+  REVOKED AT THE CA:
+    on the CA's revocation list (CRL): yes, entries 1
+  THE RESULT AT THE LEDGER:
+    before the ledger reads the list: 200
+    after it reads the list: 403, certificate revoked
+    payments' own certificate, not revoked: 200
+  THE BILL:
+    a revocation works only where the list is read
+    a short lifetime is the revocation that always works
+    every CA in trust.pem can mint any identity

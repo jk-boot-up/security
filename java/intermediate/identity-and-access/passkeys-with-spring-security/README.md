@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Registering a passkey: the bank keeps only a public key | The bank sends a challenge, its relying party id and a user handle; the phone returns a credential id and an attestation object; the bank stores a COSE public key and a counter of 0, nothing that can sign. |
-| 2. Signing in: a fresh challenge, signed once | Every sign-in gets a new challenge; the phone signs the authenticator data and the hash of the client data; a replayed answer, an answer for another browser's challenge and a flipped flag are refused. |
-| 3. A look-alike site gets nothing it can use | A copy of the bank's page cannot get a passkey for the bank's name, the browser refuses the bank's relying party id for it, and the bank refuses the page's real origin; a typed password is not so lucky. |
-| 4. User verification, and counters against copies | Spring Security's defaults accept a touch without a fingerprint, a counter going backwards and a clone; a wrapper requires user verification and suspends a passkey whose counter does not go up. |
-| 5. The bill: recovery, lost devices and the move away from passwords | Ben has a phone and a security key; the laptop has nothing, the key works, removing the lost phone's passkey ends its use; the password stays beside the passkeys until the bank switches it off for customers with two. |
+| 1. Registering a passkey: the bank keeps only a public key | Spring Security sends a 32-byte challenge, the relying party bank.example, a 32-byte user handle, algorithms -8, -7 and -257, user verification preferred and attestation none; the phone returns a 16-byte credential id and a 77-byte COSE public key; the bank stores nothing that can sign. |
+| 2. Signing in: a fresh challenge, signed once | Every call to /webauthn/authenticate/options gives a new 32-byte challenge; the phone signs 37 bytes of authenticator data (relying party id hash, flags 05, counter 1) and the SHA-256 of the client data, 69 bytes; Spring Security answers 200, then 401 for a replay, another browser's challenge and edited flags. |
+| 3. A look-alike site gets nothing it can use | On bank-example.test the phone has no passkey for that name; the browser works out that bank-example.test is neither bank.example nor ends with .bank.example; a browser that skipped the rule still signs the real origin, which is not among the allowed origins, so Spring Security answers 401; a typed password works. |
+| 4. User verification, and counters against copies | With Spring Security's defaults (user verification preferred) a touch with flags 01, a counter that went back from 3 to 1 and a copied key are all accepted; the hardened bank requires verification, refuses flags 01, accepts 05, and after counter 6 refuses a copy signing with 7 and suspends the passkey; a synced passkey (flags 1d) reports 0. |
+| 5. The bill: recovery, lost devices and the move away from passwords | Ben's new laptop has nothing, his security key works, DELETE /webauthn/register removes the lost phone's passkey (204) so a thief with it gets 401; Ana's password works until the bank switches it off for customers with 2 passkeys; Ben, with none, keeps his. |
 
 ## Test
 
@@ -58,11 +58,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-31 tests in `CborTest`, `DemoRunsTest`, `PasskeysSpringTest`, `SoftwareAuthenticatorTest`. No Docker is needed: each test starts a real bank on a free loopback port. Keys and challenges are random on every run; only statuses, lengths and reasons are checked.
+33 tests in `CborTest`, `DemoRunsTest`, `PasskeysSpringTest`, `SoftwareAuthenticatorTest`. No Docker is needed: each test starts a real bank on a free loopback port. Keys and challenges are random on every run; only statuses, lengths and reasons are checked.
 
 ## What the simulation got right, and what it left out
 
-The bank is a real Spring Boot application with Spring Security's WebAuthn endpoints, on a loopback port. The authenticator and the browser rules are written in Java and build the same CBOR, COSE keys, authenticator data and signatures that a phone does. The relying party id and origin are bank.example, whatever address the server listens on. Keys, challenges and credential ids are fresh on every run and are never printed.
+The bank is a real Spring Boot application with Spring Security's WebAuthn endpoints, on a loopback port. The authenticator and the browser rules are written in Java and build the same CBOR, COSE keys, authenticator data and signatures that a phone does. The relying party id and origin are bank.example, whatever address the server listens on. Challenges, user handles, keys and signatures are fresh on every run, so the demo prints them as placeholders (`<32 random bytes>`) and shows only what is fixed: sizes, option fields, the relying party id hash, flags, counters and HTTP statuses.
 
 ## Technologies and versions
 

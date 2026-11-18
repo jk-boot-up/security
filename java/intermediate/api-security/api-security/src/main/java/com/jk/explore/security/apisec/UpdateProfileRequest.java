@@ -1,12 +1,12 @@
 package com.jk.explore.security.apisec;
 
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** The only things a customer may change about an account, read from the JSON by name, with unknown fields refused rather than ignored. */
 public record UpdateProfileRequest(String displayName, String email) {
 
-    private static final Set<String> FIELDS = Set.of("displayName", "email");
+    static final List<String> FIELDS = List.of("displayName", "email");
 
     public static UpdateProfileRequest parse(Map<String, Object> body) {
         for (String key : body.keySet()) {

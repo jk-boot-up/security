@@ -23,7 +23,7 @@ Teams install a mesh and assume the cluster is safe, without measuring encryptio
 | The policy objects | `Policies` |
 | The design and the scoring | `Design` |
 | Proxy counters and certificates | `Metrics`, `CertInfo` |
-| The packet capture | `Sniffer` |
+| The packet capture and its reading | `Sniffer`, `Wire` |
 | Entry point | `ServiceMeshMtlsDemo` |
 
 ## Requirements
@@ -39,10 +39,10 @@ Teams install a mesh and assume the cluster is safe, without measuring encryptio
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 58 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:40, 1920×1080, narrated in the amy-slow voice |
+| Tests | 20, all passing |
+| Demo output | 110 lines, identical on every run |
+| Acts | 6 |
+| Video | 19:18, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

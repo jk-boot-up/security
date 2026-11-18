@@ -2,10 +2,13 @@
 
 ```
 src/main/java/com/jk/explore/security/sbomscan/
+├── Gate.java          The deployment gate: no critical or high advisory in the store's own libraries, except a high one that has a written exception that has not run out
 ├── Lab.java           The images of the lesson, built on the machine from a base image that is already here and a few library jars from Maven Central, and catalogued and scanned with the real syft and grype commands
+├── Purl.java          A teaching class: a package URL split into its parts
 ├── Sbom.java          A CycloneDX bill of materials written by syft, read back
 ├── SbomScanDemo.java  Runs the store's bill-of-materials story in five numbered acts with the real syft and grype commands on images built on this machine
-└── Scan.java          What grype found in an image or in a bill of materials
+├── Scan.java          What grype found in an image or in a bill of materials
+└── Versions.java      Compares versions as numbers, so that 2.9 sorts before 2.17, the way an advisory's "fixed in" version is compared with an installed one
 ```
 
 **A bill of materials written by syft lists every library an image contains by package URL, grype matches those packages against a vulnerability database, and a deployment gate can refuse critical and high advisories except where a written exception with an end date covers a high one; but a scanner finds only what the cataloguer recognises, a bill describes exactly one image, the database is data that ages, and a finding is a question, not a verdict.**
@@ -39,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What a bill of materials answers | syft lists the libraries of an image by package URL, with hashes and licences, and says nothing about who built it. |
-| 2. Scanning it against known advisories | grype finds log4j-shell and its follow-ups in the image and in the bill alone, and says which versions fix them. |
-| 3. Fixing it, and checking that it is fixed | The new bill differs from the old in exactly the libraries that changed, and the new scan has no critical or high advisory in log4j. |
-| 4. A gate that reads the scan | No critical or high advisory in the store's own libraries; a high one may have a written exception with an end date, a critical one may not. |
-| 5. The bill | A renamed jar is found by no scanner, a bill describes one image only, the database ages, and a finding is a question, not a verdict. |
+| 1. What a bill of materials answers, and what it does not | syft catalogues shop-sbom:2.14.1 into a CycloneDX bill: the Alpine packages and the two log4j jars by package URL, each jar with a SHA-1 that matches the jar itself; it names the image, not the repository, the commit or the builder. |
+| 2. Scanning it against known advisories | grype matches the bill's packages against its database: log4j-core 2.14.1 has two critical advisories, CVE-2021-44228 and CVE-2021-45046, and one high, CVE-2021-45105, fixed in 2.15.0, 2.16.0 and 2.17.0; scanning the bill alone finds the same. |
+| 3. Fixing it, and checking that it is fixed | The fixes needed are 2.15.0, 2.16.0 and 2.17.0, so at least 2.17.0; the team builds shop-sbom:2.25.5. The two bills differ in exactly the two log4j libraries, the OS packages are the same, and critical and high advisories in log4j go from 3 to 0. |
+| 4. A gate that reads the scan | The gate refuses any critical or high advisory in the store's libraries; a written exception may cover a high one until its end day. 2.14.1 is refused with or without it, 2.16.0 is refused, deployed with the exception on day 100, refused on day 130, and 2.25.5 is deployed. |
+| 5. The bill | The same log4j-core 2.14.1 jar renamed blob.dat is listed by syft as no log4j library and gets no grype advisory; the bill for shop-sbom:2.14.1 does not describe shop-sbom:2.25.5; and a scan cannot see tomorrow's advisories, whether the code is called, or who built the image. |
 
 ## Test
 
@@ -51,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `SbomScanTest`. The tests build the four images once for the whole class and need Docker, syft and grype (./gradlew integrationTest).
+21 tests in `DemoRunsTest`, `GateAndVersionsTest`, `SbomParseTest`, `SbomScanTest`. The tests build the four images once for the whole class and need Docker, syft and grype (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 
@@ -91,7 +94,7 @@ syft writes the bill, grype matches it, the gate decides.
 
 ### Where each piece sits
 
-The lab builds images and runs commands, two records read the tools' JSON, the demo is the gate.
+The lab builds images and runs commands, two records read the tools' JSON, and the gate decides.
 
 ![The classes and what they hold](docs/images/class-diagram.png)
 

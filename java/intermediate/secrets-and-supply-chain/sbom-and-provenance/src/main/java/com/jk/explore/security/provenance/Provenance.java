@@ -27,7 +27,8 @@ final class Provenance {
                 "predicate", Json.object(
                         "buildDefinition", Json.object(
                                 "buildType", BUILD_TYPE,
-                                "externalParameters", Json.object("repository", source.repository(), "ref", source.ref()),
+                                "externalParameters", Json.object(
+                                        "repository", source.repository(), "ref", source.ref()),
                                 "internalParameters", Json.object(),
                                 "resolvedDependencies", List.of(Json.object(
                                         "uri", "git+" + source.repository() + "@" + source.ref(),

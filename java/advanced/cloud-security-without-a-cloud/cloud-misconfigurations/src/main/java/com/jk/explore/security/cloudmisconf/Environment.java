@@ -1,6 +1,13 @@
 package com.jk.explore.security.cloudmisconf;
 
+import java.util.ArrayList;
 import java.util.List;
+import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping;
+import software.amazon.awssdk.services.ec2.model.EbsBlockDevice;
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.ResourceType;
+import software.amazon.awssdk.services.ec2.model.Tag;
+import software.amazon.awssdk.services.ec2.model.TagSpecification;
 import software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
 import software.amazon.awssdk.services.ec2.model.CreateSecurityGroupRequest;
 import software.amazon.awssdk.services.ec2.model.CreateVolumeRequest;
@@ -32,6 +39,9 @@ public final class Environment {
     static final String POLICY_READ = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::bank-statements/*\"}]}";
     static final String PUBLIC_BUCKET_POLICY = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::bank-exports/*\"}]}";
 
+    static final String IMAGE = "ami-03cf127a";
+    static final TagSpecification NAME_WEB = TagSpecification.builder().resourceType(ResourceType.INSTANCE).tags(Tag.builder().key("Name").value("web").build()).build();
+
     private Environment() {
     }
 
@@ -54,7 +64,7 @@ public final class Environment {
         ingress(c, web, 22, "0.0.0.0/0");
         String db = c.ec2().createSecurityGroup(CreateSecurityGroupRequest.builder().groupName("database").description("database").build()).groupId();
         ingress(c, db, 5432, "0.0.0.0/0");
-        c.ec2().runInstances(RunInstancesRequest.builder().imageId("ami-03cf127a").minCount(1).maxCount(1).securityGroupIds(web)
+        c.ec2().runInstances(RunInstancesRequest.builder().imageId(IMAGE).minCount(1).maxCount(1).securityGroupIds(web).tagSpecifications(NAME_WEB)
                 .metadataOptions(InstanceMetadataOptionsRequest.builder().httpTokens(HttpTokensState.OPTIONAL).httpPutResponseHopLimit(2).build()).build());
         c.ec2().createVolume(CreateVolumeRequest.builder().availabilityZone("eu-west-1a").size(8).encrypted(false).build());
     }
@@ -73,50 +83,63 @@ public final class Environment {
         c.s3().putBucketVersioning(PutBucketVersioningRequest.builder().bucket(name).versioningConfiguration(VersioningConfiguration.builder().status(BucketVersioningStatus.ENABLED).build()).build());
     }
 
-    public static List<String> buckets() {
-        return List.of("bank-statements", "bank-exports", "bank-audit");
+    /** One change made by the fixes: "edit" changes a resource in place, "replace" deletes it and creates a new one. */
+    public record Fix(String kind, String what) {
+        @Override
+        public String toString() {
+            return String.format("%-8s %s", kind, what);
+        }
     }
 
-    /** The fixes: close the public doors, encrypt, keep versions, narrow the policy, close the ports, require tokens, and replace what cannot be changed in place (the disks and the server). */
-    public static void harden(Cloud c) {
-        for (String b : List.of("bank-statements", "bank-exports")) {
-            c.s3().putBucketAcl(PutBucketAclRequest.builder().bucket(b).acl(BucketCannedACL.PRIVATE).build());
-            try {
-                c.s3().deleteBucketPolicy(r -> r.bucket(b));
-            } catch (software.amazon.awssdk.services.s3.model.S3Exception e) {
-                // there was none
-            }
-            hardenBucket(c, b);
-        }
+    /**
+     * The fixes: close the public doors, encrypt, keep versions, narrow the policy, close the ports and require tokens, all
+     * in place; then replace what cannot be changed in place, because a disk cannot be encrypted after it was made.
+     */
+    public static List<Fix> harden(Cloud c) {
+        List<Fix> done = new ArrayList<>();
+        c.s3().putBucketAcl(PutBucketAclRequest.builder().bucket("bank-statements").acl(BucketCannedACL.PRIVATE).build());
+        done.add(new Fix("edit", "ACL private on bank-statements"));
+        c.s3().deleteBucketPolicy(r -> r.bucket("bank-exports"));
+        done.add(new Fix("edit", "bucket policy deleted on bank-exports"));
+        hardenBucket(c, "bank-statements");
+        hardenBucket(c, "bank-exports");
+        done.add(new Fix("edit", "block all, AES256, versions on 2 buckets"));
         var policy = c.iam().listPolicies(r -> r.scope("Local")).policies().stream().filter(p -> p.policyName().equals("developer-everything")).findFirst().orElseThrow();
         c.iam().createPolicyVersion(r -> r.policyArn(policy.arn()).policyDocument(POLICY_READ).setAsDefault(true));
         c.iam().deletePolicyVersion(r -> r.policyArn(policy.arn()).versionId("v1"));
+        done.add(new Fix("edit", "developer-everything: s3:GetObject only"));
         for (var g : c.ec2().describeSecurityGroups().securityGroups()) {
-            if (g.groupName().equals("web") || g.groupName().equals("database")) {
-                for (IpPermission p : g.ipPermissions()) {
-                    if (p.fromPort() == 22 || p.fromPort() == 5432) {
-                        c.ec2().revokeSecurityGroupIngress(r -> r.groupId(g.groupId()).ipPermissions(p));
-                    }
+            for (IpPermission p : g.ipPermissions()) {
+                if (p.fromPort() != null && (p.fromPort() == 22 || p.fromPort() == 5432)) {
+                    c.ec2().revokeSecurityGroupIngress(r -> r.groupId(g.groupId()).ipPermissions(p));
+                    done.add(new Fix("edit", "port " + p.fromPort() + " closed on group " + g.groupName()));
                 }
             }
         }
-        for (var r : c.ec2().describeInstances().reservations()) {
-            for (var i : r.instances()) {
-                c.ec2().terminateInstances(t -> t.instanceIds(i.instanceId()));
-            }
-        }
-        for (var v : c.ec2().describeVolumes().volumes()) {
-            if (!Boolean.TRUE.equals(v.encrypted())) {
-                try {
-                    c.ec2().deleteVolume(d -> d.volumeId(v.volumeId()));
-                } catch (software.amazon.awssdk.services.ec2.model.Ec2Exception e) {
-                    // still attached to the old server
-                }
-            }
-        }
-        c.ec2().runInstances(RunInstancesRequest.builder().imageId("ami-03cf127a").minCount(1).maxCount(1)
-                .blockDeviceMappings(software.amazon.awssdk.services.ec2.model.BlockDeviceMapping.builder().deviceName("/dev/sda1").ebs(software.amazon.awssdk.services.ec2.model.EbsBlockDevice.builder().encrypted(true).volumeSize(8).build()).build())
+        Instance old = c.ec2().describeInstances().reservations().getFirst().instances().getFirst();
+        c.ec2().modifyInstanceMetadataOptions(r -> r.instanceId(old.instanceId())
+                .httpTokens(HttpTokensState.REQUIRED).httpPutResponseHopLimit(1));
+        done.add(new Fix("edit", "tokens required, hop limit 1 on server web"));
+        c.ec2().terminateInstances(t -> t.instanceIds(old.instanceId()));
+        c.ec2().runInstances(RunInstancesRequest.builder().imageId(IMAGE).minCount(1).maxCount(1).tagSpecifications(NAME_WEB)
+                .blockDeviceMappings(BlockDeviceMapping.builder().deviceName("/dev/sda1").ebs(EbsBlockDevice.builder().encrypted(true).volumeSize(8).build()).build())
                 .metadataOptions(InstanceMetadataOptionsRequest.builder().httpTokens(HttpTokensState.REQUIRED).httpPutResponseHopLimit(1).build()).build());
+        done.add(new Fix("replace", "server web: new, with an encrypted root disk"));
+        for (var v : c.ec2().describeVolumes().volumes()) {
+            if (!Boolean.TRUE.equals(v.encrypted()) && v.attachments().isEmpty()) {
+                c.ec2().deleteVolume(d -> d.volumeId(v.volumeId()));
+            }
+        }
         c.ec2().createVolume(CreateVolumeRequest.builder().availabilityZone("eu-west-1a").size(8).encrypted(true).build());
+        done.add(new Fix("replace", "data disk: new, encrypted"));
+        return done;
+    }
+
+    /** What the emulator answers to a public policy and a public ACL on a bucket whose public access is blocked. */
+    public static List<String> tryToOpen(Cloud c, String bucket) {
+        String policy = PUBLIC_BUCKET_POLICY.replace("bank-exports", bucket);
+        int byPolicy = c.s3().putBucketPolicy(r -> r.bucket(bucket).policy(policy)).sdkHttpResponse().statusCode();
+        int byAcl = c.s3().putBucketAcl(r -> r.bucket(bucket).acl(BucketCannedACL.PUBLIC_READ)).sdkHttpResponse().statusCode();
+        return List.of(String.format("%-16s %d accepted", "PutBucketPolicy", byPolicy), String.format("%-16s %d accepted", "PutBucketAcl", byAcl));
     }
 }

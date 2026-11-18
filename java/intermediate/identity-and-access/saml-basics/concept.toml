@@ -66,84 +66,235 @@ The OAuth and OIDC projects ([oauth2-authorization-code-pkce](../oauth2-authoriz
 """
 twin = """
 The signatures are real: the JDK's `javax.xml.crypto.dsig` API signs and validates the assertions with RSA-2048 and SHA-256. The responses are shaped like SAML 2.0 responses with the elements that matter here, not the full schema.
-Keys and ids are random and never printed; the clock is fixed.
+The clock and the assertion ids are fixed, so digests are the same on every run; the RSA keys are new on every run, so signature values are shown as placeholders.
 """
-test_note = "Keys and ids are random and never printed, and the clock is fixed, so the demo prints the same text on every run."
+test_note = "The demo prints the same text on every run (fixed clock and assertion ids). SignatureStepsTest proves that the digest and the RSA check redone by hand give the library's exact verdict, and SamlTest covers each provider against each attack."
 
 [[act]]
 title = "Signing in through the bank"
-summary = "A genuine response signs Ana in with both the trusting provider and the strict one."
+summary = "The shop sends Ana's browser to the bank with request req-1; the bank answers with a signed assertion a1 that names ana@bank.example, answers req-1, is for https://shop.example and is valid from 09:59:00 to 10:05:00; both the trusting and the strict provider sign her in."
 detail = """
-The IdP signs the assertion for ana@bank.example and the shop checks it. All providers accept a genuine response: the weaknesses only show when somebody edits the document.
+The request: an AuthnRequest with ID req-1 from https://shop.example, asking for the answer at https://shop.example/acs. The response: an assertion
+with ID a1, issued at 2026-03-01T10:00:00Z by https://idp.bank.example, whose NameID is ana@bank.example. It answers req-1 (InResponseTo), is sent
+to https://shop.example/acs (Recipient), is meant for https://shop.example (Audience), and is valid from NotBefore 09:59:00 (issued minus 60
+seconds) to NotOnOrAfter 10:05:00 (issued plus 300 seconds). Its signature sits inside the assertion and covers #a1. Every provider accepts a
+genuine response: the weaknesses only show when somebody edits the document.
+"""
+figure = "signin_flow"
+figure_title = "The request, and the signed assertion that comes back"
+figure_speech = """
+First demo: a sign-in, request and response. [[slnc 400]] On the left, the request. [[slnc 300]] The shop sends Ana's browser to the bank, with a request whose I D is req one. [[slnc 300]] It says where the answer must come back: the shop's assertion consumer address. [[slnc 700]]
+On the right, the response: the assertion, which is the bank's signed statement. [[slnc 300]] Its I D is a one. [[slnc 300]] The issuer is the bank. [[slnc 300]] The name I D, ana at bank dot example, says who signed in. [[slnc 300]] In response to, req one, says which request it answers. [[slnc 300]] The recipient and the audience say it is for this shop. [[slnc 300]] Not before, and not on or after, give a window of six minutes. [[slnc 300]] And the signature sits inside the assertion, and covers the element with I D a one. [[slnc 700]]
+Both the trusting provider and the strict one sign Ana in.
 """
 speech = """
-First demo: signing in through the bank. [[slnc 400]] The identity provider signs a statement about Ana. [[slnc 300]] Every provider accepts a genuine response. [[slnc 300]] The weaknesses only show when someone edits the document.
+Here is the real output. [[slnc 400]] The request: I D req one, from the shop. [[slnc 300]] The answer must come back to the shop's slash a c s address. [[slnc 500]] The response, field by field. [[slnc 300]] Not before is the issue time minus sixty seconds. [[slnc 300]] Not on or after is the issue time plus three hundred seconds. [[slnc 300]] The signature covers hash a one.
+[[page]]
+The result: both providers sign Ana in. [[slnc 300]] A genuine response is easy. [[slnc 300]] The weaknesses only show when someone edits the document.
 """
 rows = { genuine = "active ok" }
 console = [
-    ["trusting provider, genuine response -> signed in as ana@bank.example", "ok"],
-    ["strict provider, genuine response -> signed in as ana@bank.example", "ok"],
+    ["THE REQUEST (the shop sends Ana's browser to the bank):", "code"],
+    ["  AuthnRequest  ID req-1, from https://shop.example", "muted"],
+    ["  reply to      https://shop.example/acs", "muted"],
+    ["THE RESPONSE (the bank's signed assertion, what matters):", "code"],
+    ["  Assertion ID  a1, issued 2026-03-01T10:00:00Z", "muted"],
+    ["  Issuer        https://idp.bank.example  (who says so)", "muted"],
+    ["  NameID        ana@bank.example  (who signed in)", "muted"],
+    ["  InResponseTo  req-1  (answers this request)", "muted"],
+    ["  Recipient     https://shop.example/acs", "muted"],
+    ["  Audience      https://shop.example  (for this shop)", "muted"],
+    ["  NotBefore     2026-03-01T09:59:00Z  = issued - 60 s", "muted"],
+    ["  NotOnOrAfter  2026-03-01T10:05:00Z  = issued + 300 s", "muted"],
+    ["  Signature     inside the assertion, covers #a1", "muted"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  trusting provider              -> signed in as ana@bank.example", "ok"],
+    ["  strict provider                -> signed in as ana@bank.example", "ok"],
+]
+
+[[act]]
+title = "How the bank signs the assertion"
+summary = "The bank drops the Signature element, canonicalizes the assertion to 614 bytes, hashes them with SHA-256 into the DigestValue, puts that into a 640-byte SignedInfo and signs SignedInfo with RSA-SHA256; the shop redoes the digest and the RSA check by hand and gets the library's verdict."
+detail = """
+The input is the assertion a1 as XML. Step 1 (the enveloped transform): the Signature element itself is left out. Step 2: exclusive XML
+canonicalization writes the assertion in one exact form, 614 bytes, so that spaces and namespace prefixes cannot change the result. Step 3: the
+DigestValue is the SHA-256 of those bytes, in base64; it is the same on every run because the ids and the clock are fixed. Step 4: SignedInfo
+holds the Reference URI #a1 and that DigestValue, 640 bytes once canonicalized. Step 5: the SignatureValue is RSA-SHA256 over SignedInfo with the
+bank's private key, 256 bytes; the key is new on every run, so the value is shown as a placeholder. The shop checks it in reverse, by hand: the
+SHA-256 of the same bytes equals the DigestValue, and RSA verification of SignedInfo with the bank's public key succeeds; the library's
+XMLSignature.validate agrees. The signature covers #a1 and nothing else.
+"""
+figure = "digest_steps"
+figure_title = "How the signature is made, step by step"
+figure_speech = """
+Second demo: how the bank's signature is made. [[slnc 400]] At the top, before signing: the assertion, as X M L. [[slnc 600]]
+Step one. The signature will sit inside the assertion, so it leaves itself out. [[slnc 300]] Step two. The assertion is written in one exact form, called canonical X M L. [[slnc 300]] That is six hundred and fourteen bytes. [[slnc 300]] Step three. Those bytes are hashed with S H A two fifty six. [[slnc 300]] That gives the digest value. [[slnc 300]] Step four. The digest value and the I D a one go into a small element called signed info. [[slnc 300]] Step five. The bank signs signed info with its private R S A key. [[slnc 700]]
+The digest is the same on every run, because the ids and the clock are fixed. [[slnc 300]] The signature value is not, because the demo makes a new key each time. [[slnc 500]] At the bottom, the shop redoes both checks by hand, and they agree with the library.
+"""
+speech = """
+Here is the output. [[slnc 400]] The assertion, before signing, starts like this. [[slnc 300]] Six hundred and fourteen bytes, once canonical. [[slnc 400]] Then the five steps. [[slnc 300]] The digest value, in base sixty four. [[slnc 300]] Signed info, six hundred and forty bytes. [[slnc 300]] And the signature value: two hundred and fifty six bytes, shown as a placeholder.
+[[page]]
+After signing, the signature sits inside the assertion. [[slnc 300]] It carries the reference, the digest, the value, and the signer's public key. [[slnc 500]] The shop checks it by hand. [[slnc 300]] The hash of the same bytes equals the digest value. [[slnc 300]] R S A verification with the bank's key is true. [[slnc 300]] And the library agrees. [[slnc 400]] The signature covers a one, and nothing else.
+"""
+rows = { genuine = "active ok" }
+console = [
+    ["BEFORE SIGNING (the assertion, as XML):", "code"],
+    ["  <saml:Assertion xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:as...", "muted"],
+    ["  <saml:Issuer>https://idp.bank.example</saml:Issuer><saml:S...", "muted"],
+    ["  (614 bytes once canonicalized)", "muted"],
+    ["HOW THE BANK SIGNS IT (step by step):", "code"],
+    ["  1. drop the Signature element itself (enveloped)", "muted"],
+    ["  2. canonicalize: exclusive XML c14n -> 614 bytes", "muted"],
+    ["  3. DigestValue = base64(SHA-256(those bytes))", "muted"],
+    ["     Wx5yAVx5mk5fBilLz82ytRLo9aaIj/66yEPlHDlh7zM=", "muted"],
+    ["  4. SignedInfo = Reference #a1 + DigestValue -> 640 bytes", "muted"],
+    ["  5. SignatureValue = RSA-SHA256(bank's private key, SignedInfo)", "muted"],
+    ["     256 bytes = <random: a new RSA key on every run>", "muted"],
+    ["---", ""],
+    ["AFTER SIGNING (inside the assertion, after the Issuer):", "code"],
+    ["  <ds:Signature> Reference URI #a1, DigestValue, SignatureValue,", "muted"],
+    ["                 KeyInfo: the signer's RSA public key", "muted"],
+    ["HOW THE SHOP CHECKS IT (redone by hand, with the bank's key):", "code"],
+    ["  1. SHA-256 of the same bytes again = DigestValue: true", "muted"],
+    ["  2. RSA verify of SignedInfo, the bank's public key: true", "muted"],
+    ["  3. the library's XMLSignature.validate agrees: true", "muted"],
+    ["THE RESULT:", "code"],
+    ["  the signature covers #a1 and nothing else", "muted"],
 ]
 
 [[act]]
 title = "A valid signature is not the same as the bank's signature"
-summary = "A response the attacker signs with their own key signs them in as admin at the trusting provider; a provider that pins the bank's key refuses it, and any edit of a signed name breaks the signature."
+summary = "A response the attacker signs with their own key is valid with the key in its KeyInfo, so the trusting provider signs them in as admin; with the bank's pinned key it is not valid and is refused; editing the name in a genuine response changes the digest and is refused too."
 detail = """
-The signature carries the signer's public key. A provider that validates with that key proves only that someone signed the document, and the attacker signs "admin@bank.example" with their own key: the trusting provider signs them in as admin.
-A provider that pins the identity provider's key refuses it. Editing the name inside a genuine signed assertion changes what the signature covers, and every provider refuses that.
+The input: the same XML shape with NameID admin@bank.example, signed with the attacker's own key, whose public half sits in KeyInfo. Before the
+fix, the trusting provider validates with the key the message carries: the signature is valid, and the attacker is signed in as
+admin@bank.example. After the fix, the pinned-key provider validates with the bank's key, known in advance: the signature is not valid, and the
+response is refused. Then one name is edited in a genuine response: the DigestValue in SignedInfo still says what the bank signed, but the SHA-256
+of the edited assertion is different, so the signature is not valid.
+"""
+figure = "whose_key"
+figure_title = "Whose key made the signature?"
+figure_speech = """
+Third demo: whose key made the signature? [[slnc 400]] At the top, the input. [[slnc 300]] The attacker builds the same X M L, names the admin, and signs it with their own key. [[slnc 300]] The public half of that key travels inside the message, in key info. [[slnc 700]]
+On the left, before the fix. [[slnc 300]] The trusting shop checks the signature with the key the message carries. [[slnc 300]] Of course it is valid. [[slnc 300]] The attacker is signed in as the admin. [[slnc 600]]
+On the right, after the fix. [[slnc 300]] The shop checks with the bank's key, which it was given in advance. [[slnc 300]] Not valid: refused. [[slnc 700]]
+At the bottom, a name edited in a genuine response. [[slnc 300]] The digest the bank signed and the digest of the edited assertion are different. [[slnc 300]] So any edit breaks the signature.
 """
 speech = """
-Second demo: a valid signature is not the same as the bank's signature. [[slnc 400]] The signature carries the signer's own public key. [[slnc 300]] The attacker signs a statement about the admin with their own key. [[slnc 600]]
-The trusting provider checks the signature against the key in the message, and signs them in. [[slnc 300]] A provider that pins the bank's key refuses it. [[slnc 300]] And editing a signed name breaks the signature.
+Here is the output. [[slnc 400]] The attacker's response names the admin, and carries the attacker's key. [[slnc 400]] Before the fix: valid with the key it carries, and signed in as admin. [[slnc 300]] Anyone can sign. [[slnc 400]] After the fix: not valid with the bank's key. [[slnc 300]] Refused.
+[[page]]
+Now a genuine response, with one name edited. [[slnc 400]] The digest value as signed, and the hash of the edited assertion. [[slnc 300]] They differ. [[slnc 300]] Refused: the signature is not valid.
 """
 rows = { trust = "active wrong" }
 console = [
-    ["trusting provider, self-signed -> signed in as admin@bank.example  <- ANYONE CAN SIGN", "bad"],
-    ["pinned-key provider, self-signed -> refused: signature is not valid", "ok"],
-    ["pinned-key provider, edited name -> refused: signature is not valid", "ok"],
+    ["THE ATTACKER'S RESPONSE (same XML, the attacker's own key):", "code"],
+    ["  NameID   admin@bank.example", "muted"],
+    ["  KeyInfo  the attacker's public key, inside the message", "muted"],
+    ["BEFORE THE FIX (trusting provider: the key in KeyInfo):", "code"],
+    ["  signature valid with the key it carries: true", "muted"],
+    ["  -> signed in as admin@bank.example", "bad"],
+    ["  <- ANYONE CAN SIGN", "amber"],
+    ["AFTER THE FIX (pinned-key provider: the bank's key only):", "code"],
+    ["  signature valid with the bank's key: false", "muted"],
+    ["  -> refused: signature is not valid", "ok"],
+    ["---", ""],
+    ["ONE NAME EDITED IN THE GENUINE RESPONSE (the input):", "code"],
+    ["  NameID ana@bank.example -> admin@bank.example", "muted"],
+    ["THE DIGEST, AS SIGNED AND AFTER THE EDIT:", "code"],
+    ["  DigestValue  Wx5yAVx5mk5fBilLz82ytRLo9aaIj/66yEPlHDlh7zM=", "muted"],
+    ["  SHA-256 now  lwyut96xNH6vh7kdE/FybSbFShbhJ04L/DTzEFb+8tM=", "muted"],
+    ["THE RESULT:", "code"],
+    ["  -> refused: signature is not valid", "ok"],
 ]
 
 [[act]]
-title = "A valid signature on one assertion, and another one read"
-summary = "Signature wrapping fools the pinned-key provider into signing in the attacker as admin; the strict provider refuses the wrapped response, a self-signed one and an edited one."
+title = "Signature wrapping: one assertion checked, another read"
+summary = "The attacker moves the genuine signed assertion a1 into an Extensions element and puts an unsigned copy forged-1 naming admin first; the pinned-key provider validates the signature over #a1, reads forged-1 and signs in admin; the strict provider counts two assertions and refuses, and it also refuses the self-signed and edited responses."
 detail = """
-The attacker leaves the genuine signed assertion intact but moves it into an Extensions element, and puts an unsigned copy naming admin@bank.example first. The pinned-key provider asks "is the first signature valid?" (yes, the genuine one, with the bank's key)
-and then reads the first assertion in the file, which is the forged one: signed in as admin. The strict provider requires exactly one assertion, directly under the response, with its own signature inside it, whose validated reference is that same element. The wrapped response has two
-assertions and is refused.
+The input: the attacker keeps the genuine signed assertion a1 untouched but moves it into samlp:Extensions, and puts an unsigned copy with ID
+forged-1 and NameID admin@bank.example first in the response. Before the fix, the pinned-key provider asks "is the first signature valid with the
+bank's key?" (yes, it covers #a1) and then reads the first assertion in the document: forged-1, admin@bank.example. After the fix, the strict
+provider requires exactly one assertion, directly under the response, with its own signature inside it, whose validated reference is that same
+element. The wrapped response has two assertions and is refused. The strict provider refuses the self-signed and the edited responses as well.
+"""
+figure = "wrapping_tree"
+figure_title = "The signature covers one element; the code reads another"
+figure_speech = """
+Fourth demo: signature wrapping. [[slnc 400]] At the top, the input: the wrapped response. [[slnc 300]] The attacker keeps the bank's signed assertion, a one, exactly as it was, and tucks it into an extensions element. [[slnc 300]] Then an unsigned copy, forged one, naming the admin, goes first. [[slnc 700]]
+Before the fix, the pinned-key shop asks two separate questions. [[slnc 300]] Is the first signature valid, with the bank's key? [[slnc 300]] Yes: it covers a one. [[slnc 300]] Then, what does the first assertion say? [[slnc 300]] It reads forged one, and signs in the admin. [[slnc 700]]
+After the fix, the strict shop requires exactly one assertion, with the signature inside it, and reads only the element the signature covers. [[slnc 300]] There are two assertions, so it refuses.
 """
 speech = """
-Third demo: a valid signature on one assertion, and another one read. [[slnc 400]] The attacker keeps the genuine signed assertion, and moves it aside. [[slnc 300]] An unsigned copy, with another name, goes first. [[slnc 600]]
-The provider checks that a signature is valid. It is. [[slnc 300]] Then it reads the first assertion, which is the forged one. [[slnc 600]]
-The strict provider reads only the element the signature covers, and refuses a response with two assertions.
+Here is the output. [[slnc 400]] The wrapped response: forged one first, unsigned. [[slnc 300]] Then the extensions element, with a one and its signature inside. [[slnc 500]] Before the fix: the first signature is valid, and covers a one. [[slnc 300]] The first assertion read is forged one. [[slnc 300]] Signed in as admin. [[slnc 300]] Checked one element, read another.
+[[page]]
+After the fix: two assertions in the document. [[slnc 300]] Refused. [[slnc 400]] And the strict provider refuses the other two attacks as well: the self-signed response and the edited one.
 """
 rows = { wrap = "active wrong", strict = "active ok" }
 console = [
-    ["pinned-key provider, wrapped -> signed in as admin@bank.example  <- CHECKED ONE ELEMENT, READ ANOTHER", "bad"],
-    ["strict provider, wrapped -> refused: exactly one assertion is required", "ok"],
-    ["strict provider, self-signed -> refused: signature is not valid", "ok"],
-    ["strict provider, edited name -> refused: signature is not valid", "ok"],
+    ["THE WRAPPED RESPONSE (the attacker moves the signed one):", "code"],
+    ["  samlp:Response", "muted"],
+    ["    saml:Assertion ID forged-1, NameID admin@bank.example, unsigned", "muted"],
+    ["    samlp:Extensions", "muted"],
+    ["      saml:Assertion ID a1, NameID ana@bank.example", "muted"],
+    ["        ds:Signature covers #a1", "muted"],
+    ["BEFORE THE FIX (pinned-key provider):", "code"],
+    ["  1. first signature, the bank's key: valid true, covers #a1", "muted"],
+    ["  2. first assertion read: ID forged-1, NameID admin@bank.example", "muted"],
+    ["  -> signed in as admin@bank.example", "bad"],
+    ["  <- CHECKED ONE ELEMENT, READ ANOTHER", "amber"],
+    ["---", ""],
+    ["AFTER THE FIX (strict provider: read only what is signed):", "code"],
+    ["  assertions in the document: 2", "muted"],
+    ["  -> refused: exactly one assertion is required", "ok"],
+    ["THE STRICT PROVIDER AND THE OTHER TWO ATTACKS:", "code"],
+    ["  self-signed                    -> refused: signature is not valid", "ok"],
+    ["  edited name                    -> refused: signature is not valid", "ok"],
 ]
 
 [[act]]
 title = "The statement itself is checked"
-summary = "The strict provider refuses a replayed response, an expired assertion, one for another shop, one that answers another request, and a document with a DOCTYPE."
+summary = "With a valid signature, the strict provider still checks the issuer, the time window with 60 seconds of skew, the audience, the request and replay; it signs Ana in once, then refuses the same response again, an assertion that expired at 09:10:00, one for https://other.example, one answering req-999, and a document with a DOCTYPE."
 detail = """
-A genuine assertion with a valid signature can still be unfit: a response used a second time (the provider remembers assertion ids), an assertion past its NotOnOrAfter, one meant for a different audience, one that answers a request this browser did not make
-(InResponseTo), and one sent to another address. A response with a DOCTYPE is refused before it is parsed any further.
+A genuine assertion with a valid signature can still be unfit. At now 2026-03-01T10:00:00Z the strict provider checks: the issuer is
+https://idp.bank.example; NotBefore minus 60 seconds is not after now and now is before NotOnOrAfter plus 60 seconds; the audience is
+https://shop.example; InResponseTo is req-1, the request this browser made; and assertion a2 has not been seen before. Ana is signed in. Then one
+thing at a time: the same response again (the provider remembers assertion ids), an assertion whose NotOnOrAfter was 09:10:00, one meant for
+https://other.example, one answering req-999, and a document with a DOCTYPE, refused before it is parsed any further.
+"""
+figure = "time_window"
+figure_title = "A genuine signature, and the statement still checked"
+figure_speech = """
+Fifth demo: the statement itself is checked. [[slnc 400]] At the top, the time window. [[slnc 300]] The assertion is valid from not before, nine fifty nine, to not on or after, ten oh five. [[slnc 300]] The shop allows sixty seconds of clock difference on each side. [[slnc 300]] Now is ten o'clock: inside. [[slnc 300]] An assertion that ran out at nine ten is far outside. [[slnc 700]]
+At the bottom, one thing changed at a time. [[slnc 300]] The same response a second time. [[slnc 300]] An expired one. [[slnc 300]] One meant for another shop. [[slnc 300]] One that answers a request this browser never made. [[slnc 300]] And a document with a doc type. [[slnc 500]] Each one has a genuine signature, and each one is refused.
 """
 speech = """
-Fourth demo: the statement itself is checked. [[slnc 400]] The first sign-in works. [[slnc 300]] The same response used again is refused. [[slnc 600]]
-An expired assertion is refused. [[slnc 300]] So is one meant for another shop, and one that answers a different request. [[slnc 600]]
-And a document with a doctype is refused before it is read.
+Here is the output. [[slnc 400]] The strict provider's checks on a fresh response, a two. [[slnc 300]] The issuer, the time window, the audience, the request, and replay. [[slnc 300]] All true. [[slnc 300]] Ana is signed in.
+[[page]]
+Now one thing changed at a time. [[slnc 400]] The same response again: already used. [[slnc 300]] Not on or after, fifty minutes ago: outside its validity period. [[slnc 300]] Another shop's audience: refused. [[slnc 300]] A request this browser never made: refused. [[slnc 300]] And a doc type with an external entity: refused before it is read.
 """
 rows = { checks = "active ok" }
 console = [
-    ["genuine response, first time -> signed in as ana@bank.example", "ok"],
-    ["the same response replayed -> refused: assertion already used", "ok"],
-    ["expired assertion -> refused: assertion is outside its validity period", "ok"],
-    ["meant for another shop -> refused: assertion is for another audience", "ok"],
-    ["answers another request -> refused: assertion answers another request", "ok"],
-    ["response with a DOCTYPE -> refused: not well-formed XML or has a DOCTYPE", "ok"],
+    ["THE STRICT PROVIDER'S CHECKS (now 2026-03-01T10:00:00Z):", "code"],
+    ["  issuer   https://idp.bank.example: true", "muted"],
+    ["  time     NotBefore - 60 s <= now < NotOnOrAfter + 60 s: true", "muted"],
+    ["  audience https://shop.example: true", "muted"],
+    ["  request  InResponseTo req-1 is the one this browser made: true", "muted"],
+    ["  replay   assertion id a2 not seen before: true", "muted"],
+    ["THE RESULT:", "code"],
+    ["  genuine response, first time   -> signed in as ana@bank.example", "ok"],
+    ["---", ""],
+    ["ONE THING CHANGED AT A TIME (the input, then the result):", "code"],
+    ["  the same response again (assertion a2)", "muted"],
+    ["    -> refused: assertion already used", "ok"],
+    ["  NotOnOrAfter 2026-03-01T09:10:00Z (50 minutes ago)", "muted"],
+    ["    -> refused: assertion is outside its validity period", "ok"],
+    ["  Audience https://other.example (another shop)", "muted"],
+    ["    -> refused: assertion is for another audience", "ok"],
+    ["  InResponseTo req-999 (a request this browser never made)", "muted"],
+    ["    -> refused: assertion answers another request", "ok"],
+    ["  <!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]>", "muted"],
+    ["    -> refused: not well-formed XML or has a DOCTYPE", "ok"],
 ]
 
 [animation]
@@ -188,7 +339,8 @@ objectives = [
     "say why a vetted library is the production answer",
 ]
 walkthrough = """
-Run act two and ask whose key validated the self-signed response. In act three, point at the two assertions and ask which one the signature covers and which one the provider read. In act four, ask what each check would let an attacker do if it were missing.
+Run act two and follow the five signing steps with the printed byte counts. In act three, ask whose key validated the self-signed response. In act four, point at the two assertions and ask which one the signature covers and which one the provider read. In act five, ask what each check would let an attacker do if it were missing.
+
 """
 exercises = [
     "Add a second wrapping variant: put the forged assertion after the genuine one, and see which providers read it.",
@@ -410,25 +562,45 @@ residual = "Very large documents within the size limit of the web server"
 
 [poster]
 headline = [["SAML SIGNATURE", "text"], ["WRAPPING", "accent"]]
-taglines = [["A valid signature is not the same as the statement you believed", "gold"]]
-before = { code = "trusting provider, genuine response -> signed in as ", note = "Signing in through the bank", tag = "BEFORE" }
-after = { code = "read only what was signed", note = "The statement itself is checked", tag = "AFTER" }
+taglines = [["Read only what the bank signed", "gold"]]
+before = { code = "read Assertion[0]", note = "checked one, read another", tag = "BEFORE" }
+after = { code = "read #a1, the signed one", note = "pinned key, one assertion", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "SAML Single Sign-On and Signature Wrapping"
-narration = "Hello, and welcome. [[slnc 400]] This video explains SAML single sign on, and the signature wrapping attack, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] With SAML, a customer signs in at their bank, and the bank sends the shop a signed X M L statement: this is Ana. [[slnc 300]] The shop must trust only the bank's own key, and then read only the part of the document that the signature covers. [[slnc 300]] A valid signature somewhere in the document says nothing about the part the code happens to read. [[slnc 600]] Think of a signed letter, with an unsigned page slipped in on top. [[slnc 600]] Our example is a shop that signs customers in through their bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains SAML single sign on, and the signature wrapping attack, in Java. [[slnc 300]] SAML is the security assertion markup language. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] With SAML, a customer signs in at their bank, and the bank sends the shop a signed X M L statement: this is Ana. [[slnc 300]] The shop must trust only the bank's own key, and then read only the part of the document that the signature covers. [[slnc 300]] A valid signature somewhere in the document says nothing about the part the code happens to read. [[slnc 600]] Think of a notary's stamp on one page of a bundle. [[slnc 300]] A clerk who sees a genuine stamp somewhere, and then reads the first page, is fooled by a forged page on top. [[slnc 600]] Our example is an online shop that signs customers in through their bank."
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
-body = ["A shop lets customers sign in", "through their bank.", "", "The demo builds real SAML-style responses,", "signed with the JDK's XML signature API,", "and runs three shops against them:", "  trusting, pinned-key, and strict."]
-narration = "Here is the scenario. [[slnc 400]] A shop lets customers sign in through their bank. [[slnc 500]] The demo builds real SAML style responses, and signs them with the J D K's own X M L signature A P I. [[slnc 500]] Then it runs three versions of the shop against genuine, self-signed, edited, wrapped, replayed, and expired responses: one that trusts the key in the message, one that pins the bank's key, and a strict one."
+body = ["An online shop lets customers sign in", "through their bank.", "", "The demo builds real SAML-style responses,", "signed with the JDK's XML signature API,", "and runs three shops against them:", "  trusting, pinned-key, and strict."]
+narration = "Here is the scenario. [[slnc 400]] An online shop lets customers sign in through their bank. [[slnc 500]] The demo builds real SAML style responses, and signs them with the J D K's own X M L signature A P I. [[slnc 500]] Then it runs three versions of the shop against genuine, self-signed, edited, wrapped, replayed, and expired responses: one that trusts the key in the message, one that pins the bank's key, and a strict one."
 
 [[scene]]
-key = "03-acts"
+key = "03-words"
+kind = "bullets"
+title = "The Words"
+body = ["Identity provider: the bank, which signs", "Service provider: the shop, which checks", "Assertion: the signed statement, this is Ana", "Signature: covers one element, by its ID", "Wrapping: sign one element, read another"]
+narration = "Before the demos, the words. [[slnc 500]] The identity provider is the bank: it signs. [[slnc 500]] The service provider is the shop: it checks. [[slnc 500]] The assertion is the signed statement: this is Ana. [[slnc 500]] An X M L signature covers one element, named by its I D. [[slnc 500]] And signature wrapping means the signature covers one element, while the code reads another."
+
+[[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "03-two-questions"
+kind = "figure"
+title = "A signature answers two questions"
+body = "two_questions"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] A signature answers two questions. [[slnc 300]] Whose key made it? [[slnc 300]] And which element does it cover? [[slnc 700]] The table shows three shops. [[slnc 300]] The trusting shop takes the key from the message, so a self-signed response signs the attacker in as admin. [[slnc 500]] The pinned-key shop uses the bank's key, but reads the first assertion in the file, so a wrapped response signs the attacker in too. [[slnc 500]] The strict shop uses the bank's key, and reads only the element the signature covers. [[slnc 300]] Both attacks are refused. [[slnc 600]] That is the core of this video: trust only the bank's key, and read only what that key signed."""
+
+[[scene]]
+key = "acts"
 kind = "acts"
 title = "Acts"
 narration = "unused"
@@ -441,18 +613,11 @@ body = ["XML signatures are hard to use correctly", "A pinned key needs a rotati
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] X M L signatures are hard to use correctly, which is why a maintained library is the right choice. [[slnc 500]] Pinning the bank's key needs a plan for when the bank changes it. [[slnc 500]] The clocks of the bank and the shop must roughly agree. [[slnc 500]] Refusing a replayed assertion means remembering every id for a while. [[slnc 300]] And encrypted assertions, logout, and attribute mapping are more work again."
 
 [[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Idp: the bank, which signs assertions", "SignatureCheck: validates an XML signature", "TrustingServiceProvider: trusts any key", "PinnedKeyServiceProvider: pins the bank's key", "StrictServiceProvider: reads only what is signed", "Attacks, Xml: the forgeries; SamlDemo: the demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Idp is the bank, which signs assertions with its private key. [[slnc 300]] SignatureCheck validates an X M L signature. [[slnc 500]] TrustingServiceProvider trusts whatever key the message carries. [[slnc 300]] PinnedKeyServiceProvider trusts only the bank's key, but still reads the first assertion. [[slnc 300]] StrictServiceProvider reads only what the signature covers, and checks the statement itself. [[slnc 500]] Attacks and Xml make the forgeries, and SamlDemo runs the four demos."
-
-[[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
-body = ["Signing in at work through another site", "A SAMLResponse field in the network tab", "CVEs about \"XML signature wrapping\"", "A KeyInfo element inside a signature"]
-narration = "You have probably met this already. [[slnc 400]] Signing in to a work tool through another site, and coming back, is often SAML. [[slnc 500]] A SAML response field, in the browser's network tab, is the signed statement on its way. [[slnc 500]] Security advisories about X M L signature wrapping are the third demo, in real products. [[slnc 500]] And a key info element inside a signature is the key the trusting shop wrongly believed."
+body = ["Signing in at work through another site", "A SAMLResponse field in the network tab", "Advisories about \"XML signature wrapping\"", "A KeyInfo element inside a signature"]
+narration = "You have probably met this already. [[slnc 400]] Signing in to a work tool through another site, and coming back, is often SAML. [[slnc 500]] A SAML response field, in the browser's network tab, is the signed statement on its way. [[slnc 500]] Security advisories about X M L signature wrapping are the fourth demo, in real products. [[slnc 500]] And a key info element inside a signature is the key the trusting shop wrongly believed."
 
 [[scene]]
 key = "07-verdict"
@@ -462,8 +627,183 @@ body = ["Use a maintained SAML library", "Pin the bank's key; ignore the one in 
 narration = "So, how do you use it? [[slnc 400]] Use a maintained SAML library, and keep it patched. [[slnc 300]] Pin the bank's key, and ignore any key in the message. [[slnc 500]] Require exactly one assertion, with its own signature. [[slnc 300]] Read only the element that the signature covers. [[slnc 500]] Check the expiry, the audience, and the request it answers, and refuse a replay. [[slnc 300]] And refuse any doc type, before the document is read."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Put the forged assertion after", "the genuine one, and see which shops read it."]
-narration = "That's SAML single sign on and signature wrapping. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A valid signature is not the same as the statement you believed, so trust only the bank's key, and read only what that key signed. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Put the forged assertion after the genuine one, and see which shops read it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+narration = "That's SAML single sign on and signature wrapping. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A valid signature is not the same as the statement you believed, so trust only the bank's key, and read only what that key signed. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine, with nothing installed except a Java development kit. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Put the forged assertion after the genuine one, and see which shops read it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Everything runs in one Java process, with a fixed clock and fixed assertion ids, so every run prints the same text. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Idp"
+what = "the bank: signs the assertion, puts its key in KeyInfo"
+[[class.part]]
+title = "an enveloped signature over #ID"
+code = """
+String uri = "#" + assertion.getAttribute("ID");
+DigestMethod sha256 = f.newDigestMethod(DigestMethod.SHA256, null);
+...
+Reference ref = f.newReference(uri, sha256, transforms, null, null);
+...
+KeyInfo ki = kif.newKeyInfo(List.of(kif.newKeyValue(signer.getPublic())));
+...
+f.newXMLSignature(si, ki).sign(ctx);
+"""
+speech = """The identity provider plays the bank. [[slnc 300]] Its reference points at the assertion by its I D, with an S H A two fifty six digest. [[slnc 300]] It puts its public key into key info, as many identity providers do, and signs."""
+
+[[class]]
+name = "SignatureSteps"
+what = "a teaching class: the digest and the RSA check, by hand"
+[[class.part]]
+title = "the digest, then the signature"
+code = """
+byte[] canonical = readAll(ref.getDigestInputStream());
+MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+String byHand = Base64.getEncoder().encodeToString(sha256.digest(canonical));
+...
+Signature rsa = Signature.getInstance("SHA256withRSA");
+rsa.initVerify(key);
+rsa.update(signedInfo);
+boolean signatureByHand = rsa.verify(value);
+"""
+speech = """This class redoes the second demo by hand. [[slnc 300]] It hashes the canonical bytes of the assertion, and verifies signed info with R S A. [[slnc 300]] A test proves it gives exactly the library's verdict."""
+
+[[class]]
+name = "SignatureCheck"
+what = "validates one XML signature; who supplies the key is the difference"
+[[class.part]]
+title = "the key from the message, or the pinned key"
+code = """
+if (o instanceof KeyValue kv) {
+...
+static KeySelector pinned(PublicKey trusted) {
+    return KeySelector.singletonKeySelector(trusted);
+}
+"""
+speech = """The embedded key selector takes the key out of the message: that is the trusting shop. [[slnc 300]] The pinned selector only ever returns the bank's key, which the shop was given in advance."""
+
+[[class]]
+name = "PinnedKeyServiceProvider"
+what = "pins the bank's key, but reads the first assertion"
+[[class.part]]
+title = "two questions, two different elements"
+code = """
+SignatureCheck.validate(doc, (Element) sigs.get(0), pinned(idpKey));
+// the FIRST assertion in the document, signed or not
+Element assertion = (Element) Xml.byName(doc, Xml.SAML, "Assertion").item(0);
+return Xml.text(assertion, Xml.SAML, "NameID");
+"""
+speech = """This is the wrapping bug. [[slnc 300]] The first signature is validated with the bank's key. [[slnc 300]] Then the first assertion in the document is read, whether or not that signature covers it."""
+
+[[class]]
+name = "StrictServiceProvider"
+what = "reads only what the signature covers, then checks the statement"
+[[class.part]]
+title = "one assertion, the one that was signed"
+code = """
+if (assertions.getLength() != 1) {
+    throw new SamlRefused("exactly one assertion is required");
+}
+...
+Element signature = (Element) sigs.get(0);
+SignatureCheck.Result checked = SignatureCheck.validate(doc, signature, pinned(idpKey));
+String id = assertion.getAttribute("ID");
+if (id.isEmpty() || !id.equals(checked.coveredId()) || countIds(doc, id) != 1) {
+"""
+speech = """The strict provider requires exactly one assertion. [[slnc 300]] It validates with the pinned key. [[slnc 300]] And the element it reads must be the very element the signature covers, with an I D that appears only once."""
+[[class.part]]
+title = "then the statement itself"
+code = """
+if (!AUDIENCE.equals(Xml.text(conditions, Xml.SAML, "Audience"))) {
+...
+if (!pendingRequestId.equals(confirmation.getAttribute("InResponseTo"))) {
+...
+if (!usedAssertions.add(id)) {
+"""
+speech = """Then the statement. [[slnc 300]] The audience must be this shop. [[slnc 300]] It must answer the request this browser made. [[slnc 300]] And an assertion I D is accepted only once."""
+
+[[class]]
+name = "Attacks"
+what = "the forgeries, made the way an attacker would"
+[[class.part]]
+title = "signature wrapping"
+code = """
+forged.setAttribute("ID", "forged-1");
+forged.getElementsByTagNameNS(Xml.SAML, "NameID").item(0).setTextContent(forgedName);
+...
+extensions.appendChild(signed);
+response0.insertBefore(forged, response0.getFirstChild());
+"""
+speech = """The wrapping attack copies the assertion, removes its signature, and changes the name. [[slnc 300]] The genuine assertion moves into extensions, and the forged copy goes first."""
+
+[[acronym]]
+short = "SAML"
+long = "Security Assertion Markup Language: signed sign-in statements in XML"
+say = "SAML is the security assertion markup language: the bank's signed statement about who signed in, written in X M L."
+[[acronym]]
+short = "XML"
+long = "Extensible Markup Language: nested elements in angle brackets"
+say = "X M L is the extensible markup language: text made of nested elements in angle brackets."
+[[acronym]]
+short = "SSO"
+long = "Single Sign-On: sign in once, at the bank, for many sites"
+say = "S S O is single sign on: you sign in once, at the bank, and many sites accept it."
+[[acronym]]
+short = "IdP"
+long = "Identity Provider: the bank, which signs the assertion"
+say = "I d P is the identity provider. Here, the bank, which signs the assertion."
+[[acronym]]
+short = "SP"
+long = "Service Provider: the shop, which checks the assertion"
+say = "S P is the service provider. Here, the shop, which checks the assertion."
+[[acronym]]
+short = "ID"
+long = "identifier: the name of one element, such as a1"
+say = "I D is an identifier: the name of one element, such as a one."
+[[acronym]]
+short = "ACS"
+long = "Assertion Consumer Service: the shop's address for responses"
+say = "A C S is the assertion consumer service: the shop's address where responses arrive."
+[[acronym]]
+short = "c14n"
+long = "canonicalization: one exact form of the XML"
+say = "C fourteen N is short for canonicalization: writing the X M L in one exact form, so the same document always gives the same bytes."
+[[acronym]]
+short = "SHA-256"
+long = "Secure Hash Algorithm, 256 bits: the digest of the assertion"
+say = "S H A two fifty six is the secure hash algorithm with two hundred and fifty six bits. It makes the digest of the assertion."
+[[acronym]]
+short = "RSA"
+long = "Rivest, Shamir, Adleman: the public-key signature the bank uses"
+say = "R S A is named after Rivest, Shamir and Adleman. It is the public key signature the bank uses."
+[[acronym]]
+short = "URI"
+long = "Uniform Resource Identifier: here #a1, the element signed"
+say = "U R I is a uniform resource identifier. In a signature, hash a one names the element that is signed."
+[[acronym]]
+short = "DOCTYPE"
+long = "document type declaration: can define entities; refused"
+say = "A doc type is a document type declaration. It can define entities that read files, so the shop refuses it."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit"
+say = "J D K is the Java development kit."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is an application programming interface: here, the J D K's X M L signature classes."
+
+[highlight]
+console_green = ["THE RESULT", "AFTER SIGNING", "AFTER THE FIX", "HOW THE SHOP CHECKS IT", "THE STRICT PROVIDER"]
+console_rose = ["BEFORE THE FIX", "THE ATTACKER'S RESPONSE", "THE WRAPPED RESPONSE"]
+console_amber = ["THE REQUEST", "BEFORE SIGNING", "ONE THING CHANGED", "ONE NAME EDITED"]
+console_cyan = ["THE RESPONSE", "HOW THE BANK SIGNS IT", "THE DIGEST"]

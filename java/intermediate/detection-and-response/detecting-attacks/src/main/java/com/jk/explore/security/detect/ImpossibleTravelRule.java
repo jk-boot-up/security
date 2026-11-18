@@ -29,6 +29,17 @@ public final class ImpossibleTravelRule implements Rule {
     }
 
     @Override
+    public String describe() {
+        return String.format("over %.0f km/h, %.0f+ km", maxKmPerHour, minKm) + (knownEgress.isEmpty() ? "" : ", VPN skipped");
+    }
+
+    /** The speed needed to get from one login's city to the next one's: distance over time (at least one second). */
+    static double kmPerHour(Event prev, Event next) {
+        double hours = Math.max(Duration.between(prev.time(), next.time()).toSeconds() / 3600.0, 1.0 / 3600);
+        return prev.city().kmTo(next.city()) / hours;
+    }
+
+    @Override
     public List<Alert> evaluate(List<Event> log) {
         Map<String, Event> last = new HashMap<>();
         List<Alert> alerts = new ArrayList<>();
@@ -41,9 +52,9 @@ public final class ImpossibleTravelRule implements Rule {
                 continue;
             }
             double km = prev.city().kmTo(e.city());
-            double hours = Math.max(Duration.between(prev.time(), e.time()).toSeconds() / 3600.0, 1.0 / 3600);
-            if (km >= minKm && km / hours > maxKmPerHour) {
-                alerts.add(new Alert(name(), e.user(), e.time(), String.format("%s to %s, %.0f km in %.0f minutes", prev.city().name(), e.city().name(), km, hours * 60), List.of(prev, e)));
+            if (km >= minKm && kmPerHour(prev, e) > maxKmPerHour) {
+                double minutes = Duration.between(prev.time(), e.time()).toSeconds() / 60.0;
+                alerts.add(new Alert(name(), e.user(), e.time(), String.format("%s to %s, %.0f km in %.0f minutes", prev.city().name(), e.city().name(), km, minutes), List.of(prev, e)));
             }
         }
         return alerts;

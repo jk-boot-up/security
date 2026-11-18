@@ -2,10 +2,11 @@
 
 ```
 src/main/java/com/jk/explore/security/cryptoagility/
-├── CryptoAgilityDemo.java  
+├── CryptoAgilityDemo.java  Runs the five demos and prints them in sections: the input of each step, then its result
 ├── Envelope.java           A stored value with a header that says how it was protected: magic byte, suite version, key id
 ├── Inventory.java          Finds the algorithm names that source code asks the JDK for: the first step to knowing what has to change
 ├── KeyRing.java            The keys of the bank, by key id
+├── Layout.java             A teaching class: splits a sealed envelope into its parts (header, IV or nonce, ciphertext, tag) so the video can show where every byte goes
 ├── Policy.java             The bank's list of algorithms: the transformations and digests that code may name, and what to do about each
 ├── Status.java             What the bank's policy says about an algorithm
 └── Store.java              The bank's records, sealed in envelopes, and the ways of moving them from one suite and key to another
@@ -42,11 +43,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the code asks for | 20 uses of algorithms in 10 files: 11 approved, 5 to migrate and 4 forbidden. |
-| 2. A value that says how it was protected | Old and new records are read side by side because each carries its suite and key; a reader that assumes one suite refuses the new one. |
-| 3. Moving the data | 2,000 reads that rewrite what they read and a batch of 8,000 move everything, and all 10,100 records still read back as written. |
-| 4. Retiring a key | Key 1 can be retired when no live record uses it, but a backup from before the migration then reads 0 of 100. |
-| 5. Tampering and downgrade | A changed version byte, a record claiming the unauthenticated first suite and a version the policy no longer reads are all refused. |
+| 1. What the code asks for | A scan of 10 source files finds 20 algorithm names; the bank's policy judges them: 11 approved, 5 to migrate and 4 forbidden, in Fingerprints, LegacyExport and PinBlocks. |
+| 2. A value that says how it was protected | Every sealed record starts with a 3-byte header: magic 45, the suite version and the key id. 10,000 old AES-CBC records and 100 new AES-GCM records live side by side; a reader that follows the header reads all 10,100, and an old reader refuses the new one. |
+| 3. Moving the data | Key 1 cannot be retired while 10,000 records need it. 2,000 reads that rewrite what they read leave 8,000 on key 1; a batch moves those 8,000; all 10,100 still read back as written. |
+| 4. The next rotation, and retiring a key | A batch moves all 10,100 records to ChaCha20-Poly1305 under key 3; keys 1 and 2 then have no live record and can be retired, but a backup of 100 records taken before the first move reads 100 of 100 before and 0 of 100 after. |
+| 5. Tampering and downgrade | Record 5 has header 45 03 03 and 53 bytes. Its version byte changed to 02 is refused because the tag does not match; a claim of version 00 (ECB, no tag) and a version-1 record after the cut-off are refused by the policy. |
 
 ## Test
 
@@ -54,7 +55,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `EnvelopeTest`, `StoreAndInventoryTest`. The envelope, the store, the inventory and the policy are tested with the JDK only. The demo is compared with its golden output.
+18 tests in `DemoRunsTest`, `EnvelopeTest`, `LayoutTest`, `StoreAndInventoryTest`. The envelope, the store, the inventory, the policy and the byte layout of every suite are tested with the JDK only. The demo is compared with its golden output.
 
 ## What the simulation got right, and what it left out
 

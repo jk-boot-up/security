@@ -40,10 +40,10 @@ Learners validate in the page, use block-lists, and compare text as typed, so th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 83, all passing |
-| Demo output | 53 lines, identical on every run |
+| Tests | 99, all passing |
+| Demo output | 131 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:13, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:54, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

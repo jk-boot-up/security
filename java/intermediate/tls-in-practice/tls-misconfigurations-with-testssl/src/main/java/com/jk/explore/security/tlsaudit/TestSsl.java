@@ -9,6 +9,9 @@ import java.util.concurrent.TimeUnit;
 /** The real testssl.sh, pointed at one server on a loopback port with the name a browser would use. */
 final class TestSsl {
 
+    /** Protocols, cipher lists, the certificate (server defaults) and the HTTP headers. */
+    static final List<String> CHECKS = List.of("-p", "-s", "-S", "-h");
+
     private final Path root;
     private final Path work;
 
@@ -31,7 +34,8 @@ final class TestSsl {
     private Report run(String name, int port, List<String> target) throws IOException, InterruptedException {
         Path json = work.resolve(name + "-" + port + ".json");
         Files.deleteIfExists(json);
-        List<String> command = new java.util.ArrayList<>(List.of("testssl.sh", "--jsonfile", json.toString(), "--color", "0", "--warnings", "off", "--add-ca", root.toString(), "-p", "-s", "-S", "-h"));
+        List<String> command = new java.util.ArrayList<>(List.of("testssl.sh", "--jsonfile", json.toString(), "--color", "0", "--warnings", "off", "--add-ca", root.toString()));
+        command.addAll(CHECKS);
         command.addAll(target);
         Process p = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(work.resolve(name + "-" + port + ".txt").toFile()).start();
         if (!p.waitFor(300, TimeUnit.SECONDS)) {

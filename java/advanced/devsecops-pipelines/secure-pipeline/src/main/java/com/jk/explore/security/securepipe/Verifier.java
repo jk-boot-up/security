@@ -3,6 +3,7 @@ package com.jk.explore.security.securepipe;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import tools.jackson.databind.JsonNode;
 
 /** Everything that must be true before a release is trusted. The first check that fails is the answer; anything unexpected is a failure too. */
@@ -22,7 +23,16 @@ final class Verifier {
         static Verdict no(String check) {
             return new Verdict(false, check);
         }
+
+        /** How many checks passed before the answer: all of them when it is yes. */
+        int checksPassed() {
+            return ok ? CHECKS.size() : CHECKS.indexOf(failed);
+        }
     }
+
+    /** The checks in the order they are made; the first one that fails is the answer. */
+    static final List<String> CHECKS = List.of("files present", "artifact signature", "provenance signature", "artifact digest", "builder", "source commit",
+            "source tree");
 
     private Verifier() {
     }

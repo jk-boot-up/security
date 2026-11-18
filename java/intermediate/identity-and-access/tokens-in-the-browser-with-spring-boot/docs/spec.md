@@ -39,10 +39,10 @@ Teams keep tokens in the browser because it is the easy way to call an API, and 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 26, all passing |
-| Demo output | 42 lines, identical on every run |
+| Tests | 27, all passing |
+| Demo output | 123 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:37, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:39, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

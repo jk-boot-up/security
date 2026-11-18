@@ -33,8 +33,9 @@ final class WebhookServer implements AutoCloseable {
             try (InputStream in = exchange.getRequestBody()) {
                 body = in.readNBytes(MAX_BODY + 1);
             }
+            String signature = exchange.getRequestHeaders().getFirst(Signatures.HEADER);
             reply = body.length > MAX_BODY ? new Reply(413, "refused: body too large")
-                    : receiver.receive(body, exchange.getRequestHeaders().getFirst(Signatures.HEADER));
+                    : receiver.receive(body, signature);
         }
         byte[] text = reply.message().getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(reply.status(), text.length);

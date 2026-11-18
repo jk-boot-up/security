@@ -55,10 +55,10 @@ final class Internet implements Dns, Router, AutoCloseable {
         name("localhost", List.of("127.0.0.1")); // one answer, so that the first one is never ::1
         name("images.example", List.of(IMAGES));
         name("evil.example", List.of(ATTACKER));
-        name("intranet.attacker.example", List.of(OFFICE));
-        name("dual.attacker.example", List.of(ATTACKER, OFFICE));
+        name("inside.evil.example", List.of(OFFICE));
+        name("dual.evil.example", List.of(ATTACKER, OFFICE));
         // a name server that lies: a public answer first, a private one every time after
-        names.put("rebind.attacker.example", List.of(List.of(ATTACKER), List.of(OFFICE)));
+        names.put("rebind.evil.example", List.of(List.of(ATTACKER), List.of(OFFICE)));
     }
 
     private void name(String host, List<String> addresses) {

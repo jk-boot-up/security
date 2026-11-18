@@ -49,6 +49,21 @@ final class Markup {
         return null;
     }
 
+    /** Every attribute on the first element with this name, as name=value pairs the way the browser would read them. */
+    static List<String> attributes(String html, String element) {
+        List<String> found = new ArrayList<>();
+        for (Element e : elements(html)) {
+            if (e.name().equals(element)) {
+                Matcher m = ATTRIBUTE.matcher(e.attributes());
+                while (m.find()) {
+                    found.add(m.group(1) + "=" + Encode.decodeHtml(m.group(2)));
+                }
+                return found;
+            }
+        }
+        return found;
+    }
+
     /** Script elements and the nonce each one carries (null when it has none). */
     static List<String> scriptNonces(String html) {
         List<String> nonces = new ArrayList<>();

@@ -14,15 +14,16 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Signing in through the bank | 8 min |
-| 0:18 | Act 2: A valid signature is not the same as the bank's signature | 8 min |
-| 0:26 | Act 3: A valid signature on one assertion, and another one read | 8 min |
-| 0:34 | Act 4: The statement itself is checked | 8 min |
-| 0:42 | Exercises | 18 min |
+| 0:10 | Act 1: Signing in through the bank | 7 min |
+| 0:17 | Act 2: How the bank signs the assertion | 7 min |
+| 0:24 | Act 3: A valid signature is not the same as the bank's signature | 7 min |
+| 0:31 | Act 4: Signature wrapping: one assertion checked, another read | 7 min |
+| 0:38 | Act 5: The statement itself is checked | 7 min |
+| 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run act two and ask whose key validated the self-signed response. In act three, point at the two assertions and ask which one the signature covers and which one the provider read. In act four, ask what each check would let an attacker do if it were missing.
+Run act two and follow the five signing steps with the printed byte counts. In act three, ask whose key validated the self-signed response. In act four, point at the two assertions and ask which one the signature covers and which one the provider read. In act five, ask what each check would let an attacker do if it were missing.
 
 ## Exercises
 

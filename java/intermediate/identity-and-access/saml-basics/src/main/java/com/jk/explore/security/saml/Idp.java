@@ -21,6 +21,7 @@ import javax.xml.crypto.dsig.spec.C14NMethodParameterSpec;
 import javax.xml.crypto.dsig.spec.TransformParameterSpec;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 /**
  * An identity provider: it signs the <em>assertion</em> (the statement "this is ana@bank.example") with its private key. Anyone can build the same XML
@@ -31,7 +32,7 @@ public final class Idp {
     public static final String ISSUER = "https://idp.bank.example";
 
     private final KeyPair key;
-    private static int counter;
+    private int counter;
 
     public Idp() {
         this(newKey());
@@ -57,24 +58,24 @@ public final class Idp {
 
     /** A signed response for a sign-in that this service provider requested. */
     public String response(String inResponseTo, String nameId, Instant now) {
-        return sign(unsignedResponse(inResponseTo, nameId, now, "https://shop.example", now.plusSeconds(300)), key);
+        return sign(unsignedResponse(nextId(), inResponseTo, nameId, now, "https://shop.example", now.plusSeconds(300)), key);
     }
 
     /** The same XML shape, signed by whichever key the caller holds: an attacker can do this too. */
     public static String signedBy(KeyPair signer, String inResponseTo, String nameId, Instant now) {
-        return sign(unsignedResponse(inResponseTo, nameId, now, "https://shop.example", now.plusSeconds(300)), signer);
+        return sign(unsignedResponse("x1", inResponseTo, nameId, now, "https://shop.example", now.plusSeconds(300)), signer);
     }
 
     public String responseWith(String inResponseTo, String nameId, Instant now, String audience, Instant notOnOrAfter) {
-        return sign(unsignedResponse(inResponseTo, nameId, now, audience, notOnOrAfter), key);
+        return sign(unsignedResponse(nextId(), inResponseTo, nameId, now, audience, notOnOrAfter), key);
     }
 
-    private static String assertionId() {
-        return "a" + (++counter) + "-" + Long.toHexString(System.nanoTime());
+    /** Assertion ids a1, a2, ... per identity provider, so the digests in the demo are the same on every run. */
+    private String nextId() {
+        return "a" + (++counter);
     }
 
-    private static Document unsignedResponse(String inResponseTo, String nameId, Instant now, String audience, Instant notOnOrAfter) {
-        String id = assertionId();
+    private static Document unsignedResponse(String id, String inResponseTo, String nameId, Instant now, String audience, Instant notOnOrAfter) {
         String xml = "<samlp:Response xmlns:samlp=\"" + Xml.SAMLP + "\" xmlns:saml=\"" + Xml.SAML + "\" ID=\"r-" + id + "\" InResponseTo=\"" + inResponseTo
                 + "\" Destination=\"https://shop.example/acs\">"
                 + "<saml:Assertion ID=\"" + id + "\" IssueInstant=\"" + now + "\">"
@@ -93,14 +94,18 @@ public final class Idp {
             Xml.registerIds(doc);
             Element assertion = (Element) Xml.byName(doc, Xml.SAML, "Assertion").item(0);
             XMLSignatureFactory f = XMLSignatureFactory.getInstance("DOM");
-            Reference ref = f.newReference("#" + assertion.getAttribute("ID"), f.newDigestMethod(DigestMethod.SHA256, null),
-                    List.of(f.newTransform(Transform.ENVELOPED, (TransformParameterSpec) null),
-                            f.newTransform(CanonicalizationMethod.EXCLUSIVE, (TransformParameterSpec) null)), null, null);
+            String uri = "#" + assertion.getAttribute("ID");
+            DigestMethod sha256 = f.newDigestMethod(DigestMethod.SHA256, null);
+            List<Transform> transforms = List.of(
+                    f.newTransform(Transform.ENVELOPED, (TransformParameterSpec) null),
+                    f.newTransform(CanonicalizationMethod.EXCLUSIVE, (TransformParameterSpec) null));
+            Reference ref = f.newReference(uri, sha256, transforms, null, null);
             SignedInfo si = f.newSignedInfo(f.newCanonicalizationMethod(CanonicalizationMethod.EXCLUSIVE, (C14NMethodParameterSpec) null),
                     f.newSignatureMethod(SignatureMethod.RSA_SHA256, null), Collections.singletonList(ref));
             KeyInfoFactory kif = f.getKeyInfoFactory();
-            KeyInfo ki = kif.newKeyInfo(Collections.singletonList(kif.newKeyValue(signer.getPublic())));
-            DOMSignContext ctx = new DOMSignContext(signer.getPrivate(), assertion, assertion.getElementsByTagNameNS(Xml.SAML, "Subject").item(0));
+            KeyInfo ki = kif.newKeyInfo(List.of(kif.newKeyValue(signer.getPublic())));
+            Node subject = assertion.getElementsByTagNameNS(Xml.SAML, "Subject").item(0);
+            DOMSignContext ctx = new DOMSignContext(signer.getPrivate(), assertion, subject);
             f.newXMLSignature(si, ki).sign(ctx);
             return Xml.write(doc);
         } catch (Exception e) {

@@ -35,8 +35,9 @@ public @interface NoInvisible {
             if (!Normalizer.isNormalized(value, Normalizer.Form.NFC)) {
                 return false;
             }
-            return value.codePoints().noneMatch(c -> Character.getType(c) == Character.CONTROL || Character.getType(c) == Character.FORMAT || Character.getType(c) == Character.LINE_SEPARATOR
-                    || Character.getType(c) == Character.PARAGRAPH_SEPARATOR);
+            return value.codePoints().map(Character::getType)
+                    .noneMatch(type -> type == Character.CONTROL || type == Character.FORMAT
+                            || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR);
         }
     }
 }

@@ -20,7 +20,7 @@ public class AccountController {
 
     String byName(HttpServletRequest request, Statement stmt) throws SQLException {
         String name = request.getParameter("name");
-        String sql = "SELECT * FROM customers WHERE name = '" + name + "'";
+        String sql = "SELECT * FROM clients WHERE name = '" + name + "'";
         return stmt.executeQuery(sql).getString(1); // VULN sql-variable
     }
 

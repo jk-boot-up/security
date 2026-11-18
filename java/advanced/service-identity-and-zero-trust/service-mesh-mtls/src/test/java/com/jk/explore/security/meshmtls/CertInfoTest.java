@@ -31,6 +31,7 @@ class CertInfoTest {
         CertInfo c = CertInfo.fromIdentityOutput(PRINTED);
         assertEquals("payments.bank.serviceaccount.identity.linkerd.cluster.local", c.subject());
         assertEquals(Duration.ofHours(24), c.lifetime());
+        assertEquals(24 * 3600 + 40, c.spanSeconds());
     }
 
     @Test

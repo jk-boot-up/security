@@ -96,4 +96,24 @@ class ApiSecurityTest {
         assertTrue(l.tryTake("a", 1) > 0);
         assertTrue(l.tryTake("a", 4) > 0);
     }
+
+    @Test
+    void tokensShowTheRefillWithoutTakingAny() {
+        RateLimiter l = new RateLimiter(clock, 100, 100.0 / 60);
+        assertEquals(0, l.tryTake("ana", 100));
+        assertEquals(0.0, l.tokens("ana"), 1e-9);
+        int wait = l.tryTake("ana", 1);
+        assertEquals((int) Math.ceil(1 / l.perSecond()), wait);
+        assertEquals(1, wait);
+        clock.advance(wait);
+        assertEquals(100.0 / 60, l.tokens("ana"), 1e-9);
+        assertEquals(100.0 / 60, l.tokens("ana"), 1e-9);
+        assertEquals(100.0, l.tokens("someone else"), 1e-9);
+    }
+
+    @Test
+    void theRequestModelNamesOnlyTwoFields() {
+        assertEquals(List.of("displayName", "email"), UpdateProfileRequest.FIELDS);
+        assertEquals(List.of("displayName", "role", "creditLimitCents"), List.copyOf(ApiSecurityDemo.ESCALATION.keySet()));
+    }
 }

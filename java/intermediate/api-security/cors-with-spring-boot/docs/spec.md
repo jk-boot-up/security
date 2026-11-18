@@ -39,10 +39,10 @@ Teams silence a CORS error by reflecting the origin or allowing every pattern, a
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 53 lines, identical on every run |
+| Tests | 20, all passing |
+| Demo output | 100 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:51, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:53, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

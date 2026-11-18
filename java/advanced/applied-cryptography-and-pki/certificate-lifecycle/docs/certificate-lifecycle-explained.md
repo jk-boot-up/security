@@ -8,23 +8,39 @@ A certificate fails when it is revoked without anyone asking or expires without 
 
 ### 1. Issue and read
 
-openssl makes the root and an intermediate with a path length of 0, and the intermediate signs a 30-day server certificate with two names, digitalSignature, serverAuth, CA false and a pointer to an OCSP responder. Java builds the chain with the intermediate and accepts it. Without the intermediate, 31 days later or a day before issue, it is refused, each for its own reason.
+The input: a root and an intermediate made with openssl. The root is self-signed with no path length limit; the intermediate is signed by the root with path length 0; both may sign certificates and CRLs. The root signs only the intermediate, and the intermediate signs every certificate, CRL and OCSP answer below.
+The certificate: api.bank.example and payments.bank.example, digitalSignature with the extended usage serverAuth, not a CA, an EC key of 256 bits signed SHA256withECDSA, 30 days, with a pointer to the OCSP responder and no CRL distribution point.
+How the chain is checked, by hand: 1, the leaf's issuer is the intermediate's subject; 2, the leaf's signature checks with the intermediate's key; 3 and 4, the same between the intermediate and the root; 5, the root is self-signed and held by the client; 6, the intermediate is a CA allowed to sign with path length 0; 7, the time is inside every certificate's dates. All seven hold.
+The result: with the intermediate, accepted by hand and by the JDK. Without it, step 1 fails and the JDK finds no chain to the root. 31 days later and a day before issue, step 7 fails and the JDK says expired and not yet valid.
 
 ### 2. Revocation and a dead responder
 
-With the responder up, a good certificate is accepted and a revoked one refused. With it down or hanging, a hard-fail client refuses both and a soft-fail client accepts both, including the revoked one. A client holding the old CRL accepts a certificate revoked after it was published, and a CRL past its next update is refused by a hard-fail client. A CRL of 1,000 entries is 20 KB; of 100,000 entries, 2120 KB.
+The input: two policies for a client that cannot learn the status. Hard fail refuses the certificate; soft fail accepts it anyway.
+OCSP, the responder up: the good certificate is accepted and the revoked one refused, by both clients; the responder saw 2 requests for the 2 good checks. Down or hanging: the hard-fail client refuses even the good certificate (status unknown) and the soft-fail client accepts the revoked one, 2 of 2 times. A hanging check waited about 1 second, the demo's timeout, against 15 by default.
+A CRL: a signed list good for 3600 seconds in this lab, with 1 entry. api.bank.example is revoked after it; a client with that CRL accepts it, a client with the next CRL (2 entries) refuses it. Two hours later the next update has passed: hard fail refuses, soft fail accepts.
+How big a CRL gets: 20 KB at 1,000 entries, 205 KB at 10,000 and 2120 KB at 100,000, which takes 17.4 seconds at 1 Mbit/s. One entry, read from the CRL: 2 bytes of header, 2 + 2 for the serial 1000 and 2 + 13 for the date, 21 bytes; the serial 1969F needs 3 bytes, so 22. With 90,000 of 100,000 entries already expired, openssl ca -updatedb keeps them (2120 KB); dropping them, as RFC 5280 allows, leaves 205 KB.
 
 ### 3. Stapling
 
-openssl s_server sends a response made by the intermediate. The Java client reads it from the handshake and accepts with 0 requests to the responder, even with the responder down. A staple made before a revocation is still accepted until it is refreshed; a client that asks the responder instead refuses at once; a staple made after the revocation is refused; a staple past its next update is not used.
+The input: a staple is the OCSP answer, signed and dated, carried in the TLS handshake; it is under 512 bytes.
+The responder up, a hard-fail client: the server that staples is accepted with 1 response in the handshake and 0 requests to the responder; the server that does not staple is accepted with 0 in the handshake and 1 request, so the responder sees which site the client visits.
+The responder down: the server that does not staple is refused by the hard-fail client (status unknown) and accepted by the soft-fail one; the server that staples is accepted, because the answer came with it. Read 2 days later, past its next update, the staple is refused as out of date.
+The certificate revoked: the old staple is still accepted, with 0 requests to the responder; a client that asks the responder refuses, and so does a staple made after the revocation. A staple is as old as its last refresh, 1 day in this lab.
 
 ### 4. Short lives and rotation
 
-step-ca issues certificates that live 12 seconds. A renewer asks for a new one for the same key when 8 seconds have passed, and the service presents it to the next handshake. In 30 seconds there are 300 real TLS handshakes, 3 renewals and 0 failures. A CA that is away for 2 seconds just before a renewal costs 0 of 200 handshakes: the headroom is a third of the life.
+The input: step-ca issues ledger.bank.example with a lifetime of 12 seconds, as asked to within a second, and sends a chain of 2 certificates.
+How the schedule is made: the renewal is due after two thirds of the life, 12 x 2/3 = 8 seconds; the headroom for the CA to be away is 12 - 8 = 4 seconds; the monitor alerts when a quarter of the life is left, 12 / 4 = 3 seconds. A stolen certificate is worth 12 seconds at most, not 30 days.
+The result, rotation: in 30 seconds with a handshake every 100 ms, 300 handshakes and 0 failed, 3 renewals and 0 failed, 0 alerts, and the service now presents a serial that is not the one at the start.
+The CA away for about 2 seconds, just before a renewal: 200 handshakes in 20 seconds, 0 failed; renewals failed while the CA was away and succeeded once it was back, inside the 4 seconds of headroom.
 
 ### 5. The missed renewal
 
-With the CA stopped, the renewer fails every attempt and the certificate expires: 50 handshakes before the expiry are accepted, and 100 of 100 after it are refused with certificate expired. A monitor that alerts at a quarter of the life left had alerted at least 2 seconds before the first refusal. The CA refuses to renew an expired certificate; a new one is issued and 20 of 20 handshakes pass. A monitor over 60 certificates finds 4 already expired, and a 7-day alert prevents 23 of 26 outages when the owner needs 3 days.
+The input: the CA stays down past the end of a 12-second certificate.
+The result: before the expiry, 50 handshakes and 0 refused; after it, 100 of 100 refused with the reason certificate expired. More than 10 renewals failed and 0 succeeded. The monitor alerted before the first refusal, and at least 2 seconds before it.
+The CA is back: renewing the expired certificate is refused, so it has to be issued anew; with the new one, 20 handshakes and 0 refused.
+An inventory of 60 certificates, at the monitor's first scan: 4 expired, 6 under 7 days, 14 under 30 days and 36 with 30 days or more. The 4 expired ones are found before anyone reports them.
+How an outage is counted over the next 60 days, with a scan every morning: the alert comes on the first morning with fewer than the alert's days left, the certificate is renewed the alert day plus the days the owner needs, and it is an outage when that is after its expiry. 26 expire: no monitor, 26 outages; a 7-day alert with 3 days needed, 3 outages and 23 prevented; with 10 days needed, 26 and 0; a 30-day alert with 10 days needed, 8 and 18.
 
 ## The verdict
 

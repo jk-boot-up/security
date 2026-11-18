@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: A profile call that works | 7 min |
 | 0:17 | Act 2: Whatever the caller sends becomes a field | 7 min |
 | 0:24 | Act 3: The response is the whole record, and a list has no end | 7 min |
-| 0:31 | Act 4: Explicit models, a page cap and a budget | 7 min |
+| 0:31 | Act 4: Explicit models and a page cap | 7 min |
 | 0:38 | Act 5: The budget runs out, and refills | 7 min |
 | 0:45 | Exercises | 15 min |
 

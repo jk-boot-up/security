@@ -14,13 +14,12 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Falco on this machine | 5 min |
-| 0:15 | Act 2: The service doing its work | 5 min |
-| 0:20 | Act 3: A shell in the container | 5 min |
-| 0:25 | Act 4: A write where it never writes | 5 min |
-| 0:30 | Act 5: A connection it never makes | 5 min |
-| 0:35 | Act 6: Prevent and detect | 5 min |
-| 0:40 | Exercises | 20 min |
+| 0:10 | Act 1: Falco on this machine | 7 min |
+| 0:17 | Act 2: Normal work, no alert | 7 min |
+| 0:24 | Act 3: A shell in the container | 7 min |
+| 0:31 | Act 4: A write where it never writes | 7 min |
+| 0:38 | Act 5: A connection it never makes | 7 min |
+| 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 

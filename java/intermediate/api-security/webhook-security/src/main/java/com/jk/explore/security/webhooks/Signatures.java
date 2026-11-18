@@ -44,7 +44,8 @@ final class Signatures {
     }
 
     static String header(byte[] secret, long timestamp, byte[] rawBody) {
-        return "t=" + timestamp + ",v1=" + HexFormat.of().formatHex(hmacSha256(secret, signedContent(timestamp, rawBody)));
+        byte[] mac = hmacSha256(secret, signedContent(timestamp, rawBody));
+        return "t=" + timestamp + ",v1=" + HexFormat.of().formatHex(mac);
     }
 
     /** Reads a header of the form {@code t=<seconds>,v1=<hex>}; anything else is treated as no signature. */

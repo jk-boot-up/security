@@ -8,6 +8,7 @@ public class MaskConverter extends ClassicConverter {
 
     @Override
     public String convert(ILoggingEvent event) {
-        return Masker.mask(event.getFormattedMessage()).replace("\r", "\\r").replace("\n", "\\n");
+        return Masker.mask(event.getFormattedMessage())
+                .replace("\r", "\\r").replace("\n", "\\n");
     }
 }

@@ -5,10 +5,11 @@ src/main/java/com/jk/explore/security/saml/
 ├── Attacks.java                   Edits of a genuine response, the way an attacker with a text editor would make them
 ├── Idp.java                       An identity provider: it signs the <em>assertion</em> (the statement "this is ana@bank.example") with its private key
 ├── PinnedKeyServiceProvider.java  The second version: it trusts only the identity provider's own key, which fixes the self-signed response
-├── SamlDemo.java                  Runs the single sign-on story in four numbered acts and prints exact, repeatable results
+├── SamlDemo.java                  Runs the single sign-on story in five acts, each split into labelled sections (the input, then the result), and prints exact, repeatable results
 ├── SamlRefused.java               The sign-in response was refused
 ├── ServiceProvider.java           The shop's side of single sign-on: reads the identity provider's response and decides who the customer is
 ├── SignatureCheck.java            Validates one XML signature and says which URI it covers
+├── SignatureSteps.java            A teaching class: it redoes by hand the two checks that {@code XMLSignature.validate} hides, so the demo can print each value
 ├── StrictServiceProvider.java     The fixed version
 ├── TrustingServiceProvider.java   The first version: any valid signature will do, with the key it carries, and then the first assertion in the file is the one believed
 └── Xml.java                       XML helpers shared by the identity provider and the service providers
@@ -47,14 +48,15 @@ against genuine, self-signed, edited, wrapped and stale responses.
 ./gradlew run
 ```
 
-The demo tells the story in 4 acts, each printing exact numbers that the tests check:
+The demo tells the story in 5 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Signing in through the bank | A genuine response signs Ana in with both the trusting provider and the strict one. |
-| 2. A valid signature is not the same as the bank's signature | A response the attacker signs with their own key signs them in as admin at the trusting provider; a provider that pins the bank's key refuses it, and any edit of a signed name breaks the signature. |
-| 3. A valid signature on one assertion, and another one read | Signature wrapping fools the pinned-key provider into signing in the attacker as admin; the strict provider refuses the wrapped response, a self-signed one and an edited one. |
-| 4. The statement itself is checked | The strict provider refuses a replayed response, an expired assertion, one for another shop, one that answers another request, and a document with a DOCTYPE. |
+| 1. Signing in through the bank | The shop sends Ana's browser to the bank with request req-1; the bank answers with a signed assertion a1 that names ana@bank.example, answers req-1, is for https://shop.example and is valid from 09:59:00 to 10:05:00; both the trusting and the strict provider sign her in. |
+| 2. How the bank signs the assertion | The bank drops the Signature element, canonicalizes the assertion to 614 bytes, hashes them with SHA-256 into the DigestValue, puts that into a 640-byte SignedInfo and signs SignedInfo with RSA-SHA256; the shop redoes the digest and the RSA check by hand and gets the library's verdict. |
+| 3. A valid signature is not the same as the bank's signature | A response the attacker signs with their own key is valid with the key in its KeyInfo, so the trusting provider signs them in as admin; with the bank's pinned key it is not valid and is refused; editing the name in a genuine response changes the digest and is refused too. |
+| 4. Signature wrapping: one assertion checked, another read | The attacker moves the genuine signed assertion a1 into an Extensions element and puts an unsigned copy forged-1 naming admin first; the pinned-key provider validates the signature over #a1, reads forged-1 and signs in admin; the strict provider counts two assertions and refuses, and it also refuses the self-signed and edited responses. |
+| 5. The statement itself is checked | With a valid signature, the strict provider still checks the issuer, the time window with 60 seconds of skew, the audience, the request and replay; it signs Ana in once, then refuses the same response again, an assertion that expired at 09:10:00, one for https://other.example, one answering req-999, and a document with a DOCTYPE. |
 
 ## Test
 
@@ -62,12 +64,12 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-10 tests in `DemoRunsTest`, `SamlTest`. Keys and ids are random and never printed, and the clock is fixed, so the demo prints the same text on every run.
+14 tests in `DemoRunsTest`, `SamlTest`, `SignatureStepsTest`. The demo prints the same text on every run (fixed clock and assertion ids). SignatureStepsTest proves that the digest and the RSA check redone by hand give the library's exact verdict, and SamlTest covers each provider against each attack.
 
 ## What the simulation got right, and what it left out
 
 The signatures are real: the JDK's `javax.xml.crypto.dsig` API signs and validates the assertions with RSA-2048 and SHA-256. The responses are shaped like SAML 2.0 responses with the elements that matter here, not the full schema.
-Keys and ids are random and never printed; the clock is fixed.
+The clock and the assertion ids are fixed, so digests are the same on every run; the RSA keys are new on every run, so signature values are shown as placeholders.
 
 ## Technologies and versions
 

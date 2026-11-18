@@ -51,6 +51,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `RaceConditionsTest` runs real sessions against PostgreSQL for the lost update, the constraint and conditional update, the lock and its waits, the isolation levels, write skew, the Hibernate version, the one-time key and the deadlock.
 - `DemoRunsTest` compares the whole demo with the golden output.
+- `SqlStatesTest` and `HibAccountTest` need no database: which error codes are retried, and the withdrawal rule on a loaded account.
 
 ## Where this model goes next
 

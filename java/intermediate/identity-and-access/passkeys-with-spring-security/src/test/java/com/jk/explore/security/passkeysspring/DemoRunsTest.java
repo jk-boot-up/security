@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Keys, challenges and credential ids are fresh on every run and never printed. */
+/** The demo must print exactly the golden output. Challenges, keys and signatures are fresh on every run, so it prints them as placeholders. */
 class DemoRunsTest {
 
     @Test

@@ -19,7 +19,8 @@ public final class CipherSuites {
 
     /** True when a recorded session can be decrypted later if the server's key leaks. */
     public static boolean lacksForwardSecrecy(String suite) {
-        return !tls13(suite) && !suite.contains("_ECDHE_") && !suite.contains("_DHE_");
+        return !tls13(suite) && !suite.contains("_ECDHE_")
+                && !suite.contains("_DHE_");
     }
 
     /** CBC suites in TLS 1.2 are not broken, but need care against padding attacks; GCM and ChaCha20 are preferred. */

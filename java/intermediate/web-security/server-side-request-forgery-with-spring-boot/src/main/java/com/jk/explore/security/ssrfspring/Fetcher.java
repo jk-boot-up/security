@@ -34,8 +34,11 @@ final class Fetcher {
     private final RestClient client;
 
     Fetcher() {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NEVER).connectTimeout(TIMEOUT).build());
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .followRedirects(HttpClient.Redirect.NEVER) // the importer decides about every redirect
+                .connectTimeout(TIMEOUT)
+                .build());
         factory.setReadTimeout(TIMEOUT);
         this.client = RestClient.builder().requestFactory(factory).build();
     }

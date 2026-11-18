@@ -45,6 +45,14 @@ final class LocalProvider implements AutoCloseable {
         server.start();
     }
 
+    String keyId() {
+        return key.getKeyID();
+    }
+
+    int keySize() {
+        return key.size();
+    }
+
     String base() {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }

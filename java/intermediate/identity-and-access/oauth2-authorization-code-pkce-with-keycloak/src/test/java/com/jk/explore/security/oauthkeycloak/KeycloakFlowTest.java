@@ -164,9 +164,9 @@ class KeycloakFlowTest {
     }
 
     @Test
-    void aCodeExpiresAfterFiveSeconds() throws Exception {
+    void aCodeExpiresAfterItsLifetime() throws Exception {
         OAuthKeycloakDemo.Started s = OAuthKeycloakDemo.start(app, "ana", OAuthKeycloakDemo.ACCOUNTS_READ);
-        Thread.sleep(6_000);
+        Thread.sleep((OAuthKeycloakDemo.CODE_LIFETIME + 1) * 1000L);
         assertEquals("invalid_grant: Code not valid", app.token(OAuthKeycloakDemo.exchange(s.code(), s.verifier())).error());
     }
 

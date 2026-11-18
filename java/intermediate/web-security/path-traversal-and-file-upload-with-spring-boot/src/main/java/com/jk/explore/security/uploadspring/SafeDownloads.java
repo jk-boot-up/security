@@ -1,8 +1,6 @@
 package com.jk.explore.security.uploadspring;
 
 import java.io.IOException;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Pattern;
@@ -21,10 +19,12 @@ public final class SafeDownloads implements Downloads {
         this.layout = layout;
     }
 
-    /** {@code rawName} is what the web layer received, still percent-encoded; it is decoded exactly once, here, and then checked. */
+    /**
+     * {@code name} has already been decoded once, by Spring, as a {@code @RequestParam}. It is never decoded again here:
+     * a second decode would turn {@code %252e} into a dot after the checks were meant to see it.
+     */
     @Override
-    public String read(String rawName) {
-        String name = URLDecoder.decode(rawName, StandardCharsets.UTF_8);
+    public String read(String name) {
         if (!NAME.matcher(name).matches()) {
             throw new Refused("not an invoice name");
         }

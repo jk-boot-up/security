@@ -92,7 +92,9 @@ final class OAuthClient {
 
     static String challenge(String verifier) {
         try {
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+            byte[] ascii = verifier.getBytes(StandardCharsets.US_ASCII);
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(ascii);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

@@ -5,12 +5,13 @@ src/main/java/com/jk/explore/security/detect/
 ├── Alert.java                 What a rule reports: which rule, about whom, when, and the events that made it fire
 ├── BruteForceRule.java        At least {@code threshold} failed logins for one account within {@code window}: someone is guessing that account's password
 ├── City.java                  A place with coordinates, for distance calculations
-├── DetectionDemo.java         Runs the detection story in four numbered acts and prints exact, repeatable results
+├── DetectionDemo.java         Runs the detection story in five numbered acts and prints exact, repeatable results: each act shows its input and its result in separate, labelled sections
 ├── Event.java                 One line of the audit log
 ├── ImpossibleTravelRule.java  Two successful logins by one account from places an aeroplane could not connect in the time between them
+├── Peaks.java                 Measures a log before a threshold is chosen: the most failed logins each account had within a window, counted the way {@link BruteForceRule} counts them (a success starts the count again)
 ├── PrivilegeChangeRule.java   Granting the admin role is rare and always approved: alert when the actor is not an approver, or when the grant has no change ticket
 ├── Rule.java                  A detection rule: reads the whole log, in time order, and returns alerts
-├── Scenario.java              One synthetic Monday for a bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
+├── Scenario.java              One synthetic Monday for an online bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
 ├── Score.java                 How a rule did against the ground truth: alerts, true and false positives, and which attacks it noticed at all
 ├── SprayingRule.java          Password spraying tries one or two common passwords against <em>many</em> accounts, staying under the per-account limit that the brute-force rule watches
 └── TakeoverRule.java          A success right after a run of failures, from an address that has never succeeded for this account before: the guesses worked
@@ -47,14 +48,15 @@ One Monday of logs for a bank with 200 accounts: 768 logins and 4 role grants, 1
 ./gradlew run
 ```
 
-The demo tells the story in 4 acts, each printing exact numbers that the tests check:
+The demo tells the story in 5 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. One Monday of logs | 772 events: 768 logins and 4 role grants; 113 of them belong to 4 real attacks (spraying, brute force, impossible travel, privilege change). |
-| 2. A first version of each rule | The first versions notice all four attacks but raise 29 alerts, 21 of them false: impossible travel flags the VPN, success-after-failures flags every typo. |
-| 3. Tuning one threshold | Brute-force thresholds of 3 and 5 raise 2 false alarms (two people who forgot their password); 10 and 25 catch the attack with none; 40 misses it. |
-| 4. The tuned set, and what it tells the analyst | Five tuned rules give 9 alerts for the day, 7 true and 2 false, and every attack (A, B, C, D) is noticed; the false ones are a break-glass admin grant and a phone placed in the wrong city. |
+| 1. One Monday of logs | 772 events: 768 logins (145 failed) and 4 admin role grants; 113 events belong to 4 hidden attacks (A spraying, B brute force, C impossible travel, D privilege change), mixed with look-alikes such as typing mistakes, forgotten passwords, VPN users and a break-glass grant. |
+| 2. Two attacks, worked out | Spraying makes 79 failures on 40 accounts but at most 2 per account in 5 minutes, so a brute-force rule stays quiet, while 8 different accounts fail from one address by 10:02:55 and the spraying rule fires; Madrid to Sydney is 17685 x 60 / 25 = 42444 km/h, over 900, while a real flight from Paris to New York is 649 km/h. |
+| 3. A first version of each rule | Five first rules notice all four attacks but raise 29 alerts, 8 true and 21 false: impossible travel flags the VPN users 10 times and a phone once, success-after-failures flags 5 typing mistakes and 2 forgotten passwords, brute-force(3) the same 2 forgotten passwords, and privilege-change the break-glass grant. |
+| 4. Tuning one threshold | On the normal day the most failures one account has in 5 minutes is 6 (u010, u011, forgotten passwords); the attack has 30; so a brute-force threshold from 7 to 30 catches the attack and nothing else, and 10 is chosen. The sweep agrees: 3 and 5 raise 2 false alerts, 10 and 25 none, and 40 misses attack B. |
+| 5. The tuned set, and what it tells the analyst | Three rules change (brute force to 10 failures, impossible travel skips the VPN's address, success-after-failures needs 5 failures from an unusual address), and the set gives 9 alerts, 7 true and 2 false, with all four attacks noticed; the 2 false ones are a break-glass grant and a phone address, both worth a look. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `DemoRunsTest`, `DetectionTest`. The day of logs is synthetic with a fixed seed, so the demo prints the same text on every run.
+19 tests in `DemoRunsTest`, `DetectionTest`. The day of logs is synthetic, with a fixed seed and a fixed date, so the demo prints the same text on every run. Tests check each rule on hand-made logs and their near misses, the peaks the safe range is worked out from, the travel speed, and the tuned set's numbers.
 
 ## What the simulation got right, and what it left out
 

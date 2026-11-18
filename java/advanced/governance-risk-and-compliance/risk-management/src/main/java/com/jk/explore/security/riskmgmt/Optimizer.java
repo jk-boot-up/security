@@ -52,4 +52,44 @@ public final class Optimizer {
         double mean = Simulation.mean(sim.portfolio(set));
         return new Choice(set, cost, mean, baseline - mean - cost);
     }
+
+    /** How many of the 2^n - 1 non-empty sets cost no more than the budget. */
+    public static int setsWithin(List<Control> available, double budget) {
+        int n = 0;
+        for (int mask = 1; mask < (1 << available.size()); mask++) {
+            double cost = 0;
+            for (int i = 0; i < available.size(); i++) {
+                if ((mask & (1 << i)) != 0) {
+                    cost += available.get(i).annualCost();
+                }
+            }
+            n += cost <= budget ? 1 : 0;
+        }
+        return n;
+    }
+
+    /** The cheapest set whose share of years losing more than the limit is at most the chance, whatever the budget; empty if none is. */
+    public static java.util.Optional<Choice> cheapestWithinAppetite(Simulation sim, List<Control> available, double limit, double chance) {
+        double baseline = Simulation.mean(sim.portfolio(List.of()));
+        Choice found = null;
+        for (int mask = 1; mask < (1 << available.size()); mask++) {
+            List<Control> set = new ArrayList<>();
+            double cost = 0;
+            for (int i = 0; i < available.size(); i++) {
+                if ((mask & (1 << i)) != 0) {
+                    set.add(available.get(i));
+                    cost += available.get(i).annualCost();
+                }
+            }
+            if (found != null && cost >= found.cost()) {
+                continue;
+            }
+            double[] years = sim.portfolio(set);
+            if (Simulation.exceed(years, limit) <= chance) {
+                double mean = Simulation.mean(years);
+                found = new Choice(set, cost, mean, baseline - mean - cost);
+            }
+        }
+        return java.util.Optional.ofNullable(found);
+    }
 }

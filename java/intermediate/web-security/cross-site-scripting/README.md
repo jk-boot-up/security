@@ -9,7 +9,7 @@ src/main/java/com/jk/explore/security/xss/
 ├── Review.java                 A customer's review of a product: the author's name, a short note about fit, and the text
 ├── ReviewPage.java             The product page of the online store, with its reviews
 ├── ShopServer.java             The product page served for real on the loopback interface, with a fresh nonce, a strict policy and an HttpOnly session cookie per response
-└── XssDemo.java                Runs the online store story in five numbered acts and prints exact, repeatable results
+└── XssDemo.java                Runs the online store story in four numbered acts and prints exact, repeatable results
 ```
 
 **Cross-site scripting happens when text from a user is read by the browser as part of the page; the fix is to encode every value for the place it is written, with a strict, nonce-based Content-Security-Policy as the second line of defence.**
@@ -39,15 +39,14 @@ page unsafely, then encoded for each context, compares encoding with an input fi
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 4 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. A review that changes the page | Ana's review, pasted into the page as it is, adds a bold element the shop never wrote: the review became part of the page. |
-| 2. Encoding for the place the text goes | One encoder per context: between tags, in a quoted attribute, in a URL parameter and in a script string; the encoded page has no bold element and Ben's fit note reads back whole. |
-| 3. Why filtering input is not the fix | A filter that deletes < and > changes an honest review and still lets a quote end Ben's attribute early; encoding shows the text exactly. |
-| 4. A strict Content-Security-Policy, with a fresh nonce for every page | A real page carries a policy naming a 24-character random nonce that changes every response; the shop's script may run, a script without the nonce may not, and the session cookie is HttpOnly. |
-| 5. The bill | Four kinds of output context each need their own encoder, the policy needs care, the nonce must be new every time, and a template engine that encodes by default is the practical answer. |
+| 1. A review that changes the page | Ana's review <b>Great boots</b>, pasted into the page as it is, adds a b element the shop never wrote; Eve's review adds a script element that would run as the shop's own code. |
+| 2. Encoding for the place the text goes | One encoder per place: between tags <b> becomes &lt;b&gt;, in an attribute " becomes &quot;, in a URL & becomes %26, in a script ' becomes \u0027; the encoded page reads back as the customer's exact text. |
+| 3. Why filtering input is not the fix | A filter that deletes < and > changes Ben's honest review and leaves Eve's fit note x" onclick="steal() untouched, which adds an onclick attribute to the page; encoding for the attribute keeps it as text. |
+| 4. A strict Content-Security-Policy, with a fresh nonce | The real page answers with a policy that names a 24-character nonce made from 16 random bytes; only the shop's script carries it, so Eve's script without it is blocked, and the session cookie is HttpOnly. |
 
 ## Test
 
@@ -55,13 +54,13 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `ContentSecurityPolicyTest`, `DemoRunsTest`, `EncodeTest`, `PageAndFilterTest`. The encoders are tested per context, including round trips and a different locale. The policy evaluator is tested against the browser rules it models, including 'unsafe-inline' being ignored when a nonce is present. The real server is tested for a fresh nonce and an HttpOnly cookie on every response. Nonces are random, so the demo prints only facts about them and the golden output is the same on every run.
+19 tests in `ContentSecurityPolicyTest`, `DemoRunsTest`, `EncodeTest`, `PageAndFilterTest`. The encoders are tested per context, including round trips and a different locale. The policy evaluator is tested against the browser rules it models, including 'unsafe-inline' being ignored when a nonce is present. The real server is tested for a fresh nonce and an HttpOnly cookie on every response. Nonces are random, so the demo prints only facts about them and the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 
 The pages are built and read in memory by a small model of how a browser parses elements and attributes, and the one real page is served on the loopback interface of the machine
 running the demo. Nonces are random, so the demo prints only facts about them: their length, that they change, and whether a script is allowed. The policy is evaluated in Java with
-the rules browsers apply, so no browser is needed. The problem is shown with a harmless bold tag; the project contains no attack payloads.
+the rules browsers apply, so no browser is needed. The problem is shown with a bold tag, a script tag and an onclick attribute that call a function steal() which does not exist: they are only text checked by the model, nothing runs and nothing is sent anywhere.
 
 ## Technologies and versions
 

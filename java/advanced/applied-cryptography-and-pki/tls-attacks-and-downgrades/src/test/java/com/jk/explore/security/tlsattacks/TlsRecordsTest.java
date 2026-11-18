@@ -80,9 +80,21 @@ class TlsRecordsTest {
         byte[] marker = {0x44, 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01};
         System.arraycopy(marker, 0, hello, 6 + 24, 8);
         assertEquals("TLS 1.2", TlsRecords.downgradeSentinel(hello));
+        assertEquals("44 4F 57 4E 47 52 44 01", TlsRecords.randomTail(hello));
+        assertEquals("TLS 1.2", TlsAttacksDemo.sentinel(hello).substring("a downgrade to ".length()));
         hello[6 + 31] = 0;
         assertEquals("TLS 1.1 or lower", TlsRecords.downgradeSentinel(hello));
         hello[6 + 31] = 7;
         assertEquals("none", TlsRecords.downgradeSentinel(hello));
+    }
+
+    @Test
+    void theKeyExchangeValueLengthIsReadWithTwoOrOneLengthBytes() {
+        byte[] rsa = new byte[4 + 2 + 256];
+        rsa[4] = 0x01;
+        assertEquals(256, TlsRecords.keyExchangeValueLength(rsa, false));
+        byte[] ec = new byte[4 + 1 + 32];
+        ec[4] = 32;
+        assertEquals(32, TlsRecords.keyExchangeValueLength(ec, true));
     }
 }

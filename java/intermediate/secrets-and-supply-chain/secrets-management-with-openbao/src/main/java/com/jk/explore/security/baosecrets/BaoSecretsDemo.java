@@ -51,13 +51,22 @@ public class BaoSecretsDemo {
         root.post("database/config/shopdb", Map.of("plugin_name", "postgresql-database-plugin", "allowed_roles", "*",
                 "connection_url", "postgresql://{{username}}:{{password}}@db:5432/postgres?sslmode=disable", "username", "postgres", "password", BaoLab.DB_ADMIN_PASSWORD));
         for (String app : List.of("shop-api", "reports")) {
-            root.put("sys/policies/acl/" + app, Map.of("policy", "path \"secret/data/" + app + "/*\" { capabilities = [\"read\"] }\npath \"database/creds/" + app + "\" { capabilities = [\"read\"] }"));
-            root.post("auth/approle/role/" + app, Map.of("token_policies", app, "token_ttl", "120s", "secret_id_num_uses", 1, "secret_id_ttl", "60s"));
-            root.post("database/roles/" + app, Map.of("db_name", "shopdb", "creation_statements", CREATE, "renew_statements", RENEW, "default_ttl", "8s", "max_ttl", "20s"));
+            root.put("sys/policies/acl/" + app, Map.of("policy", policy(app)));
+            root.post("auth/approle/role/" + app, Map.of("token_policies", app, "token_ttl", "120s",
+                    "secret_id_num_uses", 1, "secret_id_ttl", "60s"));
+            root.post("database/roles/" + app, Map.of("db_name", "shopdb",
+                    "creation_statements", CREATE, "renew_statements", RENEW,
+                    "default_ttl", "8s", "max_ttl", "20s"));
         }
         root.post("secret/data/shop-api/payment", Map.of("data", Map.of("api-key", "key-v1")));
         root.post("secret/data/reports/warehouse", Map.of("data", Map.of("api-key", "warehouse-key")));
         root.post("database/static-roles/payments", Map.of("db_name", "shopdb", "username", "payments", "rotation_period", "24h"));
+    }
+
+    /** What one application may do: read its own secrets and lease its own database logins, nothing else. */
+    static String policy(String app) {
+        return "path \"secret/data/" + app + "/*\" { capabilities = [\"read\"] }\n"
+                + "path \"database/creds/" + app + "\" { capabilities = [\"read\"] }";
     }
 
     /** An application proves who it is with its role id and a secret id that works once, and gets a token that carries only its policy. */
@@ -76,39 +85,77 @@ public class BaoSecretsDemo {
     }
 
     private static String outcome(int status) {
-        return status == 200 || status == 204 ? "allowed" : "refused (" + status + ")";
+        return (status == 200 || status == 204 ? "allowed" : "refused") + " (" + status + ")";
+    }
+
+    private static String pad(String text, int width) {
+        return text.length() >= width ? text + " " : text + " ".repeat(width - text.length());
     }
 
     private static void act1WhoMayAsk(StringBuilder out, Bao root) throws Exception {
         line(out, "ONE. A secrets server, and who may ask.");
-        line(out, "  the store's payment key lives in OpenBao, not in the code, the environment or the image; two applications each have a role, a policy and a secret id that works once");
+        line(out, "  THE POLICY FOR shop-api (reports has the same, with its name):");
+        policy("shop-api").lines().forEach(l -> line(out, "    " + l));
         String secretId = newSecretId(root, "shop-api");
+        line(out, "  THE REQUEST: POST auth/approle/login");
+        line(out, "    role_id    shop-api's role id (not shown)");
+        line(out, "    secret_id  a fresh one that works once (not shown)");
         Bao.Reply first = loginReply(root, "shop-api", secretId);
-        line(out, "  shop-api logs in with its role id and its secret id: " + outcome(first.status()) + ", a token with the policies " + first.auth().get("policies") + " for " + first.auth().get("lease_duration") + " seconds");
-        line(out, "  the same secret id again, as a thief who saw it would use it: " + outcome(loginReply(root, "shop-api", secretId).status()));
-        line(out, "  a secret id nobody issued: " + outcome(loginReply(root, "shop-api", "00000000-0000-0000-0000-000000000000").status()));
+        line(out, "  THE RESPONSE:");
+        line(out, "    status     " + outcome(first.status()));
+        line(out, "    token      policies " + first.auth().get("policies") + ", " + first.auth().get("lease_duration") + " seconds");
+        line(out, "  THE SAME SECRET ID AGAIN, AS A THIEF WHO SAW IT WOULD:");
+        line(out, "    status     " + outcome(loginReply(root, "shop-api", secretId).status()));
+        line(out, "  A SECRET ID NOBODY ISSUED:");
+        line(out, "    status     " + outcome(loginReply(root, "shop-api", "00000000-0000-0000-0000-000000000000").status()));
         Bao shop = root.withToken(String.valueOf(first.auth().get("client_token")));
         Bao reports = login(root, "reports");
-        line(out, "  shop-api reads its payment key: " + outcome(shop.get("secret/data/shop-api/payment").status()) + ", the reports key: " + outcome(shop.get("secret/data/reports/warehouse").status()));
-        line(out, "  reports reads its own key: " + outcome(reports.get("secret/data/reports/warehouse").status()) + ", the payment key: " + outcome(reports.get("secret/data/shop-api/payment").status()));
-        line(out, "  a request with no token: " + outcome(root.withToken(null).get("secret/data/shop-api/payment").status()));
-        line(out, "  a policy names exactly what each application may read, and everything else is refused");
+        line(out, "  HOW THE POLICY DECIDES A READ:");
+        line(out, "    " + pad("token", 10) + pad("path", 31) + pad("rule", 9) + "OpenBao");
+        String[][] asks = {
+            {"shop-api", "secret/data/shop-api/payment"}, {"shop-api", "secret/data/reports/warehouse"},
+            {"shop-api", "database/creds/reports"}, {"reports", "secret/data/reports/warehouse"},
+            {"reports", "secret/data/shop-api/payment"}, {"none", "secret/data/shop-api/payment"}};
+        for (String[] ask : asks) {
+            Bao who = switch (ask[0]) {
+                case "shop-api" -> shop;
+                case "reports" -> reports;
+                default -> root.withToken(null);
+            };
+            List<PolicyRule.Rule> rules = ask[0].equals("none") ? List.of() : PolicyRule.parse(policy(ask[0]));
+            line(out, "    " + pad(ask[0], 10) + pad(ask[1], 31) + pad(PolicyRule.allows(rules, ask[1], "read") ? "allowed" : "refused", 9)
+                    + outcome(who.get(ask[1]).status()));
+        }
     }
 
     private static void act2StaticVersions(StringBuilder out, BaoLab lab, Bao root) throws Exception {
         line(out, "TWO. Secrets that stay still: versions, rotation and the audit trail.");
         Bao shop = login(root, "shop-api");
-        line(out, "  the store reads the payment key: " + shop.get("secret/data/shop-api/payment").data().get("data"));
-        root.post("secret/data/shop-api/payment", Map.of("data", Map.of("api-key", "key-v2")));
-        line(out, "  the provider issues v2 and it is written as version 2; during the changeover both are readable by number: v1 " + shop.get("secret/data/shop-api/payment?version=1").data().get("data")
-                + ", v2 " + shop.get("secret/data/shop-api/payment?version=2").data().get("data"));
-        line(out, "  the store, asking for the current version, now gets " + shop.get("secret/data/shop-api/payment").data().get("data"));
-        line(out, "  the application cannot destroy versions: " + outcome(shop.put("secret/destroy/shop-api/payment", Map.of("versions", List.of(1))).status()));
-        line(out, "  after every server has switched, the operator destroys v1: " + outcome(root.put("secret/destroy/shop-api/payment", Map.of("versions", List.of(1))).status())
-                + ", and reading v1 now: " + outcome(shop.get("secret/data/shop-api/payment?version=1").status()) + ", v2: " + outcome(shop.get("secret/data/shop-api/payment?version=2").status()));
+        String path = "secret/data/shop-api/payment";
+        line(out, "  BEFORE THE ROTATION, WHAT THE STORE READS:");
+        line(out, "    current    " + shop.get(path).data().get("data"));
+        root.post(path, Map.of("data", Map.of("api-key", "key-v2")));
+        line(out, "  AFTER THE PROVIDER ISSUES v2 (written as version 2):");
+        line(out, "    version 1  " + shop.get(path + "?version=1").data().get("data"));
+        line(out, "    version 2  " + shop.get(path + "?version=2").data().get("data"));
+        line(out, "    current    " + shop.get(path).data().get("data"));
+        line(out, "  DESTROYING VERSION 1, ONCE EVERY SERVER HAS SWITCHED:");
+        line(out, "    by the application  " + outcome(shop.put("secret/destroy/shop-api/payment", Map.of("versions", List.of(1))).status()));
+        line(out, "    by the operator     " + outcome(root.put("secret/destroy/shop-api/payment", Map.of("versions", List.of(1))).status()));
+        line(out, "    then version 1      " + outcome(shop.get(path + "?version=1").status()));
+        line(out, "    then version 2      " + outcome(shop.get(path + "?version=2").status()));
         String audit = lab.auditLog();
-        line(out, "  the audit trail recorded the requests: " + audit.contains("secret/data/shop-api/payment") + ", the application that asked: " + audit.contains("shop-api")
-                + ", the key itself: " + (audit.contains("key-v1") || audit.contains("key-v2")) + "  (values are written as HMACs: " + audit.contains("hmac-sha256:") + ")");
+        line(out, "  THE AUDIT TRAIL:");
+        line(out, "    " + pad("requests for " + path, 43) + audit.contains(path));
+        line(out, "    " + pad("the application that asked, shop-api", 43) + audit.contains("shop-api"));
+        line(out, "    " + pad("the key itself, key-v1 or key-v2", 43) + (audit.contains("key-v1") || audit.contains("key-v2")));
+        Bao.Reply hashed = root.post("sys/audit-hash/to_file", Map.of("input", "key-v2"));
+        String hash = String.valueOf(hashed.data() != null && hashed.data().get("hash") != null ? hashed.data().get("hash") : hashed.json().get("hash"));
+        String prefix = "hmac-sha256:";
+        line(out, "  HOW THE AUDIT TRAIL HIDES A VALUE (HMAC-SHA256, server's key):");
+        line(out, "    key-v2 becomes  " + prefix + " + " + (hash.startsWith(prefix) ? hash.length() - prefix.length() : -1)
+                + " hex characters (not shown)");
+        line(out, "    that exact hash is in the audit trail: " + audit.contains(hash));
     }
 
     private static boolean connects(BaoLab lab, String user, String password) {
@@ -130,41 +177,68 @@ public class BaoSecretsDemo {
 
     private static void act3LeasedLogins(StringBuilder out, BaoLab lab, Bao root) throws Exception {
         line(out, "THREE. Database logins that are leased.");
+        line(out, "  THE ROLE shop-api (what OpenBao runs to make each login):");
+        for (String statement : CREATE.split("; ")) {
+            int until = statement.indexOf(" VALID UNTIL");
+            if (until > 0) {
+                line(out, "    " + statement.substring(0, until));
+                line(out, "      " + statement.substring(until + 1) + (statement.endsWith(";") ? "" : ";"));
+            } else {
+                line(out, "    " + statement + (statement.endsWith(";") ? "" : ";"));
+            }
+        }
+        line(out, "    time to live 8 s, maximum 20 s");
         Bao shop = login(root, "shop-api");
         Bao reports = login(root, "reports");
         Bao.Reply a = shop.get("database/creds/shop-api");
         Bao.Reply b = reports.get("database/creds/reports");
         String userA = String.valueOf(a.data().get("username"));
         String userB = String.valueOf(b.data().get("username"));
-        line(out, "  shop-api asks and gets a database login of its own, named v-approle-shop-api-<random>: " + userA.startsWith("v-approle-shop-api-") + ", for " + a.json().get("lease_duration") + " seconds");
-        line(out, "  reports gets a different one: " + userB.startsWith("v-approle-reports-") + "; no two applications share one: " + !userA.equals(userB));
-        line(out, "  both connect to the real database: " + connects(lab, userA, String.valueOf(a.data().get("password"))) + ", " + connects(lab, userB, String.valueOf(b.data().get("password"))));
-        line(out, "  shop-api's login reads orders: " + canRead(lab, userA, String.valueOf(a.data().get("password")), "orders") + ", and the card numbers: " + canRead(lab, userA, String.valueOf(a.data().get("password")), "card_numbers"));
-        line(out, "  shop-api asks for reports' login: " + outcome(shop.get("database/creds/reports").status()));
+        String passA = String.valueOf(a.data().get("password"));
+        line(out, "  THE REQUESTS: GET database/creds/shop-api, .../reports");
+        line(out, "  THE RESPONSES (names end in random letters, not shown):");
+        line(out, "    shop-api  v-approle-shop-api-...: " + userA.startsWith("v-approle-shop-api-") + ", lease " + a.json().get("lease_duration") + " s");
+        line(out, "    reports   v-approle-reports-...: " + userB.startsWith("v-approle-reports-") + ", a different login: " + !userA.equals(userB));
+        line(out, "  WHAT THE LOGINS CAN DO IN THE REAL DATABASE:");
+        line(out, "    both connect                 " + connects(lab, userA, passA) + ", " + connects(lab, userB, String.valueOf(b.data().get("password"))));
+        line(out, "    shop-api reads orders        " + canRead(lab, userA, passA, "orders"));
+        line(out, "    shop-api reads card_numbers  " + canRead(lab, userA, passA, "card_numbers"));
         String lease = String.valueOf(a.json().get("lease_id"));
         Bao.Reply renewed = root.put("sys/leases/renew", Map.of("lease_id", lease, "increment", 600));
-        line(out, "  the shop renews its lease and asks for 600 seconds: " + outcome(renewed.status()) + ", it is capped at the maximum of 20 seconds: " + (((Number) renewed.json().get("lease_duration")).intValue() <= 20));
+        line(out, "  THE SHOP RENEWS AND ASKS FOR 600 SECONDS:");
+        line(out, "    status   " + outcome(renewed.status()));
+        line(out, "    granted  min(600, 20 - its age) s, so at most 20: "
+                + (((Number) renewed.json().get("lease_duration")).intValue() <= 20));
         Thread.sleep(9_500);
-        line(out, "  reports never renewed; 9 seconds on its lease has ended and the login is removed: can it connect? " + connects(lab, userB, String.valueOf(b.data().get("password"))));
-        line(out, "  the shop's renewed login still connects: " + connects(lab, userA, String.valueOf(a.data().get("password"))));
-        line(out, "  the operator revokes the shop's lease: " + outcome(root.put("sys/leases/revoke", Map.of("lease_id", lease)).status()) + ", and the login connects: " + connects(lab, userA, String.valueOf(a.data().get("password"))));
+        line(out, "  AFTER 9.5 SECONDS (past the 8 s time to live):");
+        line(out, "    reports, never renewed, connects  " + connects(lab, userB, String.valueOf(b.data().get("password"))));
+        line(out, "    shop-api, renewed, connects       " + connects(lab, userA, passA));
+        line(out, "  THE OPERATOR REVOKES THE SHOP'S LEASE:");
+        line(out, "    status   " + outcome(root.put("sys/leases/revoke", Map.of("lease_id", lease)).status())
+                + ", the login connects: " + connects(lab, userA, passA));
     }
 
     private static void act4RotationAndBlastRadius(StringBuilder out, BaoLab lab, Bao root) throws Exception {
         line(out, "FOUR. Rotation, and the blast radius of a leak.");
         String before = String.valueOf(root.get("database/static-creds/payments").data().get("password"));
-        line(out, "  the payments service has a static login that OpenBao manages; a thief copies its password, which connects: " + connects(lab, "payments", before));
+        line(out, "  BEFORE THE ROTATION (the static login payments):");
+        line(out, "    a thief copies its password, which connects: " + connects(lab, "payments", before));
         root.post("database/rotate-role/payments", Map.of());
         String after = String.valueOf(root.get("database/static-creds/payments").data().get("password"));
-        line(out, "  OpenBao rotates it: the new password differs: " + !before.equals(after) + ", the new one connects: " + connects(lab, "payments", after) + ", the thief's copy: " + connects(lab, "payments", before));
+        line(out, "  AFTER THE ROTATION (POST database/rotate-role/payments):");
+        line(out, "    the new password differs   " + !before.equals(after));
+        line(out, "    the new password connects  " + connects(lab, "payments", after));
+        line(out, "    the thief's copy connects  " + connects(lab, "payments", before));
         Bao shop = login(root, "shop-api");
         List<Bao.Reply> leased = List.of(shop.get("database/creds/shop-api"), shop.get("database/creds/shop-api"), shop.get("database/creds/shop-api"));
         boolean allWork = leased.stream().allMatch(r -> connects(lab, String.valueOf(r.data().get("username")), String.valueOf(r.data().get("password"))));
-        line(out, "  three logins leased to shop-api's servers all connect: " + allWork + "; a thief copies one");
-        line(out, "  the leak is noticed: the operator revokes every lease under database/creds/shop-api at once: " + outcome(root.put("sys/leases/revoke-prefix/database/creds/shop-api", Map.of()).status()));
+        line(out, "  BEFORE THE REVOCATION (3 leased logins of shop-api):");
+        line(out, "    all connect, and a thief copies one: " + allWork);
+        line(out, "  AFTER REVOKING EVERY LEASE UNDER database/creds/shop-api:");
+        line(out, "    status                     " + outcome(root.put("sys/leases/revoke-prefix/database/creds/shop-api", Map.of()).status()));
         long stillWork = leased.stream().filter(r -> connects(lab, String.valueOf(r.data().get("username")), String.valueOf(r.data().get("password")))).count();
-        line(out, "  logins that still connect: " + stillWork + "  (a leased login ends with its lease; a static password lasts until someone changes it)");
-        line(out, "  the other applications are untouched: reports still gets a login: " + outcome(login(root, "reports").get("database/creds/reports").status()));
+        line(out, "    logins that still connect  " + stillWork + " of " + leased.size());
+        line(out, "    reports still gets one     " + outcome(login(root, "reports").get("database/creds/reports").status()));
     }
 
     private static void act5Bill(StringBuilder out, BaoLab lab, Bao root) throws Exception {
@@ -174,13 +248,19 @@ public class BaoSecretsDemo {
         String user = String.valueOf(login.data().get("username"));
         String password = String.valueOf(login.data().get("password"));
         String key = lab.unsealKey();
-        line(out, "  the operator seals OpenBao, as in an incident: " + outcome(root.put("sys/seal", Map.of()).status()));
-        line(out, "  the application asks for its payment key: " + outcome(shop.get("secret/data/shop-api/payment").status()) + ", for a new login: " + outcome(shop.get("database/creds/shop-api").status())
-                + "  <- THE STORE CANNOT START A SERVER WHILE THE SECRETS SERVICE IS DOWN");
-        line(out, "  a login it already holds keeps working until its lease would have ended: " + connects(lab, user, password));
-        line(out, "  the operator unseals with the key: " + outcome(root.withToken(null).put("sys/unseal", Map.of("key", key)).status()) + ", and the application reads again: " + outcome(shop.get("secret/data/shop-api/payment").status()));
-        line(out, "  the secrets service holds every secret, so it needs its own access control, audit and backups; this dev server keeps everything in memory and a real one does not");
-        line(out, "  the application still needs a first credential, its role id and a secret id, to prove who it is; platform identity, in the advanced track, removes it");
-        line(out, "  leases and rotation need applications that can reconnect with a new login without a restart");
+        line(out, "  THE OPERATOR SEALS OpenBao, AS IN AN INCIDENT:");
+        line(out, "    status                  " + outcome(root.put("sys/seal", Map.of()).status()));
+        line(out, "  WHILE IT IS SEALED:");
+        line(out, "    the payment key         " + outcome(shop.get("secret/data/shop-api/payment").status()));
+        line(out, "    a new login             " + outcome(shop.get("database/creds/shop-api").status()) + "  <- NO NEW SERVER STARTS");
+        line(out, "    a login it already has  connects: " + connects(lab, user, password));
+        line(out, "  AFTER UNSEALING WITH THE KEY:");
+        line(out, "    status                  " + outcome(root.withToken(null).put("sys/unseal", Map.of("key", key)).status()));
+        line(out, "    the payment key         " + outcome(shop.get("secret/data/shop-api/payment").status()));
+        line(out, "  WHAT IT COSTS:");
+        line(out, "    OpenBao holds every secret: guard, audit and back it up");
+        line(out, "    this dev server keeps all in memory; a real one stores it");
+        line(out, "    the first credential, role id and secret id, remains");
+        line(out, "    applications must take a new login without a restart");
     }
 }

@@ -4,7 +4,8 @@
 src/main/java/com/jk/explore/security/baosecrets/
 ├── Bao.java             A small client for OpenBao's HTTP API, with a token
 ├── BaoLab.java          One OpenBao in dev mode and one PostgreSQL, on a private Docker network, each bound to a free port on the loopback address and removed on close
-└── BaoSecretsDemo.java  Runs the store's secrets story in five numbered acts against a real OpenBao and a real PostgreSQL in Docker, all on the loopback interface
+├── BaoSecretsDemo.java  Runs the store's secrets story in five numbered acts against a real OpenBao and a real PostgreSQL in Docker, all on the loopback interface
+└── PolicyRule.java      A teaching class: decides a request the way an OpenBao policy does, for the two rule forms the store uses
 ```
 
 **With OpenBao an application proves who it is with a role and a secret id that works once, gets a token that carries only its own policy, reads versioned secrets, and is leased a database login of its own that ends with its lease or when the operator revokes it, while the audit trail records every request with the values hashed; the price is a service that holds every secret, that must be sealed, unsealed, backed up and watched, and that the store cannot start without.**
@@ -38,11 +39,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A secrets server, and who may ask | An application proves who it is with a role id and a secret id that works once, and gets a token that carries only its own policy. |
-| 2. Secrets that stay still: versions, rotation and the audit trail | Versions of a secret are readable by number during a changeover, the application cannot destroy them, the operator does, and the audit trail records requests with values hashed. |
-| 3. Database logins that are leased | Each application gets a real database login of its own, with only its grants, that is renewed up to a maximum, ends when unrenewed, and ends at once when revoked. |
-| 4. Rotation, and the blast radius of a leak | A static password that OpenBao manages is rotated and the thief's copy stops working; revoking every lease under one path ends one application's logins and no others. |
-| 5. The bill | A sealed OpenBao refuses every request with 503, so the store cannot start a server; logins already held keep working until their lease ends; unsealing restores service. |
+| 1. A secrets server, and who may ask | shop-api logs in with its role id and a secret id that works once: allowed (200), a token with the policies [default, shop-api] for 120 seconds; the same secret id again and one nobody issued are refused (400); six reads are decided by the two-line policy, and the teaching rule agrees with OpenBao on every one. |
+| 2. Secrets that stay still: versions, rotation and the audit trail | The payment key goes from {api-key=key-v1} to version 2 {api-key=key-v2} while version 1 stays readable by number; the application cannot destroy a version (403), the operator can (204), and version 1 then answers 404; the audit trail holds the paths and the application, never the key: key-v2 becomes hmac-sha256: plus 64 hex characters, the exact hash in the log. |
+| 3. Database logins that are leased | OpenBao runs CREATE ROLE ... VALID UNTIL and GRANT SELECT ON orders for each request: shop-api and reports get their own v-approle-... logins for 8 s; both connect, shop-api reads orders but not card_numbers; a renewal asking 600 s is capped at the 20 s maximum; after 9.5 s the unrenewed reports login no longer connects and the renewed shop login does, until the operator revokes it. |
+| 4. Rotation, and the blast radius of a leak | A thief's copy of the static payments password connects before the rotation and not after it, while the new password does; three leased shop-api logins all connect until one revoke-prefix call (204) ends them: 0 of 3 still connect, and reports still gets a login (200). |
+| 5. The bill | Sealing OpenBao (204) makes every request fail with 503: no payment key and no new login, so no new server of the store can start; a login already held still connects; unsealing with the key (200) brings the reads back. The service holds every secret, a dev server keeps them in memory, and the first credential remains. |
 
 ## Test
 
@@ -50,7 +51,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `BaoSecretsTest`, `DemoRunsTest`. The tests start one OpenBao and one PostgreSQL for the whole class and remove them (./gradlew integrationTest). Two tests wait for a lease to end.
+21 tests in `BaoReplyTest`, `BaoSecretsTest`, `DemoRunsTest`, `PolicyRuleTest`. The tests start one OpenBao and one PostgreSQL for the whole class and remove them (./gradlew integrationTest). Two tests wait for a lease to end.
 
 ## What the simulation got right, and what it left out
 

@@ -4,40 +4,48 @@
 
 A file name or link from a customer is untrusted: check its shape, resolve it and compare paths as paths, let the server name and classify uploads and keep them out of the web root, and redirect only to paths on your own site.
 
-## The 6 acts
+## The 7 acts
 
-### 1. Downloading an invoice
+### 1. An honest name downloads one invoice
 
-The download takes a name and reads that file from the invoices folder. invoice-1001.txt returns "Invoice 1001: Ana, 42.50".
+The demo makes the store's folders in a temporary folder, printed as .../: invoices (invoice-1001.txt and invoice-1002.txt), invoices-private (payroll.txt), secrets (db.txt), config (app.properties), webroot/uploads and uploads-private.
+The customer sends the name invoice-1001.txt. The first version joins it to the invoices folder, .../invoices/invoice-1001.txt, and reads that file: Invoice 1001: Ana, 42.50.
 
-### 2. A name with .. leaves the folder
+### 2. A name with .. climbs out of the folder
 
-The name is joined to the folder's path and nothing else is checked, so `..` climbs out: `../secrets/db.txt` returns DB_PASSWORD=demo-not-real and `../config/app.properties` returns the settings.
-The customer never needed a vulnerability in the database, only a longer name.
+The name ../secrets/db.txt is joined to the folder as it is: .../invoices/../secrets/db.txt. The disk reads .. as the folder above, so it opens .../secrets/db.txt and returns DB_PASSWORD=demo-not-real.
+The same with ../config/app.properties: the disk opens .../config/app.properties and returns admin=ana. The customer needed no flaw in the database, only a longer name.
 
-### 3. A text check on the path is not a path check
+### 3. A text check is not a path check
 
-The second version resolves the path, normalizes it and checks that the text starts with the invoices folder. `../secrets/db.txt` is refused. But `/…/invoices-private/payroll.txt`
-also starts with `/…/invoices`, so the payroll file is read. Comparing paths as text treats a folder's name as a prefix; `Path.startsWith` compares whole elements.
+The second version resolves and normalizes the path, then checks that its text starts with the text of the folder, ".../invoices".
+../secrets/db.txt becomes .../secrets/db.txt: as text it does not start with .../invoices, so it is refused with "outside the invoice folder".
+../invoices-private/payroll.txt becomes .../invoices-private/payroll.txt. As text it does start with .../invoices, because the folder's name is a prefix of invoices-private, and the payroll is read.
+Compared as a path, element by element, the element invoices-private is not invoices, so Path.startsWith says no.
 
-### 4. Names, paths and links, all checked
+### 4. The fixed version checks in four layers
 
-The fixed version first decodes the name exactly once, then requires `invoice-NNNN.txt`. Then it resolves against the real invoices folder, normalizes and compares as a path. Finally it follows symbolic links
-and checks the real file: a link named invoice-5555.txt that points at the secrets file passes the first checks and is refused with "link leads outside the invoice folder", while both older versions read it.
-The encoded `%2e%2e%2f` is decoded and refused as not an invoice name.
+The fixed version checks in four layers, in order, and the first that fails refuses: decode once (%2e%2e%2f becomes ../), the shape (invoice-, four digits, .txt), the path (remove .., compare with Path.startsWith), and the real path (follow links, compare again).
+invoice-1001.txt passes all four and is read. ../secrets/db.txt, %2e%2e%2fsecrets%2fdb.txt (decoded once to ../secrets/db.txt) and ../invoices-private/payroll.txt fail the shape: "not an invoice name". invoice-9999.txt has a good shape but there is no such file.
+A symbolic link .../invoices/invoice-5555.txt -> .../secrets/db.txt has a good shape and a path inside the folder. The naive and the prefix version both read the password through it; the fixed version follows the link, finds the real path .../secrets/db.txt, and refuses: "link leads outside the invoice folder".
 
-### 5. Uploads
+### 5. The naive upload trusts the customer's name
 
-The naive upload saves under the name the customer gave, in the web root. A file named `page.html` with a script in it is served as text/html, inline: a page on the store's own site with the customer's script.
-A name of `../../config/app.properties` replaces the settings, which now read admin=mallory. The fixed version limits the size, decides the type from the first bytes (PNG or JPEG only), makes the name itself
-(photo-0001.png), ignores the customer's name entirely, stores the file outside the web root, and serves it as image/png with a download header and nosniff. The script renamed cat.png is refused for what it contains,
-and a `../..` name is just ignored: the settings still read admin=ana.
+The customer sends a name and bytes. The first bytes show what a file really is: cat.png starts 89 50 4e 47 (.PNG), page.html starts 3c 68 74 6d (<htm), and the third file starts 61 64 6d 69 (admi).
+The naive upload saves each one in .../webroot/uploads/ under the name it came with. cat.png becomes /uploads/cat.png. page.html is served back as text/html, inline: a page with the customer's script, on the store's own site.
+The name ../../config/app.properties climbs out of the web root, and .../config/app.properties now reads admin=mallory.
 
-### 6. Where to send the customer next
+### 6. The fixed upload decides for itself
 
-After sign-in or upload, the store sends the customer to the `return to` address. The naive version sends them wherever it says: a look-alike site at https://evil.example/login, `//evil.example` (a browser reads it
-as another site), `/\evil.example` (browsers treat the backslash as a slash) or `javascript:`. The fixed version allows only a path that starts with a single slash, has no backslash or control characters, and has no scheme
-or authority; everything else becomes /account. If an absolute address must be allowed, its host is compared exactly: shop.example.evil.example and shop.example@evil.example are refused.
+The fixed upload never uses the customer's name. Its rules: a size of 1 to 1000 bytes; the type from the first bytes, PNG (89 50 4e 47) or JPEG (ff d8 ff); a name photo-NNNN counted by the server; storage in .../uploads-private/, outside the web root.
+cat.png (PNG bytes, 11 bytes) becomes /photos/photo-0001.png. page.html and the same script renamed cat.png both start 3c 68 74 6d and are refused: not a PNG or JPEG image. ../../config/app.properties with PNG bytes becomes /photos/photo-0002.png: its name was ignored. big.png, 5000 bytes, is refused: size not allowed.
+The download of photo-0001.png is sent with Content-Type: image/png, Content-Disposition: attachment and X-Content-Type-Options: nosniff, and the settings still read admin=ana.
+
+### 7. Return links stay on our own site
+
+After sign-in, the store sends the customer to the returnTo link. The naive version puts the link in the Location header as it is: https://evil.example/login, //evil.example and /\evil.example lead to another site, and javascript:steal() runs a script.
+The fixed version keeps /orders?page=2 and sends the rest to /account: https://evil.example/login and javascript:steal() do not start with /; //evil.example starts with //, another host; /\evil.example has a backslash, which browsers read as /.
+If an absolute link must be allowed, its host must be exactly shop.example: https://shop.example/x is allowed; shop.example.evil.example is another host; in https://shop.example@evil.example/x the host is evil.example and shop.example is only a user name.
 
 ## The verdict
 

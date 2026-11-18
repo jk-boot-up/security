@@ -7,7 +7,8 @@ src/main/java/com/jk/explore/security/passkeys/
 ├── B64.java                Base64url without padding (RFC 4648 section 5), the encoding WebAuthn uses for challenges and credential ids
 ├── Browser.java            The browser between a web page and the authenticator
 ├── ClientData.java         The client data that the browser, not the web page, writes for every WebAuthn call: the type of call, the server's challenge and the origin of the page that asked
-├── PasskeysDemo.java       Runs the online bank's passwordless sign-in in five numbered acts
+├── FixedRandom.java        Demo only: a SecureRandom that gives the same bytes on every run, so the challenges, keys and signatures the demo prints repeat and can be checked against the golden output
+├── PasskeysDemo.java       Runs the online bank's passwordless sign-in in five numbered acts, each split into labelled sections
 ├── RelyingParty.java       The bank's side of WebAuthn: it hands out single-use challenges, stores each customer's public keys, and checks every answer in a fixed order: challenge, type, origin, relying party id hash, flags, credential, signature and counter
 ├── Sha256.java             SHA-256, used for the relying party id hash and for the hash of the client data
 └── SimClock.java           A clock in whole seconds that only moves when told to, so challenge expiry is exact and repeatable
@@ -49,10 +50,10 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Registering a passkey: the bank keeps only a public key | The bank sends a 32-byte challenge; Ana's phone makes a P-256 key pair for bank.example and returns a 16-byte credential id and a 91-byte public key; the bank stores nothing that can sign, so a copy of its records is useless. |
-| 2. Signing in: a fresh challenge, signed once | The phone signs 37 bytes of authenticator data and the hash of the client data; the bank accepts it once, then refuses the same answer, an answer 301 seconds late, and an answer whose flags were changed after signing. |
-| 3. A look-alike site gets nothing it can use | On bank-example.test the phone has no passkey for that name, the browser will not ask for bank.example, and even a relayed answer carries the real origin, which the bank refuses; a typed password, by contrast, works at the bank. |
-| 4. User verification for payments, and counters against copies | A payment with only a touch is refused and accepted with a fingerprint; a copied key signs with counter 7 after the real phone already reached 7, so it is refused and the passkey suspended; synced passkeys always report 0. |
+| 1. Registering a passkey: the bank keeps only a public key | The bank sends a 32-byte challenge and its relying party id bank.example; the browser writes the client data; Ana's phone makes a P-256 key pair and returns a 16-byte credential id and a 91-byte public key; the bank stores nothing that can sign. |
+| 2. Signing in: a fresh challenge, signed once | The phone signs 69 bytes: 37 bytes of authenticator data (relying party id hash, flags 01, counter 1) and the SHA-256 of the 133-byte client data; the bank verifies with the stored public key and accepts once, then refuses a replay, a late answer and edited flags. |
+| 3. A look-alike site gets nothing it can use | On bank-example.test the phone has no passkey for that name; the browser works out that bank-example.test is neither bank.example nor ends with .bank.example; a browser that skipped the rule still signs the real origin, which the bank refuses; a typed password works at the bank. |
+| 4. User verification for payments, and counters against copies | A payment with flags 01 is refused and with flags 05 accepted; the bank has seen counter 6, the real phone signs with 7 and is accepted, the copied key signs with 7 and is refused, and the passkey is suspended; a synced passkey always reports 0. |
 | 5. The bill: recovery, lost devices and the move away from passwords | Ben's lost phone leaves his security key and a one-time recovery code; recovery is now the weakest way in, and Ana's password still works until the bank switches it off. |
 
 ## Test
@@ -61,13 +62,13 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-26 tests in `DemoRunsTest`, `EncodingTest`, `RelyingPartyTest`. Base64url is checked against the RFC 4648 test vectors and SHA-256 against the published abc vector. Every check the relying party makes is a test that refuses an answer with its exact reason, including the five-minute challenge boundary, a copied key caught by the counter, and the browser's relying party id rule.
+28 tests in `DemoRunsTest`, `EncodingTest`, `RelyingPartyTest`. Base64url is checked against the RFC 4648 test vectors and SHA-256 against the published abc vector. Every check the relying party makes is a test that refuses an answer with its exact reason, including the five-minute challenge boundary, a copied key caught by the counter, and the browser's relying party id rule.
 
 ## What the simulation got right, and what it left out
 
-Everything runs in memory with a simulated clock in whole seconds; no real browser or authenticator is used. Keys, challenges and credential ids
-are random, so the demo prints only facts that do not depend on them: sizes, flags, counters and verdicts. The demo password and recovery code
-are demo values that protect nothing.
+Everything runs in memory with a simulated clock in whole seconds; no real browser or authenticator is used. The demo draws every random value
+(challenges, keys, credential ids, signatures) from one `FixedRandom` with a fixed seed, so it prints the same challenges, hashes and signatures on
+every run; the classes themselves default to `SecureRandom`. The demo password and recovery code are demo values that protect nothing.
 
 ## Technologies and versions
 

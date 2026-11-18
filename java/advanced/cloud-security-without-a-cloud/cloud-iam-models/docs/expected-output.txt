@@ -1,50 +1,157 @@
 ONE. Identity policies: default deny, allow, explicit deny.
-  ana's policy allows reading bank-reports and denies reading bank-reports/secret/*:
-    ana   s3:GetObject      s3:bank-reports/2026/q3.csv          ALLOW (allowed by an identity policy)
-    ana   S3:GETOBJECT      s3:bank-reports/2026/q3.csv          ALLOW (allowed by an identity policy)  <- ACTION NAMES IGNORE CASE
-    ana   s3:GetObject      s3:bank-reports/secret/keys.txt      DENY  (explicit deny in reports-read)
-    ana   s3:PutObject      s3:bank-reports/2026/q3.csv          DENY  (implicit deny: nothing allows it)
-    ana   s3:GetObject      s3:bank-secrets/keys.txt             DENY  (implicit deny: nothing allows it)
-    ana   s3:GetObject      s3:Bank-Reports/2026/q3.csv          DENY  (implicit deny: nothing allows it)  <- RESOURCE NAMES DO NOT
-  carol's policy is Allow with NotAction iam:*:
-    carol s3:DeleteBucket   s3:bank-reports                      ALLOW (allowed by an identity policy)  <- ALLOW + NOTACTION ALLOWS EVERYTHING ELSE
-    carol iam:CreateUser    arn:aws:iam::111111111111:user/x     DENY  (implicit deny: nothing allows it)
-  nothing is allowed until something allows it, and a deny anywhere beats every allow
+  THE POLICY reports-read (ana, bank account 111111111111):
+    Allow  s3:GetObject, s3:ListBucket
+           on bank-reports and bank-reports/*
+    Deny   s3:GetObject on bank-reports/secret/*
+  THE REQUESTS ana makes:
+    1  s3:GetObject  bank-reports/2026/q3.csv
+    2  S3:GETOBJECT  bank-reports/2026/q3.csv
+    3  s3:GetObject  bank-reports/secret/keys.txt
+    4  s3:PutObject  bank-reports/2026/q3.csv
+    5  s3:GetObject  bank-secrets/keys.txt
+    6  s3:GetObject  Bank-Reports/2026/q3.csv
+  THE ANSWERS:
+    1  ALLOW  allowed by an identity policy
+    2  ALLOW  allowed by an identity policy
+    3  DENY   explicit deny in reports-read
+    4  DENY   implicit deny: nothing allows it
+    5  DENY   implicit deny: nothing allows it
+    6  DENY   implicit deny: nothing allows it
+  WHY 2 AND 6 DIFFER:
+    action names ignore case:   S3:GETOBJECT = s3:GetObject
+    resource names keep it:     Bank-Reports is not bank-reports
+  HOW REQUESTS 1 AND 3 ARE DECIDED (top to bottom):
+    question                        1        3
+    a Deny statement matches?       no       yes
+    organization policies allow?    none     -
+    inside the boundary?            none     -
+    inside the session policy?      none     -
+    an identity policy allows?      yes      -
+    the resource policy allows?     none     -
+    same account as the resource?   yes      -
+    answer                          ALLOW    DENY
+  THE POLICY everything-but-iam (carol):
+    Allow  NotAction iam:*  on *
+  THE REQUESTS carol makes, and the answers:
+    s3:DeleteBucket  bank-reports   ALLOW
+    iam:CreateUser   user/x         DENY
+    NotAction iam:* allows every action of every other service
 TWO. Accounts: who has to agree.
-  ben in the bank account, the bucket in the same account; identity policy yes bucket policy yes -> ALLOW (allowed by an identity policy)
-  ben in the bank account, the bucket in the same account; identity policy yes bucket policy no  -> ALLOW (allowed by an identity policy)
-  ben in the bank account, the bucket in the same account; identity policy no  bucket policy yes -> ALLOW (allowed by the resource policy)
-  ben in the bank account, the bucket in the other account; identity policy yes bucket policy yes -> ALLOW (allowed by both accounts)
-  ben in the bank account, the bucket in the other account; identity policy yes bucket policy no  -> DENY  (implicit deny: the resource's account does not allow it)
-  ben in the bank account, the bucket in the other account; identity policy no  bucket policy yes -> DENY  (implicit deny: the principal's own account does not allow it)
-  in one account either side is enough; across accounts both must say yes, so one account cannot hand out another's data, or take it
-  a bucket policy with Principal *: someone with no account at all can read: true  <- EVERYONE ON THE INTERNET
-  a stranger from another account whose own policies allow nothing: false, and with a policy of their own that allows it: true
-  an organization policy that does not allow s3:GetObject stops even an administrator: DENY  (implicit deny: no allow in the organization policies)
+  THE REQUEST: ben, of the bank account 111111111111,
+    asks s3:GetObject on shared-data/file.csv
+    identity policy  Allow s3:GetObject on *
+    bucket policy    Allow account 111111111111 s3:GetObject
+  THE ANSWERS (which policies exist, where the bucket is):
+    bucket in      identity  bucket  answer
+    same account   yes       yes     ALLOW
+    same account   yes       no      ALLOW
+    same account   no        yes     ALLOW
+    other account  yes       yes     ALLOW
+    other account  yes       no      DENY
+    other account  no        yes     DENY
+  HOW THE RULE WORKS OUT:
+    same account   identity OR bucket   3 of 3 ALLOW
+    other account  identity AND bucket  1 of 3 ALLOW
+  THE BUCKET POLICY public-bucket:
+    Allow  Principal *  s3:GetObject on *
+  THE ANSWERS for s3:GetObject:
+    nobody, no account at all              ALLOW  <- ANYONE
+    a stranger, own policy allows nothing  DENY
+    a stranger, own policy allows it       ALLOW
+  THE ORGANIZATION POLICY only-ec2:
+    Allow  ec2:* on *
+  THE ANSWER for an administrator (Allow * on *):
+    s3:GetObject  DENY  no allow in the organization policies
 THREE. Roles and the layers that narrow them.
-  ben assumes Developer, whose trust policy asks for a second factor: without it DENY  (implicit deny: the trust policy does not allow it); with it ALLOW (the trust policy and the caller's policies allow it)
-  eight actions asked of the session; the role's own policy allows 6: [s3:GetObject, s3:PutObject, s3:DeleteObject, dynamodb:Query, ec2:RunInstances, iam:PassRole]
-  with a permission boundary of s3:* and dynamodb:*, only what both allow is left: 4: [s3:GetObject, s3:PutObject, s3:DeleteObject, dynamodb:Query]
-  and a session policy passed at assumption, narrower again: 2: [s3:GetObject, dynamodb:Query]
-  a session policy can only narrow: asking it for iam:CreateUser as well changes nothing: DENY  (implicit deny: outside the permission boundary)
-  a bucket policy that names the session itself is not narrowed by the boundary or the session policy: s3:DeleteObject ALLOW (the resource policy names the principal)  <- NAMING A PRINCIPAL IS A STRONGER GRANT THAN NAMING AN ACCOUNT
-  conditions: the payments team from the office network true, from elsewhere false, another team from the office false
+  THE ROLE Developer (bank account 111111111111):
+    trust   Allow account 111111111111 sts:AssumeRole
+            if aws:MultiFactorAuthPresent is true
+    policy  Allow s3:*, dynamodb:*, ec2:*, iam:PassRole
+  THE ASSUMPTION by ben:
+    no second factor    DENY  the trust policy does not allow it
+    a second factor     ALLOW a session of Developer
+  THE TWO LAYERS that narrow the session:
+    boundary        Allow s3:*, dynamodb:*
+    session policy  Allow s3:GetObject, dynamodb:Query
+  THE EIGHT ACTIONS, LAYER BY LAYER:
+    action            role  +boundary  +session
+    s3:GetObject      yes   yes        yes
+    s3:PutObject      yes   yes        no
+    s3:DeleteObject   yes   yes        no
+    dynamodb:Query    yes   yes        yes
+    ec2:RunInstances  yes   no         no
+    iam:CreateUser    no    no         no
+    iam:PassRole      yes   no         no
+    kms:Decrypt       no    no         no
+    allowed           6     4          2
+    a session policy can only narrow: one that allows *
+    still gets iam:CreateUser DENY
+  THE BUCKET POLICY that names the session itself:
+    Allow  assumed-role/Developer/ben
+           s3:DeleteObject on *
+  THE ANSWER for s3:DeleteObject:
+    ALLOW  the resource policy names the principal
+    the boundary and the session policy are skipped
+  THE CONDITIONS of the policy team-only:
+    StringEquals  aws:PrincipalTag/team = payments
+    IpAddress     aws:SourceIp in 203.0.113.0/24
+  THE ANSWERS for s3:GetObject:
+    team payments,  from 203.0.113.9   ALLOW
+    team payments,  from 198.51.100.9  DENY
+    team marketing, from 203.0.113.9   DENY
 FOUR. The confused deputy.
-  ReportCo (account 999999999999) reads its customers' buckets by assuming a role each customer made, whose trust policy names ReportCo's account
-  the bank's own request through ReportCo: ALLOW (allowed by an identity policy)
-  Mallory, another customer of ReportCo, types the bank's role into ReportCo's form: ALLOW (allowed by an identity policy)  <- THE SERVICE IS THE DEPUTY, AND IT HAS BEEN FOOLED
-  the trust policy now also asks for the external id that ReportCo issued to the bank, ext-bank-7f3a
-  the bank's request: ALLOW (allowed by an identity policy)
-  Mallory's request, which carries the id ReportCo issued to Mallory: DENY  (implicit deny: the trust policy does not allow it)
-  an id that Mallory chooses is no use: it must be issued by the service, one for each customer, and not guessable
-  the same idea between services: a topic that trusts the service publishes for any bucket that asks: true
-  with aws:SourceArn in the condition: false for Mallory's bucket, true for the bank's
+  THE SETUP:
+    ReportCo   a reporting service, account 999999999999
+    customers  the bank and Mallory each made a role
+               that ReportCo assumes to read their files
+    the bank's role  ReportCoAccess, may read bank-reports/*
+  BEFORE THE FIX, the trust policy of ReportCoAccess:
+    Allow account 999999999999 sts:AssumeRole
+  THE ANSWERS before the fix:
+    the bank asks for its reports       ALLOW
+    Mallory names the bank's role       ALLOW  <- FOOLED
+    ReportCo is the deputy: it acts with its own rights,
+    for whoever asked
+  THE EXTERNAL IDS that ReportCo issued, one per customer:
+    the-bank      ext-bank-7f3a
+    mallory-corp  ext-mallory-91c2
+  AFTER THE FIX, the trust policy also asks:
+    StringEquals sts:ExternalId = ext-bank-7f3a
+  THE ANSWERS after the fix:
+    the-bank      sends ext-bank-7f3a     =    ALLOW
+    mallory-corp  sends ext-mallory-91c2  !=   DENY
+    the id is issued by ReportCo, so Mallory cannot choose it
+  BETWEEN SERVICES: the topic bank-alerts trusts the notifier
+    before  Allow account 999999999999 sns:Publish
+    after   ... if aws:SourceArn is like arn:aws:s3:::bank-*
+  THE ANSWERS (the bucket that asked the notifier to publish):
+    mallory-bucket   before ALLOW  after DENY
+    bank-statements  before ALLOW  after ALLOW
 FIVE. The bill.
-  who can make themselves an administrator, asking the evaluator at every step:
-    ana: no path found
-    ben -> iam:PassRole(AdminRole) + lambda:CreateFunction + lambda:InvokeFunction => administrator
-    carol -> assume DevRole -> iam:CreatePolicyVersion on DevPolicy => administrator
-  carol was given one harmless-looking permission, to assume a developer role, and the role may rewrite its own policy; ben may pass the admin role to a function he runs
-  statements with a wildcard action or resource in these policies: 3 of 3  <- EVERY WILDCARD IS A DECISION NOBODY MADE
-  this evaluator follows the documented rules for a handful of services; the real service has more (service-linked roles, tag rules, session tags, more condition keys),
-  so a model like this finds the shape of a problem and the real service's policy simulator, or a real test account, confirms it
+  THE POLICIES (all in the bank account):
+    ana        Allow s3:GetObject on bank-reports/*
+    ben        Allow iam:PassRole, lambda:CreateFunction,
+               lambda:InvokeFunction on *
+    carol      Allow sts:AssumeRole on role/DevRole
+    DevRole    DevPolicy: Allow s3:*,
+               iam:CreatePolicyVersion on *
+    AdminRole  AdministratorAccess: Allow * on *
+  THE PATHS TO ADMINISTRATOR (each step asked of the evaluator):
+    ana    no path found
+    ben    iam:PassRole(AdminRole)
+           + lambda:CreateFunction
+           + lambda:InvokeFunction
+           => administrator
+    carol  assume DevRole
+           -> iam:CreatePolicyVersion on DevPolicy
+           => administrator
+  HOW CAROL'S PATH IS FOUND, step by step:
+    carol    sts:AssumeRole on role/DevRole       ALLOW
+    session  iam:CreatePolicyVersion on DevPolicy ALLOW
+    DevPolicy v2 says Allow * on *, and DevRole has it
+    session  is an administrator now              yes
+  THE WILDCARDS in these policies (action or resource *):
+    DevPolicy            has a wildcard
+    AdministratorAccess  has a wildcard
+    builder              has a wildcard
+    3 of 3 statements: each wildcard is a decision nobody made

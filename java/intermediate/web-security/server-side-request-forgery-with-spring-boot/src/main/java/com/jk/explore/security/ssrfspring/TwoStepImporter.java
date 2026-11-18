@@ -2,6 +2,7 @@ package com.jk.explore.security.ssrfspring;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
 
 /**
  * The mistake that looks like a fix: resolve the name and judge it, then hand the same name to the client, which resolves it again.
@@ -16,11 +17,13 @@ class TwoStepImporter extends NaiveImporter {
     @Override
     void check(Target target) throws ImportRefused {
         try {
-            for (InetAddress candidate : dns.resolve(target.host())) {
+            List<InetAddress> found = dns.resolve(target.host());
+            for (InetAddress candidate : found) {
                 if (!AddressPolicy.isPublic(candidate)) {
-                    throw new ImportRefused(target.host() + " resolves to a private address " + candidate.getHostAddress());
+                    throw new ImportRefused(target.host() + " is " + candidate.getHostAddress() + ", not public");
                 }
             }
+            trace.add("check: look up " + target.host() + ": " + found.stream().map(InetAddress::getHostAddress).toList() + ", public");
         } catch (UnknownHostException e) {
             throw new ImportRefused("unknown host " + target.host());
         }

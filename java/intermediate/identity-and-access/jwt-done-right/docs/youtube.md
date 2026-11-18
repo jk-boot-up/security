@@ -16,18 +16,40 @@ Chapters:
 
 ```
 00:00 Introduction
-01:05 The Scenario
-01:25 The Words
-01:47 Act One — Three parts, and decoding is not verifying
-02:43 Act Two — The server chooses the algorithm, never the token
-03:39 Act Three — Every claim that matters is checked
-04:28 Act Four — Keys by id, from a set the API already holds
-05:15 Act Five — The bill: a token cannot be taken back
-06:02 The Checks, In Order
-06:28 Who Does What
-07:01 Where You Have Seen It
-07:33 How To Use It
-08:04 Thanks for Watching
+01:07 The Scenario
+01:27 The Words
+01:49 What the Letters Stand For
+02:49 What the Letters Stand For (continued)
+03:41 What the Letters Stand For (continued)
+04:20 One real token, three parts
+05:18 From JSON to token: base64url, then the signature
+06:41 Act One — How the bank builds a token
+07:01 Act One — How the bank builds a token
+07:19 Act One — How the bank builds a token
+07:26 Ana's signature on mallory's claims
+08:25 Act Two — Decoding is not verifying
+08:50 Four headers against the API's own settings
+09:57 Act Three — The server chooses the algorithm, never the token
+10:08 Act Three — The server chooses the algorithm, never the token
+10:20 The clock, and one changed claim at a time
+11:32 Act Four — Every claim that matters is checked
+11:51 Act Four — Every claim that matters is checked
+12:01 A token names a key; the API decides which keys exist
+13:03 Act Five — Keys by id, from a set the API already holds
+13:15 Act Five — Keys by id, from a set the API already holds
+13:29 After the bank revokes, until the token expires
+14:20 Act Six — The bill: a token cannot be taken back
+14:45 The Checks, In Order
+15:11 Where You Have Seen It
+15:44 How To Use It
+16:15 The Java Classes
+16:29 Policy — fixed by the server
+16:47 Validator — the header against the policy, a known key
+17:03 Validator — then the claims
+17:15 KeySet — look up, never fetch
+17:28 Base64UrlSteps — three bytes, four characters
+17:45 RefreshTokens — a lookup the bank controls
+17:59 Thanks for Watching
 ```
 
 ## Tags

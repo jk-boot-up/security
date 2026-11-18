@@ -19,10 +19,13 @@ final class Jws {
     }
 
     static String sign(Map<String, ?> header, byte[] payload, PrivateKey key) {
-        String headerPart = Base64Url.encode(Json.write(header).getBytes(StandardCharsets.UTF_8));
+        byte[] headerJson = Json.write(header).getBytes(StandardCharsets.UTF_8);
+        String headerPart = Base64Url.encode(headerJson);
         String payloadPart = Base64Url.encode(payload);
-        byte[] signature = Ed25519.sign(key, (headerPart + "." + payloadPart).getBytes(StandardCharsets.US_ASCII));
-        return headerPart + "." + payloadPart + "." + Base64Url.encode(signature);
+        String signingInput = headerPart + "." + payloadPart;
+        byte[] input = signingInput.getBytes(StandardCharsets.US_ASCII);
+        byte[] signature = Ed25519.sign(key, input);
+        return signingInput + "." + Base64Url.encode(signature);
     }
 
     /** Splits and decodes a compact token. Exactly three parts; the header must be a JSON object without duplicate members. */

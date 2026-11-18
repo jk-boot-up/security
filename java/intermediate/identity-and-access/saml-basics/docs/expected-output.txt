@@ -1,22 +1,95 @@
-== 1. Signing in through the bank ==
-trusting provider, genuine response    -> signed in as ana@bank.example
-strict provider, genuine response      -> signed in as ana@bank.example
-
-== 2. A valid signature is not the same as the bank's signature ==
-trusting provider, self-signed         -> signed in as admin@bank.example
-pinned-key provider, self-signed       -> refused: signature is not valid
-pinned-key provider, edited name       -> refused: signature is not valid
-
-== 3. A valid signature on one assertion, and another one read ==
-pinned-key provider, wrapped           -> signed in as admin@bank.example
-strict provider, wrapped               -> refused: exactly one assertion is required
-strict provider, self-signed           -> refused: signature is not valid
-strict provider, edited name           -> refused: signature is not valid
-
-== 4. The statement itself is checked ==
-genuine response, first time           -> signed in as ana@bank.example
-the same response replayed             -> refused: assertion already used
-expired assertion                      -> refused: assertion is outside its validity period
-meant for another shop                 -> refused: assertion is for another audience
-answers another request                -> refused: assertion answers another request
-response with a DOCTYPE                -> refused: not well-formed XML or has a DOCTYPE
+ONE. Signing in through the bank.
+  THE REQUEST (the shop sends Ana's browser to the bank):
+    AuthnRequest  ID req-1, from https://shop.example
+    reply to      https://shop.example/acs
+  THE RESPONSE (the bank's signed assertion, what matters):
+    Assertion ID  a1, issued 2026-03-01T10:00:00Z
+    Issuer        https://idp.bank.example  (who says so)
+    NameID        ana@bank.example  (who signed in)
+    InResponseTo  req-1  (answers this request)
+    Recipient     https://shop.example/acs
+    Audience      https://shop.example  (for this shop)
+    NotBefore     2026-03-01T09:59:00Z  = issued - 60 s
+    NotOnOrAfter  2026-03-01T10:05:00Z  = issued + 300 s
+    Signature     inside the assertion, covers #a1
+  THE RESULT:
+    trusting provider              -> signed in as ana@bank.example
+    strict provider                -> signed in as ana@bank.example
+TWO. How the bank signs the assertion.
+  BEFORE SIGNING (the assertion, as XML):
+    <saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:as...
+    <saml:Issuer>https://idp.bank.example</saml:Issuer><saml:S...
+    (614 bytes once canonicalized)
+  HOW THE BANK SIGNS IT (step by step):
+    1. drop the Signature element itself (enveloped)
+    2. canonicalize: exclusive XML c14n -> 614 bytes
+    3. DigestValue = base64(SHA-256(those bytes))
+       Wx5yAVx5mk5fBilLz82ytRLo9aaIj/66yEPlHDlh7zM=
+    4. SignedInfo = Reference #a1 + DigestValue -> 640 bytes
+    5. SignatureValue = RSA-SHA256(bank's private key, SignedInfo)
+       256 bytes = <random: a new RSA key on every run>
+  AFTER SIGNING (inside the assertion, after the Issuer):
+    <ds:Signature> Reference URI #a1, DigestValue, SignatureValue,
+                   KeyInfo: the signer's RSA public key
+  HOW THE SHOP CHECKS IT (redone by hand, with the bank's key):
+    1. SHA-256 of the same bytes again = DigestValue: true
+    2. RSA verify of SignedInfo, the bank's public key: true
+    3. the library's XMLSignature.validate agrees: true
+  THE RESULT:
+    the signature covers #a1 and nothing else
+THREE. A valid signature is not the same as the bank's signature.
+  THE ATTACKER'S RESPONSE (same XML, the attacker's own key):
+    NameID   admin@bank.example
+    KeyInfo  the attacker's public key, inside the message
+  BEFORE THE FIX (trusting provider: the key in KeyInfo):
+    signature valid with the key it carries: true
+    -> signed in as admin@bank.example
+    <- ANYONE CAN SIGN
+  AFTER THE FIX (pinned-key provider: the bank's key only):
+    signature valid with the bank's key: false
+    -> refused: signature is not valid
+  ONE NAME EDITED IN THE GENUINE RESPONSE (the input):
+    NameID ana@bank.example -> admin@bank.example
+  THE DIGEST, AS SIGNED AND AFTER THE EDIT:
+    DigestValue  Wx5yAVx5mk5fBilLz82ytRLo9aaIj/66yEPlHDlh7zM=
+    SHA-256 now  lwyut96xNH6vh7kdE/FybSbFShbhJ04L/DTzEFb+8tM=
+  THE RESULT:
+    -> refused: signature is not valid
+FOUR. Signature wrapping: one assertion checked, another read.
+  THE WRAPPED RESPONSE (the attacker moves the signed one):
+    samlp:Response
+      saml:Assertion ID forged-1, NameID admin@bank.example, unsigned
+      samlp:Extensions
+        saml:Assertion ID a1, NameID ana@bank.example
+          ds:Signature covers #a1
+  BEFORE THE FIX (pinned-key provider):
+    1. first signature, the bank's key: valid true, covers #a1
+    2. first assertion read: ID forged-1, NameID admin@bank.example
+    -> signed in as admin@bank.example
+    <- CHECKED ONE ELEMENT, READ ANOTHER
+  AFTER THE FIX (strict provider: read only what is signed):
+    assertions in the document: 2
+    -> refused: exactly one assertion is required
+  THE STRICT PROVIDER AND THE OTHER TWO ATTACKS:
+    self-signed                    -> refused: signature is not valid
+    edited name                    -> refused: signature is not valid
+FIVE. The statement itself is checked.
+  THE STRICT PROVIDER'S CHECKS (now 2026-03-01T10:00:00Z):
+    issuer   https://idp.bank.example: true
+    time     NotBefore - 60 s <= now < NotOnOrAfter + 60 s: true
+    audience https://shop.example: true
+    request  InResponseTo req-1 is the one this browser made: true
+    replay   assertion id a2 not seen before: true
+  THE RESULT:
+    genuine response, first time   -> signed in as ana@bank.example
+  ONE THING CHANGED AT A TIME (the input, then the result):
+    the same response again (assertion a2)
+      -> refused: assertion already used
+    NotOnOrAfter 2026-03-01T09:10:00Z (50 minutes ago)
+      -> refused: assertion is outside its validity period
+    Audience https://other.example (another shop)
+      -> refused: assertion is for another audience
+    InResponseTo req-999 (a request this browser never made)
+      -> refused: assertion answers another request
+    <!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]>
+      -> refused: not well-formed XML or has a DOCTYPE

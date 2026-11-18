@@ -1,36 +1,91 @@
-== 1. Same origin needs no CORS ==
-bank's own page reads /account         -> reached the bank, readable: balance: 125000 cents
-
-== 2. No CORS headers: a page may send, but not read ==
-evil.example reads /account            -> reached the bank, answer blocked
-evil.example POSTs /transfer (simple)  -> reached the bank, answer blocked
-evil.example PUTs /transfer            -> never reached the bank, answer blocked
-requests the bank processed -> [GET /account, POST /transfer]  <- CORS DID NOT STOP THE POST
-
-== 3. Policies that look like fixes ==
-reflect any origin
-  evil.example reads /account          -> reached the bank, readable: balance: 125000 cents
-  evilbank.example reads /account      -> reached the bank, readable: balance: 125000 cents
-  null origin reads /account           -> reached the bank, readable: balance: 125000 cents
-exact list that also allows null
-  evil.example reads /account          -> reached the bank, answer blocked
-  evilbank.example reads /account      -> reached the bank, answer blocked
-  null origin reads /account           -> reached the bank, readable: balance: 125000 cents
-origin ends with bank.example
-  evil.example reads /account          -> reached the bank, answer blocked
-  evilbank.example reads /account      -> reached the bank, readable: balance: 125000 cents
-  null origin reads /account           -> reached the bank, answer blocked
-
-== 4. An exact allow-list ==
-partner.example reads /account         -> reached the bank, readable: balance: 125000 cents
-partner.example PUTs JSON              -> reached the bank, readable: sent 500 to mallory
-evil.example reads /account            -> reached the bank, answer blocked
-evilbank.example reads /account        -> reached the bank, answer blocked
-null origin reads /account             -> reached the bank, answer blocked
-evil.example PUTs JSON                 -> never reached the bank, answer blocked
-evil.example reads public /rates       -> reached the bank, readable: rates: 4.1%
-Vary header on /account       -> Origin
-
-== 5. Wildcard and cookies never combine ==
-browser accepts * with cookies -> false
-browser accepts * without cookies -> true
+ONE. The bank's own page needs no CORS.
+  THE ORIGINS (scheme, host, port; same as the API?):
+    https://bank.example      https  bank.example      443  yes
+    https://partner.example   https  partner.example   443  no
+    https://evil.example      https  evil.example      443  no
+    https://evilbank.example  https  evilbank.example  443  no
+  THE REQUEST (a script on https://bank.example, with cookie):
+    GET /account
+  WHAT THE PAGE GETS (same origin: no CORS rules apply):
+    read: balance: 125000 cents
+TWO. With no CORS headers, a page may send but not read.
+  THE REQUESTS (a script on https://evil.example, cookie sent):
+    GET  /account                     simple
+    POST /transfer  text/plain        simple
+    PUT  /transfer  application/json  needs a preflight
+  THE SIMPLE-REQUEST RULE (sent without asking first):
+    GET, HEAD or POST, with a form or plain-text body
+  THE PREFLIGHT (asked before the PUT, without the cookie):
+    OPTIONS /transfer
+    Access-Control-Request-Method: PUT
+    Access-Control-Request-Headers: content-type
+  THE PREFLIGHT ANSWER:
+    204, Access-Control-Allow-Origin: (none)
+  WHAT THE PAGE GETS:
+    GET  /account   reached the bank, answer blocked
+    POST /transfer  reached the bank, answer blocked
+    PUT  /transfer  never reached the bank
+  THE BANK'S LOG (the requests it ran):
+    [GET /account, POST /transfer]  <- CORS DID NOT STOP THE POST
+THREE. Three policies that look like fixes.
+  THE POLICY: reflect any origin, with credentials
+  THE ANSWERS:
+    origin sent               Allow-Origin back         page
+    https://evil.example      https://evil.example      reads
+    https://evilbank.example  https://evilbank.example  reads
+    null                      null                      reads
+  THE POLICY: the partner, and also null
+  THE ANSWERS:
+    origin sent               Allow-Origin back         page
+    https://evil.example      (none)                    blocked
+    https://evilbank.example  (none)                    blocked
+    null                      null                      reads
+  THE POLICY: the origin ends with bank.example
+  THE ANSWERS:
+    origin sent               Allow-Origin back         page
+    https://evil.example      (none)                    blocked
+    https://evilbank.example  https://evilbank.example  reads
+    null                      (none)                    blocked
+  HOW THE SUFFIX TEST DECIDES:
+    "https://partner.example".endsWith("bank.example") -> false
+    "https://evil.example".endsWith("bank.example") -> false
+    "https://evilbank.example".endsWith("bank.example") -> true
+  each page that reads gets: balance: 125000 cents
+FOUR. An exact allow-list names one partner.
+  THE LIST (whole strings, compared case-sensitively):
+    https://partner.example
+  THE PREFLIGHT (the partner asks before a JSON PUT):
+    OPTIONS /transfer   Origin: https://partner.example
+  THE PREFLIGHT ANSWER:
+    Access-Control-Allow-Origin: https://partner.example
+    Access-Control-Allow-Credentials: true
+    Access-Control-Allow-Methods: GET, POST, PUT
+    Access-Control-Allow-Headers: content-type, x-requested-with
+    Access-Control-Max-Age: 600
+  THE ANSWER TO GET /account (the partner, with cookie):
+    Access-Control-Allow-Origin: https://partner.example
+    Access-Control-Allow-Credentials: true
+    Vary: Origin
+  THE BROWSER'S CHECK (a request with cookies):
+    Allow-Origin equals the page's origin  -> yes
+    Allow-Credentials is true              -> yes
+    so the page may read                   -> yes
+  WHAT EACH PAGE GETS:
+    partner.example  GET /account   read: balance: 125000 cents
+    partner.example  PUT /transfer  read: sent 500 to mallory
+    evil.example     GET /account   reached the bank, answer blocked
+    evilbank.example GET /account   reached the bank, answer blocked
+    null             GET /account   reached the bank, answer blocked
+    evil.example     PUT /transfer  never reached the bank
+    evil.example     GET /rates     read: rates: 4.1%  (public: *)
+FIVE. A wildcard and cookies never combine.
+  THE ANSWER (the server sends both):
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Credentials: true
+  THE BROWSER'S CHECK, A REQUEST WITH COOKIES:
+    Allow-Origin must equal the page's origin; * does not
+    -> refused
+  THE BROWSER'S CHECK, A REQUEST WITHOUT COOKIES:
+    * means any page may read
+    -> accepted
+  needing cookies and any origin leads to reflecting (THREE)

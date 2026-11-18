@@ -55,4 +55,23 @@ class LeaksTest {
         Secret secret = MountedSecrets.read(file);
         assertTrue(secret.matches("demo-secret".toCharArray()));
     }
+
+    @Test
+    void theEntropyGroupsAddUpToTheEntropy() {
+        for (String value : List.of(SecretsDemo.randomLookingToken(), "ProductCatalogueController", "abab")) {
+            double sum = 0;
+            for (Map.Entry<Integer, Integer> group : SecretScanner.charactersByCount(value).entrySet()) {
+                double p = (double) group.getKey() / value.length();
+                sum += group.getValue() * p * Math.log(1 / p) / Math.log(2);
+            }
+            assertEquals(SecretScanner.entropy(value), sum, 1e-9);
+        }
+        assertEquals(Map.of(2, 2), SecretScanner.charactersByCount("abab"));
+    }
+
+    @Test
+    void permissionsAreSplitByWhom() {
+        assertEquals("owner rw-  group r--  others r--", MountedSecrets.byWhom("rw-r--r--"));
+        assertEquals("owner rw-  group ---  others ---", MountedSecrets.byWhom("rw-------"));
+    }
 }

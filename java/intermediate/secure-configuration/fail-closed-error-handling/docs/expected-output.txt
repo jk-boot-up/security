@@ -1,32 +1,95 @@
 ONE. Failing open.
-  a payment of 1500.00 at unknown-electronics, fraud check working: refused
-  the same payment while the fraud check is down: APPROVED  <- AN ERROR BECAME A YES
-  a payment of 4500.00 against a daily limit of 2000.00: refused
-  the same payment when the account's spent-today value is unreadable: APPROVED  <- AN EXCEPTION SKIPPED THE CHECK
-  the decision started as yes, and each check could only take it away: a check that never ran took nothing away
+  THE RULE (NaiveAuthorizer):
+    start from yes; a check can only take it away
+  THE PAYMENT:
+    1500.00 at unknown-electronics
+  THE RESULT, FRAUD CHECK WORKING:
+    refused (looks fraudulent)
+  THE RESULT, FRAUD CHECK DOWN:
+    APPROVED  <- AN ERROR BECAME A YES
+  THE PAYMENT:
+    4500.00 at furniture-store
+  THE DAILY LIMIT, WORKED OUT:
+    spent today 0.00 + 4500.00 = 4500.00 > 2000.00
+  THE RESULT, SPENT-TODAY READ AS "0":
+    refused (over the daily limit)
+  THE RESULT, SPENT-TODAY UNREADABLE ("n/a"):
+    APPROVED  <- THE CHECK WAS SKIPPED
+  a check that never ran took nothing away
 TWO. Failing closed.
-  the decision starts as no, and only a check that ran and passed can turn it into yes
-  a coffee for 4.50: APPROVED
-  the risky payment, fraud check working: refused (looks fraudulent)
-  the risky payment while the fraud check is down: refused (could not be checked), reference REF-0003
-  a coffee while the fraud check takes 5 seconds, with a budget of 300 ms: refused (could not be checked)
-  the big payment with an unreadable spent-today value: refused (could not be checked)
-  every refusal is in the log with its reference: 4 lines
+  THE RULE (SafeAuthorizer):
+    start from no; only a check that ran and passed
+    turns it into yes
+  THE INPUTS (payment, what goes wrong):
+    1  coffee     4.50  nothing
+    2  risky   1500.00  nothing
+    3  risky   1500.00  fraud check down
+    4  coffee     4.50  fraud check slow
+    5  big     4500.00  spent-today "n/a"
+  THE RESULTS:
+    1  REF-0001  APPROVED
+    2  REF-0002  refused: looks fraudulent
+    3  REF-0003  refused: could not be checked
+    4  REF-0004  refused: could not be checked
+    5  REF-0005  refused: could not be checked
+  THE TIME BUDGET, WORKED OUT (REF-0004):
+    the check needs 5000 ms > budget 300 ms
+    -> given up at 300 ms: no answer is a no
+  THE SECURITY LOG (one line per refusal):
+    4 lines: REF-0002, REF-0003, REF-0004, REF-0005
 THREE. Failing halfway.
-  ana sends 250.00 to ben, whose account is frozen: done false, ana now has 750.00, ben has 0.00
-  money in the bank before 1000.00, after 750.00  <- 250.00 VANISHED
-  as one unit of work, checked first and undone if the second half fails: done false, ana still has 1000.00, money in the bank 1000.00
-  three failed updates that give a connection back only on success: free connections 0, the next update fails: no connection available
-  the same three failures with try-with-resources: free connections 3
+  THE ACCOUNTS BEFORE (ben's account is frozen):
+    ana 1000.00   ben 0.00   total 1000.00
+  THE TRANSFER:
+    ana sends 250.00 to ben
+  AFTER, DEBIT THEN CREDIT (Transfers.naive):
+    debit ana  1000.00 - 250.00 = 750.00
+    credit ben  fails: account ben is frozen; done false
+    ana 750.00   ben 0.00   total 750.00
+    1000.00 - 750.00 = 250.00  <- VANISHED
+  AFTER, ONE UNIT OF WORK (Transfers.atomic):
+    checked first: ben accepts credit? false -> done false
+    ana 1000.00   ben 0.00   total 1000.00
+  THE CONNECTION POOL BEFORE:
+    3 connections, 3 free
+  AFTER 3 FAILED UPDATES, GIVEN BACK ONLY ON SUCCESS:
+    free after each: 2, 1, 0
+    the next update fails: no connection available
+  AFTER 3 FAILED UPDATES, WITH TRY-WITH-RESOURCES:
+    free after each: 3, 3, 3
 FOUR. What the customer is told, and what the log keeps.
-  the raw error page names an internal server: true, shows the full card number: true, shows code lines: true
-  the customer sees: "The payment could not be completed. Please try again later, quoting reference REF-0001."
-  the log line has the reference: true, the reason: true, the full card number: false, the last four digits: true
-  support finds the detail from the reference, and an attacker learns nothing from the page
+  THE FAILURE (the fraud service's exception):
+    ServiceException: fraud-db.internal:5432
+    connection refused for card 4111111111111111
+  THE RAW ERROR PAGE (the exception as it came):
+    names an internal server: true
+    shows the full card number: true
+    shows code lines (a stack trace): true
+  THE SAFE PAGE (what the customer sees):
+    The payment could not be completed. Please try
+    again later, quoting reference REF-0001.
+  THE LOG LINE (what support sees):
+    REF-0001 refused P-2 card ****1111:
+    fraud-db.internal:5432 connection refused for
+    card ****1111
+  THE REDACTION, WORKED OUT:
+    4111111111111111 -> ****1111 (last four digits)
+  support finds the detail from the reference;
+  an attacker learns nothing from the page
 FIVE. The bill, and how to pay it.
-  failing closed costs availability: 10 coffees while the fraud check is slow, approved 0, time spent waiting 50 seconds
-  with a circuit breaker that opens after 3 failures: approved 0, calls to the fraud check 3, time spent waiting 15 seconds, breaker OPEN
-  refusals by reason: {fraud check too slow=3, fraud check unavailable, breaker open=7}, alert raised: true
-  after the cool-down, with the fraud check back: a coffee APPROVED, breaker CLOSED
-  an open breaker still says no: it fails fast, not open, and the refusals are watched so a long outage is noticed
-  the rules: start from no, a budget for every call, a limited retry, a breaker that refuses, an alert on refusals
+  THE OUTAGE:
+    the fraud check needs 5000 ms; the budget is 300 ms
+    10 customers each pay 4.50 for a coffee
+  WITHOUT A BREAKER:
+    approved 0 of 10; calls to the fraud check 10
+    waiting 10 x 300 ms = 3000 ms
+  WITH A BREAKER THAT OPENS AFTER 3 FAILURES:
+    approved 0 of 10; calls to the fraud check 3
+    waiting 3 x 300 ms = 900 ms; breaker OPEN
+  THE REFUSALS BY REASON:
+    breaker open           7
+    fraud check too slow   3
+    total 10 >= alert threshold 5 -> alert raised true
+  AFTER THE 30000 ms COOL-DOWN, FRAUD CHECK BACK:
+    one trial call: a coffee APPROVED; breaker CLOSED
+  an open breaker still says no: it fails fast, not open

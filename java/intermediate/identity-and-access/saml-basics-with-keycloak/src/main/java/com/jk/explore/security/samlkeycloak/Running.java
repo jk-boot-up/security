@@ -21,8 +21,10 @@ record Running(ConfigurableApplicationContext context, String url) implements Au
     /** Starts the shop for the given realm's identity provider, reading its signing certificate from the realm's metadata. */
     static Running start(KeycloakLab keycloak, int port, String realm, String... more) {
         String registration = "--spring.security.saml2.relyingparty.registration.keycloak.";
-        String[] base = {"--server.port=" + port, registration + "entity-id=http://127.0.0.1:" + port + ENTITY_PATH,
-            registration + "assertingparty.metadata-uri=" + keycloak.metadata(realm), registration + "assertingparty.singlesignon.sign-request=false"};
+        String[] base = {"--server.port=" + port,
+            registration + "entity-id=http://127.0.0.1:" + port + ENTITY_PATH,
+            registration + "assertingparty.metadata-uri=" + keycloak.metadata(realm),
+            registration + "assertingparty.singlesignon.sign-request=false"};
         String[] args = java.util.stream.Stream.concat(java.util.Arrays.stream(base), java.util.Arrays.stream(more)).toArray(String[]::new);
         ConfigurableApplicationContext context = new SpringApplicationBuilder(ShopApp.class).run(args);
         return new Running(context, "http://127.0.0.1:" + port);

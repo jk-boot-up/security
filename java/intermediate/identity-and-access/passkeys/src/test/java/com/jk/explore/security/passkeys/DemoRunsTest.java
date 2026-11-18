@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Keys and challenges are random, so it prints only facts that do not depend on them. */
+/** The demo must print exactly the golden output: its challenges, keys and signatures come from one FixedRandom, so they repeat. */
 class DemoRunsTest {
 
     @Test

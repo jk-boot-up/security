@@ -52,6 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - `VerifierTest` checks every refusal of the verifier and the deploy step with JDK signatures.
 - `PipelinePartsTest` checks the bill of materials, the provenance, the gate rules and the comparison of jars.
+- `StepsAndReportsTest` checks the JDK signature steps, the gitleaks, trivy and JUnit reports, the exit codes and the pinned assets.
 - `DemoRunsTest` runs the real tools and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

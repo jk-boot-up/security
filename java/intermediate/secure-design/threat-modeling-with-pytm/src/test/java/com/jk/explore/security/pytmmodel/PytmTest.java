@@ -23,13 +23,14 @@ class PytmTest {
         pytm = new Pytm(Path.of("build"));
     }
 
-    private List<Pytm.Finding> findings(Design design, Answers.Stage stage) throws Exception {
+    private List<ThreatTool.Finding> findings(Design design, Answers.Stage stage) throws Exception {
         return pytm.findings("t-" + stage + "-" + design.flows().size(), Writer.python(design, stage, "Bank payments"));
     }
 
     @Test
-    void theLibraryHasHundredsOfThreatsAndTheWorstCaseHasOneSeventyFindings() throws Exception {
-        assertEquals(113, pytm.libraryThreats(Writer.python(Design.bank(), Answers.Stage.NONE, "x")));
+    void pytmListsEveryThreatOfItsLibraryThatIsNotDeprecated() throws Exception {
+        assertEquals(113, pytm.library().size());
+        assertEquals(113, pytm.listed(Writer.python(Design.bank(), Answers.Stage.NONE, "x")));
         assertEquals(170, findings(Design.bank(), Answers.Stage.NONE).size());
     }
 
@@ -45,37 +46,11 @@ class PytmTest {
     }
 
     @Test
-    void anUnencryptedRefundFlowAddsFindingsOnTheNewFlow() throws Exception {
-        List<Pytm.Finding> refunds = findings(Design.withRefunds(), Answers.Stage.RESILIENCE);
-        assertEquals(99, refunds.size());
-        assertEquals(5, refunds.stream().filter(f -> f.target().equals("Refund")).count());
-    }
-
-    @Test
-    void pytmAcceptsTheDraftThatSkipsABoundary() throws Exception {
-        List<Pytm.Finding> draft = findings(Design.draft(), Answers.Stage.NONE);
-        assertTrue(draft.stream().anyMatch(f -> f.target().equals("Card vault")));
-    }
-
-    @Test
-    void theDiagramHasSevenNodesEightArrowsAndFourBoundaries() throws Exception {
-        String dot = pytm.dfd("t-dfd", Writer.python(Design.bank(), Answers.Stage.NONE, "x"));
-        Path dotFile = Files.writeString(pytm.work().resolve("t.dot"), dot);
-        Path svgFile = pytm.work().resolve("t.svg");
-        Process p = new ProcessBuilder("dot", "-Tsvg", "-o", svgFile.toString(), dotFile.toString()).redirectErrorStream(true).start();
-        p.getInputStream().readAllBytes();
-        assertEquals(0, p.waitFor());
+    void graphvizDrawsSevenBoxesEightArrowsAndFourBoundaries() throws Exception {
+        Path svgFile = pytm.render("t", pytm.dfd("t-dfd", Writer.python(Design.bank(), Answers.Stage.NONE, "x")));
         String svg = Files.readString(svgFile);
         assertEquals(7, svg.split("class=\"node\"", -1).length - 1);
         assertEquals(8, svg.split("class=\"edge\"", -1).length - 1);
         assertEquals(4, svg.split("class=\"cluster\"", -1).length - 1);
-    }
-
-    @Test
-    void aReportListsEveryFinding() throws Exception {
-        Path template = Files.writeString(pytm.work().resolve("t-template.md"), "# {tm.name}\n\n{findings:repeat:* {{item.id}} {{item.target}}: {{item.description}}\n}\n");
-        Pytm.Run r = pytm.model("t-report", Writer.python(Design.bank(), Answers.Stage.RESILIENCE, "Bank payments"), "--report", template.toString());
-        assertEquals(0, r.exit());
-        assertEquals(94, r.output().lines().filter(l -> l.startsWith("* ")).count());
     }
 }

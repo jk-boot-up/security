@@ -127,7 +127,7 @@ final class Https {
     private static String refusal(SSLException e) {
         String text = String.valueOf(e.getMessage()) + (e.getCause() == null ? "" : " " + e.getCause().getMessage());
         if (text.contains("PKIX path building failed")) {
-            return "the certificate is not signed by anything this client trusts";
+            return "no trusted root signed it";
         }
         if (text.contains("No subject alternative") || text.contains("No name matching")) {
             return "the certificate is not for that name";

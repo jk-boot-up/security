@@ -24,17 +24,30 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Hardware-Backed Keys, Explained</h1>
 <h2>The idea in one sentence</h2>
 <p>A token stops the key from being copied, not from being used, so limit and watch how it is used.</p>
-<h2>The 5 acts</h2>
+<h2>The 6 acts</h2>
 <h3>1. The key ceremony</h3>
-<p>The token generates the pair with C_GenerateKeyPair and a template that makes the private half sensitive and not extractable, so it is also never extractable and always sensitive. A certificate signed by the token key is stored next to it, which is what makes the Java KeyStore list the key.</p>
-<h3>2. Five ways out</h3>
-<p>Reading the private exponent gives CKR_ATTRIBUTE_SENSITIVE, getEncoded() gives null, wrapping under the bank's key or an attacker's key gives CKR_KEY_UNEXTRACTABLE, and a PKCS12 export is refused. Meanwhile 5 of 5 signatures verify with the exported public key.</p>
-<h3>3. PINs and a file for contrast</h3>
-<p>Without a login a session sees 0 private keys, with one it sees 1. The token never answers CKR_PIN_LOCKED, so an application lockout of 3 tries is added, and the same right PIN given straight to the provider is still accepted. A stolen copy of the token directory takes 300 guesses with no lock and signs once the PIN is known; the key in a PKCS12 file falls to a dictionary at guess 6 of 8.</p>
+<p>The input is the token and the template: SoftHSM2 2.7.0, used through Java's SunPKCS11 provider and raw PKCS#11 calls, initialised with a security officer PIN and a user PIN. The bank calls C_GenerateKeyPair for an RSA 2048 pair made inside the token, with CKA_SENSITIVE true and CKA_EXTRACTABLE false.
+The result is read back from the token: sensitive yes, extractable no, never extractable yes, always sensitive yes. A certificate signed by the token key verifies, and its public key equals the one exported from the token.</p>
+<h3>2. Five ways out, and signing</h3>
+<p>The input is five ways to get the private key out: read the private exponent with C_GetAttributeValue, ask Java for getEncoded(), wrap it under the bank's wrapping key with C_WrapKey, wrap it under a key the attacker can read, and export it into a PKCS12 file.
+The result: CKR_ATTRIBUTE_SENSITIVE, null (getFormat() is null too), CKR_KEY_UNEXTRACTABLE, CKR_KEY_UNEXTRACTABLE and refused. Private key obtained: 0 of 5.
+Signing still works. One payment file of 140 bytes (FILE PAY-2026-001, four PAY lines, TOTAL 1250000) goes into the token with SHA256withRSA. The signature is 256 bytes, because an RSA 2048 signature is 2048 bits / 8. All 5 files verify with the exported public key; the same signatures on files with one bit changed: 0 of 5.</p>
+<h3>3. The PIN, a key in a file, and a copied token</h3>
+<p>Without the PIN the KeyStore is refused and a session sees 0 private keys; after login it sees 1. Twelve wrong PINs are refused 12 of 12 with CKR_PIN_INCORRECT, the token never locks (SoftHSM2 has no lockout) and the right PIN is then accepted.
+The bank's own lockout of 3 tries answers refused, refused, refused, locked: the token is asked 3 of 4 times. But the same right PIN given straight to the provider is accepted, and an officer reset lets it in again.
+The same kind of key in a PKCS12 file, copied by an attacker: the password is found at guess 6 of 8, offline, with no limit and no log, and a forged file signed on the thief's machine verifies. A copy of the token directory on another machine takes 300 wrong guesses with 0 hits and no lock; each guess takes under 86.4 ms, so all 1,000,000 six-digit PINs take under a day (1,000,000 x 86.4 ms = 86,400 s). With the PIN, the copy signs and the signature verifies.</p>
 <h3>4. Rate, approvers and audit</h3>
-<p>At most 8 signatures in 60 seconds and two approvers other than the requester for files of 100,000.00 or more. Each decision is an entry in a hash chain: editing one entry or removing one breaks the chain.</p>
+<p>The input is the bank's rules and 14 requests. Rules: at most 8 signatures in 60 seconds, and 2 people other than the requester for files of 100,000.00 or more. Requests: alice sends one every 4 seconds, 1,500.00 each, except numbers 4, 9 and 13 of 250,000.00, approved by carol and dave, by carol alone, and by alice and bob.
+The result, request by request: 0 to 7 signed, 8 refused for the rate, 9 refused for approvers, 10 to 12 refused for the rate, 13 refused for approvers (alice cannot approve her own file). 8 + 4 + 2 = 14, and 8 of 8 signatures verify.
+How an audit entry is made: hash = SHA-256(seq|event|file|content hash|previous). Entry 1 has previous "genesis" and hash eeef9a22d1f6...; entry 2 carries eeef9a22d1f6 as its previous. The 14 entries verify; with entry 4 edited or entry 6 removed, they do not.</p>
 <h3>5. A compromised host</h3>
-<p>The token is logged in for the whole process, so code that finds the provider signs 500 of 500 forged files, adds 0 audit entries and ignores the policy. After a logout it fails. A process that has learned the PIN signs too. A key made extractable for backup is wrapped, destroyed and restored, but an attacker wraps it under a key of their own and opens the blob in Java.</p>
+<p>The input is five things an attacker on the bank's host tries: another process opens the token with no PIN; it asks the bank's service to sign 99,999,999.00 with no approvers; code inside the application's process signs 500 forged files with no PIN; the same code tries again after the application logs out; and another process that has learned the PIN signs.
+The result: 1, login refused and 0 private keys seen; 2, refused, needs two approvers; 3, 500 of 500 signed, all verify with the bank's public key, 0 audit entries added and the chain still verifies; 4, after the logout neither an old key reference nor a fresh KeyStore signs; 5, the process with the PIN signs and the signature verifies.</p>
+<h3>6. A key that can be backed up, and the limits</h3>
+<p>The input is a release-signing key, EC P-256, made on the token with CKA_EXTRACTABLE true, and a sensitive AES token key to wrap it with AES key wrap with padding.
+The backup cycle: wrap gives CKR_OK and a blob of 80 bytes; after the key is destroyed, signing gives CKR_OBJECT_HANDLE_INVALID; unwrapping the blob gives CKR_OK, and the restored key signs and verifies with the original public key.
+An attacker with a logged-in session wraps the same kind of key under an AES key they can read (CKR_OK) and opens it in Java: 67 key bytes, padded to 72, + 8 = 80, which is the blob size. A forged release signature verifies. When the wrapping key is lost with the token, the blob restores nothing (CKR_UNWRAPPING_KEY_HANDLE_INVALID).
+What the token protects: ways to copy a key out that worked were 0 of 5 for the non-extractable key, 1 of 1 for the extractable one and 1 of 1 for the key in a file. What it does not: use while logged in, by anyone in the process, and the rate, approvers and audit kept in the application.</p>
 <h2>The verdict</h2>
 <p>Generate signing keys on a token as sensitive and not extractable, log in only for the time you sign, keep rate limits, approvers and audit outside the process that holds the login, and treat a wrappable key as exported.</p>
 <h2>How to recognise this in code you did not write</h2>

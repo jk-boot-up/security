@@ -19,6 +19,9 @@ TLS servers are configured by copying lines, and the effect of each line is rare
 | Role | Class |
 | --- | --- |
 | The client | `Https` |
+| The client's checks, by hand | `ChainCheck` |
+| The version agreed, by hand | `Negotiation` |
+| The add_header rule and max-age, by hand | `Headers` |
 | The local root | `LocalCa` |
 | nginx | `Nginx` |
 | Caddy | `Caddy` |
@@ -37,10 +40,10 @@ TLS servers are configured by copying lines, and the effect of each line is rare
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 32 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 118 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:49, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:08, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

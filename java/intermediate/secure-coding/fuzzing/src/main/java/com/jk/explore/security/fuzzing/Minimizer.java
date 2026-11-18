@@ -1,5 +1,8 @@
 package com.jk.explore.security.fuzzing;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Delta debugging: removes pieces of a crashing input for as long as it still crashes the same way, first in large pieces and then in
  * smaller ones, until no single character can be removed. The result is the smallest input that shows the bug, ready to be a test.
@@ -10,6 +13,11 @@ final class Minimizer {
     }
 
     static String minimise(Harness harness, String input) {
+        return minimise(harness, input, new ArrayList<>());
+    }
+
+    /** As {@link #minimise(Harness, String)}, and adds every smaller input that still crashed to {@code steps}, in order. */
+    static String minimise(Harness harness, String input, List<String> steps) {
         Throwable first = Fuzzer.execute(harness, input).failure();
         if (first == null) {
             throw new IllegalArgumentException("the input does not crash");
@@ -21,9 +29,11 @@ final class Minimizer {
             int size = (int) Math.ceil(current.length() / (double) pieces);
             boolean removed = false;
             for (int start = 0; start < current.length(); start += size) {
-                String candidate = current.substring(0, start) + current.substring(Math.min(current.length(), start + size));
+                String candidate = current.substring(0, start)
+                        + current.substring(Math.min(current.length(), start + size));
                 if (sameCrash(harness, candidate, signature)) {
                     current = candidate;
+                    steps.add(candidate);
                     pieces = Math.max(pieces - 1, 2);
                     removed = true;
                     break;

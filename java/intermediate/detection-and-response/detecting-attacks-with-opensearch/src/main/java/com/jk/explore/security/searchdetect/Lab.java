@@ -23,7 +23,7 @@ public final class Lab implements AutoCloseable {
             String mapping = run("docker", "port", container, "9200").lines().filter(l -> l.startsWith("127.0.0.1:")).findFirst().orElseThrow();
             this.port = Integer.parseInt(mapping.substring(mapping.lastIndexOf(':') + 1).strip());
             HttpClient client = HttpClient.newHttpClient();
-            for (int i = 0; i < 240; i++) {
+            for (int i = 0; i < 720; i++) {
                 try {
                     var r = client.send(HttpRequest.newBuilder(URI.create(url() + "/_cluster/health?wait_for_status=yellow&timeout=1s")).build(), HttpResponse.BodyHandlers.ofString());
                     if (r.statusCode() == 200 && r.body().contains("\"status\"")) {

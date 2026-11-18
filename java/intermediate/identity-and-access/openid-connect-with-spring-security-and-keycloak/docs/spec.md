@@ -39,10 +39,10 @@ Teams add OpenID Connect login with a few properties and then key their customer
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 33, all passing |
-| Demo output | 50 lines, identical on every run |
+| Tests | 35, all passing |
+| Demo output | 156 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:17, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:06, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

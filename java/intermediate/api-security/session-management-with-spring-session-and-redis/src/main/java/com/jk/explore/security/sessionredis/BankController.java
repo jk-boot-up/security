@@ -39,7 +39,8 @@ class BankController {
     /** Ends every session of the signed-in customer, this one included. */
     @PostMapping("/sign-out-everywhere")
     String signOutEverywhere(Principal who) {
-        List<String> ids = List.copyOf(sessions.findByPrincipalName(who.getName()).keySet());
+        var mine = sessions.findByPrincipalName(who.getName());
+        List<String> ids = List.copyOf(mine.keySet());
         ids.forEach(sessions::deleteById);
         return "ended " + ids.size() + " sessions";
     }

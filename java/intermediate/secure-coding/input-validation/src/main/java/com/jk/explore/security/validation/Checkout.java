@@ -32,7 +32,8 @@ public final class Checkout {
         List<Rejected> problems = new ArrayList<>();
         for (String name : new TreeSet<>(fields.keySet())) {
             if (!FIELDS.contains(name)) {
-                problems.add(new Rejected(name.matches("[a-z]{1,20}") ? name : "a field", "not a field of this form"));
+                String shown = name.matches("[a-z]{1,20}") ? name : "a field";
+                problems.add(new Rejected(shown, "not a field of this form"));
             }
         }
         Sku sku = attempt(problems, () -> Sku.parse(fields.get("sku")));
@@ -49,7 +50,8 @@ public final class Checkout {
         if (!problems.isEmpty()) {
             return new Result(null, List.copyOf(problems));
         }
-        return new Result(new Order(sku, quantity, email, country, price.multiply(BigDecimal.valueOf(quantity.value()))), List.of());
+        BigDecimal total = price.multiply(BigDecimal.valueOf(quantity.value()));
+        return new Result(new Order(sku, quantity, email, country, total), List.of());
     }
 
     private interface Parse<T> {

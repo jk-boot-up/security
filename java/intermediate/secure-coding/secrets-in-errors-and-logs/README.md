@@ -2,6 +2,7 @@
 
 ```
 src/main/java/com/jk/explore/security/leaks/
+├── Canaries.java     Known fake secrets sent through the flow on purpose
 ├── Checkout.java     The shop's checkout call
 ├── Database.java     The shop's database connection, which is down in this story
 ├── LeaksDemo.java    Runs the checkout story in four numbered acts and prints exact, repeatable results
@@ -9,6 +10,7 @@ src/main/java/com/jk/explore/security/leaks/
 ├── Logger.java       Writes log lines for the shop
 ├── Luhn.java         The check digit that card numbers carry
 ├── NaiveLogger.java  The first version: the message is written as it comes, including line breaks that a customer typed, and the exception's message and trace
+├── PageReader.java   A teaching class: reads an error page the way a curious visitor would, and lists what it gives away
 ├── Redactor.java     Masks secrets in text that has already been written, as a last line of defence
 ├── SafeLogger.java   The fixed version
 └── Secret.java       A value that must never be printed: its {@code toString} says so
@@ -51,10 +53,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the customer sees when the database is down | A 500 page shows the exception, the connection URL with the database password and the shop's own call chain. |
-| 2. What the log keeps | The log holds the card number, CVV, session token and the database password; a name with a line break writes a second, forged line. |
-| 3. A generic answer, and the details where only the team looks | The customer gets 'Something went wrong. Quote reference ref-0001 to support.'; the log holds the failure under that reference with the password redacted and the token as [REDACTED]. |
-| 4. Redaction, wrappers and forged lines | Luhn-valid card numbers, key-named credentials, bearer tokens, JWTs and URL passwords are masked; a number that fails the check is left; a forged name stays on one line. |
+| 1. What the customer sees when the database is down | The request carries a test card, a CVV and a session token; the naive checkout answers 500 with the exception, and a visitor reads the database host, port, name, user and password and two of the shop's own methods out of it. |
+| 2. What the log keeps | The naive log keeps the card, the CVV, the session token and the database password; a canary search finds all four fake secrets in the log and the password on the page; a name with a line break turns one event into two log lines, the second a forged login. |
+| 3. A generic answer, and the details where only the team looks | The fixed checkout answers 'Something went wrong. Quote reference ref-0001 to support.'; the log keeps the failure under [ref-0001] with the password and token redacted; the canary search finds nothing; the forged name stays on one line with the line break escaped. |
+| 4. Redaction: what it finds and what it misses | Seven texts go through the redactor: a Luhn-valid card, key-named password, api_key and authorization values and a URL password are masked; an order number that fails the Luhn check (sum 31) is rightly left; 'the key is hunter2' has no name and no shape and is missed. A Secret prints as [REDACTED]. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `LeaksTest`. All values are fixed markers and the card is a standard test number, so the demo prints the same text on every run.
+17 tests in `DemoRunsTest`, `LeaksTest`, `TeachingStepsTest`. All values are fixed markers and the card is a standard test number, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

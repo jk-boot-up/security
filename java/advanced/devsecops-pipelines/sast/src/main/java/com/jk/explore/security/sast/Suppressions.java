@@ -13,7 +13,8 @@ import java.util.stream.Stream;
 public final class Suppressions {
 
     private static final Pattern ANY = Pattern.compile("nosemgrep");
-    private static final Pattern GOOD = Pattern.compile("nosemgrep: [\\w.-]+ -- .{10,} \\(owner: [\\w-]+\\)");
+    private static final Pattern GOOD = Pattern.compile(
+            "nosemgrep: [\\w.-]+ -- .{10,} \\(owner: [\\w-]+\\)");
 
     /** How many suppressions the files have and how many of them are well written. */
     public record Count(int total, int valid) {

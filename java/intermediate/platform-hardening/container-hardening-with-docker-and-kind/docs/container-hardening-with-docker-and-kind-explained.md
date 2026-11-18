@@ -4,27 +4,40 @@
 
 Hardening a container is taking away, one option at a time, what a taken-over process could use, and measuring what is left.
 
-## The 5 acts
+## The 6 acts
 
 ### 1. What docker run with no options gives an attacker
 
-Thirteen attempts run inside a real container as the user it runs as. With no options (and a seccomp profile passed by file, because the lab's Docker has none of its own), seven work: the secrets in the environment, the writable root file system, a file written and run, root, a raw socket through NET_RAW, no memory limit and no process limit. Six are blocked: dangerous system calls (the profile), mount, the Docker socket, host files, the host network and the host's processes.
+The lab: the image shop-app:probe from alpine:3.24.3, with a user app (10001) that owns /app, a secret DB_PASSWORD in the environment, and thirteen shell attempts run inside the container with docker exec. The lab's Docker starts containers with no seccomp filter, so a profile that denies the 35 system calls Docker's own default profile denies is passed by file.
+What the probes read: id -u is 0, CapEff is 00000000a80425fb, Seccomp is 2 (a filter is on), memory.max and pids.max are max. The capability mask is read bit by bit: bits 0, 1, 3, 4, 5, 6, 7, 8, 10, 13, 18, 27, 29 and 31 are set, Docker's fourteen default capabilities; (0xa80425fb >> 13) & 1 = 1, so NET_RAW is held, and (0xa80425fb >> 21) & 1 = 0, so SYS_ADMIN is not.
+The result: all four attempts inside the container work, one in the kernel (raw sockets), none on the host, both on the node's resources: 4 + 1 + 0 + 2 = 7 of 13.
 
 ### 2. The configuration from the tutorial
 
-docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/hostetc:ro shop-app. All 13 of 13 attacks are possible: blocked 13 - 13 = 0. One command that works in a tutorial gives the process the host.
+The input is the command a tutorial shows to make things work: `--privileged`, `--security-opt seccomp=unconfined`, `--network host`, `--pid host`, `-v /var/run/docker.sock:/var/run/docker.sock` and `-v /etc:/hostetc:ro`.
+The result: all thirteen attempts work. Seccomp is 0, so there is no filter; mount works; the Docker socket is there (control of every container and root on the host); /hostetc/passwd is readable; the container sees docker0 and veth interfaces and more than fifteen processes. 4 + 3 + 4 + 2 = 13 of 13.
 
 ### 3. One setting at a time
 
-Each line adds one option to the one above: the tutorial's 13; no privileged, no host network, PID or mounts, 8; a seccomp profile, 7; drop all capabilities, 5; run as a user that is not root, 5 (a different set: root is gone, and the files the app user owns are open); no new privileges, 5; read-only root and a noexec temporary directory, 3; memory and process limits, 1. No new privileges does not move the number here, because this image has no set-user-id program for an attacker to use.
+The input of each step is the container of the step before, with one option more. The result is the count, and what the step blocked and opened, worked out as the difference of the two lists of attempts that worked.
+No host access and no privileged mode blocks mount-host and the four host attempts (13 to 8). A seccomp profile blocks dangerous-syscalls (7). Dropping all capabilities blocks sniff-network and, less obviously, tamper-with-app: root without DAC_OVERRIDE cannot write files that belong to the app user (5).
+A user that is not root blocks become-root but opens tamper-with-app again, because the app user owns /app (5). No new privileges moves nothing, because this image has no set-user-id program; in an image that has one, it is what stops it. A read-only root with a noexec /tmp blocks tamper-with-app and drop-and-run (3), and limits block exhaust-memory and fork-bomb (1).
 
 ### 4. The hardened container
 
-docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --security-opt seccomp=<profile> --memory 512m --pids-limit 200. One of 13 attacks is possible: read-secrets; the application must read its secrets, so a hijacked application can too. Adding NET_RAW, which looks harmless, changes nothing, because it matters only to root. Adding root and SYS_ADMIN brings back root, and only the seccomp profile still stands between it and mount. Without the filter as well, four are possible: each layer covers for a mistake in the others.
+The input is every option of the steps together. What the probes read shows the kernel enforcing each one: id -u is 10001, the capability mask is 0000000000000000, Seccomp is 2, memory.max is 536870912 bytes (536870912 / 1048576 = 512 MiB) and pids.max is 200.
+The result: twelve attempts are blocked, each with what the probe saw; one works, read-secrets, because the application must read its secret, so a hijacked application can too. 1 + 0 + 0 + 0 = 1 of 13.
 
-### 5. The same on Kubernetes, with Pod Security Standards on kind
+### 5. Settings that look harmless
 
-A one-node kind cluster with three namespaces that enforce the privileged, baseline and restricted standards, and three pods sent with --dry-run=server so that the admission decides. The tutorial's pod is admitted by privileged, refused by baseline (host namespaces, hostPath volumes, privileged) and by restricted (7 violations). A plain pod is admitted by baseline and refused by restricted (allowPrivilegeEscalation, unrestricted capabilities, runAsNonRoot, seccompProfile). The hardened pod is admitted everywhere. A namespace that only warns creates the plain pod with a warning that lists 4 violations. Probed from inside, the plain pod has 7 attacks possible and the hardened pod 2: the secret, and a writable temporary directory that still runs code.
+The input is the hardened container with one small change. The result is the new count and the attempts that work again, against the hardened container.
+Adding NET_RAW opens nothing: the process is not root. Running as root with SYS_ADMIN opens become-root; mount-host is still blocked, but only because the seccomp profile denies mount. Removing the filter as well opens dangerous-syscalls and mount-host: 4 of 13. Each layer covers for a mistake in the others.
+
+### 6. The same on Kubernetes, with Pod Security Standards on kind
+
+The lab is a real one-node kind cluster, with three namespaces labelled to enforce the privileged, baseline and restricted Pod Security Standards. Three pods, the tutorial's, a plain one and the hardened one, are sent with `kubectl apply --dry-run=server`, so the admission decides and nothing is created.
+The result is a table of admitted and refused, with how many checks a refusal lists. Baseline refuses the tutorial's pod for host namespaces, hostPath volumes and privileged. Restricted refuses the plain pod for allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true and seccompProfile. A namespace that only warns creates the plain pod and prints the same 4 checks as a warning.
+Probed from inside, the plain pod admitted by baseline still allows 7 attempts (it has no seccomp filter at all), and the hardened pod admitted by restricted 2: read-secrets, and drop-and-run, because its /tmp is a writable emptyDir that can run a script. The standards judge the spec once, when the pod is created.
 
 ## The verdict
 

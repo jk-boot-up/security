@@ -14,16 +14,17 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Build it twice | 7 min |
-| 0:17 | Act 2: Sign it | 7 min |
-| 0:24 | Act 3: Say where it came from | 7 min |
-| 0:31 | Act 4: Gates that fail closed | 7 min |
-| 0:38 | Act 5: Deploy only what verifies | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: Build it twice | 5 min |
+| 0:15 | Act 2: Sign it | 5 min |
+| 0:20 | Act 3: Say where it came from | 5 min |
+| 0:25 | Act 4: Four gates, six planted flaws | 5 min |
+| 0:30 | Act 5: A gate whose tool cannot answer | 5 min |
+| 0:35 | Act 6: Deploy only what verifies | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
-Run the demo and read the five parts in order. In the gates part, find the difference between the two lines about a missing tool.
+Run the demo and read the six parts in order. In part five, find the difference between the two pipelines on the same broken tool.
 
 ## Exercises
 

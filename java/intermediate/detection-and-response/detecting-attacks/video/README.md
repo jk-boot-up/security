@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Detection rules over a log stream in Java: brute force, password spraying, impossible travel, takeover and privilege change, with precision measured against a synthetic day.
+> Detecting attacks in a bank's sign-in and admin logs, in Java: five detection rules (brute force, password spraying, impossible travel, success after failures, privilege change) run over one synthetic Monday with four hidden attacks, measured against ground truth: a first version raises 29 alerts, most false; tuning thresholds and adding context such as the VPN's addresses brings it to 9 alerts, 7 real, with every attack noticed.

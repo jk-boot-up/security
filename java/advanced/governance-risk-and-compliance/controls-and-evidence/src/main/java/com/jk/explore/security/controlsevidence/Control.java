@@ -23,7 +23,8 @@ public record Control(String id, String name, String owner, String csf, List<Str
         List<String> lines = Files.readAllLines(csv);
         for (String line : lines.subList(1, lines.size())) {
             String[] f = line.split(",", -1);
-            controls.add(new Control(f[0], f[1], f[2], f[3], List.of(f[4].split(";")), f[5], f[6]));
+            List<String> iso = List.of(f[4].split(";"));
+            controls.add(new Control(f[0], f[1], f[2], f[3], iso, f[5], f[6]));
         }
         return controls;
     }

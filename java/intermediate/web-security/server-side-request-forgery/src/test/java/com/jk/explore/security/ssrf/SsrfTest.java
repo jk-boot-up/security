@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetAddress;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SsrfTest {
@@ -35,9 +36,6 @@ class SsrfTest {
     void safeImporterRefusesEveryAttack() {
         Importer safe = new SafeImporter(dns, net);
         for (String attack : SsrfDemo.attacks()) {
-            if (attack.equals(SsrfDemo.REBINDING)) {
-                continue; // fetches the attacker's own image: covered below
-            }
             assertThrows(ImportRefused.class, () -> safe.importImage(attack), attack);
         }
     }
@@ -56,14 +54,30 @@ class SsrfTest {
 
     @Test
     void rebindingCannotChangeTheCheckedAddress() {
-        assertEquals("PNG-attacker-cat", new SafeImporter(dns, net).importImage(SsrfDemo.REBINDING));
+        assertEquals("PNG-attacker-cat", new SafeImporter(dns, net).importImage("http://rebind.attacker.example/cat.png"));
+        SafeImporter safe = new SafeImporter(Network.dns(), net);
+        assertThrows(ImportRefused.class, () -> safe.importImage(SsrfDemo.REBINDING));
+        assertEquals("203.0.113.9 is public: connect to it", safe.trace().get(2));
+        assertEquals("refused: the server answered 404", safe.trace().get(3));
+    }
+
+    @Test
+    void theTraceRecordsEachCheckOfARedirect() {
+        SafeImporter safe = new SafeImporter(dns, net);
+        assertThrows(ImportRefused.class, () -> safe.importImage(SsrfDemo.REDIRECT));
+        assertEquals(List.of("scheme http, port 80, no user info: allowed", "look up attacker.example once: [203.0.113.9]",
+                "203.0.113.9 is public: connect to it", "302 redirect to 169.254.169.254: check it again",
+                "scheme http, port 80, no user info: allowed", "look up 169.254.169.254 once: [169.254.169.254]",
+                "refused: 169.254.169.254 is link-local"), safe.trace());
     }
 
     @Test
     void checkThenConnectIsFooledByRebinding() {
-        String result = SsrfDemo.checkThenFetch(Network.dns(), Network.world());
-        assertTrue(result.contains("checked as public=true"));
-        assertTrue(result.contains("internal admin panel"));
+        SsrfDemo.CheckThenConnect result = SsrfDemo.checkThenFetch(Network.dns(), Network.world());
+        assertEquals("203.0.113.9", result.checked());
+        assertTrue(result.looksPublic());
+        assertEquals("10.0.0.5", result.connected());
+        assertEquals("internal admin panel: 3 customers", result.fetched());
     }
 
     @Test
@@ -91,6 +105,32 @@ class SsrfTest {
         for (String outside : new String[] {"93.184.216.34", "8.8.8.8", "203.0.113.9", "2606:4700:4700::1111"}) {
             assertTrue(AddressPolicy.isPublic(InetAddress.getByName(outside)), outside);
         }
+    }
+
+    @Test
+    void addressPolicyNamesTheKindOfEachAddress() throws Exception {
+        assertEquals("loopback", AddressPolicy.kind(InetAddress.getByName("127.1")));
+        assertEquals("link-local", AddressPolicy.kind(InetAddress.getByName("2852039166")));
+        assertEquals("link-local", AddressPolicy.kind(InetAddress.getByName("::ffff:a9fe:a9fe")));
+        assertEquals("private", AddressPolicy.kind(InetAddress.getByName("10.0.0.5")));
+        assertEquals("shared", AddressPolicy.kind(InetAddress.getByName("100.64.0.1")));
+        assertEquals("unique local", AddressPolicy.kind(InetAddress.getByName("fd00::1")));
+        assertEquals("public", AddressPolicy.kind(InetAddress.getByName("93.184.216.34")));
+    }
+
+    @Test
+    void theWorkedSpellingsGiveTheJdksExactAddress() throws Exception {
+        for (long n : new long[] {2852039166L, 2130706433L, 167772165L, 0L, 4294967295L}) {
+            assertEquals(InetAddress.getByName(Long.toString(n)).getHostAddress(), Spelling.decimal(n).address(), Long.toString(n));
+        }
+        for (String s : new String[] {"127.1", "10.5", "127.0.1", "192.168.257"}) {
+            assertEquals(InetAddress.getByName(s).getHostAddress(), Spelling.shortForm(s).address(), s);
+        }
+        for (String s : new String[] {"::ffff:a9fe:a9fe", "::ffff:7f00:0001", "::ffff:0a00:0005"}) {
+            assertEquals(InetAddress.getByName(s).getHostAddress(), Spelling.mapped(s).address(), s);
+        }
+        assertEquals(List.of("2852039166 / 16777216 = 169, remainder 16689662", "16689662 / 65536 = 254, remainder 43518",
+                "43518 / 256 = 169, remainder 254"), Spelling.decimal(2852039166L).steps());
     }
 
     @Test

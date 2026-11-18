@@ -39,10 +39,10 @@ Teams copy a tutorial's actuator settings into production, and a stranger can re
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 49 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 125 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:58, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:57, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

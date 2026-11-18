@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Secrets in errors and logs, in Java: stack traces, card numbers, tokens, log injection and redaction.
+> Secrets in errors and logs, in Java, for an online shop's checkout: a stack trace that shows the customer the database password, logs that keep card numbers, the CVV and session tokens, a line break in a name that forges a log entry, and the fixes: a generic answer with a reference, a Secret type that prints as [REDACTED], a one-line logger with Luhn-checked card masking, and canary tests.

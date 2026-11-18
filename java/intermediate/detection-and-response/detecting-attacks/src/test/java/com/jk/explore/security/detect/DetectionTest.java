@@ -158,4 +158,61 @@ class DetectionTest {
         assertTrue(new Alert("r", "s", T0, "m", List.of(plain, attack)).isTruePositive());
         assertFalse(new Alert("r", "s", T0, "m", List.of(plain)).isTruePositive());
     }
+
+    @Test
+    void peaksCountFailuresTheWayTheBruteForceRuleDoes() {
+        List<Event> log = Scenario.day();
+        Map<String, Integer> normal = Peaks.failuresPerAccount(log.stream().filter(e -> e.attackId() == null).toList(), Duration.ofMinutes(5));
+        assertEquals(6, normal.get("u010"));
+        assertEquals(6, normal.get("u011"));
+        assertEquals(6, normal.values().stream().max(Integer::compare).orElseThrow(), "the worst normal account");
+        int attack = Peaks.failuresPerAccount(log.stream().filter(e -> "B".equals(e.attackId())).toList(), Duration.ofMinutes(5)).get("u042");
+        assertEquals(30, attack);
+        // the safe range is worked out from the peaks: its ends behave as the demo says
+        assertEquals(0, Score.of(new BruteForceRule(7, Duration.ofMinutes(5)), log).falsePositives());
+        assertEquals(2, Score.of(new BruteForceRule(6, Duration.ofMinutes(5)), log).falsePositives());
+        assertEquals(Set.of("B"), Score.of(new BruteForceRule(attack, Duration.ofMinutes(5)), log).attacksDetected());
+        assertEquals(Set.of(), Score.of(new BruteForceRule(attack + 1, Duration.ofMinutes(5)), log).attacksDetected());
+    }
+
+    @Test
+    void aSuccessStartsThePeakCountAgain() {
+        List<Event> log = List.of(fail(0, "ana", "a"), fail(10, "ana", "a"), ok(20, "ana", "a", City.PARIS), fail(30, "ana", "a"), fail(400, "ana", "a"));
+        assertEquals(2, Peaks.failuresPerAccount(log, Duration.ofMinutes(5)).get("ana"));
+    }
+
+    @Test
+    void theTravelSpeedIsDistanceOverTime() {
+        Event madrid = ok(0, "ana", "a", City.MADRID);
+        Event sydney = ok(25 * 60, "ana", "b", City.SYDNEY);
+        assertEquals(City.MADRID.kmTo(City.SYDNEY) * 60 / 25, ImpossibleTravelRule.kmPerHour(madrid, sydney), 0.001);
+        Event paris = ok(0, "bob", "a", City.PARIS);
+        Event newYork = ok(9 * 3600, "bob", "b", City.NEW_YORK);
+        assertTrue(ImpossibleTravelRule.kmPerHour(paris, newYork) < 900, "a real flight is under the limit");
+    }
+
+    @Test
+    void sprayingStaysUnderTheBruteForceRule() {
+        List<Event> spray = Scenario.day().stream().filter(e -> "A".equals(e.attackId())).toList();
+        assertEquals(2, Peaks.failuresPerAccount(spray, Duration.ofMinutes(5)).values().stream().max(Integer::compare).orElseThrow());
+        assertTrue(new BruteForceRule(10, Duration.ofMinutes(5)).evaluate(spray).isEmpty());
+        assertEquals(1, new SprayingRule(8, Duration.ofMinutes(20)).evaluate(spray).size());
+    }
+
+    @Test
+    void everyRuleDescribesItsNumbers() {
+        assertEquals("3 failures, 1 account, 5 minutes", new BruteForceRule(3, Duration.ofMinutes(5)).describe());
+        assertEquals("over 900 km/h, 500+ km, VPN skipped", new ImpossibleTravelRule(900, 500, Set.of("x")).describe());
+        assertEquals("success after 1 failure, new address", new TakeoverRule(1, Duration.ofMinutes(10), Map.of()).describe());
+        assertEquals("brute-force", DetectionDemo.base("brute-force(10)"));
+        assertEquals("success-after-failures", DetectionDemo.base("success-after-failures+history"));
+    }
+
+    @Test
+    void everyFalseAlertOfTheFirstVersionHasALookAlike() {
+        List<Event> log = Scenario.day();
+        for (Rule r : DetectionDemo.first()) {
+            r.evaluate(log).stream().filter(a -> !a.isTruePositive()).forEach(a -> assertTrue(Scenario.LOOK_ALIKES.stream().anyMatch(l -> l[0].equals(Scenario.lookAlike(a.subject())))));
+        }
+    }
 }

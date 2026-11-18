@@ -29,6 +29,8 @@ public final class Lab implements AutoCloseable {
     static final String LAPTOP_IMAGE = "redis:8.10.2-alpine";
     static final String UNSIGNED_IMAGE = "alpine:3.17";
     static final String PASSPHRASE = "lab-passphrase";
+    private static final String MANIFEST_TYPES = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, "
+            + "application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json";
 
     private final String container;
     private final int port;
@@ -120,10 +122,13 @@ public final class Lab implements AutoCloseable {
 
     /** The digest that a tag points at right now, as a registry answers it. */
     String resolve(String name, String tag) throws IOException, InterruptedException {
-        HttpResponse<Void> r = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v2/" + name + "/manifests/" + tag))
-                .header("Accept", "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json")
-                .method("HEAD", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.discarding());
-        return registry() + "/" + name + "@" + r.headers().firstValue("Docker-Content-Digest").orElseThrow();
+        URI manifest = URI.create("http://127.0.0.1:" + port + "/v2/" + name + "/manifests/" + tag);
+        HttpRequest head = HttpRequest.newBuilder(manifest)
+                .header("Accept", MANIFEST_TYPES)
+                .method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
+        HttpResponse<Void> r = http.send(head, HttpResponse.BodyHandlers.discarding());
+        String digest = r.headers().firstValue("Docker-Content-Digest").orElseThrow();
+        return registry() + "/" + name + "@" + digest;
     }
 
     /** The tags of a repository, the signatures' tags included. */

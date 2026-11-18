@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: What the code asks for | 7 min |
 | 0:17 | Act 2: A value that says how it was protected | 7 min |
 | 0:24 | Act 3: Moving the data | 7 min |
-| 0:31 | Act 4: Retiring a key | 7 min |
+| 0:31 | Act 4: The next rotation, and retiring a key | 7 min |
 | 0:38 | Act 5: Tampering and downgrade | 7 min |
 | 0:45 | Exercises | 15 min |
 
@@ -27,7 +27,7 @@ Run the demo and find the 8,000 records left after the 2,000 reads. Then change 
 
 ## Exercises
 
-1. Add AES-256-GCM-SIV or another suite as version 4 and rotate to it.
+1. Add a fourth suite, for example AES-GCM with a 256-bit key and a longer nonce, as version 4 and rotate to it.
 2. Make the batch resumable after a crash.
 3. Replace the envelope with a Tink keyset and compare.
 4. Write a check for the build that fails on a forbidden algorithm in a new file.

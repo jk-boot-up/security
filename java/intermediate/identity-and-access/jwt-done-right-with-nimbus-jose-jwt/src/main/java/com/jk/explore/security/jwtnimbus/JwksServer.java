@@ -37,7 +37,10 @@ final class JwksServer implements AutoCloseable {
 
     /** Publishes these keys, public halves only. */
     void publish(List<? extends JWK> keys) {
-        body = new JWKSet(keys.stream().map(JWK::toPublicJWK).map(JWK.class::cast).toList()).toString();
+        body = new JWKSet(keys.stream()
+                .map(JWK::toPublicJWK)
+                .map(JWK.class::cast)
+                .toList()).toString();
     }
 
     int requests() {

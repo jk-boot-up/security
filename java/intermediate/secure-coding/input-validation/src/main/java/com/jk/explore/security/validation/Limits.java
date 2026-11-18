@@ -20,7 +20,8 @@ public final class Limits {
         byte[] buffer = new byte[4096];
         int total = 0;
         while (total <= MAX_BODY_BYTES) {
-            int n = in.read(buffer, 0, Math.min(buffer.length, MAX_BODY_BYTES + 1 - total));
+            int room = Math.min(buffer.length, MAX_BODY_BYTES + 1 - total);
+            int n = in.read(buffer, 0, room);
             if (n < 0) {
                 return out.toByteArray();
             }

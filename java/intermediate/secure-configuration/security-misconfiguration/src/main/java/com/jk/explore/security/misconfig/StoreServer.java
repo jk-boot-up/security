@@ -26,6 +26,9 @@ final class StoreServer implements AutoCloseable {
 
     private static final Set<String> METHODS = Set.of("GET", "POST", "HEAD");
 
+    /** The error page a customer sees when detailed errors are off: a reference for the log, no internals. */
+    static final String SAFE_ERROR = "<h1>Something went wrong</h1><p>Please try again. Reference: E-500</p>";
+
     private final StoreConfig config;
     private final HttpServer server;
 
@@ -77,8 +80,7 @@ final class StoreServer implements AutoCloseable {
             } else if (path.equals("/admin/login") && method.equals("POST")) {
                 adminLogin(exchange);
             } else if (path.equals("/debug/config") && config.debugEndpoint()) {
-                send(exchange, 200, "profile=" + config.profile() + "\nadmin.password=" + config.adminPassword()
-                        + "\nerrors.detailed=" + config.detailedErrors() + "\n");
+                send(exchange, 200, debugPage());
             } else if (path.equals("/static/")) {
                 if (config.directoryListing()) {
                     send(exchange, 200, "Index of /static/\n" + String.join("\n", STATIC_FILES.keySet()) + "\n");
@@ -93,6 +95,12 @@ final class StoreServer implements AutoCloseable {
                 send(exchange, 404, "not found");
             }
         }
+    }
+
+    /** Everything a developer wants to see while debugging, the admin password included. */
+    private String debugPage() {
+        return "profile=" + config.profile() + "\nadmin.password=" + config.adminPassword()
+                + "\nerrors.detailed=" + config.detailedErrors() + "\n";
     }
 
     private void adminLogin(HttpExchange exchange) throws IOException {
@@ -122,7 +130,7 @@ final class StoreServer implements AutoCloseable {
                 e.printStackTrace(new PrintWriter(trace));
                 send(exchange, 500, "<h1>Error</h1><pre>" + trace + "</pre>");
             } else {
-                send(exchange, 500, "<h1>Something went wrong</h1><p>Please try again. Reference: E-500</p>");
+                send(exchange, 500, SAFE_ERROR);
             }
         }
     }

@@ -67,95 +67,283 @@ test_note = "Everything is fixed data, so the demo prints the same text on every
 
 [[act]]
 title = "What 'docker run' with no options gives an attacker"
-summary = "7 of 13 attacks are possible and the level is Baseline: root, a writable file system, raw sockets, and no memory or process limits."
+summary = "The input is Docker's defaults: root, 14 capabilities, a writable root, new privileges allowed, the default seccomp profile, no host access, no limits, secrets in the environment. The result: container 4 + kernel 1 + host 0 + resources 2 = 7 of 13 attacks possible, and the level is Baseline because the three Restricted checks fail."
 detail = """
-The default container runs as root, has 14 capabilities including NET_RAW, a writable root file system and no limits. A hijacked process can read the secrets in its environment, change the application's files, drop and run a tool, sniff the pod network, and exhaust memory or processes.
-The default seccomp profile blocks the dangerous system calls, and no host directories, sockets or namespaces are shared, so the kernel and the host are not directly in reach. Kubernetes classifies it as Baseline.
+The input is what `docker run shop-app:latest` gives when nobody adds a flag: the user is root, the container has Docker's 14 default capabilities (NET_RAW among them), the root file system is writable, set-user-id programs may raise privileges, the default seccomp profile is on, nothing of the host is shared, there are no memory or process limits, and the secrets are environment variables.
+The result, by what each attack reaches: inside the container all 4 are possible (read the secrets, change the app, drop and run a tool, be root); in the kernel only sniffing with NET_RAW (the seccomp profile blocks the dangerous calls, and there is no SYS_ADMIN); nothing on the host; and both resource attacks. 4 + 1 + 0 + 2 = 7 of 13.
+The level is worked out check by check: all six Baseline checks pass, and the three Restricted checks (not root, no privilege escalation, drops ALL capabilities) fail, so the level is Baseline.
+"""
+figure = "defaults_settings"
+figure_title = "Docker's defaults, and what they give an attacker"
+figure_speech = """
+First demo: what docker run gives, with no options at all. [[slnc 400]] On the left, the input: the settings Docker picks when nobody says otherwise. [[slnc 300]] The user is root. [[slnc 300]] The container has fourteen Linux capabilities, Docker's default set. [[slnc 300]] The root file system is writable, and new privileges are allowed. [[slnc 300]] There are no limits, and the secrets are environment variables. [[slnc 700]]
+On the right, the result. [[slnc 300]] Each square is one attack, and a red square is possible. [[slnc 300]] Inside the container, all four are possible. [[slnc 300]] In the kernel, one: sniffing the network with raw sockets. [[slnc 300]] On the host, none. [[slnc 300]] And both attacks on the node's resources. [[slnc 300]] Four, plus one, plus zero, plus two: seven of thirteen. [[slnc 600]]
+The Kubernetes level is baseline, because three checks of the restricted level fail.
 """
 speech = """
-First demo: what docker run with no options gives an attacker. [[slnc 400]] Seven of thirteen attacks are possible. [[slnc 300]] The process is root. [[slnc 300]] The file system is writable. [[slnc 300]] There are no limits. [[slnc 600]]
-The default seccomp profile still blocks the dangerous system calls, and nothing of the host is shared.
+Here is the real output. [[slnc 400]] First the input: the settings of the default container. [[slnc 300]] Root, fourteen capabilities, a writable file system, the default seccomp profile, no host access, and no limits.
+[[page]]
+Then the result, attack by attack. [[slnc 300]] Inside the container, every attack is possible. [[slnc 300]] In the kernel, seccomp blocks the dangerous system calls, and there is no system admin capability. [[slnc 300]] But root with the raw sockets capability can sniff the network.
+[[page]]
+Nothing of the host is shared, so the four host attacks are blocked. [[slnc 300]] There is no memory or process limit. [[slnc 400]] How the count is made: four, plus one, plus zero, plus two, is seven of thirteen.
+[[page]]
+How the level is made. [[slnc 300]] All six baseline checks pass. [[slnc 300]] The three restricted checks fail: it runs as root, it allows privilege escalation, and it keeps its capabilities. [[slnc 300]] So the level is baseline.
 """
 rows = { defaults = "active amber" }
 console = [
-    ["tamper-with-app, drop-and-run, become-root, sniff-network, exhaust-memory, fork-bomb, read-secrets  POSSIBLE", "amber"],
-    ["dangerous-syscalls, mount-host, docker-socket, host-files, host-network, see-host-processes  blocked", "ok"],
-    ["7 of 13 attacks possible; level: BASELINE", "amber"],
+    ["THE SETTINGS (docker run shop-app:latest):", "code"],
+    ["  user            root", "muted"],
+    ["  privileged      no", "muted"],
+    ["  capabilities    14, Docker's default set", "muted"],
+    ["  root files      writable", "muted"],
+    ["  new privileges  allowed", "muted"],
+    ["  seccomp         RuntimeDefault", "muted"],
+    ["  host access     none", "muted"],
+    ["  limits          none", "muted"],
+    ["  secrets         in the environment", "muted"],
+    ["---", ""],
+    ["THE ATTACKS, BY WHAT THEY REACH:", "code"],
+    ["  inside the container:", "muted"],
+    ["    read-secrets        POSSIBLE secrets in the environment", "bad"],
+    ["    tamper-with-app     POSSIBLE root file system writable", "bad"],
+    ["    drop-and-run        POSSIBLE root file system writable", "bad"],
+    ["    become-root         POSSIBLE it already runs as root", "bad"],
+    ["  the kernel:", "muted"],
+    ["    dangerous-syscalls  blocked  default seccomp blocks them", "ok"],
+    ["    sniff-network       POSSIBLE root with NET_RAW", "bad"],
+    ["    mount-host          blocked  no SYS_ADMIN", "ok"],
+    ["---", ""],
+    ["  the host:", "muted"],
+    ["    docker-socket       blocked  no Docker socket", "ok"],
+    ["    host-files          blocked  no host directories mounted", "ok"],
+    ["    host-network        blocked  its own network namespace", "ok"],
+    ["    see-host-processes  blocked  its own process namespace", "ok"],
+    ["  the node's resources:", "muted"],
+    ["    exhaust-memory      POSSIBLE no memory limit", "bad"],
+    ["    fork-bomb           POSSIBLE no process limit", "bad"],
+    ["HOW THE COUNT IS MADE:", "code"],
+    ["  container 4 + kernel 1 + host 0 + resources 2 = 7 of 13", "muted"],
+    ["---", ""],
+    ["HOW THE LEVEL IS MADE:", "code"],
+    ["  baseline    not privileged              pass", "ok"],
+    ["  baseline    no host network             pass", "ok"],
+    ["  baseline    no host PID namespace       pass", "ok"],
+    ["  baseline    no host path volumes        pass", "ok"],
+    ["  baseline    seccomp not unconfined      pass", "ok"],
+    ["  baseline    only default capabilities   pass", "ok"],
+    ["  restricted  not root                    FAIL", "bad"],
+    ["  restricted  no privilege escalation     FAIL", "bad"],
+    ["  restricted  drops ALL capabilities      FAIL", "bad"],
+    ["  level       BASELINE (baseline passes, restricted fails)", "amber"],
 ]
 
 [[act]]
 title = "The configuration from the tutorial"
-summary = "--privileged, the Docker socket, the host's /etc, the host network and PID namespace, and unconfined seccomp make all 13 attacks possible; the level is Privileged."
+summary = "The input is a command found in many tutorials: --privileged, unconfined seccomp, the host network and PID namespace, the Docker socket and /etc mounted. The result: 4 + 3 + 4 + 2 = 13 of 13 attacks possible, six reasons it is not even Baseline, so the level is Privileged."
 detail = """
-The command that appears in many "how to run" pages is privileged, mounts the Docker socket and /etc, shares the host's network and process namespaces, and removes the seccomp filter. All thirteen attacks are possible, including starting a privileged container through the socket, which is root on the host.
-The checker lists six reasons the container is not even Baseline.
+The input is the command many "how to run" pages show: `--privileged`, `--security-opt seccomp=unconfined`, `--network host`, `--pid host`, `-v /var/run/docker.sock:/var/run/docker.sock` and `-v /etc:/etc`. The settings it gives: root, every capability, no seccomp filter, the host's network and processes and two host mounts.
+The result: every attack in every group, 4 + 3 + 4 + 2 = 13 of 13. Six Baseline checks fail (privileged, host network, host PID namespace, host path volumes, seccomp unconfined, a capability beyond the default set: ALL), so the level is Privileged.
+The Docker socket is the worst of them: whoever can write to it can ask the Docker daemon, which runs as root, to start a privileged container with the host's / mounted, which is a root shell on the host.
+"""
+figure = "tutorial_flags"
+figure_title = "Six flags, six reasons it is not even Baseline"
+figure_speech = """
+Second demo: the configuration from a tutorial. [[slnc 400]] On the left, the input: the flags of the command, written to make it work. [[slnc 300]] Privileged. [[slnc 300]] Seccomp unconfined: no system call filter. [[slnc 300]] The host's network, and the host's process space. [[slnc 300]] The Docker socket, and the host's etc directory, mounted inside. [[slnc 700]]
+On the right, the result. [[slnc 300]] Each flag breaks one baseline check, so there are six reasons, and the level is privileged. [[slnc 300]] And all thirteen attacks are possible: four, plus three, plus four, plus two. [[slnc 600]]
+The Docker socket alone is enough. [[slnc 300]] Whoever can write to it can ask Docker, which runs as root, to start a privileged container with the host's disk mounted. [[slnc 300]] That is a root shell on the host.
 """
 speech = """
-Second demo: the configuration from the tutorial. [[slnc 400]] Privileged. The docker socket. The host's etc directory. The host network and process space. No seccomp filter. [[slnc 600]]
-All thirteen attacks are possible. [[slnc 300]] The docker socket alone is root on the host.
+Here is the command, one flag per line. [[slnc 300]] Privileged, no seccomp, the host network and process space, the Docker socket, and the host's etc directory.
+[[page]]
+The settings it gives. [[slnc 300]] Root, every capability, no seccomp filter, and three kinds of host access. [[slnc 300]] Still no limits.
+[[page]]
+How the count is made: four, plus three, plus four, plus two, is thirteen of thirteen. [[slnc 400]] And the six reasons it is not even baseline. [[slnc 300]] The level is privileged.
 """
 rows = { reckless = "active wrong" }
 console = [
-    ["docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/etc shop-app:latest", "bad"],
-    ["13 of 13 attacks possible; level: PRIVILEGED", "bad"],
+    ["THE COMMAND:", "code"],
+    ["  docker run \\", "muted"],
+    ["    --privileged \\", "muted"],
+    ["    --security-opt seccomp=unconfined \\", "muted"],
+    ["    --network host \\", "muted"],
+    ["    --pid host \\", "muted"],
+    ["    -v /var/run/docker.sock:/var/run/docker.sock \\", "muted"],
+    ["    -v /etc:/etc \\", "muted"],
+    ["    shop-app:latest", "muted"],
+    ["---", ""],
+    ["THE SETTINGS IT GIVES:", "code"],
+    ["  user            root", "muted"],
+    ["  privileged      yes", "muted"],
+    ["  capabilities    all of them", "muted"],
+    ["  root files      writable", "muted"],
+    ["  new privileges  allowed", "muted"],
+    ["  seccomp         Unconfined", "muted"],
+    ["  host access     network, PID, 2 mount(s)", "muted"],
+    ["  limits          none", "muted"],
+    ["  secrets         in the environment", "muted"],
+    ["---", ""],
+    ["HOW THE COUNT IS MADE:", "code"],
+    ["  container 4 + kernel 3 + host 4 + resources 2 = 13 of 13", "muted"],
+    ["WHY IT IS NOT EVEN BASELINE (6 reasons):", "code"],
+    ["  privileged container", "muted"],
+    ["  host network", "muted"],
+    ["  host PID namespace", "muted"],
+    ["  host path volumes: /var/run/docker.sock, /etc", "muted"],
+    ["  seccomp unconfined", "muted"],
+    ["  capability beyond the default set: ALL", "muted"],
+    ["  level  PRIVILEGED", "bad"],
 ]
 
 [[act]]
 title = "One setting at a time"
-summary = "Removing host access takes 13 down to 9, seccomp 8, dropping capabilities 6, a non-root user alone changes nothing, no new privileges 5, a read-only root 3, and limits 1."
+summary = "Starting from 13 of 13: no host access 9, the default seccomp profile 8, drop all capabilities 6 (Baseline), a user that is not root 6 (blocks nothing alone), no new privileges 5 (Restricted), a read-only root with a noexec /tmp 3, memory and process limits 1: only read-secrets is left."
 detail = """
-Starting from the tutorial configuration: removing privileged and the host namespaces and mounts cuts the attacks from 13 to 9; the default seccomp profile blocks the dangerous system calls (8); dropping all capabilities blocks raw sockets and mounting (6) and reaches Baseline. A non-root user alone changes nothing,
-because set-user-id programs can still raise privileges; with no_new_privs the become-root attack is blocked (5) and the container reaches Restricted. A read-only root file system with a noexec temporary directory blocks tampering and dropping a tool (3), and memory and process limits block the last two (1).
+The input of each step is the container of the step before, with one setting more. The result is the count, the level, and the attacks that step blocked, worked out as the difference of the two lists.
+No host access blocks docker-socket, host-files, host-network and see-host-processes (13 to 9). The default seccomp profile blocks dangerous-syscalls (8). Dropping all capabilities blocks sniff-network and mount-host (6) and passes Baseline.
+A user that is not root blocks nothing on its own, because set-user-id programs in the image can still raise privileges. No new privileges sets no_new_privs and blocks become-root (5); with it, all three Restricted checks pass. A read-only root with a noexec /tmp blocks tamper-with-app and drop-and-run (3), and limits block exhaust-memory and fork-bomb (1).
+"""
+figure = "step_matrix"
+figure_title = "Which attacks are left after each step"
+figure_speech = """
+Third demo: one setting at a time. [[slnc 400]] Each row is one attack, and each column is the container after one more step. [[slnc 300]] A red square is an attack that is still possible. [[slnc 700]]
+At the start, every square is red. [[slnc 300]] Step one removes the host access: four attacks on the host go away, and nine are left. [[slnc 300]] Step two, the default seccomp profile, blocks the dangerous system calls: eight. [[slnc 300]] Step three drops all capabilities: no raw sockets and no mounting, six, and the level becomes baseline. [[slnc 600]]
+Step four changes the user, and look: nothing changes. [[slnc 300]] A set user id program can still make the process root. [[slnc 300]] Step five forbids new privileges, and now become root is blocked: five, and restricted. [[slnc 300]] A read only root takes it to three, and limits to one.
 """
 speech = """
-Third demo: one setting at a time. [[slnc 400]] Remove the host access, and thirteen attacks become nine. [[slnc 300]] The default seccomp profile, eight. Drop all capabilities, six. [[slnc 600]]
-A non-root user on its own changes nothing, because set user id programs can still raise privileges. [[slnc 300]] Forbid new privileges, five. A read only file system, three. Limits, one.
+Here is the output. [[slnc 300]] Before the steps: thirteen of thirteen, privileged. [[slnc 300]] Each step prints the count, the level, and the attacks it blocked. [[slnc 300]] Step four, a user that is not root, blocks nothing on its own.
+[[page]]
+Step five, no new privileges, blocks become root, and reaches restricted. [[slnc 300]] The read only root blocks two more, and the limits the last two. [[slnc 400]] After the steps, one attack is left: reading the secrets.
 """
 rows = { steps = "active ok" }
 console = [
-    ["start: the tutorial configuration -> 13 of 13 possible, level PRIVILEGED", "bad"],
-    ["no privileged, no host network, PID or mounts -> 9 of 13", "amber"],
-    ["drop all capabilities -> 6 of 13, level BASELINE", "amber"],
-    ["run as a user that is not root -> 6 of 13 (no change by itself)", "amber"],
-    ["no new privileges -> 5 of 13, level RESTRICTED", "ok"],
-    ["read-only root, noexec temporary directory -> 3 of 13", "ok"],
-    ["memory and process limits -> 1 of 13", "ok"],
+    ["BEFORE THE STEPS:", "code"],
+    ["  the tutorial configuration    13 of 13  PRIVILEGED", "bad"],
+    ["THE STEPS (one setting more each time):", "code"],
+    ["  1 no host access               9 of 13  PRIVILEGED", "bad"],
+    ["      blocks docker-socket, host-files, host-network,", "muted"],
+    ["             see-host-processes", "muted"],
+    ["  2 default seccomp profile      8 of 13  PRIVILEGED", "bad"],
+    ["      blocks dangerous-syscalls", "muted"],
+    ["  3 drop all capabilities        6 of 13  BASELINE", "amber"],
+    ["      blocks sniff-network, mount-host", "muted"],
+    ["  4 a user that is not root      6 of 13  BASELINE", "amber"],
+    ["      blocks nothing", "muted"],
+    ["---", ""],
+    ["  5 no new privileges            5 of 13  RESTRICTED", "ok"],
+    ["      blocks become-root", "muted"],
+    ["  6 read-only root, noexec /tmp  3 of 13  RESTRICTED", "ok"],
+    ["      blocks tamper-with-app, drop-and-run", "muted"],
+    ["  7 memory and process limits    1 of 13  RESTRICTED", "ok"],
+    ["      blocks exhaust-memory, fork-bomb", "muted"],
+    ["AFTER THE STEPS:", "code"],
+    ["  1 of 13 possible: read-secrets", "muted"],
 ]
 
 [[act]]
 title = "The hardened container"
-summary = "The result as Docker flags and a Kubernetes securityContext, at the Restricted level; the one thing still possible is reading the secrets the application needs."
+summary = "The same settings as a docker run command and as a Kubernetes securityContext; all nine Pod Security checks pass, so the level is Restricted. The one attack left is read-secrets: the app must read its secrets, so a hijacked app can too."
 detail = """
-The hardened container runs as user 10001, drops all capabilities, has a read-only root with a noexec tmpfs, forbids new privileges, has a 512 MB memory limit and a 200-process limit, takes its secrets from files, and uses an image pinned by digest. The same settings are printed as a docker run command and as a Kubernetes
-securityContext, so what was checked is what is deployed. The level is Restricted. Of the thirteen attacks only one is left: a hijacked application can read the secrets it was given, because it needs them.
+The input is the hardened container: user 10001, all capabilities dropped, a read-only root with a noexec, nosuid tmpfs on /tmp, no new privileges, 512 MB of memory and 200 processes at most, secrets as files, and an image pinned by its digest.
+The same settings are written twice from one object, as a `docker run` command and as a Kubernetes `securityContext`, so what was checked is what is deployed.
+The result, check by check: all six Baseline checks and all three Restricted checks pass, so the level is Restricted. One attack is still possible, read-secrets: the application must read its secrets, so a hijacked application can read them too. Hardening limits the damage; it does not fix the flaw.
+"""
+figure = "level_checks"
+figure_title = "Every Pod Security check, before and after"
+figure_speech = """
+Fourth demo: the hardened container. [[slnc 400]] This picture shows how the Kubernetes level is made, check by check. [[slnc 300]] The middle column is Docker's defaults, and the right column is the hardened container. [[slnc 700]]
+The first six checks are the baseline level. [[slnc 300]] They keep the host out: no privileged mode, no host network, no host process space, no host folders, a seccomp filter, and no extra capabilities. [[slnc 300]] The defaults already pass them. [[slnc 600]]
+The last three are the restricted level. [[slnc 300]] Not root, no privilege escalation, and all capabilities dropped. [[slnc 300]] The defaults fail all three. [[slnc 300]] The hardened container passes every check, so its level is restricted.
 """
 speech = """
-Fourth demo: the hardened container. [[slnc 400]] A user that is not root. No capabilities. A read only file system. No new privileges. Limits. An image pinned by digest. [[slnc 600]]
-The settings are printed as docker flags and as a kubernetes security context, so what was checked is what is deployed. [[slnc 600]]
-One attack is left: reading the secrets the application needs. Hardening limits the damage. It does not fix the flaw.
+Here is the hardened container as a docker run command. [[slnc 300]] A user that is not root, no capabilities, a read only root with a temporary folder that cannot run programs, no new privileges, limits, and an image pinned by digest.
+[[page]]
+The same settings for Kubernetes, as a security context. [[slnc 300]] Both are written from the same object, so what was checked is what is deployed.
+[[page]]
+How the level is made: every check passes, so the level is restricted. [[slnc 400]] One attack is still possible: the application must read its secrets, so a hijacked application can too. [[slnc 300]] Hardening limits the damage. It does not fix the flaw.
 """
 rows = { hardened = "active ok" }
 console = [
-    ["docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --memory 512m --pids-limit 200 shop-app@sha256:9f2c1a7d", "ok"],
-    ["level: RESTRICTED", "ok"],
-    ["still possible: read-secrets  (the application must read its secrets, so a hijacked application can too)", "amber"],
+    ["THE COMMAND:", "code"],
+    ["  docker run \\", "muted"],
+    ["    --user 10001 \\", "muted"],
+    ["    --cap-drop=ALL \\", "muted"],
+    ["    --read-only \\", "muted"],
+    ["    --tmpfs /tmp:rw,noexec,nosuid \\", "muted"],
+    ["    --security-opt no-new-privileges \\", "muted"],
+    ["    --memory 512m \\", "muted"],
+    ["    --pids-limit 200 \\", "muted"],
+    ["    shop-app@sha256:9f2c1a7d", "muted"],
+    ["---", ""],
+    ["THE SAME SETTINGS FOR KUBERNETES:", "code"],
+    ["  securityContext:", "muted"],
+    ["    privileged: false", "muted"],
+    ["    runAsNonRoot: true", "muted"],
+    ["    runAsUser: 10001", "muted"],
+    ["    allowPrivilegeEscalation: false", "muted"],
+    ["    readOnlyRootFilesystem: true", "muted"],
+    ["    capabilities:", "muted"],
+    ["      drop: [ALL]", "muted"],
+    ["    seccompProfile:", "muted"],
+    ["      type: RuntimeDefault", "muted"],
+    ["---", ""],
+    ["HOW THE LEVEL IS MADE:", "code"],
+    ["  baseline    not privileged              pass", "ok"],
+    ["  baseline    no host network             pass", "ok"],
+    ["  baseline    no host PID namespace       pass", "ok"],
+    ["  baseline    no host path volumes        pass", "ok"],
+    ["  baseline    seccomp not unconfined      pass", "ok"],
+    ["  baseline    only default capabilities   pass", "ok"],
+    ["  restricted  not root                    pass", "ok"],
+    ["  restricted  no privilege escalation     pass", "ok"],
+    ["  restricted  drops ALL capabilities      pass", "ok"],
+    ["  level       RESTRICTED (every check passes)", "ok"],
+    ["WHAT IS STILL POSSIBLE:", "code"],
+    ["  read-secrets        POSSIBLE the app must read its secrets", "bad"],
 ]
 
 [[act]]
 title = "Settings that look harmless"
-summary = "NET_RAW added to the hardened container drops it to Baseline with 1 attack possible because it is not root; root with SYS_ADMIN makes it Privileged with 3 possible."
+summary = "Before: the hardened container, 1 of 13 and Restricted. Adding NET_RAW: still 1 of 13 (sniff-network stays blocked because the user is not root), but Baseline, as drops ALL capabilities now fails. Running as root with SYS_ADMIN: 3 of 13 (become-root and mount-host come back) and Privileged."
 detail = """
-Adding NET_RAW back keeps the level at Baseline (NET_RAW is in the default set, but Restricted wants every capability dropped) and still blocks sniffing, because the process is not root. Running as root with CAP_SYS_ADMIN, which looks like a small change, makes the level Privileged: mounting becomes possible, and root inside the container comes back.
+The input is the hardened container with one small change. The result is the new count and level, the attacks that came back, and the checks that now fail.
+Adding NET_RAW, which is in Docker's default set, opens no attack: sniff-network stays blocked because the process is not root. But the Restricted check "drops ALL capabilities" fails, so the level falls to Baseline.
+Running as root with SYS_ADMIN looks like one more small change. It opens become-root and mount-host (3 of 13), and fails three checks: only default capabilities (Baseline), not root and drops ALL capabilities (Restricted), so the level is Privileged.
+"""
+figure = "harmless"
+figure_title = "Two small additions, and what each one undoes"
+figure_speech = """
+Fifth demo: settings that look harmless. [[slnc 400]] On the left, the input: the hardened container, with one attack possible, at the restricted level. [[slnc 700]]
+In the middle, one capability added back: raw sockets. [[slnc 300]] No attack comes back, because sniffing needs root, and the process is not root. [[slnc 300]] But the restricted check, drop all capabilities, now fails, so the level falls to baseline. [[slnc 700]]
+On the right, root, with the system admin capability. [[slnc 300]] It looks like one more small change. [[slnc 300]] But become root and mount host come back: three attacks. [[slnc 300]] And three checks fail, one of them at baseline, so the level is privileged.
 """
 speech = """
-Fifth demo: settings that look harmless. [[slnc 400]] Add the raw sockets capability back to the hardened container. [[slnc 300]] It drops from restricted to baseline, but sniffing is still blocked, because the process is not root. [[slnc 600]]
-Run as root with the system admin capability, and it is privileged again, with three attacks possible.
+Here is the output. [[slnc 300]] Before: the hardened container, one of thirteen, restricted. [[slnc 300]] After adding raw sockets: still one of thirteen, sniff network is blocked because the user is not root, but drop all capabilities now fails.
+[[page]]
+After running as root with the system admin capability: three of thirteen, and privileged. [[slnc 300]] Become root and mount host are possible again, and three checks fail.
 """
 rows = { harmless = "active amber" }
 console = [
-    ["hardened + NET_RAW -> level BASELINE, 1 of 13 attacks possible (NET_RAW matters only to root)", "amber"],
-    ["hardened + root + SYS_ADMIN -> level PRIVILEGED, 3 of 13 attacks possible", "bad"],
+    ["BEFORE: the hardened container", "code"],
+    ["  1 of 13 possible, level RESTRICTED", "ok"],
+    ["AFTER: hardened + NET_RAW", "code"],
+    ["  1 of 13 possible, level BASELINE", "amber"],
+    ["  newly possible: nothing", "muted"],
+    ["  sniff-network       blocked  NET_RAW, but not root", "ok"],
+    ["  now FAIL  restricted  drops ALL capabilities", "bad"],
+    ["---", ""],
+    ["AFTER: hardened + root + SYS_ADMIN", "code"],
+    ["  3 of 13 possible, level PRIVILEGED", "bad"],
+    ["  newly possible: become-root, mount-host", "muted"],
+    ["  now FAIL  baseline    only default capabilities", "bad"],
+    ["  now FAIL  restricted  not root", "bad"],
+    ["  now FAIL  restricted  drops ALL capabilities", "bad"],
 ]
+
+[highlight]
+console_green = ["AFTER THE STEPS", "THE SAME SETTINGS"]
+console_rose = ["THE ATTACKS", "WHY IT IS NOT", "BEFORE THE STEPS"]
+console_amber = ["HOW THE", "THE STEPS", "WHAT IS STILL", "AFTER:", "BEFORE:"]
+console_cyan = ["THE SETTINGS", "THE COMMAND"]
 
 [animation]
 subtitle = "A hijacked process in a container, thirteen things it might try, and the settings that stop them."
@@ -381,6 +569,7 @@ out_of_scope = [
 ]
 tests = [
     "`ContainerTest` checks the attack rules for each setting, the three configurations, the Docker socket, the effect of a non-root user with and without no_new_privs, root with SYS_ADMIN, the Pod Security levels and violations, and the rendered flags and YAML.",
+    "`ContainerTest` also checks the nine Pod Security checks, the grouping of the attacks, the one-flag-per-line command and that every demo line fits a slide.",
     "`DemoRunsTest` compares the whole demo with the golden output.",
 ]
 next = """
@@ -414,8 +603,8 @@ residual = "The application's own secrets stay readable by the application: rota
 [poster]
 headline = [["CONTAINER", "text"], ["HARDENING", "accent"]]
 taglines = [["Assume the process is taken over, and ask what it can reach", "gold"]]
-before = { code = "tamper-with-app, drop-and-run, become-root, sniff-ne", note = "What 'docker run' with no options gives ", tag = "BEFORE" }
-after = { code = "--cap-drop=ALL --read-only", note = "Settings that look harmless", tag = "AFTER" }
+before = { code = "docker run shop-app:latest", note = "7 of 13 attacks possible", tag = "BEFORE" }
+after = { code = "--cap-drop=ALL --read-only", note = "1 of 13, Restricted", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -431,6 +620,27 @@ body = ["A web shop runs in a container,", "and its application has a flaw", "th
 narration = "Here is the scenario. [[slnc 400]] A web shop runs in a container, and its application has a flaw that lets an attacker run code inside. [[slnc 500]] The demo models the container's settings, and asks thirteen questions of each configuration: can the attacker read secrets, become root, reach the host, use the Docker socket, run out the memory, and so on. [[slnc 500]] It tries Docker's defaults, a tutorial's configuration, and then hardens one setting at a time."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Capability: one slice of root's power", "seccomp: a filter on system calls", "Namespace: the container's own view", "cgroup: a limit on memory or processes", "no_new_privs: no gaining privileges later", "Pod Security Standards: three levels"]
+narration = """Before the demos, the words. [[slnc 500]] Linux splits root's power into about forty capabilities, such as raw sockets or system admin. [[slnc 500]] Seccomp, secure computing mode, is a filter on the system calls a process may make. [[slnc 500]] A namespace gives the container its own view of the network, the processes, and the files. [[slnc 500]] A cgroup, a control group, limits the memory and the processes it may use. [[slnc 500]] No new privs is a flag that stops a process from gaining privileges later, even through a set user id program. [[slnc 500]] And the Kubernetes Pod Security Standards name three levels: privileged, baseline, and restricted."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-reach"
+kind = "figure"
+title = "One hijacked process, thirteen questions"
+body = "reach_map"
+narration = """Let's see the core idea on one example. [[slnc 400]] An attacker found a flaw in the shop's application, and now runs code inside its container. [[slnc 300]] In the middle, that hijacked process. [[slnc 600]] Around it, thirteen questions, grouped by what they reach. [[slnc 300]] Top left, inside the container: read the secrets, change the app, drop a tool and run it, become root. [[slnc 300]] Top right, the kernel: dangerous system calls, raw sockets, mounting. [[slnc 300]] Bottom left, the host: the Docker socket, host files, the host network and its processes. [[slnc 300]] And bottom right, the node's resources: memory and processes. [[slnc 700]]
+Each answer depends on one setting of the container. [[slnc 300]] Red means possible, green means blocked. [[slnc 300]] With no options at all, seven are red."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -442,13 +652,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["Read-only files need writable temp folders", "Dropped capabilities break some images", "Limits must be sized, or they kill the app", "Non-root needs ports above 1024", "Debugging inside is harder"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A read only file system means every place the application writes must be a separate, writable folder. [[slnc 500]] Dropping all capabilities breaks images that quietly relied on them. [[slnc 500]] Memory and process limits must be sized, or they stop the application under real load. [[slnc 500]] A user that is not root usually needs a port above 1024. [[slnc 300]] And debugging inside a locked-down container is harder."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["ContainerSpec: the settings that matter", "Attack, Attacker: the thirteen questions", "Outcome: possible or blocked, and why", "PodSecurityLevel: Privileged, Baseline, Restricted", "Renderer: Docker flags and a securityContext", "ContainerDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] ContainerSpec holds the settings that matter: user, capabilities, file system, seccomp, host access, limits, and the image. [[slnc 500]] Attack and Attacker are the thirteen questions, and Outcome is each answer, with the setting that decided it. [[slnc 500]] PodSecurityLevel names Kubernetes' three levels, and why a container fails the next one. [[slnc 300]] Renderer prints the settings as Docker flags and as a Kubernetes security context. [[slnc 300]] And ContainerDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -465,8 +668,145 @@ body = ["Never privileged; never the Docker socket", "No host network, process s
 narration = "So, how do you use it? [[slnc 400]] Never run privileged, and never mount the Docker socket. [[slnc 300]] Keep the host's network, processes, and files out. [[slnc 500]] Run as a user that is not root, drop all capabilities, and forbid new privileges. [[slnc 500]] Make the root file system read only, and set limits on memory and processes. [[slnc 300]] Aim for the restricted level. [[slnc 500]] And remember: hardening limits the damage, it does not fix the application's flaw."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add an attack that reaches", "the cloud metadata address, and a setting that blocks it."]
 narration = "That's container hardening. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Assume the process is taken over, and decide what it can reach: no root, no capabilities, no new privileges, a read only file system, nothing of the host, and limits. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add an attack that uses the network to reach the cloud metadata address, and a setting that blocks it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The container is plain data, so the classes are all about the rules. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "ContainerSpec"
+what = "the settings that decide what a hijacked process can do"
+[[class.part]]
+title = "root, and a capability"
+code = """
+public boolean runsAsRoot() {
+    return user.equals("root") || user.equals("0");
+}
+...
+public boolean has(String capability) {
+    return privileged || capabilities.contains("ALL")
+            || capabilities.contains(capability);
+"""
+speech = """A record with one field per setting, and two questions the rules ask often. [[slnc 300]] Is the user root, by name or by number zero? [[slnc 300]] And does it hold a capability: a privileged container holds them all. [[slnc 300]] Each hardening step returns a copy with one field changed."""
+
+[[class]]
+name = "Attacker"
+what = "thirteen attacks, each answered by the setting that decides it"
+[[class.part]]
+title = "one rule per attack"
+code = """
+case "become-root" -> c.runsAsRoot() ? yes(a, "it already runs as root")
+        : c.allowPrivilegeEscalation() ? yes(a, "set-user-id programs work")
+        : no(a, "not root, no_new_privs set");
+"""
+speech = """Each attack is one case, and each answer carries its reason. [[slnc 300]] Become root is blocked only when the user is not root and new privileges are forbidden. [[slnc 300]] That is why step four alone changed nothing."""
+
+[[class]]
+name = "PodSecurityLevel"
+what = "the three Kubernetes levels, decided check by check"
+[[class.part]]
+title = "a check per rule"
+code = """
+new Check(BASELINE, "no host network",
+        c -> c.hostNetwork() ? List.of("host network") : List.of()),
+...
+new Check(RESTRICTED, "not root",
+        c -> c.runsAsRoot() ? List.of("runs as root") : List.of()),
+"""
+speech = """Each check has a level, a name, and the problems it finds. [[slnc 300]] An empty list means it passes."""
+[[class.part]]
+title = "the highest level that passes"
+code = """
+if (!violations(c, BASELINE).isEmpty()) {
+    return PRIVILEGED;
+}
+return violations(c, RESTRICTED).isEmpty() ? RESTRICTED : BASELINE;
+"""
+speech = """Any baseline problem gives privileged. [[slnc 300]] Otherwise, any restricted problem gives baseline, and none gives restricted."""
+
+[[class]]
+name = "Renderer"
+what = "the same settings as Docker flags and a Kubernetes securityContext"
+[[class.part]]
+title = "flags from the fields"
+code = """
+if (!c.runsAsRoot()) {
+    a.add("--user " + c.user());
+}
+if (c.capabilities().isEmpty()) {
+    a.add("--cap-drop=ALL");
+}
+"""
+speech = """The command is written from the same object the attacker checked. [[slnc 300]] So the flags that are deployed are the settings that were tested."""
+
+[[class]]
+name = "ContainerDemo"
+what = "runs the five demos and works out each step"
+[[class.part]]
+title = "what a step blocked"
+code = """
+List<String> blocked = new ArrayList<>(Attacker.possibleIds(before));
+blocked.removeAll(Attacker.possibleIds(after));
+"""
+speech = """What a step blocked is worked out, not written by hand: the attacks possible before, minus the attacks possible after."""
+
+[[acronym]]
+short = "PID"
+long = "Process IDentifier; the PID namespace is the process list"
+say = "P I D is a process identifier. Sharing the host's P I D namespace means seeing every process on the host."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is an application programming interface. The Docker A P I listens on the Docker socket."
+[[acronym]]
+short = "MB"
+long = "Megabyte: a million bytes, here of memory"
+say = "M B is a megabyte, here a memory limit."
+[[acronym]]
+short = "YAML"
+long = "YAML Ain't Markup Language: Kubernetes' file format"
+say = "Y A M L is the text format Kubernetes files are written in."
+[[acronym]]
+short = "CIS"
+long = "Center for Internet Security: publishes the Docker benchmark"
+say = "C I S is the Center for Internet Security, which publishes hardening benchmarks for Docker and Kubernetes."
+[[acronym]]
+short = "seccomp"
+long = "secure computing mode: a filter on system calls"
+say = "Seccomp is secure computing mode: a filter that decides which system calls a process may make."
+[[acronym]]
+short = "cgroup"
+long = "control group: limits on memory, CPU and processes"
+say = "A cgroup is a control group: the kernel feature that limits memory, C P U and processes."
+[[acronym]]
+short = "CPU"
+long = "Central Processing Unit"
+say = "C P U is the central processing unit, the processor."
+[[acronym]]
+short = "tmpfs"
+long = "temporary file system, kept in memory"
+say = "Tmpfs is a temporary file system kept in memory, here mounted on slash temp."
+[[acronym]]
+short = "noexec, nosuid"
+long = "mount options: run no programs; ignore set-user-id bits"
+say = "No exec and no s u i d are mount options: no program may run from there, and set user id bits are ignored."
+[[acronym]]
+short = "NET_RAW, SYS_ADMIN"
+long = "capabilities: raw network sockets; system administration"
+say = "Net raw is the capability to open raw network sockets. Sys admin is the capability for mounting and much more."
+[[acronym]]
+short = "no_new_privs"
+long = "no new privileges: a process flag that stops privilege gain"
+say = "No new privs is a process flag: once set, no program can give the process more privileges."
+

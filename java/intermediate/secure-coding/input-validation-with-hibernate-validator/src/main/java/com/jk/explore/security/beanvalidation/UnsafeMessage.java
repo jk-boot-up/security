@@ -9,6 +9,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext;
 
 /** A custom constraint written the way it should not be: it puts what the visitor typed into the message template, which is then interpolated. */
 @Documented
@@ -29,7 +30,8 @@ public @interface UnsafeMessage {
         @Override
         public boolean isValid(String value, ConstraintValidatorContext context) {
             context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate("the coupon " + value + " does not exist").addConstraintViolation();
+            String template = "the coupon " + value + " does not exist";
+            context.buildConstraintViolationWithTemplate(template).addConstraintViolation();
             return false;
         }
     }
@@ -40,8 +42,10 @@ public @interface UnsafeMessage {
         @Override
         public boolean isValid(String value, ConstraintValidatorContext context) {
             context.disableDefaultConstraintViolation();
-            context.unwrap(org.hibernate.validator.constraintvalidation.HibernateConstraintValidatorContext.class).addMessageParameter("coupon", value)
-                    .buildConstraintViolationWithTemplate("the coupon {coupon} does not exist").addConstraintViolation();
+            context.unwrap(HibernateConstraintValidatorContext.class)
+                    .addMessageParameter("coupon", value)
+                    .buildConstraintViolationWithTemplate("the coupon {coupon} does not exist")
+                    .addConstraintViolation();
             return false;
         }
     }

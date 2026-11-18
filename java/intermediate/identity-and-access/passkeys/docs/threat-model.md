@@ -50,7 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - The customer's browser enforces the WebAuthn rules.
 - The bank's clock is correct to within the challenge lifetime.
-- In the demo, keys and challenges are random and never printed, and the password and recovery code are demo values.
+- In the demo, keys and challenges come from a fixed seed so the output repeats; the password and recovery code are demo values.
 
 ## Out of scope
 
@@ -60,7 +60,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `EncodingTest` checks base64url against RFC 4648, SHA-256 against the abc vector, and the byte layouts of client data and authenticator data.
+- `EncodingTest` checks base64url against RFC 4648, SHA-256 against the abc vector, the byte layouts of client data and authenticator data, and that a signature over the 69 signed bytes verifies with the library fed the two parts separately.
 - `RelyingPartyTest` checks every refusal with its exact reason: used and expired challenges, another customer, type, origin, relying party id, flags, unknown credential, a stranger's key, a copied key, synced passkeys, the browser's site rule, passwords and recovery codes.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

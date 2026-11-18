@@ -24,7 +24,7 @@ public final class SafeDownloads implements Downloads {
     /** {@code rawName} is what the web layer received, still percent-encoded; it is decoded exactly once, here, and then checked. */
     @Override
     public String read(String rawName) {
-        String name = URLDecoder.decode(rawName, StandardCharsets.UTF_8);
+        String name = decodeOnce(rawName);
         if (!NAME.matcher(name).matches()) {
             throw new Refused("not an invoice name");
         }
@@ -42,5 +42,10 @@ public final class SafeDownloads implements Downloads {
         } catch (IOException e) {
             throw new Refused("no such file");
         }
+    }
+
+    /** The one place a name is percent-decoded: {@code %2e%2e%2f} becomes {@code ../}, and the checks see that. */
+    public static String decodeOnce(String rawName) {
+        return URLDecoder.decode(rawName, StandardCharsets.UTF_8);
     }
 }

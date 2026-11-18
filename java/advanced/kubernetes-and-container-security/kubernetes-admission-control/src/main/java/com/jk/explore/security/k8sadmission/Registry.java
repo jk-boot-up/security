@@ -14,6 +14,9 @@ import java.util.UUID;
 /** A local image registry (a container on kind's Docker network), the bank's cosign key, and images pushed and signed in it. */
 public final class Registry implements AutoCloseable {
 
+    /** The registry image, pinned by digest. */
+    static final String IMAGE = "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373";
+
     private final String container = "bank-registry-" + UUID.randomUUID().toString().substring(0, 6);
     private final int hostPort;
     private final String clusterHost;
@@ -21,7 +24,7 @@ public final class Registry implements AutoCloseable {
 
     public Registry() throws IOException, InterruptedException {
         this.hostPort = freePort();
-        Sh.must(List.of("docker", "run", "-d", "--name", container, "--network", "kind", "-p", "127.0.0.1:" + hostPort + ":5000", "registry:2"));
+        Sh.must(List.of("docker", "run", "-d", "--name", container, "--network", "kind", "-p", "127.0.0.1:" + hostPort + ":5000", IMAGE));
         this.clusterHost = Sh.must(List.of("docker", "inspect", container, "--format", "{{(index .NetworkSettings.Networks \"kind\").IPAddress}}")).strip() + ":5000";
         this.keys = Files.createTempDirectory("bank-keys");
         Sh.must(keys, Map.of("COSIGN_PASSWORD", ""), List.of("cosign", "generate-key-pair"));

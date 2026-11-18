@@ -1,54 +1,142 @@
-== 1. What 'docker run' with no options gives an attacker ==
-read-secrets           POSSIBLE  secrets are in the environment, which every process of the container can read
-tamper-with-app        POSSIBLE  the root file system is writable
-drop-and-run           POSSIBLE  the root file system is writable
-become-root            POSSIBLE  it already runs as root
-dangerous-syscalls     blocked   the default seccomp profile blocks them
-sniff-network          POSSIBLE  root with the NET_RAW capability
-mount-host             blocked   no CAP_SYS_ADMIN
-docker-socket          blocked   the Docker socket is not mounted
-host-files             blocked   no host directories are mounted
-host-network           blocked   its own network namespace
-see-host-processes     blocked   its own process namespace
-exhaust-memory         POSSIBLE  no memory limit
-fork-bomb              POSSIBLE  no process limit
-7 of 13 attacks possible; level: BASELINE
-
-== 2. The configuration from the tutorial ==
-docker run --privileged --security-opt seccomp=unconfined --network host --pid host -v /var/run/docker.sock:/var/run/docker.sock -v /etc:/etc shop-app:latest
-13 of 13 attacks possible; level: PRIVILEGED
-  not baseline: privileged container
-  not baseline: host network
-  not baseline: host PID namespace
-  not baseline: host path volumes: /var/run/docker.sock, /etc
-  not baseline: seccomp unconfined
-  not baseline: capability beyond the default set: ALL
-
-== 3. One setting at a time ==
-start: the tutorial configuration                -> 13 of 13 possible, level PRIVILEGED
-no privileged, no host network, PID or mounts    ->  9 of 13 possible, level PRIVILEGED
-default seccomp profile                          ->  8 of 13 possible, level PRIVILEGED
-drop all capabilities                            ->  6 of 13 possible, level BASELINE
-run as a user that is not root                   ->  6 of 13 possible, level BASELINE
-no new privileges                                ->  5 of 13 possible, level RESTRICTED
-read-only root, noexec temporary directory       ->  3 of 13 possible, level RESTRICTED
-memory and process limits                        ->  1 of 13 possible, level RESTRICTED
-
-== 4. The hardened container ==
-docker run --user 10001 --cap-drop=ALL --read-only --tmpfs /tmp:rw,noexec,nosuid --security-opt no-new-privileges --memory 512m --pids-limit 200 shop-app@sha256:9f2c1a7d
-securityContext:
-  privileged: false
-  runAsNonRoot: true
-  runAsUser: 10001
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop: [ALL]
-  seccompProfile:
-    type: RuntimeDefault
-level: RESTRICTED
-  still possible: read-secrets           POSSIBLE  the application must read its secrets, so a hijacked application can too
-
-== 5. Settings that look harmless ==
-hardened + NET_RAW -> level BASELINE, 1 of 13 attacks possible (NET_RAW matters only to root)
-hardened + root + SYS_ADMIN -> level PRIVILEGED, 3 of 13 attacks possible
+ONE. What 'docker run' with no options gives an attacker.
+  THE SETTINGS (docker run shop-app:latest):
+    user            root
+    privileged      no
+    capabilities    14, Docker's default set
+    root files      writable
+    new privileges  allowed
+    seccomp         RuntimeDefault
+    host access     none
+    limits          none
+    secrets         in the environment
+  THE ATTACKS, BY WHAT THEY REACH:
+    inside the container:
+      read-secrets        POSSIBLE secrets in the environment
+      tamper-with-app     POSSIBLE root file system writable
+      drop-and-run        POSSIBLE root file system writable
+      become-root         POSSIBLE it already runs as root
+    the kernel:
+      dangerous-syscalls  blocked  default seccomp blocks them
+      sniff-network       POSSIBLE root with NET_RAW
+      mount-host          blocked  no SYS_ADMIN
+    the host:
+      docker-socket       blocked  no Docker socket
+      host-files          blocked  no host directories mounted
+      host-network        blocked  its own network namespace
+      see-host-processes  blocked  its own process namespace
+    the node's resources:
+      exhaust-memory      POSSIBLE no memory limit
+      fork-bomb           POSSIBLE no process limit
+  HOW THE COUNT IS MADE:
+    container 4 + kernel 1 + host 0 + resources 2 = 7 of 13
+  HOW THE LEVEL IS MADE:
+    baseline    not privileged              pass
+    baseline    no host network             pass
+    baseline    no host PID namespace       pass
+    baseline    no host path volumes        pass
+    baseline    seccomp not unconfined      pass
+    baseline    only default capabilities   pass
+    restricted  not root                    FAIL
+    restricted  no privilege escalation     FAIL
+    restricted  drops ALL capabilities      FAIL
+    level       BASELINE (baseline passes, restricted fails)
+TWO. The configuration from the tutorial.
+  THE COMMAND:
+    docker run \
+      --privileged \
+      --security-opt seccomp=unconfined \
+      --network host \
+      --pid host \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v /etc:/etc \
+      shop-app:latest
+  THE SETTINGS IT GIVES:
+    user            root
+    privileged      yes
+    capabilities    all of them
+    root files      writable
+    new privileges  allowed
+    seccomp         Unconfined
+    host access     network, PID, 2 mount(s)
+    limits          none
+    secrets         in the environment
+  HOW THE COUNT IS MADE:
+    container 4 + kernel 3 + host 4 + resources 2 = 13 of 13
+  WHY IT IS NOT EVEN BASELINE (6 reasons):
+    privileged container
+    host network
+    host PID namespace
+    host path volumes: /var/run/docker.sock, /etc
+    seccomp unconfined
+    capability beyond the default set: ALL
+    level  PRIVILEGED
+THREE. One setting at a time.
+  BEFORE THE STEPS:
+    the tutorial configuration    13 of 13  PRIVILEGED
+  THE STEPS (one setting more each time):
+    1 no host access               9 of 13  PRIVILEGED
+        blocks docker-socket, host-files, host-network,
+               see-host-processes
+    2 default seccomp profile      8 of 13  PRIVILEGED
+        blocks dangerous-syscalls
+    3 drop all capabilities        6 of 13  BASELINE
+        blocks sniff-network, mount-host
+    4 a user that is not root      6 of 13  BASELINE
+        blocks nothing
+    5 no new privileges            5 of 13  RESTRICTED
+        blocks become-root
+    6 read-only root, noexec /tmp  3 of 13  RESTRICTED
+        blocks tamper-with-app, drop-and-run
+    7 memory and process limits    1 of 13  RESTRICTED
+        blocks exhaust-memory, fork-bomb
+  AFTER THE STEPS:
+    1 of 13 possible: read-secrets
+FOUR. The hardened container.
+  THE COMMAND:
+    docker run \
+      --user 10001 \
+      --cap-drop=ALL \
+      --read-only \
+      --tmpfs /tmp:rw,noexec,nosuid \
+      --security-opt no-new-privileges \
+      --memory 512m \
+      --pids-limit 200 \
+      shop-app@sha256:9f2c1a7d
+  THE SAME SETTINGS FOR KUBERNETES:
+    securityContext:
+      privileged: false
+      runAsNonRoot: true
+      runAsUser: 10001
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  HOW THE LEVEL IS MADE:
+    baseline    not privileged              pass
+    baseline    no host network             pass
+    baseline    no host PID namespace       pass
+    baseline    no host path volumes        pass
+    baseline    seccomp not unconfined      pass
+    baseline    only default capabilities   pass
+    restricted  not root                    pass
+    restricted  no privilege escalation     pass
+    restricted  drops ALL capabilities      pass
+    level       RESTRICTED (every check passes)
+  WHAT IS STILL POSSIBLE:
+    read-secrets        POSSIBLE the app must read its secrets
+FIVE. Settings that look harmless.
+  BEFORE: the hardened container
+    1 of 13 possible, level RESTRICTED
+  AFTER: hardened + NET_RAW
+    1 of 13 possible, level BASELINE
+    newly possible: nothing
+    sniff-network       blocked  NET_RAW, but not root
+    now FAIL  restricted  drops ALL capabilities
+  AFTER: hardened + root + SYS_ADMIN
+    3 of 13 possible, level PRIVILEGED
+    newly possible: become-root, mount-host
+    now FAIL  baseline    only default capabilities
+    now FAIL  restricted  not root
+    now FAIL  restricted  drops ALL capabilities

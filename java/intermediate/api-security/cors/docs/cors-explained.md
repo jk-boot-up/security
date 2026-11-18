@@ -6,30 +6,34 @@ CORS tells the browser which other sites may read an API's answers, so list thos
 
 ## The 5 acts
 
-### 1. Same origin needs no CORS
+### 1. The bank's own page needs no CORS
 
-A script on https://bank.example calls the bank's API on the same origin and reads the balance. The browser applies no CORS rules at all.
+An origin is three parts of a web address: the scheme, the host and the port (443 when https names none). https://bank.example, the API's origin, differs from https://partner.example, https://evil.example and https://evilbank.example in the host, so a script on any of those is cross-origin.
+A script on https://bank.example calls GET /account with the session cookie. It has the API's origin, so the browser applies no CORS rules and the page reads balance: 125000 cents.
 
-### 2. No CORS headers: a page may send, but not read
+### 2. With no CORS headers, a page may send but not read
 
-With no CORS headers, a script on evil.example reads nothing: "answer blocked". But the request reached the bank, with the customer's cookie, and a simple POST with a text/plain body is processed: the bank's log has POST /transfer.
-A JSON PUT needs a preflight, which fails, so that one never reaches the bank. CORS controls reading and, for non-simple requests, sending; it is not a defence against forged simple requests. That is the job of the CSRF defences.
+A script on https://evil.example makes three requests with the customer's cookie. GET /account and POST /transfer with a text/plain body are simple requests: GET, HEAD or POST with a form or plain-text body, which the browser sends without asking. PUT with application/json is not simple.
+For the PUT the browser first sends a preflight, OPTIONS /transfer with Access-Control-Request-Method: PUT and Access-Control-Request-Headers: content-type, without the cookie. The answer, 204, has no Access-Control-Allow-Origin, so the PUT is never sent.
+The page reads nothing. But the bank's log shows GET /account and POST /transfer: the simple POST ran. CORS controls reading, and sending only for requests that are not simple; it is not a defence against forged requests. That is the job of the CSRF defences.
 
-### 3. Policies that look like fixes
+### 3. Three policies that look like fixes
 
-Three policies that make the console error go away: reflect whatever Origin arrives, with credentials (evil.example, evilbank.example and a null origin all read the balance); an exact list that also allows `null` (a sandboxed iframe or a
-file opened locally reads it); and a suffix match on `bank.example`, which accepts https://evilbank.example. Each is a configuration that works in a test with the partner's page and quietly includes the attacker's.
+Three policies that make the browser's error go away. Reflect whatever Origin arrives, with credentials: evil.example, evilbank.example and the null origin each get their own origin back, and all three read the balance.
+A list with the partner that also allows null: evil.example and evilbank.example are blocked, but null is answered with null, and a sandboxed frame or a file opened locally, which an attacker can make, reads the balance.
+A suffix test on bank.example: "https://evilbank.example".endsWith("bank.example") is true, so the look-alike reads the balance. Each policy works in a test with the partner's page and quietly includes the attacker's.
 
-### 4. An exact allow-list
+### 4. An exact allow-list names one partner
 
-The fixed policy compares the Origin header as a whole, case-sensitively, with a list that has one partner. partner.example reads the account and sends a JSON PUT after the preflight approves the method and header.
-evil.example, evilbank.example and the null origin all get no CORS headers, so their reads are blocked, and the evil JSON PUT never reaches the bank. The public rates call uses a wildcard, which is fine for data with no cookies.
-Responses carry `Vary: Origin` so that a cache does not hand one origin's answer to another.
+The fixed policy compares the Origin header as a whole string, case-sensitively, with a list that holds https://partner.example.
+The partner's preflight for a JSON PUT is answered with its origin, Access-Control-Allow-Credentials: true, the methods GET, POST, PUT, the headers content-type and x-requested-with, and Max-Age 600, so the browser may cache the answer for ten minutes.
+The partner's GET /account comes back with its origin, credentials true and Vary: Origin. The browser checks two things for a request with cookies: Allow-Origin equals the page's origin, and Allow-Credentials is true. Both hold, so the partner reads the balance and its PUT sends 500 to mallory.
+evil.example, evilbank.example and the null origin get no CORS headers, so their reads are blocked, and the evil JSON PUT never reaches the bank. The public rates call uses *, which is fine for data read without cookies.
 
-### 5. Wildcard and cookies never combine
+### 5. A wildcard and cookies never combine
 
-Even if a server sends `*` together with `Access-Control-Allow-Credentials: true`, the browser refuses the answer for a request made with cookies and accepts it for one without. That is why teams that "need credentials and any origin"
-end up reflecting the Origin header, which is the unsafe policy from act three.
+Even if a server sends `*` together with `Access-Control-Allow-Credentials: true`, the browser refuses the answer for a request made with cookies, because with cookies Allow-Origin must equal the page's origin, and it accepts it for a request without cookies.
+That is why teams that "need credentials and any origin" end up reflecting the Origin header, which is the unsafe policy from act three.
 
 ## The verdict
 

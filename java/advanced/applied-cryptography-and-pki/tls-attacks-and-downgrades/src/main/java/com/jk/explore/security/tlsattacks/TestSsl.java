@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumSet;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -59,23 +61,31 @@ final class TestSsl {
 
     /** Which planted weaknesses the report names. The static RSA and DH size ones need the key exchange column of the cipher table. */
     static Set<Weakness> detect(List<Finding> findings) {
-        Set<Weakness> found = EnumSet.noneOf(Weakness.class);
+        return evidence(findings).keySet();
+    }
+
+    /** Each planted weakness the report shows, with where in the report it shows. */
+    static Map<Weakness, String> evidence(List<Finding> findings) {
+        Map<Weakness, String> found = new EnumMap<>(Weakness.class);
         for (Finding f : findings) {
             if (f.id().equals("TLS1") && f.text().startsWith("offered")) {
-                found.add(Weakness.TLS_1_0);
+                found.put(Weakness.TLS_1_0, "finding TLS1, " + f.severity());
             } else if (f.id().equals("TLS1_1") && f.text().startsWith("offered")) {
-                found.add(Weakness.TLS_1_1);
+                found.put(Weakness.TLS_1_1, "finding TLS1_1, " + f.severity());
             } else if (f.id().startsWith("cipher-") && f.severity().equals("CRITICAL") && f.text().contains(" NULL-")) {
-                found.add(Weakness.NULL_CIPHER);
+                found.put(Weakness.NULL_CIPHER, "table row NULL-SHA, " + f.severity());
             } else if (f.id().equals("LUCKY13") && f.text().startsWith("potentially vulnerable")) {
-                found.add(Weakness.CBC_SHA1);
+                found.put(Weakness.CBC_SHA1, "finding LUCKY13, " + f.severity());
             }
         }
-        if (!kx(findings, "RSA").isEmpty()) {
-            found.add(Weakness.STATIC_RSA);
+        int rsa = new TreeSet<>(kx(findings, "RSA")).size();
+        if (rsa > 0) {
+            found.put(Weakness.STATIC_RSA,
+                    "only the Kx column: RSA, " + rsa + " rows");
         }
-        if (smallDh(findings)) {
-            found.add(Weakness.SMALL_DH);
+        int dh = smallDh(findings);
+        if (dh > 0) {
+            found.put(Weakness.SMALL_DH, "only the Kx column: DH " + dh);
         }
         return found;
     }
@@ -94,16 +104,17 @@ final class TestSsl {
         return rows;
     }
 
-    private static boolean smallDh(List<Finding> findings) {
+    /** The size of a DH group under 2048 bits in the cipher table, or 0 when there is none. */
+    private static int smallDh(List<Finding> findings) {
         for (Finding f : findings) {
             if (f.id().startsWith("cipher-")) {
                 String[] t = f.text().trim().split("\\s+");
                 if (t.length > 4 && t[3].equals("DH") && t[4].matches("\\d+") && Integer.parseInt(t[4]) < 2048) {
-                    return true;
+                    return Integer.parseInt(t[4]);
                 }
             }
         }
-        return false;
+        return 0;
     }
 
     /** How many findings have this severity or worse (LOW, MEDIUM, HIGH, CRITICAL). */

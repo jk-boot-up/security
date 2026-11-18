@@ -39,10 +39,10 @@ Revocation is trusted without asking what the client does when it cannot reach t
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 83 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 126 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:10, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:23, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -1,40 +1,38 @@
 package com.jk.explore.security.pqc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 class InventoryTest {
 
     @Test
-    void countsProjectsNotFilesAndIgnoresTestsAndBuildOutput(@TempDir Path dir) throws Exception {
-        write(dir, "beginner/m/a/src/main/java/A.java", "Signature.getInstance(\"SHA256withRSA\"); KeyPairGenerator.getInstance(\"EC\");");
-        write(dir, "beginner/m/a/src/main/java/B.java", "KeyPairGenerator.getInstance(\"RSA\");");
-        write(dir, "beginner/m/a/src/test/java/T.java", "ECDSA ECDH X25519");
-        write(dir, "intermediate/m/b/build/x/src/main/java/C.java", "ECDSA");
-        write(dir, "intermediate/m/b/src/main/java/D.java", "Cipher.getInstance(\"AES/GCM/NoPadding\");");
-        Inventory.Result r = Inventory.scan(dir);
-        assertEquals(2, r.projects());
-        assertEquals(3, r.files());
-        assertEquals(1, r.projectsByAlgorithm().get("RSA").size());
-        assertEquals(1, r.projectsByAlgorithm().get("EC key pair (any use)").size());
-        assertEquals(0, r.projectsByAlgorithm().get("ECDSA").size());
-        assertEquals(1, r.projectsByAlgorithm().get("AES").size());
-        assertEquals(1, r.anyPublicKey().size());
+    void aFileIsFiledUnderTheFirstUseInTheMigrationOrder() {
+        List<Inventory.Entry> e = Inventory.scan(List.of(
+                new Inventory.Source("a", "KeyAgreement.getInstance(\"ECDH\"); Cipher.getInstance(\"AES/GCM/NoPadding\");"),
+                new Inventory.Source("b", "Signature.getInstance(\"SHA256withRSA\"); Mac.getInstance(\"HmacSHA256\");"),
+                new Inventory.Source("c", "Mac.getInstance(\"HmacSHA256\");")));
+        assertEquals(Inventory.Use.KEY_EXCHANGE, e.get(0).first());
+        assertEquals(Inventory.Use.SIGNATURE, e.get(1).first());
+        assertEquals(Inventory.Use.SYMMETRIC, e.get(2).first());
+        assertEquals(List.of("ECDH", "AES"), e.get(0).found().stream().map(Inventory.Algorithm::name).toList());
     }
 
     @Test
-    void findsTheRepositoryFromThisProject() {
-        assertTrue(Inventory.javaRoot(Path.of("")) != null);
+    void rsaIsReadAsKeyTransportOrAsASignatureByHowItIsNamed() {
+        List<Inventory.Entry> e = Inventory.scan(List.of(
+                new Inventory.Source("wrap", "Cipher.getInstance(\"RSA/ECB/OAEPWithSHA-256AndMGF1Padding\");"),
+                new Inventory.Source("sign", "Signature.getInstance(\"SHA256withRSA\");")));
+        assertEquals(Inventory.Use.KEY_EXCHANGE, e.get(0).first());
+        assertEquals(Inventory.Use.SIGNATURE, e.get(1).first());
     }
 
-    private static void write(Path root, String rel, String text) throws Exception {
-        Path p = root.resolve(rel);
-        Files.createDirectories(p.getParent());
-        Files.writeString(p, text);
+    @Test
+    void theBankSampleHasThreeFilesOfEachPublicKeyUseAndOneSymmetricOnly() {
+        List<Inventory.Entry> e = Inventory.scan(Inventory.BANK_SOURCES);
+        assertEquals(3, Inventory.count(e, Inventory.Use.KEY_EXCHANGE));
+        assertEquals(3, Inventory.count(e, Inventory.Use.SIGNATURE));
+        assertEquals(1, Inventory.count(e, Inventory.Use.SYMMETRIC));
     }
 }

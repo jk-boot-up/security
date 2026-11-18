@@ -23,7 +23,7 @@ class LogAndGateTest {
     void aLoggedReleaseIsAcceptedAndAnUnloggedOneIsNot() {
         TransparencyLog log = TransparencyLog.demo();
         DeployGate gate = new DeployGate(new KeyRing().trust(stable, 0), log);
-        assertEquals("the signature is not in the public log", gate.checkWithLog(jar, release, "shop-app", "stable").reason());
+        assertEquals("not in the public log", gate.checkWithLog(jar, release, "shop-app", "stable").reason());
         log.append(release, 120);
         assertTrue(gate.checkWithLog(jar, release, "shop-app", "stable").accepted());
         assertFalse(gate.checkWithLog(jar, null, "shop-app", "stable").accepted());
@@ -39,7 +39,7 @@ class LogAndGateTest {
         log.append(backdated, 150);
         ring.revoke("stable-2026a", 130);
         assertTrue(new Verifier(ring).verify(other, backdated, "shop-app", "stable").accepted());
-        assertEquals("logged on day 150, after key stable-2026a was revoked on day 130", gate.checkWithLog(other, backdated, "shop-app", "stable").reason());
+        assertEquals("logged day 150, revoked day 130", gate.checkWithLog(other, backdated, "shop-app", "stable").reason());
     }
 
     @Test
@@ -63,7 +63,7 @@ class LogAndGateTest {
         Monitor monitor = new Monitor(ring, Set.of(Digests.hex(jar.sha256())));
         List<String> findings = monitor.unexpected(log);
         assertEquals(1, findings.size());
-        assertTrue(findings.getFirst().startsWith("entry 1: version 2.4.0 signed with stable-2026a"));
+        assertTrue(findings.getFirst().startsWith("entry 1: 2.4.0 by stable-2026a"));
     }
 
     @Test

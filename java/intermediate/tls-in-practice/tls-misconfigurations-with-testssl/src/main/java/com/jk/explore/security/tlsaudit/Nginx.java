@@ -24,6 +24,13 @@ final class Nginx implements AutoCloseable {
         }
     }
 
+    /** The six suites of the guidance: ECDHE key exchange, AES-GCM or ChaCha20-Poly1305. */
+    static final String CIPHERS = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:"
+            + "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
+    static final String HSTS = "max-age=63072000; includeSubDomains";
+    static final java.util.List<String> HEADERS = java.util.List.of("X-Content-Type-Options nosniff", "X-Frame-Options DENY",
+            "Content-Security-Policy \"default-src 'self'\"", "Referrer-Policy no-referrer");
+
     private final Path dir;
     private final int port;
     private Process process;
@@ -65,9 +72,9 @@ final class Nginx implements AutoCloseable {
                     }
                 }
                 """.formatted(dir, s.serverTokens() ? "on" : "off", port, certificate, key, s.protocols(),
-                s.hsts() ? "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains\" always;" : "",
-                s.modernCiphers() ? "ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;" : "",
-                s.securityHeaders() ? "add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; add_header Content-Security-Policy \"default-src 'self'\" always; add_header Referrer-Policy no-referrer always;" : "");
+                s.hsts() ? "add_header Strict-Transport-Security \"" + HSTS + "\" always;" : "",
+                s.modernCiphers() ? "ssl_ciphers " + CIPHERS + ";" : "",
+                s.securityHeaders() ? String.join(" ", HEADERS.stream().map(h -> "add_header " + h + " always;").toList()) : "");
     }
 
     void start(Settings settings, String certificate, String key) throws IOException, InterruptedException {

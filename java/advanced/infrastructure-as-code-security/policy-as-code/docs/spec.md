@@ -22,6 +22,7 @@ Deployment rules that live on a wiki are not enforced, and policies that live in
 | The tools | `Opa` |
 | The requests | `Cases` |
 | The tests of the tests | `Mutants` |
+| Teaching class | `Steps` |
 | The webhook shape | `Admission` |
 | Entry point | `PolicyAsCodeDemo` |
 
@@ -39,10 +40,10 @@ Deployment rules that live on a wiki are not enforced, and policies that live in
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 36 lines, identical on every run |
-| Acts | 5 |
-| Video | 05:55, 1920×1080, narrated in the amy-slow voice |
+| Tests | 17, all passing |
+| Demo output | 105 lines, identical on every run |
+| Acts | 4 |
+| Video | 16:18, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

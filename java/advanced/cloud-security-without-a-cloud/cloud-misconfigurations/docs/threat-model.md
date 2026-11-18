@@ -35,7 +35,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 | Id | Kind | Threat | Where it shows up | Control in this project | What is left |
 | --- | --- | --- | --- | --- | --- |
 | T1 | Information disclosure | A public bucket exposes customer statements | buckets | Public access block, scanned in the build and in the account | Buckets that must be public, with a dated exception |
-| T2 | Elevation of privilege | A forged request steals the role's credentials | the metadata service | IMDSv2, hop limit 1, least-privilege roles | A feature that lets a visitor set the method and headers |
+| T2 | Elevation of privilege | A forged request steals the role's credentials | the metadata service | IMDSv2, hop limit 1, least-privilege roles | A feature that lets a visitor set the method and a header gets a token too |
 | T3 | Elevation of privilege | A wildcard policy turns one stolen key into everything | IAM policies | Least privilege and a scan for Action and Resource stars | Broad policies written for good reasons |
 
 ## Assumptions
@@ -49,8 +49,8 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `ImdsTest` and `TerraformTest` check the metadata service and the mapping with no tools.
-- `CloudTest` starts Moto, counts 13 findings of 9 kinds, checks 0 after the fixes, and compares Checkov with Trivy.
+- `RulesTest` checks every rule on plain values, the policy parsing and the sums; `ImdsTest` the metadata service in both versions and through a proxy; `TerraformTest` the files and the report mapping. None needs a tool.
+- `CloudTest` starts Moto, counts 13 findings from 9 rules, checks 0 after the fixes, and compares Checkov with Trivy.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

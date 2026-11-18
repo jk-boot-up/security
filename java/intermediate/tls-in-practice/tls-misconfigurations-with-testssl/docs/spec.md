@@ -36,10 +36,10 @@ TLS settings are copied and changed without anyone checking how a client sees th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 14, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 128 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:42, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:00, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

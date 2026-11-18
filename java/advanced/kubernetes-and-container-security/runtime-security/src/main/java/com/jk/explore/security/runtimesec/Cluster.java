@@ -14,12 +14,15 @@ import java.util.concurrent.TimeUnit;
 /** A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close. */
 public final class Cluster implements AutoCloseable {
 
+    /** The node image (Kubernetes 1.37.0) pinned by digest, so a new kind release cannot change the cluster under the demo. */
+    static final String NODE_IMAGE = "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5";
+
     private final String name = "runtime-" + UUID.randomUUID().toString().substring(0, 6);
     private final Path kubeconfig;
 
     public Cluster() throws IOException, InterruptedException {
         this.kubeconfig = Files.createTempFile("kubeconfig", ".yaml");
-        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
+        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--image", NODE_IMAGE, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
     }
 
     Sh.Result kubectl(String... args) throws IOException, InterruptedException {
@@ -36,10 +39,20 @@ public final class Cluster implements AutoCloseable {
         return r.output();
     }
 
+    /** Applies a manifest. Apply is idempotent, so it is tried again while a new namespace is still being set up (its default service account not yet made). */
     void apply(String manifest) throws IOException, InterruptedException {
         Path file = Files.createTempFile("manifest", ".yaml");
         Files.writeString(file, manifest);
-        must("apply", "-f", file.toString());
+        for (int attempt = 1; ; attempt++) {
+            Sh.Result r = kubectl("apply", "-f", file.toString());
+            if (r.ok()) {
+                return;
+            }
+            if (attempt == 5) {
+                throw new IllegalStateException("kubectl apply failed: " + r.output());
+            }
+            Thread.sleep(3_000);
+        }
     }
 
     void waitReady(String namespace, String pod) throws IOException, InterruptedException {

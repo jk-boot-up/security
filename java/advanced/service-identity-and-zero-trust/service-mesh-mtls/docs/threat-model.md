@@ -53,7 +53,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `PoliciesTest`, `MetricsTest`, `CertInfoTest` and `DesignTest` check the manifests, the counters, the certificate reading and the scoring with no tools.
+- `PoliciesTest`, `MetricsTest`, `CertInfoTest`, `WireTest` and `DesignTest` check the manifests, the counters, the certificate reading and the scoring with no tools.
 - `DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

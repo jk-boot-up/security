@@ -19,9 +19,10 @@ People either think a TLS recording is useless or that it can be read at will; b
 | Role | Class |
 | --- | --- |
 | The tap | `Tap`, `Pcap` |
-| The servers | `Nginx`, `LegacyServer` |
-| The client | `Client` |
+| The servers | `Nginx`, `LegacyServer`, `LocalCa` |
+| The clients | `Client` |
 | The reader | `Tshark` |
+| Teaching classes, by hand | `ClientHello`, `KeyLog`, `Suites` |
 | Entry point | `TlsCaptureDemo` |
 
 ## Requirements
@@ -37,10 +38,10 @@ People either think a TLS recording is useless or that it can be read at will; b
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 84 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:25, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:00, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

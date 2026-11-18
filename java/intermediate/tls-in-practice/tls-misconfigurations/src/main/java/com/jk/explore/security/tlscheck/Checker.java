@@ -71,7 +71,8 @@ public final class Checker {
             f.add(new Finding("cert-expires-soon", Severity.MEDIUM, "certificate expires in " + Duration.between(now, c.notAfter()).toDays() + " day(s)"));
         }
         if (c.dnsNames().stream().noneMatch(n -> nameMatches(n, s.host()))) {
-            f.add(new Finding("name-mismatch", Severity.CRITICAL, s.host() + " is not in " + c.dnsNames()));
+            f.add(new Finding("name-mismatch", Severity.CRITICAL,
+                    s.host() + " is not in " + c.dnsNames()));
         }
         if (c.selfSigned() || !c.trustedRoot()) {
             f.add(new Finding("untrusted-chain", Severity.CRITICAL, c.selfSigned() ? "self-signed certificate" : "chain does not end at a trusted root"));
@@ -116,11 +117,16 @@ public final class Checker {
         return p.startsWith("*.") && h.indexOf('.') > 0 && h.substring(h.indexOf('.')).equals(p.substring(1));
     }
 
+    /** The grade the score alone gives, before any cap. */
+    static char byScore(int score) {
+        return score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+    }
+
     private static char grade(int score, List<Finding> f) {
         if (f.stream().anyMatch(x -> x.severity() == Severity.CRITICAL)) {
             return 'F';
         }
-        char g = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+        char g = byScore(score);
         if (f.stream().anyMatch(x -> x.severity() == Severity.HIGH) && g < 'C') {
             return 'C'; // a high finding caps the grade at C, whatever the score
         }

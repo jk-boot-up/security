@@ -19,7 +19,8 @@ class StoreConfig implements WebMvcConfigurer {
     /** Spring's own handler for static files: the invoice folder as it would be served by "just map the folder". */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/static-invoices/**").addResourceLocations(layout.invoices().toUri().toString());
+        registry.addResourceHandler("/static-invoices/**")
+                .addResourceLocations(layout.invoices().toUri().toString());
     }
 
     @Bean

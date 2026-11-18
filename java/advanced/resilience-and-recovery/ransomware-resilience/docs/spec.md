@@ -22,7 +22,7 @@ Backups are written by accounts that can delete them, copied without looking at 
 | Buckets, versions and error codes | `Bucket` |
 | Access policies | `Policies` |
 | The backup job | `BackupJob` |
-| Canary and entropy checks | `Guard`, `Entropy` |
+| Canary and entropy checks | `Guard`, `Entropy`, `EntropySteps` |
 | The ransomware simulation | `Ransomware` |
 | Restore and verification | `Restore` |
 | RTO and RPO arithmetic | `Recovery` |
@@ -42,10 +42,10 @@ Backups are written by accounts that can delete them, copied without looking at 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 70 lines, identical on every run |
-| Acts | 6 |
-| Video | 07:17, 1920×1080, narrated in the amy-slow voice |
+| Tests | 15, all passing |
+| Demo output | 166 lines, identical on every run |
+| Acts | 7 |
+| Video | 22:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

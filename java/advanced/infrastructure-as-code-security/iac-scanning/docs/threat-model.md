@@ -47,8 +47,8 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `EngineTest` checks the rules, their samples, the waivers and the baseline with no tools.
-- `ScannersTest` runs Checkov, Trivy and KICS.
+- `EngineTest` checks the rules, their samples, the tag reading, the matrix and settings views, the waivers and the baseline with no tools.
+- `ScannersTest` checks the check mapping with no tools, and runs Checkov, Trivy and KICS (integration).
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

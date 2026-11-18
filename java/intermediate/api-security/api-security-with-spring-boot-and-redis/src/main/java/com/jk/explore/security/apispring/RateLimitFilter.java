@@ -36,7 +36,8 @@ final class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
         if (!verdict.allowed()) {
-            response.setHeader("Retry-After", Long.toString(Math.max(1, (verdict.retryAfterMillis() + 999) / 1000)));
+            long seconds = RateLimiter.retryAfterSeconds(verdict.retryAfterMillis());
+            response.setHeader("Retry-After", Long.toString(seconds));
             response.sendError(429);
             return;
         }

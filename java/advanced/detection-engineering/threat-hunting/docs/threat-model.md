@@ -48,7 +48,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `HuntsTest` checks each hunt, the generator and the median with the JDK only.
+- `HuntsTest` checks each hunt, the worked-out gaps, baselines and limits, the generator and the median with the JDK only.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

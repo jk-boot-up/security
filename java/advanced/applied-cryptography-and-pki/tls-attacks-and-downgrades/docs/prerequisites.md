@@ -3,7 +3,7 @@
 ## Required
 
 - Java basics
-- OpenSSL 3 or 4 on the PATH (brew install openssl@3) or OPENSSL set
+- OpenSSL 3.6 (brew install openssl@3) or OPENSSL set to an OpenSSL 3.6 program
 - git and network access once, to clone testssl.sh v3.2.4 into build/
 
 ## Explicitly not required

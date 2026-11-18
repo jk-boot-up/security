@@ -32,7 +32,17 @@ public final class SerializedCartCookie implements CartCookie {
 
     /** The fixed version: a filter with an allow-list. */
     public static SerializedCartCookie withAllowList() {
-        return new SerializedCartCookie(ObjectInputFilter.Config.createFilter(ALLOW_LIST));
+        return withFilter(allowList());
+    }
+
+    /** The allow-list as a filter; the demo wraps it to print each answer. */
+    static ObjectInputFilter allowList() {
+        return ObjectInputFilter.Config.createFilter(ALLOW_LIST);
+    }
+
+    /** A reader with any filter, for the demo, which records the classes the cookie names. */
+    static SerializedCartCookie withFilter(ObjectInputFilter filter) {
+        return new SerializedCartCookie(filter);
     }
 
     @Override

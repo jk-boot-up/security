@@ -20,6 +20,7 @@ Requests that are correct one at a time are wrong at the same time.
 | --- | --- |
 | The database | `Db` |
 | The Hibernate side | `Hib`, `HibAccount` |
+| What each error code asks | `SqlStates` |
 | Entry point | `RaceConditionsDemo` |
 
 ## Requirements
@@ -35,10 +36,10 @@ Requests that are correct one at a time are wrong at the same time.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 36 lines, identical on every run |
+| Tests | 17, all passing |
+| Demo output | 102 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:03, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:52, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

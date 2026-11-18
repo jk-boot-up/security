@@ -58,11 +58,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Failing open | A catch-all around the fraud check approves a risky 1500.00 payment when the service drops the connection, answers 500, answers with a maintenance page or takes too long. |
-| 2. Failing closed | The decision starts as no; a time budget, one retry and a breaker turn every kind of broken check into a 503 with a reference, and a slow check is cut off at its budget. |
-| 3. Failing halfway | The same transfer to a frozen account written four ways: without a transaction, with a checked exception, called from the same class, and as a real unit of work. Only the last undoes the debit. |
-| 4. What the customer is told | Boot's error response with the debugging settings names the server, the card and code lines; one error handler gives a reference and the log keeps the reason and the last four digits. |
-| 5. The bill, and how to pay it | Ten coffees while the fraud check is slow: 20 calls reach it without a breaker and 6 with one; refusals are counted by reason, an alert fires, and the breaker closes after the cool-down. |
+| 1. Failing open | A catch-all around the fraud check approves a risky 1500.00 payment with HTTP 200 when the service drops the connection, answers HTTP 500, answers with a maintenance page or takes 2000 ms against a 500 ms budget. |
+| 2. Failing closed | The decision starts as no: of six payments only the coffee with a working check is approved; the risky payment is a 403, and every broken or slow check is a 503 with a reference; 2 attempts x 500 ms = 1000 ms, so the answer comes before the 2000 ms check would. |
+| 3. Failing halfway | The same 250.00 transfer to a frozen account in four versions: no transaction, @Transactional with a checked exception, and @Transactional called from the same class all leave 250.00 missing; only rollbackFor = Exception.class called from outside undoes the debit. |
+| 4. What the customer is told, and what the log keeps | With Boot's debugging settings the 500 response carries the internal address, the full card number and code lines; with one error handler the 503 carries none of them, only reference REF-0001, and the log keeps the reason and the last four digits. |
+| 5. The bill, and how to pay it | During a slow outage 10 coffees are refused: with one retry each, 10 x 2 = 20 calls reach the struggling fraud check; a breaker that opens after 3 failed payments cuts that to 3 x 2 = 6 and refuses the other 7 at once, the counters raise an alert, and after the cool-down the breaker closes. |
 
 ## Test
 

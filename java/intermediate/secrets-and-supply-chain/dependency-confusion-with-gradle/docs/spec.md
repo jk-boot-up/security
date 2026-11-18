@@ -36,10 +36,10 @@ Builds that list a public and a private repository can take an internal name fro
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 21 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 88 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:16, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:02, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

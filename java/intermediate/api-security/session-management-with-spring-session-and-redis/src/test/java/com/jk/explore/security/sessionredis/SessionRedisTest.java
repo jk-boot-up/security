@@ -48,7 +48,7 @@ class SessionRedisTest {
             Browser ana = bank.browser();
             Browser.Reply in = ana.signIn("ana");
             assertEquals(200, in.status());
-            assertEquals(List.of(), SessionRedisDemo.cookieProblems(in.setCookies().get(0)));
+            assertEquals(List.of(), SessionKeys.cookieProblems(in.setCookies().get(0)));
             assertEquals(200, ana.get("/account").status());
         }
     }

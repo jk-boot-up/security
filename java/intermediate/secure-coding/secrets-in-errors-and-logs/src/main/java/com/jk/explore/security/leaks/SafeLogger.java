@@ -41,6 +41,7 @@ public final class SafeLogger implements Logger {
             }
         }
         String line = redactor.redact(b.toString());
-        return line.length() > MAX_LINE ? line.substring(0, MAX_LINE) + "...[cut]" : line;
+        return line.length() > MAX_LINE
+                ? line.substring(0, MAX_LINE) + "...[cut]" : line;
     }
 }

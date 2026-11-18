@@ -138,4 +138,27 @@ class TlsServersTest {
         assertNotNull(Https.get(caddy.httpsPort(), HOST, "/", Https.trusting(caddy.root())).header("strict-transport-security"));
         assertFalse(Https.get(caddy.httpsPort(), HOST, "/", Https.trusting(caddy.root())).refused());
     }
+
+    @Test
+    void theChecksByHandAgreeWithTheRealHandshakes() throws Exception {
+        nginx.restart(Nginx.Settings.defaults());
+        var served = Https.get(nginx.httpsPort(), HOST, "/", trust).chain();
+        var lab = Https.certificates(ca.root());
+        assertTrue(ChainCheck.check(served, lab, HOST).ok());
+        assertFalse(ChainCheck.check(served, ChainCheck.defaultRoots(), HOST).ok());
+        assertFalse(ChainCheck.check(served, lab, "pay.shop.localhost").ok());
+        for (String protocols : java.util.List.of("TLSv1.2 TLSv1.3", "TLSv1.3")) {
+            nginx.restart(Nginx.Settings.defaults().protocols(protocols));
+            for (String offer : java.util.List.of("TLSv1.2", "TLSv1.3")) {
+                Https.Response r = Https.get(nginx.httpsPort(), HOST, "/", trust, offer);
+                assertEquals(Negotiation.agree(java.util.List.of(protocols.split(" ")), java.util.List.of(offer)).orElse(""), r.protocol());
+            }
+        }
+        nginx.restart(Nginx.Settings.defaults().hsts(true).accountHeader(true, false));
+        Https.Response account = Https.get(nginx.httpsPort(), HOST, "/account", trust);
+        for (String name : Headers.effective(java.util.List.of("Strict-Transport-Security"), java.util.List.of("X-Frame-Options"))) {
+            assertNotNull(account.header(name));
+        }
+        assertNull(account.header("Strict-Transport-Security"));
+    }
 }

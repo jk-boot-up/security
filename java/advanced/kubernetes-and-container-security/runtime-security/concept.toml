@@ -63,104 +63,220 @@ test_note = "The audit parsing, the three rules and the manifests are tested wit
 
 [[act]]
 title = "Falco on this machine"
-summary = "Falco accepts the 3 rules, but its driver cannot start on this kernel."
+summary = "Falco 0.45.1 accepts the bank's 3 rules, but its modern eBPF driver cannot start on Docker Desktop's kernel (no BTF), so the same three tests run on Linux audit records."
 detail = """
-Falco 0.45.1 is run as a container. falco --validate accepts the bank's 3 rules. Started with the modern eBPF driver it stops with BPF_TRACE_RAW_TP is not supported: the kernel of Docker Desktop's VM has no BTF. The demo then applies the same three tests to Linux audit records.
+The input: rules/bank-runtime-rules.yaml with three rules (a shell, an unexpected write, an unexpected outbound connection), and Falco 0.45.1 run as a container.
+The result: falco --validate accepts the rules. The kernel of Docker Desktop's virtual machine has no BTF, the type information the modern eBPF driver needs, and the driver stops with BPF_TRACE_RAW_TP is not supported.
+So the demo maps each rule to one kind of Linux audit record: exec (a program started), write (a file opened for writing) and connect (a connection made).
+"""
+figure = "falco_check"
+figure_title = "Valid rules, a driver that cannot load"
+figure_speech = """
+First demo: Falco on this machine. [[slnc 400]] At the top, the input: the bank's three rules, written in Falco's language. [[slnc 300]] A shell in a bank container, an unexpected write, and an unexpected outbound connection. [[slnc 300]] Falco checks them, and accepts them. [[slnc 700]]
+In the middle, Falco's driver. [[slnc 300]] Its modern e B P F driver needs B T F, the kernel's description of its own types. [[slnc 300]] Docker Desktop's kernel has none, so the driver stops. [[slnc 700]]
+At the bottom, what the demo does instead. [[slnc 300]] Linux audit records three kinds of system call: exec, write and connect. [[slnc 300]] Each one feeds one rule, so the same three tests run on the same kernel.
 """
 speech = """
-First demo: Falco on this machine. [[slnc 400]] Falco accepts the three rules. [[slnc 600]] Its driver cannot start on this kernel, so the demo uses Linux audit.
+Here is the real output. [[slnc 400]] The three rules, accepted by falco validate. [[slnc 300]] The kernel has no B T F, and the driver says the program type is not supported. [[slnc 400]] [[page]]
+So each rule is fed by one kind of audit record. [[slnc 300]] Exec, a program starts. [[slnc 300]] Write, a file is written. [[slnc 300]] And connect, a connection is made.
 """
 rows = { falco = "active wrong" }
 console = [
-    ["rules accepted by falco --validate: yes", "ok"],
-    ["modern eBPF driver: not supported", "bad"],
-    ["kernel has BTF: no", "bad"],
+    ["THE RULES (rules/bank-runtime-rules.yaml):", "code"],
+    ["  Shell in a bank container", "muted"],
+    ["  Unexpected write in a bank container", "muted"],
+    ["  Unexpected outbound connection from a bank container", "muted"],
+    ["FALCO 0.45.1 CHECKS THE RULES (falco --validate):", "code"],
+    ["  accepted   yes", "muted"],
+    ["FALCO'S DRIVER ON THIS KERNEL:", "code"],
+    ["  BTF        no (the kernel's type information)", "muted"],
+    ["  driver     modern eBPF", "muted"],
+    ["  result     libpman: prog 'BPF_TRACE_RAW_TP' is not supported", "muted"],
+    ["---", ""],
+    ["SO THE SAME THREE TESTS RUN ON LINUX AUDIT RECORDS:", "code"],
+    ["  exec     a program starts  -> Shell in container", "muted"],
+    ["  write    a file is written -> Unexpected write in container", "muted"],
+    ["  connect  a connection      -> Unexpected outbound connection", "muted"],
 ]
 
 [[act]]
-title = "The service doing its work"
-summary = "A call to the ledger and a write to the log folder are seen and raise 0 alerts."
+title = "Normal work, no alert"
+summary = "The payments service calls itself, writes its log and calls the ledger: the sensor sees exec, write and connect, and 0 alerts are raised, because all three are on the baseline."
 detail = """
-The payments pod calls itself, writes to its log folder and calls the ledger service. The sensor sees all 3 kinds of syscall (exec, write, connect) and the rules raise 0 alerts: normal work is not an alert.
+The input: the baseline (writes to /var/log/payments/, /tmp/ and /dev/; connects to 2 addresses, the ledger-db service and the cluster DNS; no shell) and three commands in payments-api: wget to itself, tee to its log, nc to the ledger on port 5432.
+The result: the sensor saw exec, write and connect from the pod, and no alert.
+How one record is read: the connect record's socket address starts 0200 1538. 02 00 read low byte first is family 2, IPv4; 15 38 read high byte first is 0x1538 = 5432, the ledger's port. The process is nc, in a container whose id the cgroup path gives, which kubectl maps to payments-api. The ledger-db address is on the baseline, so no alert.
+"""
+figure = "baseline_work"
+figure_title = "The baseline, the work, and no alert"
+figure_speech = """
+Second demo: the payments service doing its normal work. [[slnc 400]] Top left, the input: the baseline, what the service is expected to do. [[slnc 300]] It writes to its log folder, slash tmp and slash dev. [[slnc 300]] It connects to two addresses: the ledger database and the cluster's D N S. [[slnc 300]] And it never starts a shell. [[slnc 700]]
+Below, the work: a call to itself, a write to its log, and a call to the ledger. [[slnc 700]]
+On the right, the result. [[slnc 300]] The sensor saw all three kinds of system call from the pod. [[slnc 300]] And every one of them is on the baseline, so there is no alert. [[slnc 300]] A detector that alerts on normal work would soon be ignored.
 """
 speech = """
-Second demo: normal work. [[slnc 400]] The sensor sees everything the service does. [[slnc 600]] Zero alerts.
+The input: the baseline, and three normal commands: a call to itself, a write to its log, and a call to the ledger.
+[[page]]
+The result: the sensor saw exec, write and connect from the pod. [[slnc 300]] And there is no alert.
+[[page]]
+How one record is read: the call to the ledger. [[slnc 300]] The socket address starts zero two zero zero: read low byte first, family two, I P v four. [[slnc 300]] Then one five three eight: read high byte first, five thousand four hundred thirty two. [[slnc 300]] The container id maps to payments api, and the ledger is on the baseline.
 """
 rows = { normal = "active ok" }
 console = [
-    ["sensor saw: exec yes, write yes, connect yes", "ok"],
-    ["alerts: 0", "ok"],
+    ["THE BASELINE (what payments-api is expected to do):", "code"],
+    ["  writes     /var/log/payments/, /tmp/, /dev/", "muted"],
+    ["  connects   2 addresses: the ledger-db service, the DNS", "muted"],
+    ["  shells     none: it is started as httpd, not by a shell", "muted"],
+    ["THE WORK (three commands in payments-api):", "code"],
+    ["  wget http://localhost:8080/      a call to itself", "muted"],
+    ["  tee /var/log/payments/audit.log  a write to its log", "muted"],
+    ["  nc ledger-db 5432                a call to the ledger", "muted"],
+    ["---", ""],
+    ["WHAT THE SENSOR SAW (audit records of the pod):", "code"],
+    ["  exec       yes", "muted"],
+    ["  write      yes", "muted"],
+    ["  connect    yes", "muted"],
+    ["THE ALERTS:", "code"],
+    ["  none", "muted"],
+    ["---", ""],
+    ["HOW ONE RECORD IS READ (the call to the ledger):", "code"],
+    ["  saddr      0200 1538, then 4 bytes of address", "muted"],
+    ["  family     02 00, low byte first: 2 = IPv4", "muted"],
+    ["  port       15 38, high byte first: 0x1538 = 5432", "muted"],
+    ["  process    nc, in container cri-containerd-<64 hex>", "muted"],
+    ["  pod        payments-api (kubectl maps the container to it)", "muted"],
+    ["  baseline   the ledger-db address is on it: no alert", "muted"],
 ]
 
 [[act]]
 title = "A shell in the container"
-summary = "A shell opened with kubectl exec raises 1 alert."
+summary = "Someone opens a shell in payments-api with kubectl exec and types id -u, which answers 0 (root): 1 alert, Shell in container, sh."
 detail = """
-Someone opens a shell in the payments pod with kubectl exec and types id -u. The service was started without a shell, so a shell is never normal: Shell in container, pod payments-api, sh.
+The input: kubectl exec -i payments-api -- sh, then id -u. The shell answers 0, the root user.
+The result: one alert: rule Shell in container, pod payments-api, detail sh.
+Why: the exec record names the process sh, sh is in the shell list (ash, bash, dash, sh, zsh), and the service was started as httpd, never by a shell, so any shell is an alert.
+"""
+figure = "shell_alert"
+figure_title = "A shell where none belongs"
+figure_speech = """
+Third demo: a shell in the container. [[slnc 400]] On the left, the input. [[slnc 300]] Someone with kubectl exec rights opens a shell in the payments pod, and types i d dash u. [[slnc 300]] It answers zero: the shell runs as root. [[slnc 700]]
+On the right, the result: one alert. [[slnc 300]] Shell in container, in payments api, the program sh. [[slnc 700]]
+Why? [[slnc 300]] The exec record names the process sh, which is on the list of shells. [[slnc 300]] The service itself was started without a shell, so a shell in it is never normal work.
 """
 speech = """
-Third demo: a shell. [[slnc 400]] The service never needs one. [[slnc 600]] One alert.
+The input: kubectl exec into the payments pod, then i d dash u. [[slnc 300]] It answers zero, the root user. [[slnc 400]] The result: one alert, shell in container, sh.
+[[page]]
+Why: the exec record names sh, which is on the list of shells. [[slnc 300]] And the baseline has no shell at all.
 """
 rows = { shell = "active wrong" }
 console = [
-    ["kubectl exec payments-api -- sh", "bad"],
-    ["Shell in container: sh", "bad"],
+    ["THE ACTION (someone with kubectl exec rights):", "code"],
+    ["  kubectl exec -i payments-api -- sh", "muted"],
+    ["  then types: id -u", "muted"],
+    ["WHAT THE SHELL ANSWERED:", "code"],
+    ["  id -u      0 (the root user)", "muted"],
+    ["THE ALERTS:", "code"],
+    ["  rule       Shell in container", "muted"],
+    ["  pod        payments-api", "muted"],
+    ["  detail     sh", "muted"],
+    ["---", ""],
+    ["WHY:", "code"],
+    ["  exec       a process named sh started", "muted"],
+    ["  shells     ash bash dash sh zsh", "muted"],
+    ["  baseline   no shell, so every shell is an alert", "muted"],
 ]
 
 [[act]]
 title = "A write where it never writes"
-summary = "A program written to /usr/bin raises 1 alert."
+summary = "A program written to /usr/bin raises 1 alert; the same write in a pod with a read-only root is refused by the kernel and still raises 1 alert, for the folder /usr/bin/."
 detail = """
-A program is written to /usr/bin in the payments pod. The service writes only to its log folder and /tmp: Unexpected write in container, /usr/bin/miner. The log folder is written the same way and raises nothing.
+The input: tee /usr/bin/miner in payments-api. The result: one alert, Unexpected write in container, /usr/bin/miner, because the path starts with none of /var/log/payments/, /tmp/ and /dev/.
+The same input in payments-api-ro, whose root file system is read-only: the kernel refuses it (Read-only file system). The result: one alert all the same, for /usr/bin/ (refused): a refused open names only the folder the file was to be made in.
+"""
+figure = "write_prevent"
+figure_title = "Prevent with a read-only root, detect all the same"
+figure_speech = """
+Fourth demo: a write where the service never writes. [[slnc 400]] The input, on both sides: a program called miner, written to slash usr slash bin. [[slnc 700]]
+On the left, in the normal payments pod. [[slnc 300]] The kernel writes it. [[slnc 300]] And the rule raises one alert, because the path starts with none of the folders on the baseline. [[slnc 700]]
+On the right, the same write in a pod whose root file system is read only. [[slnc 300]] The kernel refuses it. [[slnc 300]] And the attempt still raises one alert. [[slnc 300]] A refused open names only the folder, so the alert says slash usr slash bin. [[slnc 600]] Prevention stops the write; detection tells you someone tried.
 """
 speech = """
-Fourth demo: a write. [[slnc 400]] The service writes only to its log folder. [[slnc 600]] A program in slash usr slash bin is one alert.
+The input: a program written to slash usr slash bin. [[slnc 300]] The result: one alert, unexpected write. [[slnc 300]] Why: the path starts with none of the three allowed folders.
+[[page]]
+The same input in the read only pod. [[slnc 300]] The kernel refuses it: read only file system. [[slnc 300]] And there is still one alert, for the folder, marked refused.
 """
 rows = { write = "active wrong" }
 console = [
-    ["write /usr/bin/miner", "bad"],
-    ["Unexpected write: /usr/bin/miner", "bad"],
+    ["THE ACTION (in payments-api):", "code"],
+    ["  tee /usr/bin/miner   a program, written to /usr/bin", "muted"],
+    ["THE ALERTS:", "code"],
+    ["  rule       Unexpected write in container", "muted"],
+    ["  pod        payments-api", "muted"],
+    ["  detail     /usr/bin/miner", "muted"],
+    ["WHY:", "code"],
+    ["  path       /usr/bin/miner", "muted"],
+    ["  allowed    /var/log/payments/, /tmp/, /dev/", "muted"],
+    ["  starts     with none of them, so it is an alert", "muted"],
+    ["---", ""],
+    ["THE SAME ACTION (in payments-api-ro, read-only root):", "code"],
+    ["  tee /usr/bin/miner", "muted"],
+    ["WHAT THE KERNEL ANSWERED:", "code"],
+    ["  refused: Read-only file system", "muted"],
+    ["THE ALERTS:", "code"],
+    ["  rule       Unexpected write in container", "muted"],
+    ["  pod        payments-api-ro", "muted"],
+    ["  detail     /usr/bin/ (refused)", "muted"],
+    ["WHY THE DETAIL IS A FOLDER:", "code"],
+    ["  a refused open names no file, only the folder", "muted"],
 ]
 
 [[act]]
 title = "A connection it never makes"
-summary = "A connection to a server outside the cluster raises 1 alert."
+summary = "A connection from payments-api to a server outside the cluster on port 4444 raises 1 alert: its address is not one of the 2 on the baseline."
 detail = """
-The payments pod connects to a server outside the cluster on port 4444. The service calls only the ledger and the cluster DNS: Unexpected outbound connection to the outside server. The ledger call raised nothing.
+The input: nc to a server outside the cluster, port 4444, from payments-api.
+The result: one alert, Unexpected outbound connection, the outside server:4444.
+How the record is read: the socket address starts 0200 115C: family 2, IPv4, and 0x115C = 4444. The 4 address bytes are not one of the 2 addresses on the baseline (the ledger-db service and the DNS).
+"""
+figure = "connect_alert"
+figure_title = "A call to an address off the baseline"
+figure_speech = """
+Last demo: a connection the service never makes. [[slnc 400]] On the left, the input. [[slnc 300]] From the payments pod, a call to a server outside the cluster, on port forty four forty four. [[slnc 700]]
+Below, how the record is read. [[slnc 300]] The family bytes say I P v four. [[slnc 300]] One one five C, read high byte first, is forty four forty four. [[slnc 300]] And the address is not one of the two on the baseline. [[slnc 700]]
+On the right, the result: one alert, unexpected outbound connection. [[slnc 300]] The call to the ledger, earlier, raised nothing: it is on the baseline.
 """
 speech = """
-Fifth demo: a connection. [[slnc 400]] The service calls only the ledger. [[slnc 600]] A call to an unknown address is one alert.
+The input: a call to the outside server on port forty four forty four. [[slnc 300]] The result: one alert, unexpected outbound connection. [[slnc 400]] How the record is read: I P v four, port one one five C, forty four forty four, and an address that is not on the baseline.
 """
 rows = { connect = "active wrong" }
 console = [
-    ["connect the outside server:4444", "bad"],
-    ["Unexpected outbound connection", "bad"],
+    ["THE ACTION (in payments-api):", "code"],
+    ["  nc <the outside server> 4444   a server outside the cluster", "muted"],
+    ["THE ALERTS:", "code"],
+    ["  rule       Unexpected outbound connection", "muted"],
+    ["  pod        payments-api", "muted"],
+    ["  detail     the outside server:4444", "muted"],
+    ["HOW THE RECORD IS READ:", "code"],
+    ["  saddr      0200 115C, then 4 bytes of address", "muted"],
+    ["  family     02 00, low byte first: 2 = IPv4", "muted"],
+    ["  port       11 5C, high byte first: 0x115C = 4444", "muted"],
+    ["  baseline   2 addresses; this one is not among them", "muted"],
 ]
 
-[[act]]
-title = "Prevent and detect"
-summary = "A read-only root refuses the write, and the attempt still raises 1 alert."
-detail = """
-The same write in a pod with a read-only root file system is refused by the kernel. The sensor still sees the attempt: Unexpected write in container, /usr/bin/ (refused). Prevention and detection work together.
-"""
-speech = """
-Last demo: prevent and detect. [[slnc 400]] A read-only root refuses the write. [[slnc 600]] The attempt is still an alert.
-"""
-rows = { prevent = "active ok" }
-console = [
-    ["write refused: read-only file system", "ok"],
-    ["Unexpected write: /usr/bin/ (refused)", "ok"],
-]
+[highlight]
+console_green = ["WHAT THE SENSOR SAW", "FALCO 0", "SO THE SAME"]
+console_rose = ["THE ALERTS", "FALCO'S DRIVER"]
+console_amber = ["HOW", "WHY", "WHAT THE SHELL", "WHAT THE KERNEL"]
+console_cyan = ["THE RULES", "THE BASELINE", "THE WORK", "THE ACTION", "THE SAME ACTION"]
 
 [animation]
 subtitle = "A bank's pod, watched while it runs."
 boxes = [
     ["falco", "Falco on this machine", "no BTF"],
-    ["normal", "The service doing its work", "0 alerts"],
+    ["normal", "Normal work, no alert", "0 alerts"],
     ["shell", "A shell in the container", "1 alert"],
-    ["write", "A write where it never writes", "1 alert"],
+    ["write", "A write where it never writes", "refused, still 1"],
     ["connect", "A connection it never makes", "1 alert"],
-    ["prevent", "Prevent and detect", "refused, 1 alert"],
 ]
 
 [docs.problem]
@@ -389,8 +505,8 @@ residual = "A process that exits before the lookup"
 
 [poster]
 headline = [["RUNTIME", "text"], ["SECURITY", "accent"]]
-taglines = [["Detect a shell, an unexpected write and an unexpected outbound connection in a bank's paym", "gold"]]
-before = { code = "sensor saw: exec yes, write yes, connect yes", note = "Normal work", tag = "BEFORE" }
+taglines = [["Detect a shell, a write and a connection in a running pod", "gold"]]
+before = { code = "normal work: 0 alerts", note = "The baseline", tag = "BEFORE" }
 after = { code = "Unexpected write: /usr/bin/miner", note = "A write it never makes", tag = "AFTER" }
 
 [[scene]]
@@ -407,6 +523,27 @@ body = ["A bank's payments pod and ledger pod", "on a real kind cluster.", "", "
 narration = "Here is the scenario. [[slnc 400]] A bank's payments pod and ledger pod run on a real Kubernetes cluster, made with kind. [[slnc 500]] A sensor watches every program that starts, every file that is written, and every connection that is made. [[slnc 500]] First the payments service does its normal work. [[slnc 300]] Then someone opens a shell in it, writes a program to slash usr slash bin, and calls a server outside the cluster."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["System call: a program asks the kernel to act", "Audit record: the kernel's note of one call", "Baseline: what the service normally does", "Rule: a test of one record against it", "Alert: a rule that matched", "Prevent vs detect: refuse it, or report it"]
+narration = """Before the demos, the words. [[slnc 500]] A system call is a program asking the kernel to do something: start a program, open a file, or connect. [[slnc 500]] An audit record is the kernel's note of one such call. [[slnc 500]] The baseline is what the service normally does. [[slnc 500]] A rule tests one record against the baseline. [[slnc 500]] An alert is a rule that matched. [[slnc 500]] And to prevent is to refuse an action; to detect is to report it."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-record"
+kind = "figure"
+title = "How one audit record is read"
+body = "record_reading"
+narration = """Let's see the core idea on one example: one audit record, the payments service calling the ledger. [[slnc 400]] At the top, the bytes the kernel wrote: the socket address, in hex. [[slnc 600]] The first two bytes are the family. [[slnc 300]] Read low byte first, they make two: I P v four. [[slnc 600]] The next two bytes are the port. [[slnc 300]] Read high byte first, hex one five three eight is five thousand four hundred thirty two. [[slnc 600]] Then four bytes of address, not shown here. [[slnc 600]]
+The record also names the process, nc, and the container it ran in. [[slnc 300]] Kubectl maps that container to the pod, payments api. [[slnc 300]] And the address is on the baseline, so there is no alert. [[slnc 300]] Every alert in this video is made this way."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -418,13 +555,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["Every service needs its own normal baseline", "Sensors need kernel support", "Alerts need someone to answer them", "Detection comes after the act", "A noisy rule is soon ignored"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every service needs its own picture of normal, kept up to date. [[slnc 500]] Sensors need kernel support, and Falco's driver cannot start on every kernel, as the first demo shows. [[slnc 500]] Every alert needs someone to answer it. [[slnc 500]] Detection comes after the act, so it pairs with prevention. [[slnc 300]] And a noisy rule is soon ignored."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Cluster, Pods: kind and the bank's two pods", "Rules, Falco: the three rules, checked by Falco", "Audit, Sensor, Event: Linux audit as the sensor", "Alert: a rule that matched an event", "Lab: runs each behaviour", "RuntimeSecurityDemo: runs the demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Cluster and Pods make the kind cluster, and the bank's two pods. [[slnc 500]] Rules holds the three rules: a shell, an unexpected write, and an unexpected connection, and Falco checks they are valid. [[slnc 500]] Audit, Sensor, and Event use the Linux audit trail as the sensor, on the same kernel. [[slnc 300]] Alert is a rule that matched an event. [[slnc 300]] Lab runs each behaviour, and RuntimeSecurityDemo runs the demos."
 
 [[scene]]
 key = "06-recognise"
@@ -441,9 +571,112 @@ body = ["Write down what each service normally does", "Alert on a shell, a write
 narration = "So, how do you use it? [[slnc 400]] Write down what each service normally does. [[slnc 300]] Alert on what it never does: a shell, a write outside its folders, a call outside the cluster. [[slnc 500]] Prevent as well as detect, with a read-only root and network policies; a refused write still raises its alert. [[slnc 500]] Check that the sensor really works on your kernel. [[slnc 300]] And route every alert to someone who answers it."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a rule for a program that", "is written and then run."]
 narration = "That's runtime security. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Watch what a running container does, alert on what it should never do, and prevent what you can, because detection always comes after the act. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a rule for a program that is written and then run, the drop and execute pattern. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The cluster, the syscalls and the audit records are real; the classes read the records and judge them. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Audit"
+what = "reads Linux audit records into events"
+[[class.part]]
+title = "the container, from the cgroup path"
+code = """
+private static final Pattern CONTAINER =
+        Pattern.compile("cri-containerd-([0-9a-f]{64})\\\\.scope");
+"""
+speech = """Every process in a Kubernetes container sits in a control group whose name holds the container's id. [[slnc 300]] The sensor copies that path next to each record, and this pattern takes the id out."""
+[[class.part]]
+title = "a socket address, from hex"
+code = """
+int family = Integer.parseInt(hex.substring(2, 4) + hex.substring(0, 2), 16);
+...
+int port = Integer.parseInt(hex.substring(4, 8), 16);
+"""
+speech = """The family is two bytes, read low byte first. [[slnc 300]] The port is the next two bytes, read high byte first. [[slnc 300]] Then four bytes of address."""
+
+[[class]]
+name = "Rules"
+what = "the three tests, the same ones as the Falco rules file"
+[[class.part]]
+title = "a shell, a write, a connection"
+code = """
+case "exec" -> {
+    if (e.success() && SHELLS.contains(e.comm())) {
+...
+case "write" -> {
+    for (String path : e.paths()) {
+        if (baseline.writablePrefixes().stream().noneMatch(path::startsWith)) {
+...
+case "connect" -> {
+    if (e.address() != null && !e.ip().startsWith("127.")
+            && !baseline.allowedIps().contains(e.ip())) {
+"""
+speech = """A program named like a shell is an alert. [[slnc 300]] A write outside the folders on the baseline is an alert. [[slnc 300]] A connection to an address that is not on the baseline, and not the pod itself, is an alert."""
+
+[[class]]
+name = "Sensor"
+what = "Linux audit, switched on by a privileged container"
+[[class.part]]
+title = "a container that shares the kernel's processes"
+code = """
+Sh.must(List.of("docker", "run", "-d", "--name", name,
+        "--privileged", "--pid=host", "-e", "COLLECTOR=" + script,
+"""
+speech = """The sensor runs in a privileged container that sees every process of Docker's Linux machine. [[slnc 300]] It switches on audit for three syscalls and keeps the records of Kubernetes containers."""
+
+[[class]]
+name = "Falco"
+what = "Falco, run as a container: checks the rules, tries its driver"
+[[class.part]]
+title = "falco --validate"
+code = """
+return Sh.run(List.of("docker", "run", "--rm", "-v", rulesDir.toAbsolutePath() + ":/r:ro",
+        IMAGE, "falco", "--validate", "/etc/falco/falco_rules.yaml",
+        "--validate", "/r/" + file)).ok();
+"""
+speech = """Falco checks the bank's rules together with its own default rules, which define the macros they use. [[slnc 300]] A rule with a wrong field fails here."""
+
+[[acronym]]
+short = "BTF"
+long = "BPF Type Format: the kernel's description of its own types"
+say = "B T F is the B P F type format: a description of the kernel's own data types. Falco's modern driver needs it."
+[[acronym]]
+short = "BPF, eBPF"
+long = "(extended) Berkeley Packet Filter: small programs run in the kernel"
+say = "B P F, and extended B P F, are small programs that run inside the Linux kernel. Falco's driver is one."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is application programming interface."
+[[acronym]]
+short = "DNS"
+long = "Domain Name System: turns a name into an address"
+say = "D N S is the domain name system. The service may call the cluster's D N S server."
+[[acronym]]
+short = "IPv4, IP"
+long = "Internet Protocol version 4: four-byte addresses"
+say = "I P is the internet protocol. Version four, I P v four, has four-byte addresses."
+[[acronym]]
+short = "YAML"
+long = "YAML Ain't Markup Language: the text format of the rules"
+say = "Yaml is a text format. Falco's rules file is written in it."
+[[acronym]]
+short = "ID, UID"
+long = "Identifier; User Identifier (0 is root)"
+say = "I D is an identifier. The user identifier, U I D, zero is the root user."
+[[acronym]]
+short = "VM"
+long = "Virtual Machine: the Linux machine inside Docker Desktop"
+say = "V M is virtual machine. Docker Desktop runs containers in a Linux V M."

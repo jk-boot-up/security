@@ -36,10 +36,10 @@ Developers parse files and render templates with default settings, which run ins
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 23 lines, identical on every run |
+| Tests | 11, all passing |
+| Demo output | 106 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:09, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:49, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

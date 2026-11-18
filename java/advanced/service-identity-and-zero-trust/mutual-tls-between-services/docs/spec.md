@@ -19,6 +19,8 @@ Services trust the network, so any caller on it is trusted, and certificates are
 | Role | Class |
 | --- | --- |
 | The private CA and the step commands | `Ca` |
+| The pinned step and step-ca releases | `StepTools` |
+| The chain check, redone by hand | `ChainSteps` |
 | The ledger server, its reload and the revocation check | `Ledger` |
 | The identity in a certificate | `Identities` |
 | Who may call what | `Policy` |
@@ -39,10 +41,10 @@ Services trust the network, so any caller on it is trusted, and certificates are
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 9, all passing |
-| Demo output | 35 lines, identical on every run |
+| Tests | 14, all passing |
+| Demo output | 75 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:29, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

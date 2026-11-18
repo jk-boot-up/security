@@ -40,10 +40,10 @@ Teams move sessions into Redis for scale and leave the session rules, and Redis 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 24, all passing |
+| Demo output | 92 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:49, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:36, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

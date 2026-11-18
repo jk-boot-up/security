@@ -46,4 +46,23 @@ class SessionIdsTest {
             assertEquals(Answer.UNKNOWN, bank.account(key));
         }
     }
+
+    @Test
+    void base64urlByHandGivesTheLibrarysExactResult() {
+        byte[] example = HexFormat.of().parseHex(SessionDemo.EXAMPLE_BYTES);
+        assertEquals(SessionIds.encode(example), Base64Steps.encode(example));
+        assertEquals("TxqcJ9PosFpsH3LppNA7jg", Base64Steps.encode(example));
+        for (int i = 0; i < 200; i++) {
+            byte[] random = Base64.getUrlDecoder().decode(SessionIds.newId());
+            assertEquals(SessionIds.encode(random), Base64Steps.encode(random));
+        }
+    }
+
+    @Test
+    void threeBytesBecomeFourSixBitGroups() {
+        byte[] first = {0x4f, 0x1a, (byte) 0x9c};
+        assertEquals(java.util.List.of("01001111", "00011010", "10011100"), Base64Steps.byteBits(first));
+        assertEquals(java.util.List.of("010011", "110001", "101010", "011100"), Base64Steps.sixBitGroups(first));
+        assertEquals("Txqc", Base64Steps.encode(first));
+    }
 }

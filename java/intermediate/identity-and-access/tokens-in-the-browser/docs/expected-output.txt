@@ -1,40 +1,112 @@
 ONE. Tokens kept in the browser.
-  the banking app signs Ana in and keeps its access token and refresh token in localStorage
-  the app reads Ana's balance: 200
-  a third-party script on the page reads what scripts can read: 2 tokens taken
-  it sends them to its own server, and Ana closes the page
-  from elsewhere, the stolen access token reads the balance: 200
-  five minutes later: 401 (the token has expired)
-  ten days later the stolen refresh token gets a new access token: true, which reads the balance: 200  <- ONE PAGE VISIT, A MONTH OF ACCESS
-  anything a script can read, a script can send away
+  THE SIGN-IN (the app writes both tokens to localStorage):
+    access_token   eyJhbGciOiJFZERTQSIsInR5cCI6ImF0K2p3dCJ9...
+    refresh_token  <32 random bytes>, valid 30 days
+  THE ACCESS TOKEN'S CLAIMS (its middle part, decoded):
+    sub    ana
+    scope  accounts.read payments.write
+    iat    1790000000  (issued at, in seconds)
+    exp    1790000300  = iat + 300 (five minutes)
+  THE APP'S OWN REQUEST (Authorization: Bearer <access_token>):
+    GET /accounts -> 200 balance 1200.00
+  THE SCRIPT ON THE PAGE READS localStorage:
+    access_token, refresh_token -> 2 tokens sent to its server
+  THE STOLEN TOKENS, USED FROM ELSEWHERE (Ana closed the page):
+    access token, at once        -> 200 balance 1200.00
+    access token, 300 s later    -> 401 (the token has expired)
+    refresh token, 10 days later -> a new access token
+    the new access token         -> 200 balance 1200.00
+  ONE PAGE VISIT, A MONTH OF ACCESS:
+    anything a script can read, a script can send away
 TWO. A backend for the frontend keeps the tokens on the server.
-  the BFF signs Ana in on the server; the browser gets one cookie: __Host-bff; Path=/; Secure; HttpOnly; SameSite=Strict
-  the cookie keeps the __Host- rules: true, and the BFF holds 2 tokens the browser never sees
-  the app reads the balance through the BFF: 200
-  the same third-party script reads what scripts can read: 0 tokens taken, and the cookie is not readable
-  while the page is open, the script can still ask the BFF for the balance: 200  <- A SCRIPT ON THE PAGE CAN STILL ACT AS ANA
-  once the page is closed: the script is no longer running, and nothing it took works anywhere else
-  six minutes later Ana opens the app again; the BFF refreshes the token on the server: 200
+  THE SIGN-IN (the BFF signs Ana in on the server):
+    Set-Cookie: __Host-bff=<32 random bytes>
+      Path=/; Secure; HttpOnly; SameSite=Strict
+  THE COOKIE'S RULES:
+    Secure           sent over HTTPS only
+    HttpOnly         scripts on the page cannot read it
+    SameSite=Strict  not sent when another site starts it
+    __Host- prefix   Secure, Path=/, no Domain: true
+  WHERE THE TOKENS ARE:
+    the BFF's session store  2 tokens (access, refresh)
+    the browser              0 tokens, 1 cookie
+  THE APP'S OWN REQUEST (only the cookie goes with it):
+    GET /bff/accounts -> 200 balance 1200.00
+  THE SAME SCRIPT ON THE PAGE READS WHAT SCRIPTS CAN READ:
+    0 tokens taken; the HttpOnly cookie is not readable
+  WHAT THE SCRIPT CAN STILL DO:
+    page open    GET /bff/accounts -> 200 balance 1200.00
+      <- A SCRIPT ON THE PAGE CAN STILL ACT AS ANA
+    page closed  the script is no longer running
+  SIX MINUTES LATER (the access token has expired):
+    the browser sends the cookie -> 200 balance 1200.00
+    the BFF used the refresh token on the server, out of sight
 THREE. Requests started by another site.
-  a hidden form on evil.example posts a transfer to the BFF; SameSite=Strict keeps the cookie off it: 401 (not signed in)
-  in an older browser that ignores SameSite, the cookie goes, but the bank's request header does not: 403 (a change needs the bank's own request header)
-  a script on evil.example tries to add the header itself: never sent: the browser's preflight was refused
-  the bank's own page sends the transfer with the header: 201
-  transfers made: 1, and only the one the bank's own page asked for
+  THE REQUEST (a hidden form on evil.example, Ana signed in):
+    POST https://app.bank.example/bff/transfers
+    no X-Bank-Request header (a form cannot add one)
+  THE RESPONSES:
+    a modern browser: SameSite=Strict keeps the cookie off
+      -> 401 (not signed in)
+    an older browser that ignores SameSite: the cookie goes
+      -> 403 (a change needs the bank's own request header)
+  A SCRIPT ON evil.example ADDS X-Bank-Request: 1 ITSELF:
+    the browser asks the BFF first (a CORS preflight): refused
+      -> never sent: the browser's preflight was refused
+  THE BANK'S OWN PAGE (the cookie and the header):
+      -> 201 transfer accepted
+  transfers made: 1, the one the bank's own page asked for
 FOUR. Tokens bound to a key, with DPoP.
-  the app holds a key that scripts cannot read, and the token carries the key's thumbprint in cnf.jkt
-  the app sends the token with a fresh proof signed by its key: 200
-  a script takes the token from localStorage and sends it as a plain bearer token: 401 (this token is bound to a key: a DPoP proof is required)
-  with a proof from a key of its own: 401 (the proof's key is not the key the token is bound to)
-  the app's own request copied and sent again: 401 (the proof was already used)
-  the app's proof for reading the balance, used for a transfer: 401 (the proof was made for another request)
-  a proof made two minutes ago, with the token still valid: 401 (the proof is too old)
-  the stolen refresh token with the thief's key: refused
-  the same refresh token presented by the app, with its own key: new tokens
-  a stolen token is useless without the key, and the key never leaves the browser
+  THE APP'S PUBLIC KEY (Ed25519; scripts may sign, not read it):
+    {"crv":"Ed25519","kty":"OKP",
+    "x":"NjY5EYSpJoFzZeY6YIUgousxxLUbHJoSuOceQYJUmLM"}
+  THE THUMBPRINT, WORKED OUT (RFC 7638):
+    the line above: members a to z, no spaces, 79 characters
+    SHA-256 of it, 32 bytes, in base64url:
+    M_644r-O_ojiozY7030u6L0vgywDOQhLCmAGa7hHBZY
+  THE ACCESS TOKEN CARRIES IT (claim cnf.jkt):
+    M_644r-O_ojiozY7030u6L0vgywDOQhLCmAGa7hHBZY  = the thumbprint
+  THE PROOF FOR ONE REQUEST (a small JWT signed by the key):
+    typ dpop+jwt, alg EdDSA, jwk <the public key above>
+    jti  <16 random bytes>  (used once)
+    htm  GET
+    htu  https://api.bank.example/accounts
+    iat  1790000000
+    ath  ZiuW0T4rEXnfYYAjokGts9IE8JYXWTZ5OFisVtoYiWk
+         = SHA-256 of the access token, in base64url
+  THE APP'S OWN REQUEST (Authorization: DPoP <token>, DPoP: <proof>):
+    GET /accounts -> 200 balance 1200.00
+  THE ATTACKS (a script took the token from localStorage):
+    the token alone, as a plain bearer token
+      -> 401 (this token is bound to a key: a DPoP proof is required)
+    with a proof from the thief's own key
+      -> 401 (the proof's key is not the key the token is bound to)
+    the app's own request, copied and sent again
+      -> 401 (the proof was already used)
+    the app's proof for GET /accounts, used for a transfer
+      -> 401 (the proof was made for another request)
+    a proof made 120 s ago (the token is still valid)
+      -> 401 (the proof is too old)
+  THE REFRESH TOKEN, BOUND TO THE SAME KEY:
+    stolen, with the thief's key  -> refused
+    the app, with its own key     -> new tokens
+  a stolen token is useless without the key,
+  and the key never leaves the browser
 FIVE. The bill.
-  two BFF servers, each with its own session store: the second one answers Ana's cookie with 401 (not signed in), so the sessions need a shared store
-  every API call now passes through one more server, which must be run, scaled and kept up to date
-  clearing the browser's storage loses the DPoP key; the old token with a new key: 401 (the proof's key is not the key the token is bound to), so Ana signs in again
-  a script on the open page can still ask the key for a proof and read the balance: 200  <- DPOP STOPS THEFT, NOT USE WHILE THE PAGE IS OPEN
-  so keep scripts off the page (a strict Content-Security-Policy), and keep tokens out of it (the BFF)
+  TWO BFF SERVERS, EACH WITH ITS OWN SESSION STORE:
+    Ana signs in on the first; her cookie reaches the second
+      -> 401 (not signed in)
+    so the sessions need a shared store
+  ONE MORE SERVER:
+    every API call passes through the BFF, which must be run,
+    scaled and kept up to date
+  THE BROWSER'S STORAGE CLEARED (the DPoP key is lost):
+    the token is bound to    M_644r-O_oji...
+    the new key's thumbprint J3VFuQ6z8LGq...
+      -> 401 (the proof's key is not the key the token is bound to)
+    so Ana signs in again
+  A SCRIPT ON THE OPEN PAGE ASKS THE KEY FOR A PROOF:
+      -> 200 balance 1200.00
+      <- DPOP STOPS THEFT, NOT USE WHILE THE PAGE IS OPEN
+  keep scripts off the page (a strict Content-Security-Policy),
+  and keep tokens out of it (the BFF)

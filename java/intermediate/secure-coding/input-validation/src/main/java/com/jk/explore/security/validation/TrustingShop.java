@@ -11,9 +11,13 @@ public final class TrustingShop {
 
     /** The order total the shop would charge. */
     public static BigDecimal total(Map<String, String> fields) {
-        BigDecimal price = new BigDecimal(fields.getOrDefault("price",
-                Catalogue.price(fields.get("sku")).orElse(BigDecimal.ZERO).toPlainString()));
         int quantity = Integer.parseInt(fields.get("quantity"));
-        return price.multiply(BigDecimal.valueOf(quantity));
+        return price(fields).multiply(BigDecimal.valueOf(quantity));
+    }
+
+    /** The unit price it uses: the form's hidden price field if there is one, else the catalogue's. */
+    public static BigDecimal price(Map<String, String> fields) {
+        return new BigDecimal(fields.getOrDefault("price",
+                Catalogue.price(fields.get("sku")).orElse(BigDecimal.ZERO).toPlainString()));
     }
 }

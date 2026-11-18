@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Incident response in Java: one simulated breach handled three ways, with the NIST phases, evidence, containment, eradication and recovery.
+> Incident response in Java: one simulated breach of an online shop (a flaw in the web server, the customer table copied, three ways back in) replayed three times with different preparation and a different response, following the NIST SP 800-61 phases: prepare, detect and analyse, contain without destroying evidence, eradicate every way back in, recover and watch, and a review that compares time to detect, data lost, evidence and recurrence.

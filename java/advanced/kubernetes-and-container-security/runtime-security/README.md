@@ -10,7 +10,7 @@ src/main/java/com/jk/explore/security/runtimesec/
 ├── Lab.java                  The bank's cluster, an outside server and the sensor, and what the sensor saw
 ├── Pods.java                 The manifests of the bank's pods
 ├── Rules.java                The three tests of the bank's runtime rules, the same ones as rules/bank-runtime-rules.yaml
-├── RuntimeSecurityDemo.java  
+├── RuntimeSecurityDemo.java  How long a command keeps its input open, so the sensor still finds its container when it reads the record
 ├── Sensor.java               The sensor that stands in for Falco on a kernel that cannot run Falco's driver: Linux audit, switched on by a privileged container that shares the kernel's process view, copying the records of Kubernetes containers to a file we read back
 └── Sh.java                   Runs a program and returns what it printed, whether it worked or not
 ```
@@ -41,16 +41,15 @@ A bank runs a payments service that serves requests, writes its log to one folde
 ./gradlew run
 ```
 
-The demo tells the story in 6 acts, each printing exact numbers that the tests check:
+The demo tells the story in 5 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Falco on this machine | Falco accepts the 3 rules, but its driver cannot start on this kernel. |
-| 2. The service doing its work | A call to the ledger and a write to the log folder are seen and raise 0 alerts. |
-| 3. A shell in the container | A shell opened with kubectl exec raises 1 alert. |
-| 4. A write where it never writes | A program written to /usr/bin raises 1 alert. |
-| 5. A connection it never makes | A connection to a server outside the cluster raises 1 alert. |
-| 6. Prevent and detect | A read-only root refuses the write, and the attempt still raises 1 alert. |
+| 1. Falco on this machine | Falco 0.45.1 accepts the bank's 3 rules, but its modern eBPF driver cannot start on Docker Desktop's kernel (no BTF), so the same three tests run on Linux audit records. |
+| 2. Normal work, no alert | The payments service calls itself, writes its log and calls the ledger: the sensor sees exec, write and connect, and 0 alerts are raised, because all three are on the baseline. |
+| 3. A shell in the container | Someone opens a shell in payments-api with kubectl exec and types id -u, which answers 0 (root): 1 alert, Shell in container, sh. |
+| 4. A write where it never writes | A program written to /usr/bin raises 1 alert; the same write in a pod with a read-only root is refused by the kernel and still raises 1 alert, for the folder /usr/bin/. |
+| 5. A connection it never makes | A connection from payments-api to a server outside the cluster on port 4444 raises 1 alert: its address is not one of the 2 on the baseline. |
 
 ## Test
 
@@ -58,7 +57,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-27 tests in `AuditTest`, `DemoRunsTest`, `PodsAndRulesFileTest`, `RulesTest`. The audit parsing, the three rules and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
+32 tests in `AuditTest`, `DemoLinesTest`, `DemoRunsTest`, `PodsAndRulesFileTest`, `RulesTest`. The audit parsing, the three rules and the manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

@@ -1,58 +1,131 @@
---- the lab
-three local servers (openssl s_server on 127.0.0.1): weak, strong, tls 1.3 only
-testssl.sh pinned to v3.2.4: yes
-weaknesses planted in the weak server: 6
---- what each server accepts, found by connecting with openssl s_client
-protocol TLSv1.0: weak yes, strong no, tls 1.3 only no
-protocol TLSv1.1: weak yes, strong no, tls 1.3 only no
-protocol TLSv1.2: weak yes, strong yes, tls 1.3 only no
-protocol TLSv1.3: weak yes, strong yes, tls 1.3 only yes
-suite AES128-GCM-SHA256 (static RSA, GCM): weak yes, strong no, tls 1.3 only no
-suite AES128-SHA (static RSA, CBC, SHA-1): weak yes, strong no, tls 1.3 only no
-suite DHE-RSA-AES128-GCM-SHA256 (finite-field DH, GCM): weak yes, strong no, tls 1.3 only no
-suite DHE-RSA-AES128-SHA (finite-field DH, CBC, SHA-1): weak yes, strong no, tls 1.3 only no
-suite ECDHE-RSA-AES128-SHA (elliptic curve DH, CBC, SHA-1): weak yes, strong no, tls 1.3 only no
-suite ECDHE-RSA-AES128-GCM-SHA256 (elliptic curve DH, GCM): weak yes, strong yes, tls 1.3 only no
-suite ECDHE-RSA-CHACHA20-POLY1305 (elliptic curve DH, ChaCha20): weak no, strong yes, tls 1.3 only no
-suite NULL-SHA (no encryption): weak yes, strong no, tls 1.3 only no
-DH group size the weak server sends with DHE-RSA-AES128-GCM-SHA256: 1024 bits
---- our own probes scored against the planted weaknesses
-weak server: found 6 of 6, missed: none
-strong server: planted weaknesses found 0, false alarms: none
---- testssl.sh v3.2.4 against the same servers
-weak server: found 6 of 6, missed: none
-found by a finding that names the problem: 4, found only by reading the key exchange column of its cipher table: 2 (static RSA key exchange (no forward secrecy), 1024-bit DH group)
-suites with static RSA key exchange in its cipher table: 4
-strong server: planted weaknesses found 0, findings of LOW or worse: 0
---- the downgrade dance
-server that could speak TLS 1.3, asked for TLS 1.2: ServerHello random says DOWNGRD, a downgrade to TLS 1.2
-same server, asked for TLS 1.3: ServerHello random says no downgrade marker
-the network breaks every handshake that offers more than TLS 1.0
-client that falls back with no signal: connected yes, attempts 4, ended on TLSv1 with AES128-SHA
-client that falls back and sends TLS_FALLBACK_SCSV: connected no, attempts 4, server answer: inappropriate fallback
-client with a minimum of TLS 1.2: connected no, attempts 2, it never offered TLS 1.0
-JDK client, default settings, protocols enabled: TLSv1.3, TLSv1.2
-JDK client through the same network: handshake failed yes, retried with an older version: no
---- a recorded session, and the server key leaks later
-AES128-GCM-SHA256 (static RSA): negotiated yes, request visible in the recording: no
-  opened with the leaked server key: yes, it says POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500; opened with an unrelated key: no
-DHE-RSA-AES128-GCM-SHA256 (finite-field DH): negotiated yes, request visible in the recording: no
-  opened with the leaked server key: no; opened with an unrelated key: no
-ECDHE-RSA-AES128-GCM-SHA256 (elliptic curve DH): negotiated yes, request visible in the recording: no
-  opened with the leaked server key: no; opened with an unrelated key: no
-why: in static RSA the client sends the secret encrypted to the server key; in (EC)DHE the secret is agreed from keys thrown away after the handshake
---- what TLS 1.3 removed, checked against a TLS 1.3 only server
-older versions (TLS 1.0, 1.1, 1.2 as a fallback): refused 3 of 3, server says: protocol version
-static RSA key exchange: client asks for AES128-GCM-SHA256, connected no; TLS 1.3 suites with a fixed key exchange: 0 of 3
-CBC with a MAC: client asks for AES128-SHA, connected no; TLS 1.3 suites that are not AEAD: 0 of 3
-RC4: this OpenSSL build has RC4 suites: no (so a server that offers it cannot be built here; the AEAD only list above is what TLS 1.3 allows)
-compression: a TLS 1.3 ClientHello started with -comp offers methods [0] (0 is null, no compression)
-compression in TLS 1.2: negotiated with -comp on both ends of the weak server: no (this OpenSSL build has no zlib, so CRIME could not be shown)
-renegotiation: client asks TLS 1.3 to renegotiate: refused by the client library, "this TLS version forbids renegotiation"
-renegotiation: client asks TLS 1.2 on the weak server to renegotiate: refused by the server, a no_renegotiation alert
-custom DH groups: the server's file has a 1024-bit group; TLS 1.3 negotiated a named group: yes, used the 1024-bit group: no
---- the bill
-a scanner reports what a server offers; it does not say who can still read yesterday's traffic
-a downgrade needs a network that fails and a client that retries: remove the retry or sign it with the SCSV
-forward secrecy is a property of the key exchange, not of the key length
-a clean scan today says nothing about traffic recorded under the old settings
+ONE. The lab: a weak server and two controls.
+  THE LAB (three local servers on 127.0.0.1):
+    servers   weak, strong, tls 1.3 only
+    made by   openssl s_server, OpenSSL 3.6
+    scanner   testssl.sh v3.2.4 (commit 97763a4)
+  THE WEAKNESSES PLANTED IN THE WEAK SERVER (6):
+    1  TLS 1.0 accepted
+    2  TLS 1.1 accepted
+    3  static RSA key exchange (no forward secrecy)
+    4  CBC suites with SHA-1
+    5  1024-bit DH group
+    6  NULL cipher (no encryption)
+  WHAT EACH SERVER ACCEPTS:       weak  strong  1.3 only
+    TLSv1.0                       yes   no      no
+    TLSv1.1                       yes   no      no
+    TLSv1.2                       yes   yes     no
+    TLSv1.3                       yes   yes     yes
+    AES128-GCM-SHA256             yes   no      no
+    AES128-SHA                    yes   no      no
+    DHE-RSA-AES128-GCM-SHA256     yes   no      no
+    DHE-RSA-AES128-SHA            yes   no      no
+    ECDHE-RSA-AES128-SHA          yes   no      no
+    ECDHE-RSA-AES128-GCM-SHA256   yes   yes     no
+    ECDHE-RSA-CHACHA20-POLY1305   no    yes     no
+    NULL-SHA                      yes   no      no
+  WHAT THE SUITE NAMES SAY (key exchange, cipher):
+    AES128-GCM-SHA256             static RSA, GCM
+    AES128-SHA                    static RSA, CBC, SHA-1
+    DHE-RSA-AES128-GCM-SHA256     finite-field DH, GCM
+    DHE-RSA-AES128-SHA            finite-field DH, CBC, SHA-1
+    ECDHE-RSA-AES128-SHA          elliptic curve DH, CBC, SHA-1
+    ECDHE-RSA-AES128-GCM-SHA256   elliptic curve DH, GCM
+    ECDHE-RSA-CHACHA20-POLY1305   elliptic curve DH, ChaCha20
+    NULL-SHA                      no encryption
+  HOW THE DH GROUP SIZE IS READ:
+    asked for DHE-RSA-AES128-GCM-SHA256, weak server
+    s_client  Peer Temp Key: DH, 1024 bits
+    rule      under 2048 bits is a weakness
+TWO. Our probes and testssl.sh, scored against the truth.
+  OUR PROBES ON THE WEAK SERVER (how each was found):
+    TLS 1.0       -tls1 connected
+    TLS 1.1       -tls1_1 connected
+    static RSA    AES128-GCM-SHA256 connected
+    CBC, SHA-1    AES128-SHA connected
+    DH 1024 bits  server sent DH 1024 bits, under 2048
+    NULL cipher   NULL-SHA connected
+  THE SCORE OF OUR PROBES:
+    weak    found 6 of 6, missed: none
+    strong  found 0, false alarms: none
+  TESTSSL.SH v3.2.4 ON THE WEAK SERVER (where each shows):
+    TLS 1.0       finding TLS1, LOW
+    TLS 1.1       finding TLS1_1, LOW
+    static RSA    only the Kx column: RSA, 4 rows
+    CBC, SHA-1    finding LUCKY13, LOW
+    DH 1024 bits  only the Kx column: DH 1024
+    NULL cipher   table row NULL-SHA, CRITICAL
+  THE SCORE OF TESTSSL.SH:
+    weak    found 6 of 6, missed: none
+            4 by a finding, 2 only in the cipher table
+    strong  found 0, findings of LOW or worse: 0
+THREE. The downgrade dance.
+  THE SERVER HELLO RANDOM (a server that can speak TLS 1.3):
+    asked for TLS 1.2  last 8 bytes 44 4F 57 4E 47 52 44 01
+                       "DOWNGRD" + 01: a downgrade to TLS 1.2
+    asked for TLS 1.3  no DOWNGRD marker in the last 8 bytes
+  THE NETWORK (a broken or hostile middlebox):
+    resets every hello that offers more than TLS 1.0
+  A CLIENT THAT FALLS BACK WITH NO SIGNAL:
+    attempt 1  up to TLS 1.3   reset by the network
+    attempt 2  TLS 1.2         reset by the network
+    attempt 3  TLS 1.1         reset by the network
+    attempt 4  TLS 1.0         connected, AES128-SHA
+    result     connected yes, on TLSv1 with AES128-SHA
+  THE SAME CLIENT, SENDING TLS_FALLBACK_SCSV ON EVERY RETRY:
+    attempt 1  up to TLS 1.3   reset by the network
+    attempt 2  TLS 1.2 + SCSV  reset by the network
+    attempt 3  TLS 1.1 + SCSV  reset by the network
+    attempt 4  TLS 1.0 + SCSV  refused: inappropriate fallback
+    result     connected no, the server saw the signal
+  A CLIENT WITH A MINIMUM OF TLS 1.2:
+    attempt 1  up to TLS 1.3   reset by the network
+    attempt 2  TLS 1.2         reset by the network
+    result     connected no, it never offered TLS 1.0
+  THE JDK CLIENT, DEFAULT SETTINGS, THROUGH THE SAME NETWORK:
+    enabled    TLSv1.3, TLSv1.2
+    result     handshake failed yes, retried older: no
+FOUR. A recorded session, and the server key leaks later.
+  THE RECORDING (one session per suite, through a tap):
+    request                      the same in each session:
+    POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500
+    AES128-GCM-SHA256            negotiated yes, in clear: no
+    DHE-RSA-AES128-GCM-SHA256    negotiated yes, in clear: no
+    ECDHE-RSA-AES128-GCM-SHA256  negotiated yes, in clear: no
+  WHAT THE CLIENT SENT IN ITS KEY EXCHANGE MESSAGE:
+    static RSA  256 bytes: the secret, encrypted to the key
+    DHE         128 bytes: a DH public value only
+    ECDHE       32 bytes: an EC public value only
+  HOW THE LEAKED KEY OPENS THE STATIC RSA SESSION:
+    1 RSA-decrypt the 256 bytes -> pre-master secret, 48 bytes
+    2 PRF(pre-master, "master secret", randoms) -> 48 bytes
+    3 PRF(master, "key expansion", randoms)   -> 40 bytes
+    4 key block bytes 0-15  -> client write key, 16 bytes
+    5 key block bytes 32-35 -> client salt, 4 bytes
+    6 AES-GCM, nonce = salt + 8 bytes of the record -> the request
+  THE RESULT, WITH THE LEAKED SERVER KEY:
+    static RSA  opened
+                POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500
+    DHE         not opened
+    ECDHE       not opened
+    unrelated   a key that is not the server's opened 0 of 3
+FIVE. What TLS 1.3 removed.
+  THE TLS 1.3 ONLY SERVER (its configuration):
+    minimum   TLS 1.3
+    its file  still lists DHE-RSA-AES128-SHA, AES128-GCM-SHA256
+              and a 1024-bit DH group
+  WHAT A CLIENT ASKED FOR, AND THE ANSWER:
+    TLS 1.0, 1.1, 1.2   refused 3 of 3: protocol version
+    static RSA          AES128-GCM-SHA256 connected no
+    CBC with a MAC      AES128-SHA connected no
+    compression         the hello offers methods [0] (0 is none)
+    renegotiation       refused by the client: TLS 1.3 forbids it
+    1024-bit DH group   used no, group X25519MLKEM768
+  THE TLS 1.3 SUITES (openssl ciphers -v -tls1_3):
+    TLS_AES_256_GCM_SHA384        Kx=any Au=any Mac=AEAD
+    TLS_CHACHA20_POLY1305_SHA256  Kx=any Au=any Mac=AEAD
+    TLS_AES_128_GCM_SHA256        Kx=any Au=any Mac=AEAD
+    fixed key exchange  0 of 3; not AEAD: 0 of 3
+  THE WEAK SERVER ON TLS 1.2, FOR COMPARISON:
+    compression    none: this OpenSSL build has no zlib
+    renegotiation  refused by the server: no_renegotiation alert
+    RC4            not in this OpenSSL build, so not planted

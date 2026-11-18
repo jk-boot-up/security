@@ -1,45 +1,113 @@
 ONE. Registering a passkey: the bank keeps only a public key.
-  ana signs in with her password and adds a passkey: the bank, with Spring Security's WebAuthn support, sends a challenge of 32 random bytes, its relying party id bank.example, and her user handle of 32 random bytes
-  ana's phone makes a new P-256 key pair for bank.example, keeps the private key, and returns a credential id of 16 bytes and an attestation object that says fmt none
-  the bank checks the challenge, the type, the origin and the relying party id hash: accepted (passkey ana's phone registered)
-  what the bank stores for ana's passkey: a credential id of 16 bytes, a COSE public key of 77 bytes, a counter of 0, the label "ana's phone", and nothing that can sign
-  a copy of the bank's records cannot sign: an answer made with another key under ana's credential id: refused (401) (the signature does not match)
+  THE REQUEST (POST /webauthn/register/options, as ana):
+    challenge          <32 random bytes>
+    rp                 id bank.example, name The Bank
+    user handle        <32 random bytes>
+    algorithms         [-8, -7, -257]
+                       (-8 EdDSA, -7 ES256, -257 RS256)
+    user verification  preferred
+    attestation        none
+  THE RESPONSE (POST /webauthn/register, a new P-256 key pair):
+    credential id      16 bytes
+    attestation        fmt none: no statement about the phone's make
+    COSE public key    77 bytes, starts a5010203262001215820
+  THE COSE KEY, DECODED (CBOR: label = value):
+    1   kty      = 2  (EC2: an elliptic-curve key)
+    3   alg      = -7  (ES256)
+    -1  crv      = 1  (P-256)
+    -2  x        = 32 bytes  (a point on the curve)
+    -3  y        = 32 bytes  (a point on the curve)
+  THE BANK'S CHECKS (challenge, type, origin, rp id hash):
+    200 accepted (passkey ana's phone registered)
+  WHAT THE BANK STORES (a CredentialRecord):
+    credential id 16 bytes, public key 77 bytes, counter 0
+    label "ana's phone", and nothing that can sign
+  A COPY OF THE RECORDS (another key, ana's credential id):
+    refused (401): the signature does not match
 TWO. Signing in: a fresh challenge, signed once.
-  every sign-in gets a new challenge of 32 random bytes: true
-  ana touches her phone and uses her fingerprint; it signs 37 bytes of authenticator data and the SHA-256 of the client data
-  the bank checks the challenge, type, origin, relying party id hash, flags and signature: accepted (signed in as ana with a passkey)
-  the same answer sent again from another browser: refused (401)
-  the same answer sent again to the browser that asked for the challenge: refused (401) (the challenge was used)
-  an answer for a challenge that was given to another browser: refused (401)
-  the same kind of answer with the user-verified flag switched on after signing: refused (401) (the signature does not match)
+  THE REQUEST (POST /webauthn/authenticate/options):
+    challenge          <32 random bytes>
+    new on every call  true
+    rp id              bank.example
+    user verification  preferred
+  STEP 1. THE CLIENT DATA (the browser writes it):
+    {"type":"webauthn.get",
+    "challenge":"<challenge>",
+    "origin":"https://bank.example","crossOrigin":false}
+  STEP 2. THE AUTHENTICATOR DATA (37 bytes, the phone writes it):
+    rp id hash  05be55af508c5555...  SHA-256 of bank.example
+    flags       05  user present + user verified
+    counter     00000001  = 1
+  STEP 3. THE SIGNED BYTES (authenticator data + SHA-256):
+    37 + 32 = 69 bytes
+  STEP 4. THE SIGNATURE (ES256, with the private key):
+    <about 70 bytes, different on every run>
+  THE RESPONSE (POST /login/webauthn, Spring Security checks it):
+    200 accepted (signed in as ana with a passkey)
+  THE SAME ANSWER, OR A CHANGED ONE:
+    again, from another browser:      refused (401)
+    again, to the browser that asked: refused (401)
+    another browser's challenge:      refused (401)
+    flags 01 -> 05 after signing:     refused (401)
 THREE. A look-alike site gets nothing it can use.
-  ana opens https://bank-example.test, a copy of the bank's page
-  it asks for a passkey for its own name bank-example.test: nothing (the authenticator has no passkey for bank-example.test)
-  it passes on the bank's real challenge and asks for bank.example: nothing (the browser will not use bank.example for a page at https://bank-example.test)
-  even a browser that skipped that rule writes the page's real origin into the client data, and the bank checks it: refused (401)
-  the same page asking for ana's password, which she types in: the password works at the bank: accepted (signed in as ana with a password)  <- A PASSWORD CAN BE PHISHED, A PASSKEY CANNOT
+  THE PAGE (a copy of the bank's page):
+    https://bank-example.test
+  REQUEST 1. A PASSKEY FOR ITS OWN NAME bank-example.test:
+    nothing (the authenticator has no passkey for bank-example.test)
+  REQUEST 2. THE BANK'S REAL CHALLENGE, RP ID bank.example:
+    is bank-example.test equal to bank.example?  no
+    does it end with .bank.example?  no
+    nothing (bank.example is not this page's site)
+  REQUEST 3. A BROWSER THAT SKIPPED THAT RULE:
+    signed client data: "origin":"https://bank-example.test"
+    allowed origins:    [https://bank.example]
+    refused (401)
+  THE SAME PAGE ASKS FOR ANA'S PASSWORD, AND SHE TYPES IT:
+    replayed at the bank: accepted (signed in as ana with a password)
+  a password can be phished; a passkey cannot
 FOUR. User verification, and counters against copies.
-  Spring Security's defaults:
-    a sign-in with only a touch, no fingerprint: accepted (signed in as ana with a passkey)  <- USER VERIFICATION IS ASKED FOR, NOT REQUIRED
-    the phone has signed in 3 times; restored from a backup, its counter goes back to 1: accepted (signed in as ana with a passkey)
-    an attacker's copy of the key, signing with the same counter as the real phone: accepted (signed in as ana with a passkey)  <- A CLONE IS NOT NOTICED
-  the same bank with user verification required and the counter compared (HardenedRelyingParty around Spring Security's relying party):
-    a sign-in with only a touch: refused (user verification required)
-    the same with her fingerprint as well: accepted (signed in as ana with a passkey)
-    ana's phone counts its signatures; the bank has now seen counter 6
-    an attacker copies the phone's key; the real phone signs in first: accepted (signed in as ana with a passkey)
-    then the copy signs in: refused (counter 7 is not above 7: possible cloned authenticator)
-    the passkey is now suspended until ana confirms it, even for the real phone: refused (passkey suspended after a counter went backwards)
-    a synced passkey, counter 0: accepted (signed in as ben with a passkey)
-    a synced passkey, counter 0: accepted (signed in as ben with a passkey)
-    a synced passkey always reports 0, so a copy cannot be spotted by its counter: its protection is the account it syncs through
+  SPRING SECURITY'S DEFAULTS (user verification preferred):
+    touch only, flags 01:
+      accepted (signed in as ana with a passkey)  <- NOT REQUIRED
+    counter 3, then 1 (restored from a backup):
+      accepted (signed in as ana with a passkey)
+    a copied key, counter 2, as the real phone would:
+      accepted (signed in as ana with a passkey)  <- NOT NOTICED
+  HARDENED (HardenedRelyingParty around Spring Security's):
+    user verification  required
+    touch only, flags 01:
+      refused (user verification required)
+    touch and fingerprint, flags 05:
+      accepted (signed in as ana with a passkey)
+  THE COUNTERS (the bank keeps the last one it saw):
+    the bank has seen 6
+    real phone:  counter 7, 7 > 6?  yes
+      accepted (signed in as ana with a passkey)
+    copied key:  counter 7, 7 > 7?  no
+      refused (counter 7 is not above 7: a cloned key?)
+    real phone again, counter 8:
+      refused (passkey suspended after a counter went backwards)
+  A SYNCED PASSKEY (flags 1d: + backup eligible + backed up):
+    flags 1d, counter 0: accepted (signed in as ben with a passkey)
+    flags 1d, counter 0: accepted (signed in as ben with a passkey)
+  a synced passkey always reports 0: a copy cannot be spotted
 FIVE. The bill: recovery, lost devices and the move away from passwords.
-  ben registers 2 passkeys, his phone and a security key, and the bank keeps for each a public key and a label
-  ben's phone is lost; his new laptop has no passkey yet: nothing (the authenticator has no passkey for bank.example)
-  the security key from his drawer: accepted (signed in as ben with a passkey)
-  signed in with the key, ben removes the lost phone's passkey: 204, and a thief who holds the phone and its fingerprint: refused (401)
-  recovery is now the weakest way in, so it needs the same care as the passkeys themselves
-  ana's password still works alongside her passkeys: accepted (signed in as ana with a password)  <- THE WEAKEST WAY IN SETS THE LEVEL
-  once ana has two passkeys and the bank switches her password off: refused (401)
-  a customer with no passkey keeps the password: accepted (signed in as ben with a password)
-  a real bank uses a maintained WebAuthn library, as here: Spring Security's WebAuthn support, built on WebAuthn4J
+  BEN'S WAYS IN:
+    2 passkeys: his phone and a security key, each with a label
+  BEN'S PHONE IS LOST:
+    new laptop:
+      nothing (the authenticator has no passkey for bank.example)
+    security key:
+      accepted (signed in as ben with a passkey)
+    DELETE /webauthn/register/<the phone's credential id>:
+      204 (the lost phone's passkey is removed)
+    a thief with the phone and its fingerprint:
+      refused (401)
+  recovery is now the weakest way in: guard it like a passkey
+  ANA'S OLD PASSWORD, STILL SWITCHED ON:
+    accepted (signed in as ana with a password)  <- THE WEAKEST WAY IN
+  ANA'S PASSWORD, SWITCHED OFF (she has 2 passkeys):
+    refused (401)
+  BEN, WITH NO PASSKEY, KEEPS HIS PASSWORD:
+    accepted (signed in as ben with a password)
+  Spring Security's WebAuthn support, built on WebAuthn4J

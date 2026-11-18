@@ -27,6 +27,7 @@ Learners hear that passkeys are phishing-resistant but rarely see why: which byt
 | The browser's rules | `Browser` |
 | The bank | `RelyingParty` |
 | Simulated time | `SimClock` |
+| Repeatable demo randomness | `FixedRandom` |
 | Entry point | `PasskeysDemo` |
 
 ## Requirements
@@ -42,10 +43,10 @@ Learners hear that passkeys are phishing-resistant but rarely see why: which byt
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 37, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 39, all passing |
+| Demo output | 100 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:53, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

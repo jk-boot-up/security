@@ -24,7 +24,8 @@ final class Discovery {
     }
 
     static ProviderConfig discover(String configuredIssuer, Fetcher fetcher) throws InvalidTokenException {
-        Map<String, Object> metadata = Json.parseObject(fetch(fetcher, metadataUrl(configuredIssuer)));
+        String document = fetch(fetcher, metadataUrl(configuredIssuer));
+        Map<String, Object> metadata = Json.parseObject(document);
         if (!configuredIssuer.equals(metadata.get("issuer"))) {
             throw new InvalidTokenException("the metadata names another issuer");
         }

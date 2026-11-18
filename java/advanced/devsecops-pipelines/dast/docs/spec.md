@@ -20,6 +20,7 @@ Dynamic scans are run without a login and trusted without a truth to compare wit
 | --- | --- |
 | The application under test | `BankApp` |
 | The planted truth | `Flaw` |
+| The two checks redone by hand | `Probe` |
 | The scan | `Zap` |
 | One kind of alert | `Alert` |
 | Docker and commands | `Sh` |
@@ -38,10 +39,10 @@ Dynamic scans are run without a login and trusted without a truth to compare wit
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 19 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 82 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:13, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:29, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

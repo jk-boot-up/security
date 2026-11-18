@@ -21,6 +21,7 @@ Services share networks that nobody drew carefully, so a taken-over service reac
 | The shop | `Service` |
 | The networks and containers | `Lab` |
 | The design | `Intent` |
+| The layout on paper | `Layout` |
 | Entry point | `NetworkIsolationDemo` |
 
 ## Requirements
@@ -36,10 +37,10 @@ Services share networks that nobody drew carefully, so a taken-over service reac
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 8, all passing |
-| Demo output | 24 lines, identical on every run |
+| Tests | 13, all passing |
+| Demo output | 92 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:51, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:16, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

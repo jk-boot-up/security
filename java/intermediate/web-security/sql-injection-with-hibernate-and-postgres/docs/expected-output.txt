@@ -1,20 +1,99 @@
-== 1. The search page works for honest customers ==
-jpql search 'Kettle' -> [Blue Kettle, Red Kettle]
-
-== 2. Hibernate does not stop a quote ==
-jpql search "zzz' or p.listed = false or p.name like 'zzz" -> [Prototype Toaster]
-jpql guess that a hash starts pbkdf2$ana -> [Blue Kettle, Copper Pan, Prototype Toaster, Red Kettle]
-jpql guess that a hash starts pbkdf2$zed -> [no results]
-native search "zzz' union select email || ' ' || password_hash from users --" -> [ana@shop.example pbkdf2$ana$9f2c, ben@shop.example pbkdf2$ben$41d0]
-
-== 3. Parameters keep text as text, in JPQL, native SQL and Criteria ==
-jpql search 'Kettle' -> [Blue Kettle, Red Kettle]
-jpql search "zzz' or p.listed = false or p.name like 'zzz" -> [no results]
-jpql guess that a hash starts pbkdf2$ana -> [no results]
-native search "zzz' union select email || ' ' || password_hash from users --" -> [no results]
-criteria search "zzz' or p.listed = false or p.name like 'zzz" -> [no results]
-sort "price; drop table products" -> [Blue Kettle, Red Kettle]
-
-== 4. A database user with few rights limits the damage of a mistake ==
-native search "zzz' union select email || ' ' || password_hash from users --" as shop_search -> refused: permission denied for table users
-jpql guess that a hash starts pbkdf2$ana as shop_search -> refused: permission denied for table users
+ONE. The search page works for honest customers.
+  THE TABLE products (name, price in cents, listed):
+    Blue Kettle         2500  true
+    Red Kettle          2900  true
+    Copper Pan          4200  true
+    Prototype Toaster   9900  false  <- NOT FOR SALE
+  THE TABLE users (email, password_hash), another entity:
+    ana@shop.example   pbkdf2$ana$9f2c
+    ben@shop.example   pbkdf2$ben$41d0
+  THE INPUT (search box, then sort box):
+    Kettle
+    p.price
+  THE JPQL AS BUILT (the input pasted in):
+    select p.name from Product p
+    where p.name like '%Kettle%' and p.listed = true
+    order by p.price
+  THE SQL HIBERNATE SENT (Product became products):
+    select p1_0.name from products p1_0
+    where p1_0.name like '%Kettle%' escape ''
+      and p1_0.listed=true
+    order by p1_0.price
+  THE RESULT:
+    [Blue Kettle, Red Kettle]
+TWO. Hibernate does not stop a quote.
+  THE INPUT (search box, then sort box):
+    zzz' or p.listed = false or p.name like 'zzz
+    p.name
+  THE JPQL AS BUILT (the input pasted in):
+    select p.name from Product p
+    where p.name like '%zzz' or p.listed = false
+      or p.name like 'zzz%' and p.listed = true
+    order by p.name
+  THE RESULT:
+    [Prototype Toaster]  <- AN UNLISTED PRODUCT
+  THE INPUT (search box, then sort box):
+    zzz' or exists (from Account a where a.passwordHash like
+      'pbkdf2$ana%') or p.name like 'zzz
+    p.name
+  THE SQL HIBERNATE SENT (Account became users):
+    select p1_0.name from products p1_0
+    where p1_0.name like '%zzz' escape ''
+      or exists(select a1_0.id from users a1_0
+      where a1_0.password_hash like 'pbkdf2$ana%' escape '')
+      or p1_0.name like 'zzz%' escape '' and p1_0.listed=true
+    order by p1_0.name
+  THE ANSWERS (a full page is yes, an empty page is no):
+    a hash starts pbkdf2$ana -> 4 products  <- YES
+    a hash starts pbkdf2$zed -> [no results]  <- NO
+  one yes or no per search, letter by letter
+  THE INPUT (search box, sent to a native SQL query):
+    zzz' union select email || ' ' || password_hash from users --
+  THE SQL AS BUILT (the input pasted in):
+    select name from products
+    where name like '%zzz'
+    union select email || ' ' || password_hash from users
+    --%' and listed = true order by name
+  THE RESULT:
+    ana@shop.example pbkdf2$ana$9f2c  <- E-MAIL AND HASH
+    ben@shop.example pbkdf2$ben$41d0  <- E-MAIL AND HASH
+THREE. Parameters keep text as text.
+  THE JPQL (fixed text; the words travel as :term):
+    select p.name from Product p
+    where p.name like :term and p.listed = true
+    order by <p.name or p.price, from a list>
+  THE SQL HIBERNATE SENT (:term became ?):
+    select p1_0.name from products p1_0
+    where p1_0.name like ? escape '' and p1_0.listed=true
+    order by p1_0.name
+  THE VALUE OF ? AND THE RESULT:
+    %Kettle%
+      -> [Blue Kettle, Red Kettle]
+    %zzz' or p.listed = false or p.name like 'zzz%
+      -> [no results]
+    %zzz' or exists (from Account a where a.passwordHash like
+      'pbkdf2$ana%') or p.name like 'zzz%
+      -> [no results]
+  THE SAME PAYLOADS IN NATIVE SQL AND CRITERIA:
+    native SQL with the union input   -> [no results]
+    Criteria API with the quote input -> [no results]
+  THE SQL THE CRITERIA QUERY SENT (a ? again):
+    select p1_0.name from products p1_0
+    where p1_0.name like ? escape '' and p1_0.listed
+    order by 1
+  THE SORT BOX (a column name cannot be a ?):
+    price; drop table products is not on the list
+      -> order by p.name, the default
+      -> [Blue Kettle, Red Kettle]
+FOUR. A database user with few rights limits the damage.
+  THE TWO DATABASE USERS (the tables each may read):
+    postgres     every table (it owns them)
+    shop_search  products
+  THE UNION ATTACK, STILL PASTED IN:
+    as postgres     2 e-mails and hashes
+    as shop_search  refused: permission denied for table users
+  THE HASH QUESTION, AS shop_search:
+    refused: permission denied for table users
+  THE QUOTE ATTACK, AS shop_search:
+    [Prototype Toaster]  <- STILL WORKS
+  few rights limit the damage; only parameters fix the flaw

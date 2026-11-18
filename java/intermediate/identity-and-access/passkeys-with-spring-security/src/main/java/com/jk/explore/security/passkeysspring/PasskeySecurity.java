@@ -55,7 +55,8 @@ class PasskeySecurity {
         if (!mode.equals("hardened")) {
             return spring;
         }
-        spring.setCustomizeRequestOptions(options -> options.userVerification(UserVerificationRequirement.REQUIRED));
+        spring.setCustomizeRequestOptions(
+                options -> options.userVerification(UserVerificationRequirement.REQUIRED));
         return new HardenedRelyingParty(spring, credentials);
     }
 

@@ -40,6 +40,11 @@ final class Backends implements AutoCloseable {
         revoked.add("rev-7");
     }
 
+    /** How many bytes the body of an answer with this first line has: the line, a newline and the padding. */
+    static int bodyLength(String firstLine) {
+        return (firstLine + "\n" + PAD).getBytes(StandardCharsets.UTF_8).length;
+    }
+
     int port(String name) {
         return servers.get(name).getAddress().getPort();
     }

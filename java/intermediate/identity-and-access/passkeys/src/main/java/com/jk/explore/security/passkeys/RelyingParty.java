@@ -63,11 +63,10 @@ final class RelyingParty {
     }
 
     static final long CHALLENGE_SECONDS = 300;
-    private static final SecureRandom RANDOM = new SecureRandom();
-
     private final String rpId;
     private final String origin;
     private final SimClock clock;
+    private final SecureRandom random;
     private final Map<String, Pending> pending = new HashMap<>();
     private final List<StoredCredential> credentials = new ArrayList<>();
     private final Map<String, byte[]> passwordHashes = new HashMap<>();
@@ -75,9 +74,15 @@ final class RelyingParty {
     private final Map<String, Set<String>> recoveryCodeHashes = new HashMap<>();
 
     RelyingParty(String rpId, String origin, SimClock clock) {
+        this(rpId, origin, clock, new SecureRandom());
+    }
+
+    /** The demo passes a FixedRandom so its challenges repeat; everything else uses a real SecureRandom. */
+    RelyingParty(String rpId, String origin, SimClock clock, SecureRandom random) {
         this.rpId = rpId;
         this.origin = origin;
         this.clock = clock;
+        this.random = random;
     }
 
     String rpId() {
@@ -86,7 +91,7 @@ final class RelyingParty {
 
     private String newChallenge(String user, String type, boolean requireVerification) {
         byte[] bytes = new byte[32];
-        RANDOM.nextBytes(bytes);
+        random.nextBytes(bytes);
         String challenge = B64.encode(bytes);
         pending.put(challenge, new Pending(user, type, requireVerification, clock.now() + CHALLENGE_SECONDS));
         return challenge;
@@ -123,7 +128,7 @@ final class RelyingParty {
             return Verdict.no("type is " + clientData.type() + ", not " + wantedType);
         }
         if (!clientData.origin().equals(origin)) {
-            return Verdict.no("origin " + clientData.origin() + " is not " + origin);
+            return Verdict.no("wrong origin " + clientData.origin());
         }
         AuthenticatorData data;
         try {
@@ -184,7 +189,7 @@ final class RelyingParty {
         long count = AuthenticatorData.decode(assertion.authenticatorData()).signCount();
         if ((count != 0 || credential.signCount != 0) && count <= credential.signCount) {
             credential.suspended = true;
-            return Verdict.no("counter " + count + " is not above " + credential.signCount + ": possible cloned authenticator");
+            return Verdict.no("counter " + count + " is not above " + credential.signCount + ": a cloned key?");
         }
         credential.signCount = count;
         return Verdict.yes("signed in as " + user + " with " + credential.label);
@@ -194,12 +199,11 @@ final class RelyingParty {
         return KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(encoded));
     }
 
-    private static boolean verify(byte[] encodedKey, Authenticator.Assertion assertion) {
+    static boolean verify(byte[] encodedKey, Authenticator.Assertion assertion) {
         try {
             Signature verifier = Signature.getInstance("SHA256withECDSA");
             verifier.initVerify(publicKey(encodedKey));
-            verifier.update(assertion.authenticatorData());
-            verifier.update(Sha256.of(assertion.clientDataJson()));
+            verifier.update(Authenticator.signedBytes(assertion.authenticatorData(), assertion.clientDataJson()));
             return verifier.verify(assertion.signature());
         } catch (GeneralSecurityException e) {
             return false;
@@ -218,7 +222,7 @@ final class RelyingParty {
 
     void setPassword(String user, char[] password) {
         byte[] salt = new byte[16];
-        RANDOM.nextBytes(salt);
+        random.nextBytes(salt);
         salts.put(user, salt);
         passwordHashes.put(user, pbkdf2(password, salt));
     }
@@ -243,7 +247,7 @@ final class RelyingParty {
         String alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
         StringBuilder code = new StringBuilder();
         for (int i = 0; i < 20; i++) {
-            code.append(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
+            code.append(alphabet.charAt(random.nextInt(alphabet.length())));
         }
         recoveryCodeHashes.computeIfAbsent(user, u -> new HashSet<>()).add(B64.encode(Sha256.of(code.toString())));
         return code.toString();

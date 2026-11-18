@@ -10,7 +10,7 @@ public record Sku(String value) {
     public static Sku parse(String raw) throws Rejected {
         String text = Text.bounded("sku", raw, 8);
         if (!SHAPE.matcher(text).matches()) {
-            throw new Rejected("sku", "three capital letters, a dash and four digits");
+            throw new Rejected("sku", "3 capital letters, a dash, 4 digits");
         }
         return new Sku(text);
     }

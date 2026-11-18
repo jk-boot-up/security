@@ -9,7 +9,7 @@ public record Planted(String id, String value, boolean real) {
     static final Planted PASSWORD = new Planted("database password", "Summer2024!", true);
     static final Planted AWS = new Planted("cloud access key", "AK" + "IAQ3RT7KJH2WNP5XCV", true);
     static final Planted GITHUB = new Planted("source token", "ghp" + "_16C7e42F292c6912E7710c838347Ae178B4a", true);
-    static final Planted BASE64 = new Planted("key inside a Kubernetes Secret", "sk_" + "live_51Zp9WqJdR4mTxVb7CsUeHgKn", true);
+    static final Planted BASE64 = new Planted("key in a Kubernetes Secret", "sk_" + "live_51Zp9WqJdR4mTxVb7CsUeHgKn", true);
     static final Planted AWS_DOC = new Planted("key in the documentation", "AK" + "IAIOSFODNN7EXAMPLE", false);
     static final Planted HASH = new Planted("checksum", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", false);
     static final Planted TEST_KEY = new Planted("test key of a fixture", "sk_" + "test_51AbCdEfGhIjKlMnOpQrStUv", false);
@@ -21,8 +21,18 @@ public record Planted(String id, String value, boolean real) {
         return ALL.stream().filter(Planted::real).toList();
     }
 
+    /** The value as the demo prints it: the first eight characters only, so no full key is ever shown. */
+    String shown() {
+        return value.substring(0, Math.min(8, value.length())) + "...";
+    }
+
     /** True when the text a scanner reported contains this value, as it is or as base64. */
     boolean in(String text) {
-        return text.contains(value) || text.contains(java.util.Base64.getEncoder().encodeToString(value.getBytes()));
+        return text.contains(value) || text.contains(base64());
+    }
+
+    /** The value written in base64, as a Kubernetes Secret stores it. */
+    String base64() {
+        return java.util.Base64.getEncoder().encodeToString(value.getBytes());
     }
 }

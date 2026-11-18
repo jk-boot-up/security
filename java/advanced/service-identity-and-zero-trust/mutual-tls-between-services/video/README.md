@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Mutual TLS between a bank's services with step-ca and the JDK: client certificates, authorization by the identity in the certificate and not by the network, short-lived certificates renewed with the server reloading trust, and what a revoked certificate can still do.
+> Mutual TLS between a bank's services with step-ca and the JDK: client certificates, the certificate chain checked by hand, authorization by the identity in the SAN and not by the network, short-lived certificates renewed with the server reloading trust, and what a revoked certificate can still do.

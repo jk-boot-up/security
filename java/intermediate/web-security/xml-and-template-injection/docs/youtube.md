@@ -16,16 +16,37 @@ Chapters:
 
 ```
 00:00 Introduction
-00:57 The Scenario
-01:32 Act One — An invoice upload
-01:46 Act Two — The parser reads what the file tells it to
-02:10 Act Three — Refuse the DOCTYPE
-02:29 Act Four — A template engine that evaluates expressions
-02:51 Act Five — A logic-less engine keeps data as data
-03:13 What It Costs
-03:55 Who Does What
-04:33 How To Use It
-05:08 Thanks for Watching
+01:07 The Scenario
+01:42 The Words
+02:25 What the Letters Stand For
+03:34 What the Letters Stand For (continued)
+03:54 Two readers that obey their input
+04:53 An honest invoice: five lines in, three fields out
+05:49 Act One — An invoice upload
+06:07 A name for a server file, and a name that multiplies
+07:18 Act Two — The parser reads what the file tells it to
+07:40 Act Two — The parser reads what the file tells it to
+08:00 One setting stops both attacks; the rest are extra layers
+09:01 Act Three — Refuse the DOCTYPE
+09:13 Act Three — Refuse the DOCTYPE
+09:30 The pasted name, one method call at a time
+10:29 Act Four — A template engine that evaluates expressions
+10:43 Act Four — A template engine that evaluates expressions
+10:59 Act Four — A template engine that evaluates expressions
+11:20 Two holes, no expressions, every value escaped
+12:13 Act Five — A logic-less engine keeps data as data
+12:34 Act Five — A logic-less engine keeps data as data
+12:44 What It Costs
+13:27 How To Use It
+14:02 The Java Classes
+14:20 NaiveInvoiceParser — the default factory
+14:32 SafeInvoiceParser — refuse the DOCTYPE, then extra layers
+14:52 SafeInvoiceParser — a size limit before parsing
+14:59 ExpressionEngine — every template can reach the application
+15:13 ExpressionEngine — any public method will do
+15:24 XmlTemplateDemo — the name pasted into the template
+15:34 LogicLessEngine — a flat list, and escaping
+15:47 Thanks for Watching
 ```
 
 ## Tags

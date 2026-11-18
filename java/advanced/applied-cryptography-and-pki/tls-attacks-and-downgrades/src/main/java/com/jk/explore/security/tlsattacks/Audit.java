@@ -1,7 +1,8 @@
 package com.jk.explore.security.tlsattacks;
 
 import java.io.IOException;
-import java.util.EnumSet;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Set;
 
 /** Finds the planted weaknesses of a server by connecting to it with openssl s_client (our own probes). */
@@ -36,25 +37,30 @@ final class Audit {
 
     /** Which planted weaknesses a server shows to a client that asks for them. */
     static Set<Weakness> find(Openssl o, int port) throws IOException, InterruptedException {
-        Set<Weakness> found = EnumSet.noneOf(Weakness.class);
+        return evidence(o, port).keySet();
+    }
+
+    /** Each planted weakness the server shows, with the connection that showed it. */
+    static Map<Weakness, String> evidence(Openssl o, int port) throws IOException, InterruptedException {
+        Map<Weakness, String> found = new EnumMap<>(Weakness.class);
         if (version(o, port, 0).connected()) {
-            found.add(Weakness.TLS_1_0);
+            found.put(Weakness.TLS_1_0, VERSIONS[0] + " connected");
         }
         if (version(o, port, 1).connected()) {
-            found.add(Weakness.TLS_1_1);
+            found.put(Weakness.TLS_1_1, VERSIONS[1] + " connected");
         }
         if (suite(o, port, 0).connected()) {
-            found.add(Weakness.STATIC_RSA);
+            found.put(Weakness.STATIC_RSA, SUITES[0][0] + " connected");
         }
         if (suite(o, port, 1).connected()) {
-            found.add(Weakness.CBC_SHA1);
+            found.put(Weakness.CBC_SHA1, SUITES[1][0] + " connected");
         }
         Probe dh = suite(o, port, 2);
         if (dh.connected() && dh.dhBits() > 0 && dh.dhBits() < 2048) {
-            found.add(Weakness.SMALL_DH);
+            found.put(Weakness.SMALL_DH, "server sent DH " + dh.dhBits() + " bits, under 2048");
         }
         if (suite(o, port, 7).connected()) {
-            found.add(Weakness.NULL_CIPHER);
+            found.put(Weakness.NULL_CIPHER, SUITES[7][0] + " connected");
         }
         return found;
     }

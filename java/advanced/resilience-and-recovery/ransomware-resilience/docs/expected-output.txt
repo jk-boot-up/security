@@ -1,70 +1,166 @@
-== the store
-image: rustfs/rustfs (S3 API with versioning, object lock and policies); a second, separate instance plays the air-gapped vault
-ledger backups: 24 snapshots of 400 rows each, 233558 bytes, SHA-256 manifest kept outside the buckets
-== 1. plain bucket, no versioning, no lock
-before the attack: 24 of 24 backups restore with a matching SHA-256
-attacker with the backup credentials overwrites every backup with random bytes: accepted 24 of 24, versions kept per backup: 1
-backups that restore: 0 of 24 (lost: 24 of 24)
-attacker deletes them as well: accepted 24 of 24, objects left: 0
-== 2. versioning only
-overwrite of all 24 accepted 24 of 24, versions in the bucket: 48
-restore of the latest versions: 0 of 24 good; restore that looks through the versions: 24 of 24 good
-delete of every key: accepted 24 of 24 as 24 delete markers, versions still there: 48
-permanent delete of every version by its version id: accepted 48 of 48, versions left: 0, backups that restore: 0 of 24
-== 3. object lock in COMPLIANCE mode (1 day here, 30 days or more in production)
-retention mode of a stored backup: COMPLIANCE
-backup credentials delete a version by id: refused 24 of 24 with AccessDenied
-the same with the governance-bypass header: refused 24 of 24 with AccessDenied
-the same with the root administrator credentials: refused 24 of 24 with AccessDenied
-overwrite by key: accepted 24 of 24 as new versions, versions in the bucket: 48
-restore of the latest versions: 0 of 24 good; restore by version: 24 of 24 good
-delete of the attacker's own garbage versions as well: refused 48 of 48 (the default retention locks every new version)
-root shortens the retention: AccessDenied; changes COMPLIANCE to GOVERNANCE: AccessDenied; suspends versioning: InvalidBucketState; deletes the bucket: BucketNotEmpty
-root extends the retention: ok (a lock can only get longer)
-root removes the default retention rule: ok; the 24 stored versions are still refused: 24 of 24
-a backup written after the rule was removed can be deleted: ok; one written with its own retention header cannot: AccessDenied
-== 4. isolation: separate credentials, and a copy in a second store
-backup-writer stores 24 backups: ok
-writer deletes a version       AccessDenied
-writer deletes a key           AccessDenied
-writer reads a backup          AccessDenied
-writer changes a retention     AccessDenied
-writer places a legal hold     AccessDenied
-writer deletes the bucket      AccessDenied
-writer touches another bucket  AccessDenied
-recovery reads a backup        ok
-recovery lists the versions    ok
-recovery writes a backup       AccessDenied
-recovery deletes a version     AccessDenied
-writer overwrites a key it wrote: ok then ok (a policy cannot stop it; versions kept: 2)
-backups in the vault that restore (by version): 24 of 24
-air-gap copy: 24 of 24 backups checked against the manifest and copied; restorable from the second store: 24 of 24
-attacker with the first store's root credentials asks the second store: InvalidAccessKeyId; with the backup-writer credentials: InvalidAccessKeyId
-second store disconnected between copies: even its own root credentials get: unreachable
-== 5. ransomware in the data directory, and the poisoned backup
-detectors: canary file changed; entropy of a file above 7.5 bits per byte; entropy of a 4 KiB block above 7.5
-healthy directory                                    files encrypted=0  canary=no file-entropy=no block-entropy=no  backup allowed=yes
-AES, all files, canary included                      files encrypted=9  canary=yes file-entropy=yes block-entropy=yes  backup allowed=no
-AES, all files, canary skipped by name               files encrypted=8  canary=no file-entropy=yes block-entropy=yes  backup allowed=no
-AES on the first half of each file, canary skipped   files encrypted=8  canary=no file-entropy=no block-entropy=yes  backup allowed=no
-healthy directory with a compressed export           files encrypted=0  canary=no file-entropy=yes block-entropy=yes  backup allowed=no
-hourly backups 06:00 to 09:00 of 9 files: 4 runs in each bucket, 40 objects in the unguarded one
-09:20 ransomware encrypts 9 files and deletes the originals; files now in the directory: 10
-10:00 backup without the guard: wrote 11 objects; with the guard: refused, wrote 0 objects (canary=yes file-entropy=yes block-entropy=yes)
-the poisoned backup against its own manifest: SHA-256 matches 10 of 10, looks like a ledger 1 of 10 (a checksum proves a backup is intact, not that it is good)
-deleting the poisoned objects to save space: refused 11 of 11 (the lock keeps bad backups as well as good ones)
-restore from the unguarded bucket: runs seen 2, failed checksum 0, failed content 1, chosen run-0900, files 9
-restore from the guarded bucket:   runs seen 1, failed checksum 0, failed content 0, chosen run-0900, files 9
-restored files identical to the directory at 09:00: 9 of 9
-recovery point: last good backup 09:00, systems cut off at 10:40, transactions lost: 3000 at 1800 an hour
-  schedule every 1440 minutes: last good backup 00:00, transactions lost 19200
-  schedule every  240 minutes: last good backup 08:00, transactions lost 4800
-  schedule every   60 minutes: last good backup 09:00, transactions lost 3000
-  schedule every   15 minutes: last good backup 09:15, transactions lost 2550
-== 6. the restore exercise
-restore 1, from the vault bucket of the first store into a fresh directory: 24 of 24 backups good, 233558 bytes, 9600 rows, ledger total matches: yes, steps 120
-  RTO model: 15 min to declare + 45 min to build + 120 steps x 3 s + 24 x 25 GiB at 400 MiB/s = 91.6 min; target 240 min met: yes
-the first store is destroyed (host lost): asking it gives unreachable
-restore 2, from the air-gapped copy: 24 of 24 backups good, 233558 bytes, 9600 rows, ledger total matches: yes, steps 120
-  RTO model: 15 min to declare + 45 min to build + 120 steps x 3 s + 24 x 25 GiB at 100 MiB/s = 168.4 min; target 240 min met: yes
-Not covered by the lock: root on the host of a store (restore 2 shows why a second store exists), a retention that is shorter than the time an attacker stays unnoticed, and data that was already encrypted when the oldest backup was made.
+ONE. A plain bucket: no versioning, no lock.
+  THE SETUP:
+    store     rustfs/rustfs:1.0.3 in Docker (an S3 API)
+    backups   24 ledger snapshots, 400 rows each, 233558 bytes
+    manifest  one SHA-256 per backup, kept outside the store
+    example   ledger-00.csv 9684 bytes, SHA-256 00cb421331e3...
+    account   svc-backup, allowed s3:* on every bucket
+  BEFORE THE ATTACK:
+    backups that restore       24 of 24 (SHA-256 matches)
+  THE ATTACK, WITH THE BACKUP CREDENTIALS:
+    overwrite, random bytes    accepted 24 of 24
+  AFTER THE OVERWRITE:
+    versions kept per backup   1
+    backups that restore       0 of 24  <- LOST: 24 of 24
+  THE DELETE, WITH THE SAME CREDENTIALS:
+    delete every key           accepted 24 of 24
+    objects left               0
+TWO. Versioning only.
+  THE SETUP: versioning on, the same account (s3:* everywhere)
+  THE OVERWRITE:
+    overwrite every key        accepted 24 of 24
+    versions in the bucket     48 (24 good + 24 garbage)
+  THE RESTORE:
+    take the latest version    0 of 24 good
+    look through the versions  24 of 24 good  <- VERSIONS SAVE IT
+  THE DELETE BY KEY:
+    delete every key           accepted 24 of 24
+    delete markers added       24
+    versions still there       48
+  THE DELETE BY VERSION ID (permanent):
+    delete every version       accepted 48 of 48
+    versions left              0
+    backups that restore       0 of 24  <- ALL LOST
+THREE. Object lock in COMPLIANCE mode.
+  THE SETUP:
+    default retention        COMPLIANCE, 1 day (30+ in production)
+    mode of a stored backup  COMPLIANCE
+  THE ATTACK: delete each of the 24 versions by its id
+    backup credentials         refused 24 of 24  AccessDenied
+    with governance bypass     refused 24 of 24  AccessDenied
+    root administrator         refused 24 of 24  AccessDenied
+  THE OVERWRITE BY KEY:
+    overwrite every key        accepted 24 of 24 as new versions
+    delete all 48 versions     refused 48 of 48 (garbage too)
+  THE RESTORE:
+    take the latest version    0 of 24 good
+    look through the versions  24 of 24 good  <- STILL THERE
+  ROOT TRIES TO LOOSEN THE LOCK:
+    shorten the retention      AccessDenied
+    COMPLIANCE to GOVERNANCE   AccessDenied
+    suspend versioning         InvalidBucketState
+    delete the bucket          BucketNotEmpty
+    extend the retention       ok (a lock can only get longer)
+  THE GAP: root removes the default retention rule: ok
+    the 24 stored versions     still refused 24 of 24
+    a backup written after it  delete: ok  <- NOT LOCKED
+    one with its own lock      delete: AccessDenied
+FOUR. Isolation: separate credentials, and a second store.
+  THE POLICIES ON ledger-vault (locked, COMPLIANCE):
+    backup-writer s3:PutObject s3:ListBucket
+    recovery      s3:GetObject s3:GetObjectVersion
+                  s3:ListBucket s3:ListBucketVersions
+  THE WRITER TRIES (it stored 24 backups: ok):
+    delete a version       AccessDenied
+    delete a key           AccessDenied
+    read a backup          AccessDenied
+    change a retention     AccessDenied
+    place a legal hold     AccessDenied
+    delete the bucket      AccessDenied
+    touch another bucket   AccessDenied
+    refused                7 of 7  <- IT CAN ONLY ADD
+  THE RECOVERY ACCOUNT TRIES:
+    read a backup          ok
+    list the versions      ok
+    write a backup         AccessDenied
+    delete a version       AccessDenied
+  WHAT A POLICY CANNOT STOP:
+    overwrite its own key  ok, then ok; versions kept: 2
+    vault backups restore  24 of 24 by version
+  THE SECOND STORE (the air-gapped copy, its own credentials):
+    checked and copied     24 of 24 (SHA-256 against the manifest)
+    restorable from it     24 of 24
+  THE ATTACKER ASKS THE SECOND STORE:
+    with the first root    InvalidAccessKeyId
+    with the writer keys   InvalidAccessKeyId
+    while disconnected     unreachable (even for its own root)
+FIVE. The guard: a canary file and entropy.
+  HOW ENTROPY IS WORKED OUT (one block of 4096 bytes):
+    H = sum over the byte values of -p x log2(p), p = count / 4096
+  THE LEDGER TEXT, BEFORE ENCRYPTION:
+    '1'    count  633  p 0.1545  -p x log2(p) 0.4163
+    ','    count  480  p 0.1172  -p x log2(p) 0.3625
+    '0'    count  419  p 0.1023  -p x log2(p) 0.3365
+    ... 18 byte values in all, H = 3.93 bits per byte
+  THE SAME BLOCK, AFTER AES ENCRYPTION:
+    'v'    count   28  p 0.0068  -p x log2(p) 0.0492
+    0xea   count   28  p 0.0068  -p x log2(p) 0.0492
+    0x20   count   27  p 0.0066  -p x log2(p) 0.0478
+    ... 256 byte values in all, H = 7.95 bits per byte
+  THE DETECTORS (each one alone stops the backup):
+    canary  the SHA-256 of zz-canary-accounts.csv changed
+    file    the entropy of a whole file is above 7.5
+    block   the entropy of any 4 KiB block is above 7.5
+  THE DIRECTORIES TESTED (9 files: 8 days + the canary):
+                                 enc  canary file block backup
+    healthy                        0  no     no   no    allowed
+    AES, every file                9  yes    yes  yes   refused
+    AES, canary skipped            8  no     yes  yes   refused
+    AES on half, canary skipped    8  no     no   yes   refused
+    healthy + compressed export    0  no     yes  yes   refused
+    a false alarm: compressed data looks like ciphertext
+SIX. Ransomware and the poisoned backup.
+  BEFORE THE INFECTION: hourly backups, two locked buckets
+    runs             06:00 to 09:00, 4 in each bucket
+    objects written  40 = 4 runs x (9 files + 1 MANIFEST)
+  THE INFECTION AT 09:20:
+    encrypted        9 files with AES-256-GCM, originals deleted
+    files now        10 (9 .locked + README_RESTORE.txt)
+  THE 10:00 BACKUP:
+    without guard    wrote 11 objects (10 files + 1 MANIFEST)
+    with the guard   refused, wrote 0 objects
+                     canary=yes file-entropy=yes block-entropy=yes
+  THE POISONED BACKUP, CHECKED:
+    SHA-256 vs manifest  matches 10 of 10  <- LOOKS FINE
+    looks like a ledger  1 of 10 (only the short ransom note)
+    why                  the manifest was made from encrypted files
+    delete to save space refused 11 of 11 (the lock keeps it too)
+  THE RESTORE: the newest run that passes both checks
+    unguarded  runs seen 2, failed: sum 0, content 1; chose run-0900
+    guarded    runs seen 1, failed: sum 0, content 0; chose run-0900
+    result     identical to the directory at 09:00: 9 of 9 files
+  HOW THE DATA LOST IS WORKED OUT (1800 transactions an hour):
+    last good backup 09:00, systems cut off 10:40
+    100 min x 1800 / 60 = 3000 transactions lost
+    backup every 1440 min  last good 00:00  lost 19200
+    backup every  240 min  last good 08:00  lost  4800
+    backup every   60 min  last good 09:00  lost  3000
+    backup every   15 min  last good 09:15  lost  2550
+SEVEN. The restore exercise.
+  RESTORE 1, FROM THE FIRST STORE INTO A FRESH DIRECTORY:
+    backups good   24 of 24, 233558 bytes, 9600 rows
+    ledger total   matches: yes
+    steps          120 = 24 x 5 (list, get, write, hash, compare)
+  HOW THE RECOVERY TIME IS WORKED OUT (a model, not a stopwatch):
+    declare the incident                      15.0 min
+    build a clean environment                 45.0 min
+    120 steps x 3 s = 360 s                    6.0 min
+    24 x 25 GiB = 614400 MiB
+      at 400 MiB/s = 1536 s                   25.6 min
+    total, against a target of 240 min        91.6 min  met
+  THE FIRST STORE IS DESTROYED (host lost): unreachable
+  RESTORE 2, FROM THE AIR-GAPPED COPY:
+    backups good   24 of 24, 233558 bytes, 9600 rows
+    ledger total   matches: yes
+    steps          120 = 24 x 5 (list, get, write, hash, compare)
+  HOW THE RECOVERY TIME IS WORKED OUT (a model, not a stopwatch):
+    declare the incident                      15.0 min
+    build a clean environment                 45.0 min
+    120 steps x 3 s = 360 s                    6.0 min
+    24 x 25 GiB = 614400 MiB
+      at 100 MiB/s = 6144 s                  102.4 min
+    total, against a target of 240 min       168.4 min  met
+  NOT COVERED BY THE LOCK:
+    root on the host of a store (why a second store exists)
+    a retention shorter than the time an attacker stays unseen
+    data already encrypted when the oldest backup was made

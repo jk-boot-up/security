@@ -4,23 +4,25 @@
 src/main/java/com/jk/explore/security/k8snetpol/
 ├── Cluster.java                        A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
 ├── Intent.java                         Which pod may reach which pod, as the design says, and a measured matrix compared with it
-├── KubernetesNetworkPoliciesDemo.java  
-├── Lab.java                            The bank's five pods on a real cluster, a server outside it, and the measurement of who can reach whom
-├── Policies.java                       The bank's network policies as manifests, one small builder for each shape
+├── KubernetesNetworkPoliciesDemo.java  A labelled section of an act: its header, then its lines
+├── Lab.java                            The online store's five pods on a real cluster, a server outside it, and the measurement of who can reach whom
+├── Policies.java                       The online store's network policies as manifests, one small builder for each shape
+├── Policy.java                         One network policy: its name, its namespace, a one-line summary of what it does, and the manifest the API server gets
+├── Report.java                         Turns pods, policies and measurements into the demo's lines
 ├── Sh.java                             Runs a program and returns what it printed, whether it worked or not
-└── Workload.java                       A pod of the bank: where it runs, its name, and the label that policies select it by
+└── Workload.java                       A pod of the online store: where it runs, its name, the label that policies select it by, and what it does
 ```
 
-**Five pods of a bank on a real cluster (kind) reach each other on 20 of 20 pairs with no policy, 17 of them unwanted; a default deny closes all 20 and one allow for each line of the design opens exactly the 3 that are meant, and the measurement equals the design; three mistakes that the API server accepts show up only in the measurement: an allow for a whole namespace (1 unwanted pair), a typo in the app label of an allow (1 missing pair) and a deny written for one app that forgets a pod (4 unwanted pairs); a default deny of egress also stops the name lookup until DNS is allowed, and stops a server outside the cluster from being called; and a pod relabelled app=web gets the web's access.**
+**Five pods of an online store on a real cluster (kind) reach each other on 20 of 20 pairs with no policy, 17 of them unwanted; a default deny closes all 20 and one allow for each line of the design opens exactly the 3 that are meant, so the measurement equals the design; three mistakes that the API server accepts show up only in the measurement: an allow for a whole namespace (1 unwanted pair), a typo in the app label of an allow (1 missing pair) and a deny written for one app that leaves a pod with no policy (4 unwanted pairs); a default deny of egress also stops the name lookup until DNS is allowed, and stops calls to a server outside the cluster; and a pod relabelled app=web gets the store front's access.**
 
-A Kubernetes cluster is a flat network: every pod can reach every other pod unless a **NetworkPolicy** says otherwise. This project runs a real cluster with **kind** (its default network plugin, kindnet, enforces policies), puts five pods of a bank in three namespaces and **measures** which pod can reach which. A Java program applies the policies and runs `curl` inside each pod against every other pod (`brew install kind kubectl`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`.
+A Kubernetes cluster is a flat network: every pod can reach every other pod unless a **NetworkPolicy** says otherwise. This project runs a real cluster with **kind** (its default network plugin, kindnet, enforces policies), puts five pods of an online store in three namespaces and **measures** which pod can reach which. A Java program applies the policies and runs `curl` inside each pod against every other pod (`brew install kind kubectl`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`. The kind node image is pinned by digest.
 
 What it shows:
-- **A flat network.** With no policy, **20 of 20** pairs of pods reach each other; the design allows 3, so **17 are unwanted**.
-- **Default deny, then the design.** One deny closes all 20 pairs; one allow for each line of the design opens exactly **3 of 20** and the measurement equals the design.
-- **Three mistakes the API server accepts.** An allow for a whole namespace (**1 unwanted** pair), a typo in an app label (**1 missing** pair), a deny written for one app that forgets a pod (**4 unwanted** pairs). Only the measurement shows them.
-- **Egress and DNS.** Denying egress also stops the name lookup until DNS is allowed, and stops a taken-over api from calling a server outside the cluster.
-- **The label is the credential.** A pod relabelled `app=web` gets the web's access.
+- **A flat network.** With no policy, **20 of 20** pairs of pods reach each other (5 pods make 5 x 4 = 20 pairs); the design allows 3, so **17 are unwanted**.
+- **Default deny, then the design.** One deny in each namespace closes all 20 pairs; one allow for each line of the design opens exactly **3 of 20** and the measurement equals the design.
+- **Three mistakes the API server accepts.** An allow for a whole namespace (**1 unwanted** pair), a typo in an app label (**1 missing** pair), a deny written for one app that leaves a pod with no policy (**4 unwanted** pairs). Only the measurement shows them.
+- **Egress and DNS.** Denying egress also stops the name lookup until DNS is allowed, and stops the api from calling a server outside the cluster.
+- **The label is the credential.** A pod relabelled `app=web` gets the store front's access.
 
 **Maps to:** NIST CSF 2.0 Protect (PR.IR) · NIST SP 800-53 SC-7 · CIS Kubernetes Benchmark 5.3 · Zero trust microsegmentation.
 
@@ -30,7 +32,7 @@ An office building where every door is unlocked. Locking them all is the easy pa
 
 ## The scenario
 
-A bank runs a shop front, a payments api, a database and an operators' admin pod in three namespaces. The design lists three allowed conversations and nothing else. The demo applies policies and then tries every pair of pods.
+An online store runs a store front, nightly batch jobs, a payments api, a payments database and an operators' console in three namespaces. The design lists three allowed conversations and nothing else. The demo applies policies and then tries every pair of pods.
 
 ## Run
 
@@ -42,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A flat network | With no policy 20 of 20 pairs of pods reach each other; the design allows 3. |
-| 2. Default deny, then the design | One deny closes all 20 pairs, three allows open exactly the 3 in the design. |
-| 3. Mistakes the API server accepts | An allow for a whole namespace, a typo in a label and a forgotten pod are all valid, and only the measurement shows them. |
-| 4. Egress and DNS | Denying egress stops the name lookup until DNS is allowed, and stops a call to a server outside the cluster. |
-| 5. The label is the credential | A pod relabelled app=web is let in by the web's allow. |
+| 1. A flat network | With no policy 20 of 20 pairs of pods reach each other: 5 pods make 5 x 4 = 20 pairs, the design wants 3, so 17 are unwanted. |
+| 2. Default deny, then the design | A default deny in each namespace closes all 20 pairs, the design's 3 too; one allow for each line of the design opens exactly those 3, and the measurement equals the design. |
+| 3. Mistakes the API server accepts | An allow for a whole namespace (1 unwanted), a typo in a label (1 missing) and a deny for one app that leaves a pod with no policy (4 unwanted) are all accepted; only the measurement shows them. |
+| 4. Egress and DNS | A default deny of egress in pay, with one allow from api to db, closes the outside server and also the lookup of the name db, until DNS is allowed. |
+| 5. The label is the credential | With the design's policies in place, the jobs pod relabelled app=web passes the allow for web: 4 of 20 = 3 wanted + 1 unwanted, shop/jobs -> pay/api. |
 
 ## Test
 
@@ -54,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `IntentTest`, `PoliciesTest`. The design comparison and the policy manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
+22 tests in `DemoRunsTest`, `IntentTest`, `PoliciesTest`, `ReportTest`. The design comparison, the report lines and the policy manifests are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 
-The cluster, the policies and the network plugin are real, and the pods are small web servers. The demo prints counts and pod names, never addresses or ids.
+The cluster, the policies and the network plugin are real, and the pods are small web servers. The demo prints counts, pod names and policy names, never addresses or ids.
 
 ## Technologies and versions
 

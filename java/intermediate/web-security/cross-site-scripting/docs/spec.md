@@ -6,7 +6,7 @@ Teach how cross-site scripting arises and how it is prevented, by showing one re
 
 ## Not in scope
 
-- Attack payloads and filter evasion: the problem is shown with a harmless bold tag.
+- Working attack payloads and filter evasion: the examples call a steal() function that does not exist.
 - HTML sanitizers for rich text.
 - Template engines: the tools version.
 
@@ -40,10 +40,10 @@ Developers often know XSS by name and fix it by filtering input, which breaks ho
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 22, all passing |
-| Demo output | 32 lines, identical on every run |
-| Acts | 5 |
-| Video | 08:21, 1920×1080, narrated in the amy-slow voice |
+| Tests | 24, all passing |
+| Demo output | 89 lines, identical on every run |
+| Acts | 4 |
+| Video | 16:18, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

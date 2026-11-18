@@ -1,12 +1,15 @@
 package com.jk.explore.security.xssspring;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
-/** Runs the online store story in five numbered acts against a real Spring Boot server on the loopback interface. */
+/** Runs the online store story in four numbered acts against a real Spring Boot server on the loopback interface. */
 public class XssSpringDemo {
 
     public static void main(String[] args) throws Exception {
@@ -44,7 +47,6 @@ public class XssSpringDemo {
             act2TheTrap(out, unescaped);
             act3OtherPlaces(out, page);
             act4Policy(out, shop, page);
-            act5TheBill(out, page);
         }
         return out.toString();
     }
@@ -68,53 +70,113 @@ public class XssSpringDemo {
         return m.find() ? m.group(1) : null;
     }
 
+    /** The first line of the text that contains `part`, trimmed. */
+    static String lineWith(String text, String part) {
+        return text.lines().filter(l -> l.contains(part)).findFirst().orElse("").strip();
+    }
+
+    /** The first match of `regex` in `text`. */
+    static String find(String text, String regex) {
+        Matcher m = Pattern.compile(regex).matcher(text);
+        return m.find() ? m.group() : null;
+    }
+
+    private static String elements(String html) {
+        return Markup.elements(html).stream().map(Markup.Element::name).collect(Collectors.joining(" "));
+    }
+
     private static void act1EscapedByDefault(StringBuilder out, Wire.Page page) {
         line(out, "ONE. Thymeleaf escapes by default.");
-        line(out, "  Ana's review is the text " + ReviewController.REVIEW + ", written with th:text");
-        line(out, "  the page answers " + page.status() + ", and the review is written as: " + between(page.body(), "<p class=\"review\">", "</p>"));
-        line(out, "  bold elements on the page: " + Markup.count(page.body(), "b") + ", so the review stayed text");
-        line(out, "  nothing had to be remembered: th:text is the ordinary way to write a value");
+        line(out, "  THE VALUE (Ana's review, put in the model):");
+        line(out, "    " + ReviewController.REVIEW);
+        line(out, "  THE TEMPLATE LINE (product.html):");
+        line(out, "    " + lineWith(Templates.text("product"), "${review}"));
+        line(out, "  THE PAGE (as the server sent it, status " + page.status() + "):");
+        line(out, "    " + lineWith(page.body(), "class=\"review\""));
+        line(out, "  THE RESULT (the elements a browser finds):");
+        line(out, "    " + elements(page.body()));
+        line(out, "    b elements: " + Markup.count(page.body(), "b") + ", so the review stayed text");
+        line(out, "  nothing had to be remembered: th:text is the ordinary way");
     }
 
     private static void act2TheTrap(StringBuilder out, Wire.Page unescaped) {
         line(out, "TWO. th:utext, the one switch that turns escaping off.");
-        line(out, "  the same review written with th:utext: " + between(unescaped.body(), "<p class=\"review\">", "</p>"));
-        line(out, "  bold elements on the page: " + Markup.count(unescaped.body(), "b") + ", and the shop wrote none  <- THE REVIEW BECAME PART OF THE PAGE");
-        line(out, "  th:utext means unescaped text: it is for markup the shop wrote itself, never for anything a customer typed");
-        line(out, "  a search of the templates for th:utext finds every place this can happen: " + Templates.usingUnescapedText() + " of " + Templates.NAMES.size()
-                + " templates, and a test fails if another one appears");
+        line(out, "  THE TEMPLATE LINE (product-unescaped.html):");
+        line(out, "    " + lineWith(Templates.text("product-unescaped"), "${review}"));
+        line(out, "  THE PAGE (as the server sent it, status " + unescaped.status() + "):");
+        line(out, "    " + lineWith(unescaped.body(), "class=\"review\""));
+        line(out, "  THE RESULT (the elements a browser finds):");
+        line(out, "    " + elements(unescaped.body()));
+        line(out, "    b elements: " + Markup.count(unescaped.body(), "b") + ", and the shop wrote none  <- THE PAGE CHANGED");
+        line(out, "  THE GUARD (a search of the templates for th:utext):");
+        for (String name : Templates.NAMES) {
+            line(out, String.format(Locale.ROOT, "    %-24s %s", name + ".html", Templates.unescaped().contains(name) ? "uses it" : "no"));
+        }
+        line(out, "    a test fails if any other template starts to use it");
+        line(out, "  th:utext is for markup the shop wrote, never for customer text");
     }
 
     private static void act3OtherPlaces(StringBuilder out, Wire.Page page) {
         line(out, "THREE. The other places a value can go.");
+        String template = Templates.text("product");
+        line(out, "  THE VALUES (put in the model):");
+        line(out, "    fitNote     " + ReviewController.FIT_NOTE);
+        line(out, "    search      " + ReviewController.SEARCH);
+        line(out, "    scriptNote  " + ReviewController.SCRIPT_NOTE);
+        line(out, "  THE TEMPLATE (how each one is written):");
+        line(out, "    " + find(template, "th:attr=\"data-fit=[^\"]*\""));
+        line(out, "    " + find(template, "th:href=\"[^\"]*\""));
+        line(out, "    th:inline=\"javascript\" and " + find(template, "\\[\\[[^]]*]]"));
         String fit = Markup.attribute(page.body(), "p", "data-fit");
-        line(out, "  in an attribute, with th:attr: Ben's fit note reads back whole: " + fit + "  (" + ReviewController.FIT_NOTE.equals(fit) + ")");
         String href = Markup.attribute(page.body(), "a", "href");
-        line(out, "  in a link, with @{/search(q=...)}: " + href);
-        line(out, "  the search text is one parameter, and its & did not start a second one: " + (href.substring(href.indexOf('?') + 1).split("&").length == 1));
-        line(out, "  in a script, with th:inline=\"javascript\": const note = " + scriptLiteral(page.body()));
-        line(out, "  each value went through the escaping for its own place, chosen by how it was written in the template");
+        String literal = scriptLiteral(page.body());
+        line(out, "  THE PAGE (what Thymeleaf wrote for each):");
+        line(out, "    " + find(page.body(), "data-fit=\"[^\"]*\""));
+        line(out, "    " + find(page.body(), "href=\"[^\"]*\""));
+        line(out, "    const note = " + literal + ";");
+        line(out, "  HOW THE CHARACTERS WERE WRITTEN:");
+        line(out, "    \" -> &quot; in an attribute, \\\" in a script string");
+        int amp = '&';
+        line(out, "    space -> %20, & -> %26 in a link (& is " + amp + " = " + amp / 16 + " x 16 + " + amp % 16 + ")");
+        line(out, "  THE RESULT (what the browser reads back):");
+        line(out, "    fit note    " + fit + "  (whole: " + ReviewController.FIT_NOTE.equals(fit) + ")");
+        line(out, "    link        parameters: " + href.substring(href.indexOf('?') + 1).split("&").length + ", so the & stayed text");
+        String inside = literal.substring(1, literal.length() - 1);
+        line(out, "    script      one string, no early end: " + !inside.replace("\\\"", "").contains("\""));
     }
 
     private static void act4Policy(StringBuilder out, Running shop, Wire.Page page) throws IOException, InterruptedException {
-        line(out, "FOUR. A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page.");
-        line(out, "  the product page answers with a policy: " + (page.policy() != null));
-        String nonce = page.policy() == null ? null : between(page.policy(), "'nonce-", "'");
-        line(out, "  the policy names a nonce, and the shop's own script carries the same one: " + Markup.scriptNonces(page.body()).equals(java.util.List.of(nonce)));
+        line(out, "FOUR. A strict Content-Security-Policy from Spring Security.");
+        String nonce = between(page.policy(), "'nonce-", "'");
+        String cookie = page.cookies().stream().filter(c -> c.startsWith("JSESSIONID=")).findFirst().orElse("");
+        String id = between(cookie, "JSESSIONID=", ";");
+        line(out, "  THE REQUEST:");
+        line(out, "    GET /product");
+        line(out, "  THE RESPONSE (the nonce shown as <nonce>):");
+        line(out, "    status " + page.status() + ", and the header Content-Security-Policy:");
+        for (String directive : page.policy().replace(nonce, "<nonce>").split("; ")) {
+            line(out, "      " + directive);
+        }
+        line(out, "    Set-Cookie: " + cookie.replace(id, "<id>"));
+        line(out, "    " + find(page.body(), "<script[^>]*>").replace(nonce, "<nonce>"));
         Wire.Page next = Wire.get(shop.port(), "/product");
-        line(out, "  the next page has a different nonce: " + !next.policy().equals(page.policy()));
-        line(out, "  the shop's script may run: " + ContentSecurityPolicy.allowsInlineScript(page.policy(), nonce));
-        line(out, "  a script that slipped in without the nonce may run: " + ContentSecurityPolicy.allowsInlineScript(page.policy(), null)
-                + "  <- A SECOND LINE OF DEFENCE");
-        line(out, "  the nonce comes from a filter that runs before Spring Security writes its headers, so the header and the page always agree");
+        int groups = (ContentSecurityPolicy.NONCE_BYTES + 2) / 3;
+        line(out, "  HOW THE NONCE GETS THERE (one request):");
+        line(out, "    NonceFilter: " + ContentSecurityPolicy.NONCE_BYTES + " random bytes, written in Base64");
+        line(out, "    " + ContentSecurityPolicy.NONCE_BYTES + " bytes -> " + groups + " groups of up to 3 -> " + groups * 4 + " characters");
+        line(out, "    it runs before Spring Security writes its headers");
+        line(out, "    request attribute cspNonce, read by the header and the page");
+        line(out, "    this page's nonce: " + nonce.length() + " characters");
+        line(out, "    the header's nonce is the script's nonce: " + Markup.scriptNonces(page.body()).equals(List.of(nonce)));
+        line(out, "    the next page's nonce differs: " + !next.policy().equals(page.policy()));
+        line(out, "  WHICH SCRIPTS MAY RUN (what a browser decides):");
+        line(out, "    the shop's script, with the nonce   " + yes(ContentSecurityPolicy.allowsInlineScript(page.policy(), nonce)));
+        line(out, "    a script without the nonce          " + yes(ContentSecurityPolicy.allowsInlineScript(page.policy(), null))
+                + "  <- BLOCKED");
+        line(out, "    the cookie is HttpOnly: " + cookie.contains("HttpOnly") + ", SameSite=Strict: " + cookie.contains("SameSite=Strict"));
     }
 
-    private static void act5TheBill(StringBuilder out, Wire.Page page) {
-        line(out, "FIVE. The bill.");
-        String cookie = page.cookies().stream().filter(c -> c.startsWith("JSESSIONID=")).findFirst().orElse("");
-        line(out, "  the session cookie is HttpOnly: " + cookie.contains("HttpOnly") + ", and SameSite=Strict: " + cookie.contains("SameSite=Strict"));
-        line(out, "  escaping by default protects only the values written through it: th:utext, and HTML built in Java code, skip it");
-        line(out, "  a value placed in an event handler or a style needs more than escaping: keep customer text out of those places");
-        line(out, "  Spring Security writes a fixed policy unless the application supplies the nonce, as this store does with one small filter");
+    private static String yes(boolean allowed) {
+        return allowed ? "yes" : "no";
     }
 }

@@ -21,16 +21,18 @@ Threat modeling by hand is slow and forgets questions; a tool asks them all but 
 | The design | `Design` |
 | The answers | `Answers` |
 | The model file | `Writer` |
-| pytm | `Pytm` |
+| pytm | `ThreatTool`, `Pytm` |
+| The conditions by hand | `Condition` |
 | Entry point | `PytmDemo` |
 
 ## Requirements
 
 1. The Python model is written from the Java design.
 2. pytm runs in a virtual environment installed on the first use.
-3. Findings are sorted before they are printed.
-4. The diagram and the report come from the same model.
-5. The demo prints the same output on every run.
+3. The unit tests replay a recording of pytm, checked against the model's SHA-256.
+4. A teaching class redoes pytm's simple conditions and agrees with every finding.
+5. The diagram and the report come from the same model.
+6. The demo prints the same output on every run.
 
 ## Measured
 
@@ -38,9 +40,9 @@ Threat modeling by hand is slow and forgets questions; a tool asks them all but 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 12, all passing |
-| Demo output | 40 lines, identical on every run |
+| Demo output | 156 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:41, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:03, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

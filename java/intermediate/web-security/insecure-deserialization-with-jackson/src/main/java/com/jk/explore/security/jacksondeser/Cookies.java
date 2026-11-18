@@ -34,7 +34,7 @@ public final class Cookies {
         } catch (InvalidTypeIdException e) {
             throw new Refused(e.getOriginalMessage().contains("denied") || e.getOriginalMessage().contains("not allowed") ? "class not allowed" : "unknown type id");
         } catch (InvalidDefinitionException e) {
-            throw new Refused(e.getOriginalMessage().contains("denies resolution") ? "the default validator denies class names for an Object" : "the cookie is not a cart");
+            throw new Refused(e.getOriginalMessage().contains("denies resolution") ? "Object is too general a base type" : "the cookie is not a cart");
         } catch (UnrecognizedPropertyException e) {
             throw new Refused("unknown property " + e.getPropertyName());
         } catch (StreamConstraintsException e) {

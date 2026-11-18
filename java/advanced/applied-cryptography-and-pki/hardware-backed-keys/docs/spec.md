@@ -40,10 +40,10 @@ Signing keys live in files and are copied, and tokens are trusted to protect mor
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 59 lines, identical on every run |
-| Acts | 5 |
-| Video | 05:40, 1920×1080, narrated in the amy-slow voice |
+| Tests | 24, all passing |
+| Demo output | 126 lines, identical on every run |
+| Acts | 6 |
+| Video | 20:04, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

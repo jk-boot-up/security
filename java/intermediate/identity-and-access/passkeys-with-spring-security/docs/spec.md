@@ -21,7 +21,7 @@ Teams add passkeys with a few lines of configuration and keep the defaults, a pa
 | Security | `PasskeySecurity`, `HardenedRelyingParty`, `PasswordSwitchOffFilter` |
 | Controller | `PasskeyController` |
 | The browser and page | `PasskeyBrowser` |
-| The phone | `SoftwareAuthenticator`, `Cbor`, `B64` |
+| The phone | `SoftwareAuthenticator`, `Cbor` (writes and reads the COSE key), `B64` |
 | Entry point | `PasskeysSpringDemo` |
 
 ## Requirements
@@ -40,10 +40,10 @@ Teams add passkeys with a few lines of configuration and keep the defaults, a pa
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 31, all passing |
-| Demo output | 45 lines, identical on every run |
+| Tests | 33, all passing |
+| Demo output | 113 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:11, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:47, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

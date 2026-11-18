@@ -8,34 +8,35 @@ Fuzzing runs a program on large numbers of mutated inputs, keeps the ones that r
 
 ### 1. The example tests pass
 
-The store's two parsers, for order import lines and for carts, pass all 6 of their 6 example tests: SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid.
-But a line with only a product code, "SHO-1042", crashes the order parser with an ArrayIndexOutOfBoundsException: an input nobody wrote a test for. A parser may refuse input; anything else it throws is a bug.
+The input is six example tests: two order lines, a word where a number should be, two carts and a broken cart. The result: all 6 pass. SHO-1042,2,8990 splits into three fields, and the total is 2 x 8990 = 17980 cents.
+Then the input nobody wrote a test for: "SHO-1042", a line with only a product code. split(",") gives one field, the code reads fields[1], and the result is an ArrayIndexOutOfBoundsException in OrderLine.parseCareless. A parser may refuse input; anything else it throws is a bug.
 
 ### 2. A mutation fuzzer
 
-The fuzzer flips bits, inserts, deletes and replaces characters, swaps numbers for boundary values and nests brackets deeply, with random numbers from L64X128MixRandom and seed 7, so every run finds the same crashes in the same order.
-In 20000 runs from 2 seed inputs, the order parser shows 2 distinct crashes: at run 86 an ArrayIndexOutOfBoundsException from "SHO-1042,28990", a line missing its comma, and at run 548 an IllegalArgumentException
-from "BAG-0007,999999999,4500", where the quantity times the price overflows an int into a negative total. In 100000 runs the cart parser shows 1 distinct crash: at run 1223 a StackOverflowError from an input of
-200039 characters starting with a wall of opening brackets. Each crash is a bug the example tests missed, found without anyone guessing the input.
+The fuzzer changes a seed input in one or two ways per run: it flips one bit, inserts, deletes or replaces a character, swaps a number for a boundary value (0, 1, 99, 100, 999999999, 2147483647, -1), or inserts 200000 opening brackets. Its random numbers come from L64X128MixRandom with seed 7, so every run is the same.
+The first six runs show the input before and after the change; all six are refused. A flipped bit can make an invisible control character, printed as \x10.
+In 20000 runs the order parser crashes twice: at run 86 an ArrayIndexOutOfBoundsException from "SHO-1042,28990", a line missing its comma, and at run 548 an IllegalArgumentException in Money from "BAG-0007,999999999,4500".
+The overflow worked out: 999999999 x 4500 = 4499999995500; an int keeps the low 32 bits, 4499999995500 - 1047 x 4294967296 = 3169236588, and read as a signed int that is 3169236588 - 4294967296 = -1125730708, a negative total that Money refuses.
+In 100000 runs the cart parser overflows its stack at run 1223, on 200039 characters that start with opening brackets.
 
 ### 3. Guided by coverage
 
-The gift-message bug needs a field named note and a value starting with #: four letters and one more, all right at once. Blind, in 100000 runs, the fuzzer reaches 14 branches and never finds it.
-Guided by coverage, keeping every input that reaches a new branch, it reaches 18 branches with 10 inputs kept, and finds the bug at run 49776 with the input [{"note":"#AG-0007","qty"1}]. The parser compares the
-field name one letter at a time, so each letter matched is a new branch, and the fuzzer keeps the input that reached it. The work is counted in runs, not seconds, so the comparison is the same on every machine.
+The gift-message bug needs a field named note and a value starting with #. Blind, the fuzzer always changes a seed and keeps nothing: in 100000 runs it reaches 14 branches and never finds the bug.
+Guided by coverage, it keeps every input that reaches a branch no earlier input reached: a comma in a list at run 1162, an escape at 1486, an empty object at 2142, an empty list at 3251, then "n" matched at run 21497, "no" at 23783, "not" at 24448 and "note" at 47709. That is 18 branches and 10 inputs kept (2 seeds and 8 new).
+At run 49776 the input [{"note":"#AG-0007","qty"1}] crashes. How: the note is "#AG-0007", indexOf(':') is -1, and substring(1, -1) throws a StringIndexOutOfBoundsException in CartParser.giftMessage.
 
 ### 4. From crash to fix
 
-Delta debugging removes pieces of each crashing input for as long as it still crashes the same way. The missing-field crash shrinks from 14 characters to "SHO-1042", which the fixed parser refuses because a line has three fields.
-The overflow shrinks from 23 characters to "BAG-0007,999999999,4", refused because the quantity is 1 to 99. The gift-message crash shrinks from 28 characters to {"note":"#", refused because a gift message is #to:message.
-The nesting crash is kept as it is, because how deep is too deep depends on the stack; the fixed parser refuses it as nested deeper than 32. Each smallest input is now a regression test. Under the same fuzzer the
-fixed parsers show 0 crashes in 20000 runs and 0 in 100000, and a property check, parse, print and parse again, gives the same cart for 2000 of 2000 inputs the fuzzer found valid.
+Delta debugging removes pieces of a crashing input for as long as it still crashes the same way. The gift-message input shrinks 28, 21, 17, 16, 14, 13, 12 and 11 characters: {"note":"#".
+Before the fix, the four smallest inputs crash the careless parsers: "SHO-1042" with an ArrayIndexOutOfBoundsException, "BAG-0007,999999999,4" with an IllegalArgumentException, {"note":"#" with a StringIndexOutOfBoundsException, and the 200039-character nesting with a StackOverflowError.
+After the fix, the fixed parsers refuse each one: a line has three fields; quantity is 1 to 99; a gift message is #to:message; nested deeper than 32. Each smallest input is now a regression test; the nesting one is kept as it is, because how deep is too deep depends on the stack.
+Under the same fuzzer the fixed parsers show 0 crashes in 20000 runs and 0 in 100000. A property check, parse, print and parse again, gives the same cart for 2000 of 2000 valid inputs; for example [{"sk":"BAG-0007","qty":1} ] prints without the space.
 
 ### 5. What fuzzing does not find
 
-A cart with a quantity of -5 parses: no crash, so no report. Whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions. Every parser needs its own harness, and
-this store wrote 2, one for each. In a build, a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new branches. Coverage-guided tools such as Jazzer add the branch counters
-to the bytecode by themselves, which is the -with-jazzer version.
+The input is a cart with a quantity of -5: {"sku":"SHO-1042","qty":-5}. The result, from the fixed parser: parsed. No crash, so no report.
+Whether -5 is allowed is a business rule; a fuzzer finds crashes and broken properties, not wrong decisions.
+What it costs: 2 harnesses, one for each parser; a fixed budget of runs on every change; longer runs at night, keeping the inputs that reached new code. Coverage-guided tools such as Jazzer add the branch counters to the bytecode by themselves, which is the -with-jazzer version.
 
 ## The verdict
 

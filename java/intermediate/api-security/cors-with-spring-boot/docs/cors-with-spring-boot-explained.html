@@ -25,16 +25,25 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <h2>The idea in one sentence</h2>
 <p>CORS decides which pages may read an answer from the browser, and Spring Boot enforces the list you give it, so the list must be exact and registered before the login check.</p>
 <h2>The 5 acts</h2>
-<h3>1. No policy: a page may send, but not read</h3>
-<p>The bank's own page reads /account. A page on evil.example reads /account with the customer's credentials: the request reaches the bank and the answer is blocked. It POSTs /transfer as a simple request: it reaches the bank and the bank processes it. Its PUT with JSON needs a preflight, which gets no approval, so it never reaches the bank. The bank processed [GET /account, POST /transfer]: CORS did not stop the POST.</p>
-<h3>2. Policies that look like fixes</h3>
-<p>allowedOrigins("<em>") with credentials is refused: Spring answers the first cross-origin request with 500 and sends no Allow-Origin header. The workaround allowedOriginPatterns("</em>") with credentials reflects any origin, so evil.example, evilbank.example and the null origin all read the account. An exact list that also lists null lets the null origin read. A pattern https://*bank.example lets evilbank.example read, because it needs no dot before bank.</p>
-<h3>3. An exact allow-list</h3>
-<p>With an exact list, partner.example reads /account and PUTs JSON. evil.example, evilbank.example and null are blocked, and none of them reaches the controller, because Spring answers 403 Invalid CORS request first. evil.example reads the public /rates, which carries a wildcard without credentials. The bank's own page PUTs JSON without trouble, and the Vary header on /account is Origin, so caches keep one copy for each origin.</p>
-<h3>4. Where the policy is registered</h3>
-<p>The exact list is registered first in Spring MVC with addCorsMappings. partner.example's preflight for PUT gets 401, because Spring Security asks for a login before Spring MVC sees the request, and a preflight never carries credentials. The simple GET works, since it needs no preflight, but the JSON PUT never reaches the bank. Registered with http.cors() the preflight is answered by a CORS filter before the login check, gets 200, and the PUT succeeds.</p>
-<h3>5. The bill</h3>
-<p>The public /rates sends Allow-Origin *. The browser accepts it without credentials and refuses it with credentials. With the exact list in place, evil.example's simple POST is stopped by Spring's 403, but the same POST with no Origin header, from a script on a server, gets 200 and moves the money: only that one request was processed. Every allowed origin needs a test, and so do the lookalike, the null origin and the preflight. A policy decides who may read an answer, and who may act still needs a login and a token.</p>
+<h3>1. With no policy, a page may send but not read</h3>
+<p>A script on https://evil.example makes three requests with the customer's login. GET /account and POST /transfer with a text/plain body are simple requests, which the browser sends without asking. PUT with application/json is not simple, so the browser first sends a preflight.
+The preflight, OPTIONS /transfer, carries no login, so Spring Security answers 401 with no Access-Control-Allow-Origin, and the PUT is never sent. The page reads nothing, but the bank's log shows GET /account and POST /transfer: CORS did not stop the POST. The bank's own page, on the same origin, reads the balance.</p>
+<h3>2. Four policies that look like fixes</h3>
+<p>allowedOrigins [<em>] with allowCredentials true is refused by Spring: the first cross-origin request gets 500 and no Access-Control-Allow-Origin. The usual workaround, allowedOriginPatterns [</em>], sends each origin back, so evil.example, evilbank.example and the null origin all get 200 and read the balance.
+A list of https://partner.example and null: Spring answers evil.example and evilbank.example with 403, but sends null back to the null origin, which a sandboxed frame has, so it reads the balance.
+The pattern https://*bank.example: the * may be any text, so https://evilbank.example matches (CorsConfiguration.checkOrigin says so), while https://partner.example and https://evil.example do not. The look-alike reads the balance.</p>
+<h3>3. An exact allow-list names one partner</h3>
+<p>CorsSettings.accounts lists one origin, https://partner.example, the methods GET, POST and PUT, the header Content-Type, allowCredentials true and maxAge 600. The partner's preflight for a JSON PUT gets 200 with exactly those values.
+The partner reads the balance and its PUT sends 500 to mallory. evil.example, evilbank.example and the null origin never reach the bank, nor does evil.example's JSON PUT. The public /rates is readable without credentials, and the bank's own page needs no policy.
+Spring's own answer to evil.example is 403 Invalid CORS request, and the bank's log grew by 0: the controller never ran. Answers carry Vary: Origin, Access-Control-Request-Method and Access-Control-Request-Headers, so a cache keeps one copy for each.</p>
+<h3>4. The policy must sit before the login check</h3>
+<p>A request goes through Spring Security first, where http.cors runs before the login check, and then Spring MVC, where addCorsMappings runs before the controller.
+Registered in Spring MVC, the same exact list never sees the preflight: a preflight carries no login, so the login check answers 401. The simple GET works, since it needs no preflight, but the JSON PUT never reaches the bank.
+Registered with http.cors, the preflight is answered by the CORS filter before the login check: 200, and the PUT sends 500 to mallory.</p>
+<h3>5. CORS is a browser rule, not a defence</h3>
+<p>The public /rates sends Access-Control-Allow-Origin: *. The browser accepts it for a request without credentials and refuses it for one with credentials.
+With the exact list in place, a simple POST /transfer from a page on https://evil.example never reaches the bank. The same POST from a script on a server, which sends no Origin header and is not a browser, gets 200 sent 500 to mallory, and the bank's log shows [POST /transfer].
+CORS decides who may read an answer inside a browser. Who may act still needs a login and a CSRF token.</p>
 <h2>The verdict</h2>
 <p>Use an exact list of origins for anything with credentials, never reflect an origin or list null, write patterns that cannot match a lookalike, register the policy in Spring Security so the preflight is answered, send Vary: Origin, and keep logins and tokens for the callers CORS cannot see.</p>
 <h2>How to recognise this in code you did not write</h2>

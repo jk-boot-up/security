@@ -11,7 +11,7 @@ public record CountryCode(String value) {
     public static CountryCode parse(String raw) throws Rejected {
         String text = Text.bounded("country", raw, 2);
         if (!KNOWN.contains(text)) {
-            throw new Rejected("country", "a two-letter country code such as IN or DE");
+            throw new Rejected("country", "a known two-letter code, such as DE");
         }
         return new CountryCode(text);
     }

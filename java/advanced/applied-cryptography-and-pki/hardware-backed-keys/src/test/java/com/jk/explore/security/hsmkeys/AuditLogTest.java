@@ -49,4 +49,23 @@ class AuditLogTest {
     void theHashIsOfTheContent() {
         assertEquals(AuditLog.sha256("a".getBytes(StandardCharsets.UTF_8)), three().entries().getFirst().contentHash());
     }
+
+    /** The worked example the demo prints: entry 1 of the bank's log, redone by hand with SHA-256. No token needed. */
+    @Test
+    void theFirstEntryOfTheDemoIsTheHashOfItsFieldsJoinedByBars() {
+        AuditLog log = new AuditLog();
+        byte[] batch0 = PaymentFile.content("BATCH-0", 5, 150_000L);
+        log.append("signed", "BATCH-0", batch0);
+        String byHand = AuditLog.sha256(("1|signed|BATCH-0|" + AuditLog.sha256(batch0) + "|genesis").getBytes(StandardCharsets.UTF_8));
+        assertEquals(byHand, log.entries().getFirst().hash());
+        assertEquals("eeef9a22d1f6", byHand.substring(0, 12));
+    }
+
+    @Test
+    void eachEntryPointsAtTheHashOfTheOneBefore() {
+        List<AuditLog.Entry> e = three().entries();
+        assertEquals("genesis", e.get(0).previous());
+        assertEquals(e.get(0).hash(), e.get(1).previous());
+        assertEquals(e.get(1).hash(), e.get(2).previous());
+    }
 }

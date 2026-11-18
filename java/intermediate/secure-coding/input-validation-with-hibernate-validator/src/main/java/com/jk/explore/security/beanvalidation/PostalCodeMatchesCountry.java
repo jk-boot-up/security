@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface PostalCodeMatchesCountry {
 
-    String message() default "does not look like a postal code of that country";
+    String message() default "not a postal code of that country";
 
     Class<?>[] groups() default {};
 
@@ -28,7 +28,7 @@ public @interface PostalCodeMatchesCountry {
     /** The check. */
     class Check implements ConstraintValidator<PostalCodeMatchesCountry, Checkout> {
 
-        private static final Map<String, Pattern> SHAPES = Map.of("DE", Pattern.compile("\\d{5}"), "IN", Pattern.compile("\\d{6}"), "GB", Pattern.compile("[A-Z0-9]{2,4} ?[0-9][A-Z]{2}"));
+        static final Map<String, Pattern> SHAPES = Map.of("DE", Pattern.compile("\\d{5}"), "IN", Pattern.compile("\\d{6}"), "GB", Pattern.compile("[A-Z0-9]{2,4} ?[0-9][A-Z]{2}"));
 
         @Override
         public boolean isValid(Checkout value, ConstraintValidatorContext context) {
@@ -39,7 +39,10 @@ public @interface PostalCodeMatchesCountry {
                 return true;
             }
             context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate()).addPropertyNode("postalCode").addConstraintViolation();
+            String template = context.getDefaultConstraintMessageTemplate();
+            context.buildConstraintViolationWithTemplate(template)
+                    .addPropertyNode("postalCode")
+                    .addConstraintViolation();
             return false;
         }
     }

@@ -11,7 +11,8 @@ src/main/java/com/jk/explore/security/ssrf/
 ├── Network.java            The world the store's server can reach, as a table from address and path to a response
 ├── Response.java           What a server answers: a status, a content type, a redirect target for 3xx, and a body
 ├── SafeImporter.java       The fixed version
-├── SsrfDemo.java           Runs the product image import story in four numbered acts and prints exact, repeatable results
+├── Spelling.java           Works out by hand the real address behind the unusual spellings a blocklist of names misses
+├── SsrfDemo.java           Runs the product image import story in five numbered acts and prints exact, repeatable results
 ├── Unreachable.java        No host with that name, or nothing listening at that address
 └── Url.java                A web address taken apart by hand, so each part can be checked: scheme, user info, host, port and path
 ```
@@ -51,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Importing an image | An honest address imports a cat picture. |
-| 2. The server fetches whatever it is told | The same form reads the cloud credentials, the server's own settings and the internal admin page. |
-| 3. A blocklist of names is easy to walk around | A blocklist stops the metadata address as written and nothing else: decimal, short, mapped IPv6, a name that points inside, and a redirect all get through. |
-| 4. Check the address the connection really uses | Resolving once and testing every address refuses all nine attacks, while honest imports and the attacker's own public image still work. |
-| 5. Why checking and then connecting is not enough | An importer that checks the name and then looks it up again is fooled: it checked a public address and fetched the internal admin panel. |
+| 1. An honest import works | The server can reach a public image host, the attacker's host, the metadata service, itself and an office admin page; the seller pastes http://images.example/cat.png, the server looks up 93.184.216.34, asks for /cat.png and imports PNG-cat. |
+| 2. The server fetches whatever it is told | Three addresses that point inside: the metadata address returns the demo cloud key, localhost returns DB_PASSWORD=demo-not-real, and 10.0.0.5 returns the internal admin panel. |
+| 3. A blocklist of names is easy to walk around | A blocklist of host names stops the metadata address as written; 2852039166, 127.1, [::ffff:a9fe:a9fe], a name that points inside and a redirect all get through, because each is the same inside address written another way. |
+| 4. Check the address the connection really uses | The safe importer checks scheme, port and user info, looks the name up once, refuses any answer that is not public, connects to the checked address and checks every redirect again: the honest image imports and all eight attacks are refused by their real address. |
+| 5. A second lookup can give a different answer | A check-then-connect importer looks rebind.attacker.example up twice: the check sees 203.0.113.9, the connection gets 10.0.0.5 and fetches the admin panel; the safe importer looks it up once and only reaches the attacker's own host. |
 
 ## Test
 
@@ -63,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `SsrfTest`. Everything is fixed data, so the demo prints the same text on every run.
+15 tests in `DemoRunsTest`, `SsrfTest`. Everything is fixed data, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

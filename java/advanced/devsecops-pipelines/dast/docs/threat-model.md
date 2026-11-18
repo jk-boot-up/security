@@ -49,7 +49,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `BankAppTest` and `ZapAndFlawTest` check the application, the report parsing and the plan with no tools.
+- `BankAppTest`, `ProbeTest`, `ZapAndFlawTest` and `DastDemoTest` check the application, the two checks by hand, the report parsing and the plan with no tools.
 - `DemoRunsTest` runs Docker and ZAP and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

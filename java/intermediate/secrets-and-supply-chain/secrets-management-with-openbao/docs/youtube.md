@@ -16,17 +16,35 @@ Chapters:
 
 ```
 00:00 Introduction
-01:35 The Scenario
-02:02 Act One — A secrets server, and who may ask
-02:32 Act Two — Secrets that stay still: versions, rotation and the audit trail
-03:01 Act Three — Database logins that are leased
-03:32 Act Four — Rotation, and the blast radius of a leak
-03:59 Act Five — The bill
-04:29 What It Costs
-04:56 Who Does What
-05:09 Where You Have Seen It
-05:21 How To Use It
-05:41 Thanks for Watching
+00:51 The Scenario
+01:22 The Words
+02:01 What the Letters Stand For
+03:11 How an application logs in
+04:10 A policy, and six reads it decides
+05:15 Act One — A secrets server, and who may ask
+05:33 Act One — A secrets server, and who may ask
+05:51 Versions through a changeover, and a hidden value
+06:57 Act Two — Secrets that stay still: versions, rotation and the audit trail
+07:18 Act Two — Secrets that stay still: versions, rotation and the audit trail
+07:35 Two leased database logins
+08:37 Act Three — Database logins that are leased
+08:54 Act Three — Database logins that are leased
+09:17 Rotate a static password, revoke leased logins
+10:04 Act Four — Rotation, and the blast radius of a leak
+10:25 Sealed means down
+11:14 Act Five — The bill
+11:21 Act Five — The bill
+11:41 What It Costs
+12:16 Where You Have Seen It
+12:51 How To Use It
+13:24 The Java Classes
+13:36 BaoLab — pinned images, loopback only
+13:52 Bao — every request carries the token
+14:05 BaoSecretsDemo — one policy per application
+14:18 BaoSecretsDemo — a login role, and a database role
+14:35 BaoSecretsDemo — lease, renew
+14:48 PolicyRule — a star covers what is below it
+15:04 Thanks for Watching
 ```
 
 ## Tags

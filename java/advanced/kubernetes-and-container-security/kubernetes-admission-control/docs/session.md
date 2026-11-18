@@ -15,10 +15,10 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: Policies that refuse | 7 min |
-| 0:17 | Act 2: Audit first, then deny | 7 min |
-| 0:24 | Act 3: Mutation and signed images | 7 min |
+| 0:17 | Act 2: What was there before, and audit mode | 7 min |
+| 0:24 | Act 3: A policy that changes the request | 7 min |
 | 0:31 | Act 4: Exceptions | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:38 | Act 5: When the admission controller is down | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

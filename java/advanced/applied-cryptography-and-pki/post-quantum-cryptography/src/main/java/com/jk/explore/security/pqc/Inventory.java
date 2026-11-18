@@ -1,98 +1,80 @@
 package com.jk.explore.security.pqc;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
-/** Counts, in the main source of the beginner and intermediate tracks, how many projects name each cryptographic algorithm. */
+/**
+ * An inventory of the cryptography in a bank's source files: which algorithm each file names, what it is used for,
+ * and so in which order the files have to move to post-quantum algorithms.
+ * The sources are a fixed sample (BANK_SOURCES), so the inventory gives the same answer on every run.
+ */
 final class Inventory {
 
-    /** Algorithms in the order they are printed. The first group is broken by a large quantum computer, the second is not. */
-    static final Map<String, Pattern> PUBLIC_KEY = new LinkedHashMap<>();
-    static final Map<String, Pattern> SYMMETRIC = new LinkedHashMap<>();
+    /** What an algorithm is used for, in migration order: what a recording exposes first. */
+    enum Use {
+        KEY_EXCHANGE("key exchange"),
+        SIGNATURE("signature"),
+        SYMMETRIC("symmetric");
 
-    static {
-        PUBLIC_KEY.put("RSA", Pattern.compile("\\bRSA\\b|withRSA|\"RSA/"));
-        PUBLIC_KEY.put("ECDSA", Pattern.compile("ECDSA"));
-        PUBLIC_KEY.put("ECDH", Pattern.compile("ECDH"));
-        PUBLIC_KEY.put("EC key pair (any use)", Pattern.compile("\"EC\""));
-        PUBLIC_KEY.put("X25519", Pattern.compile("X25519|\"XDH\""));
-        PUBLIC_KEY.put("Ed25519", Pattern.compile("Ed25519|EdDSA"));
-        PUBLIC_KEY.put("finite-field Diffie-Hellman", Pattern.compile("\"DH\"|\"DiffieHellman\""));
-        SYMMETRIC.put("AES", Pattern.compile("\\bAES\\b|\"AES/"));
-        SYMMETRIC.put("SHA-256", Pattern.compile("SHA-256|SHA256"));
-        SYMMETRIC.put("HMAC", Pattern.compile("Hmac"));
+        final String label;
+
+        Use(String label) {
+            this.label = label;
+        }
+
+        int priority() {
+            return ordinal() + 1;
+        }
     }
 
-    /** What was scanned and what was found. */
-    record Result(int projects, int files, Map<String, Set<String>> projectsByAlgorithm, Set<String> anyPublicKey, int mlKem, int mlDsa) {
+    /** An algorithm, the text that names it in source code, its use, and whether a large quantum computer breaks it (Shor). */
+    record Algorithm(String name, Pattern pattern, Use use, boolean brokenByShor) {
+    }
+
+    static final List<Algorithm> ALGORITHMS = List.of(
+            new Algorithm("RSA", Pattern.compile("\"RSA/"), Use.KEY_EXCHANGE, true),
+            new Algorithm("ECDH", Pattern.compile("\"ECDH\""), Use.KEY_EXCHANGE, true),
+            new Algorithm("X25519", Pattern.compile("\"X25519\""), Use.KEY_EXCHANGE, true),
+            new Algorithm("RSA", Pattern.compile("withRSA\""), Use.SIGNATURE, true),
+            new Algorithm("ECDSA", Pattern.compile("withECDSA\""), Use.SIGNATURE, true),
+            new Algorithm("Ed25519", Pattern.compile("\"Ed25519\""), Use.SIGNATURE, true),
+            new Algorithm("AES", Pattern.compile("\"AES/"), Use.SYMMETRIC, false),
+            new Algorithm("HMAC", Pattern.compile("\"Hmac"), Use.SYMMETRIC, false));
+
+    /** One source file of the sample: where it is and the lines that matter. */
+    record Source(String path, String code) {
+    }
+
+    /** A fixed sample of a bank's code: one or two lines per service, as they would appear in its source. */
+    static final List<Source> BANK_SOURCES = List.of(
+            new Source("online-banking/TlsSetup", "params.setNamedGroups(new String[] {\"X25519\"});"),
+            new Source("payments/CardVault", "Cipher.getInstance(\"AES/GCM/NoPadding\"); Mac.getInstance(\"HmacSHA256\");"),
+            new Source("statements/StatementSigner", "Signature.getInstance(\"SHA256withRSA\");"),
+            new Source("interbank/SettlementChannel", "KeyAgreement.getInstance(\"ECDH\"); Cipher.getInstance(\"AES/GCM/NoPadding\");"),
+            new Source("archive/ArchiveKeyWrap", "Cipher.getInstance(\"RSA/ECB/OAEPWithSHA-256AndMGF1Padding\");"),
+            new Source("mobile/DeviceBinding", "Signature.getInstance(\"SHA256withECDSA\");"),
+            new Source("identity/LoginTokens", "Signature.getInstance(\"Ed25519\"); Mac.getInstance(\"HmacSHA256\");"));
+
+    /** What one file names, and the use that comes first in the migration order. */
+    record Entry(String path, List<Algorithm> found, Use first) {
     }
 
     private Inventory() {
     }
 
-    /** The repository's java directory, found by walking up from the working directory; null when this project is outside the repository. */
-    static Path javaRoot(Path start) {
-        for (Path p = start.toAbsolutePath(); p != null; p = p.getParent()) {
-            if (Files.isDirectory(p.resolve("java").resolve("beginner")) && Files.isDirectory(p.resolve("java").resolve("intermediate"))) {
-                return p.resolve("java");
-            }
+    static List<Entry> scan(List<Source> sources) {
+        List<Entry> entries = new ArrayList<>();
+        for (Source s : sources) {
+            List<Algorithm> found = ALGORITHMS.stream().filter(a -> a.pattern().matcher(s.code()).find()).toList();
+            Use first = found.stream().map(Algorithm::use)
+                    .min(Enum::compareTo).orElse(Use.SYMMETRIC);
+            entries.add(new Entry(s.path(), found, first));
         }
-        return null;
+        return entries;
     }
 
-    static Result scan(Path javaRoot) throws IOException {
-        Set<String> allProjects = new TreeSet<>();
-        Map<String, Set<String>> byAlgorithm = new LinkedHashMap<>();
-        PUBLIC_KEY.keySet().forEach(k -> byAlgorithm.put(k, new TreeSet<>()));
-        SYMMETRIC.keySet().forEach(k -> byAlgorithm.put(k, new TreeSet<>()));
-        Set<String> anyPublicKey = new TreeSet<>();
-        Set<String> mlKem = new TreeSet<>();
-        Set<String> mlDsa = new TreeSet<>();
-        int files = 0;
-        for (String track : List.of("beginner", "intermediate")) {
-            List<Path> sources;
-            try (Stream<Path> walk = Files.walk(javaRoot.resolve(track))) {
-                sources = walk.filter(Inventory::isMainSource).sorted().toList();
-            }
-            for (Path file : sources) {
-                files++;
-                Path rel = javaRoot.relativize(file);
-                String project = rel.getName(0) + "/" + rel.getName(1) + "/" + rel.getName(2);
-                allProjects.add(project);
-                String text = Files.readString(file, StandardCharsets.UTF_8);
-                for (var e : PUBLIC_KEY.entrySet()) {
-                    if (e.getValue().matcher(text).find()) {
-                        byAlgorithm.get(e.getKey()).add(project);
-                        anyPublicKey.add(project);
-                    }
-                }
-                for (var e : SYMMETRIC.entrySet()) {
-                    if (e.getValue().matcher(text).find()) {
-                        byAlgorithm.get(e.getKey()).add(project);
-                    }
-                }
-                if (text.contains("ML-KEM")) {
-                    mlKem.add(project);
-                }
-                if (text.contains("ML-DSA")) {
-                    mlDsa.add(project);
-                }
-            }
-        }
-        return new Result(allProjects.size(), files, byAlgorithm, anyPublicKey, mlKem.size(), mlDsa.size());
-    }
-
-    private static boolean isMainSource(Path p) {
-        String s = p.toString().replace('\\', '/');
-        return s.endsWith(".java") && s.contains("/src/main/java/") && !s.contains("/build/");
+    static long count(List<Entry> entries, Use use) {
+        return entries.stream().filter(e -> e.first() == use).count();
     }
 }

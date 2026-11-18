@@ -13,8 +13,9 @@ public final class KeyLog {
     }
 
     static String lines(Capture c, Secrets s) {
-        return "CLIENT_TRAFFIC_SECRET_0 " + Hex.of(c.clientRandom()) + " " + Hex.of(s.client()) + "\n"
-                + "SERVER_TRAFFIC_SECRET_0 " + Hex.of(c.clientRandom()) + " " + Hex.of(s.server()) + "\n";
+        String random = Hex.of(c.clientRandom());
+        return "CLIENT_TRAFFIC_SECRET_0 " + random + " " + Hex.of(s.client()) + "\n"
+                + "SERVER_TRAFFIC_SECRET_0 " + random + " " + Hex.of(s.server()) + "\n";
     }
 
     /** The secret for a connection and a label, or empty when the log has no line for them. */
@@ -38,8 +39,10 @@ public final class KeyLog {
         if (path == null || path.isBlank()) {
             return Optional.empty();
         }
-        if ("production".equalsIgnoreCase(environment.getOrDefault("APP_ENV", ""))) {
-            throw new IllegalStateException("SSLKEYLOGFILE is set in production; refusing to start");
+        String env = environment.getOrDefault("APP_ENV", "");
+        if ("production".equalsIgnoreCase(env)) {
+            throw new IllegalStateException(
+                    "SSLKEYLOGFILE is set in production; refusing to start");
         }
         return Optional.of(path);
     }

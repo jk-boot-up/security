@@ -80,22 +80,22 @@ class SbomScanTest {
 
     @Test
     void theGateRefusesTheOldImageAndAnExceptionCannotCoverACriticalOne() {
-        assertTrue(SbomScanDemo.gate(oldScan, List.of(), 100).startsWith("refused"));
-        var waivers = oldScan.inPackages("log4j").stream().map(f -> new SbomScanDemo.Waiver(f.id(), "none", 500)).toList();
-        assertTrue(SbomScanDemo.gate(oldScan, waivers, 100).startsWith("refused"));
+        assertTrue(Gate.check(oldScan, List.of(), 100).startsWith("refused"));
+        var waivers = oldScan.inPackages("log4j").stream().map(f -> new Gate.Waiver(f.id(), "none", 500)).toList();
+        assertTrue(Gate.check(oldScan, waivers, 100).startsWith("refused"));
     }
 
     @Test
     void anExceptionForAHighAdvisoryWorksUntilItRunsOut() {
-        var waivers = patchedScan.inPackages("log4j").stream().filter(f -> f.severity().equals("High")).map(f -> new SbomScanDemo.Waiver(f.id(), "reviewed", 120)).toList();
-        assertTrue(SbomScanDemo.gate(patchedScan, List.of(), 100).startsWith("refused"));
-        assertTrue(SbomScanDemo.gate(patchedScan, waivers, 100).startsWith("deployed"));
-        assertTrue(SbomScanDemo.gate(patchedScan, waivers, 121).startsWith("refused"));
+        var waivers = patchedScan.inPackages("log4j").stream().filter(f -> f.severity().equals("High")).map(f -> new Gate.Waiver(f.id(), "reviewed", 120)).toList();
+        assertTrue(Gate.check(patchedScan, List.of(), 100).startsWith("refused"));
+        assertTrue(Gate.check(patchedScan, waivers, 100).startsWith("deployed"));
+        assertTrue(Gate.check(patchedScan, waivers, 121).startsWith("refused"));
     }
 
     @Test
     void theCurrentImagePassesTheGate() {
-        assertEquals("deployed", SbomScanDemo.gate(currentScan, List.of(), 130));
+        assertEquals("deployed", Gate.check(currentScan, List.of(), 130));
     }
 
     @Test

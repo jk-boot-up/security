@@ -26,7 +26,7 @@ The plain [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce) pr
 What it shows:
 - **The flow, step by step.** The budgeting app's request (response type `code`, `state`, an S256 `code_challenge`), Ana signing in at Keycloak and agreeing on the **consent page** (the app never sees her password), the redirect with `code`, `state` and `iss`, the token exchange made by the app directly, and an access token for 300 seconds with audience `accounts-api`, accepted by the API.
 - **PKCE.** The RFC 7636 example gives the published challenge. A thief with a leaked code and **no verifier is refused, and the failed try burns the code**, so the real app is refused too and Ana signs in again. A wrong verifier is a `PKCE verification failed`. A `plain` challenge or no challenge at all is refused at the authorization endpoint.
-- **Exact redirects, state and one-time codes.** Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and **no redirect**. A callback carrying Mallory's code fails the app's own state check. A **reused code ends the session**: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 5 seconds in this realm.
+- **Exact redirects, state and one-time codes.** Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and **no redirect**. A callback carrying Mallory's code fails the app's own state check. A **reused code ends the session**: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 10 seconds in this realm.
 - **Scopes and refresh tokens.** `POST /payments` with an `accounts.read` token is `403 insufficient_scope`; asking for `payments.write` is `invalid_scope`. A refresh token is rotated; **using the old one again ends the session**, so the thief and the real app both lose.
 - **Current practice.** The implicit flow and the password grant are switched off on the client, a confidential client needs its secret and **still needs PKCE**.
 
@@ -58,108 +58,343 @@ where = """
 This is the tools version of [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce), in the [identity-and-access](..) module. It follows the same five acts, against a real authorization server, and ends with the resource server that real banks run.
 """
 twin = """
-Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, ports and session ids are never printed.
+Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, states, ports and session ids are printed as placeholders such as `<code>`, and the visible flow uses the PKCE verifier RFC 7636 publishes, so the output is the same on every run.
 """
-test_note = "The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file and PKCE tests need no Docker."
+test_note = "The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file, PKCE, hand-made S256 steps and output formatting tests need no Docker."
 
 [[act]]
 title = "The flow, step by step"
-summary = "The budgeting app sends Ana to Keycloak with a state and a PKCE challenge, she signs in and agrees there, the app exchanges the code for an access token, and the API accepts it."
+summary = "The app sends Ana's browser to Keycloak with the challenge E9Melhoa...; Ana signs in at Keycloak and agrees on the consent page; Keycloak redirects back with state, session_state, iss and code; the app posts the code and the verifier dBjftJeZ... to the token endpoint and gets an access token for accounts-api that lives 300 seconds; GET /accounts answers 200, and 401 without a token."
 detail = """
-Ana's browser goes to Keycloak's authorization endpoint with response type code, the client id, the exact registered redirect address, the scope, a state and an S256 code challenge. Ana signs in at Keycloak, never at the app, and a consent page asks whether budget-app may read her accounts. Keycloak redirects the browser to the registered address with the state, a session state, the issuer and the code. The app checks the state, then calls the token endpoint directly with the code and the verifier. Keycloak answers with an access token for 300 seconds, a refresh token and an ID token. The accounts API accepts the access token: 200, ana, 2 accounts. The token is for accounts-api, asked for by budget-app, carries Ana's id and no password or e-mail, and without a token the API answers 401.
+Step 1, the request: Ana's browser goes to <keycloak>/realms/bank/protocol/openid-connect/auth with response_type=code, client_id=budget-app,
+redirect_uri=https://budget.example/callback, scope=openid accounts.read, a random state, code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM and
+code_challenge_method=S256. Step 2: Ana signs in at Keycloak, never at the app, and the consent page asks for "Read your accounts". Step 3, the response:
+302 to the registered address with state, session_state, iss (the bank realm) and code; the state comes back unchanged. Step 4, the request: the app posts
+grant_type=authorization_code, its client id, the code, the redirect address and code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk to the token
+endpoint. Step 5, the response: an access token that lives 300 seconds, a refresh token, an ID token and the scope openid accounts.read. Inside the access
+token, a JWT signed by Keycloak: aud=accounts-api, azp=budget-app, the bank realm as issuer, Ana's id as subject, and no password or e-mail. Step 6:
+GET /accounts with the token answers 200, ana: 2 accounts; without a token, 401.
+"""
+figure = "flow_steps"
+figure_title = "Six messages between four parties"
+figure_speech = """
+First demo: the flow, step by step, against a real Keycloak. [[slnc 400]] Four parties: Ana's browser, the budgeting app, Keycloak, and the bank's A P I. [[slnc 600]]
+Step one. [[slnc 300]] The app sends Ana's browser to Keycloak, with the scope it wants and a challenge. [[slnc 600]]
+Step two. [[slnc 300]] Ana signs in at Keycloak, never at the app, and agrees on the consent page. [[slnc 600]]
+Step three. [[slnc 300]] Keycloak sends the browser back with a code, which lives ten seconds in this realm, and works once. [[slnc 600]]
+The amber steps pass through the browser, where an address can end up in a history or a log. [[slnc 600]]
+Step four is green. [[slnc 300]] The app calls Keycloak directly with the code and its secret verifier. [[slnc 300]] Step five: an access token for three hundred seconds, and a refresh token. [[slnc 600]]
+Step six. [[slnc 300]] The A P I checks the token's signature itself, and answers.
 """
 speech = """
-First demo: the authorization code flow, step by step. [[slnc 400]] The budgeting app sends Ana's browser to Keycloak with a state and a challenge. [[slnc 600]]
-Ana signs in at Keycloak, never at the app, and agrees on the consent page. [[slnc 600]]
-Keycloak sends the browser back with a code. [[slnc 300]] The app checks the state, and then calls Keycloak directly with the code and the verifier. [[slnc 600]]
-It gets an access token for three hundred seconds, and the A P I accepts it. [[slnc 300]] The app never saw Ana's password.
+Here is the real output. [[slnc 400]] Step one, the request, one parameter per line. [[slnc 300]] Response type code, the client i d, the exact redirect address, the scope, a random state, and the challenge. [[slnc 500]] Step two, at Keycloak: Ana signs in, and the consent page asks to read her accounts.
+[[page]]
+Step three, the response. [[slnc 300]] A three oh two back to the app, with the state, Keycloak's session, the issuer, and the code. [[slnc 300]] The state comes back unchanged, and the issuer is the bank realm.
+[[page]]
+Step four, the app's own request to the token endpoint, with the code and the verifier. [[slnc 400]] Step five, the response: an access token that lives three hundred seconds, a refresh token, an I D token, and the scope.
+[[page]]
+Inside the access token: it is for the accounts A P I, asked for by the budgeting app, issued by the bank realm, for Ana, with no password and no e-mail. [[slnc 400]] Step six: two hundred with the token, four oh one without one. [[slnc 300]] The app never saw the password, and the browser never saw the token.
 """
 rows = { flow = "active ok" }
 console = [
-    ["Ana signs in at Keycloak and agrees on the consent page", "ok"],
-    ["302 to the registered address with state, iss and code", "ok"],
-    ["token endpoint: 300 seconds, scope openid accounts.read", "ok"],
-    ["GET /accounts with the access token -> 200, ana: 2 accounts", "ok"],
+    ["STEP 1, THE REQUEST (the app sends Ana's browser to Keycloak):", "code"],
+    ["  GET <keycloak>/realms/bank/protocol/openid-connect/auth", "muted"],
+    ["    ?response_type=code", "muted"],
+    ["    &client_id=budget-app", "muted"],
+    ["    &redirect_uri=https://budget.example/callback", "muted"],
+    ["    &scope=openid accounts.read", "muted"],
+    ["    &state=<state>", "muted"],
+    ["    &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "muted"],
+    ["    &code_challenge_method=S256", "muted"],
+    ["STEP 2, AT KEYCLOAK (never at the app):", "code"],
+    ["  Ana signs in with her bank password", "muted"],
+    ["  the consent page asks for \"Read your accounts\": true", "muted"],
+    ["  Ana agrees", "muted"],
+    ["---", ""],
+    ["STEP 3, THE RESPONSE (Keycloak sends the browser back):", "code"],
+    ["  302 Location: https://budget.example/callback", "muted"],
+    ["    ?state=<state>", "muted"],
+    ["    &session_state=<session>", "muted"],
+    ["    &iss=<keycloak>/realms/bank", "muted"],
+    ["    &code=<code>", "muted"],
+    ["  the state comes back unchanged: true", "muted"],
+    ["  iss names the bank realm: true", "muted"],
+    ["---", ""],
+    ["STEP 4, THE REQUEST (the app calls Keycloak directly):", "code"],
+    ["  POST <keycloak>/realms/bank/protocol/openid-connect/token", "muted"],
+    ["    grant_type=authorization_code", "muted"],
+    ["    client_id=budget-app", "muted"],
+    ["    code=<code>", "muted"],
+    ["    redirect_uri=https://budget.example/callback", "muted"],
+    ["    code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "muted"],
+    ["STEP 5, THE RESPONSE (to the app, not to the browser):", "code"],
+    ["  access_token=<access token>  lives 300 s (exp - iat)", "muted"],
+    ["  refresh_token=<refresh token>", "muted"],
+    ["  id_token=<id token>", "muted"],
+    ["  scope=openid accounts.read", "muted"],
+    ["---", ""],
+    ["INSIDE THE ACCESS TOKEN (a JWT signed by Keycloak):", "code"],
+    ["  aud=accounts-api  azp=budget-app", "muted"],
+    ["  iss=<keycloak>/realms/bank", "muted"],
+    ["  sub=a0a0a0a0-0000-4000-8000-000000000001 (Ana)", "muted"],
+    ["  scope=openid accounts.read", "muted"],
+    ["  no password, no e-mail address: true", "muted"],
+    ["STEP 6, THE APP CALLS THE BANK'S API:", "code"],
+    ["  GET /accounts  Authorization: Bearer <access token>", "muted"],
+    ["  -> 200 ana: 2 accounts", "ok"],
+    ["  GET /accounts with no token", "muted"],
+    ["  -> 401", "ok"],
+    ["WHO SAW WHAT:", "code"],
+    ["  the app never saw Ana's password", "muted"],
+    ["  the browser never saw the access token", "muted"],
 ]
 
 [[act]]
 title = "PKCE: a code is useless without the verifier"
-summary = "A leaked code with no verifier is refused and burned, a wrong verifier is refused, a plain challenge or none is refused at the authorization endpoint."
+summary = "The verifier dBjftJeZ... becomes 43 ASCII bytes, SHA-256 gives 32 bytes starting 13 d3 1e, and base64url gives E9Me... and the published challenge; a thief redeeming a leaked code with no verifier is refused and the failed try burns the code, so the real app is refused too; a made-up verifier is a Code mismatch; plain and missing challenges are refused at Keycloak."
 detail = """
-The RFC 7636 example verifier gives the published S256 challenge. Only the challenge travels through the browser. A code leaks, and another app redeems it with no verifier: refused, PKCE code verifier not specified. Then the budgeting app, with the real verifier, is refused too: Code not valid, because a failed try burns the code. The leak is useless, and Ana signs in again. A new code with a verifier the thief made up is refused: PKCE verification failed. A new code with the real verifier gives tokens. A request with the plain method, or with no challenge at all, is refused with invalid_request.
+The verifier is the RFC 7636 example, dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk. The S256 challenge is made in steps: the 43 characters as 43 ASCII
+bytes (64 42 6a 66 ...); SHA-256 of those bytes, 32 bytes (13 d3 1e 96 ...); base64url, where 13 d3 1e is 000100 111101 001100 011110, the numbers
+4 61 12 30, the characters E9Me; all 32 bytes give E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM, the published value. Only the challenge travels through
+the browser. A thief who redeems a leaked code with no verifier is refused with invalid_grant, PKCE code verifier not specified, and the failed try burns
+the code: the budgeting app with the real verifier then gets Code not valid, and Ana signs in again. A new code with a made-up verifier of 43 x's is
+refused with PKCE verification failed: Code mismatch; with the real verifier, tokens are issued. Keycloak refuses code_challenge_method=plain and a request
+with no code_challenge with invalid_request.
+"""
+figure = "s256_steps"
+figure_title = "From the verifier to the challenge, step by step"
+figure_speech = """
+Second demo: P K C E, said pixie. [[slnc 400]] For every sign in, the app makes a secret, the verifier. [[slnc 300]] Here it is the example published in the standard, forty three characters. [[slnc 700]]
+Step one. [[slnc 300]] Each character becomes one byte, its A S C I I code. [[slnc 300]] The small d is six four in hex. [[slnc 600]]
+Step two. [[slnc 300]] S H A two five six turns those bytes into thirty two bytes. [[slnc 300]] Nobody can turn them back into the verifier. [[slnc 600]]
+Step three. [[slnc 300]] Base sixty four U R L writes the bytes as letters that are safe in an address. [[slnc 300]] Three bytes are twenty four bits, cut into four groups of six: four, sixty one, twelve, and thirty. [[slnc 300]] Capital E, nine, capital M, and small e. [[slnc 600]]
+Step four. [[slnc 300]] All thirty two bytes give forty three characters, with no padding. [[slnc 300]] Keycloak redoes these steps with the verifier, and compares.
 """
 speech = """
-Second demo: P K C E. [[slnc 400]] Only the challenge travels through the browser. [[slnc 600]]
-A thief with a leaked code and no verifier is refused. [[slnc 300]] The failed try burns the code, so the real app is refused as well, and Ana signs in again. [[slnc 600]]
-A wrong verifier is refused. [[slnc 300]] A plain challenge, or none at all, is refused at the authorization endpoint.
+Here is the output. [[slnc 400]] The verifier, forty three characters. [[slnc 400]] Then the A S C I I bytes, and the thirty two bytes of the hash, in hex.
+[[page]]
+The first three bytes, worked out bit by bit, give E nine M e. [[slnc 400]] The whole hash gives the challenge the standard publishes. [[slnc 400]] Only the challenge travels through the browser, never the verifier.
+[[page]]
+Now a thief redeems a leaked code first, with no verifier: refused. [[slnc 300]] Then the real app tries the same code: refused too. [[slnc 300]] Keycloak burns a code at the first failed try, so the leak is useless, and Ana simply signs in again. [[slnc 400]] A made up verifier is a mismatch. [[slnc 300]] The real verifier gets tokens.
+[[page]]
+And Keycloak refuses weaker requests: the plain method, which would send the verifier itself, and a request with no challenge at all.
 """
 rows = { pkce = "active ok" }
 console = [
-    ["RFC 7636 example: the published challenge", "ok"],
-    ["leaked code, no verifier -> refused (PKCE code verifier not specified)", "ok"],
-    ["then the real verifier -> refused (Code not valid): the code is burned", "amber"],
-    ["plain method, or no challenge -> refused (invalid_request)", "ok"],
+    ["THE VERIFIER (made by the app for one sign-in, kept secret):", "code"],
+    ["  dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "muted"],
+    ["  43 characters from A-Z a-z 0-9 - . _ ~ (the RFC 7636 example)", "muted"],
+    ["HOW THE S256 CHALLENGE IS MADE:", "code"],
+    ["  1. the 43 characters as 43 ASCII bytes:", "muted"],
+    ["     64 42 6a 66 74 4a 65 5a 34 43 56 50 2d 6d 42 39 ...", "muted"],
+    ["  2. SHA-256 of those bytes, always 32 bytes:", "muted"],
+    ["     13 d3 1e 96 1a 1a d8 ec 2f 16 b1 0c 4c 98 2e 08", "muted"],
+    ["     76 a8 78 ad 6d f1 44 56 6e e1 89 4a cb 70 f9 c3", "muted"],
+    ["---", ""],
+    ["  3. base64url: every 3 bytes become 4 characters of 6 bits", "muted"],
+    ["     13 d3 1e = 000100 111101 001100 011110 = 4 61 12 30 = E9Me", "muted"],
+    ["  4. 32 bytes become 43 characters, with no = padding:", "muted"],
+    ["     E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "muted"],
+    ["  the same as the challenge RFC 7636 publishes: true", "muted"],
+    ["  the same as OAuthClient.challenge, with Java's Base64: true", "muted"],
+    ["WHAT TRAVELS THROUGH THE BROWSER (step 1):", "code"],
+    ["  the challenge: true", "muted"],
+    ["  the verifier: false", "muted"],
+    ["---", ""],
+    ["THE LEAK (a thief redeems a copied code before the app):", "code"],
+    ["  the thief, with no verifier", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       PKCE code verifier not specified", "ok"],
+    ["  then the budgeting app, with the real verifier", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Code not valid", "ok"],
+    ["a failed try burns the code: the leak is useless, Ana signs in again", "code"],
+    ["A NEW CODE, AND A VERIFIER THE THIEF MADE UP (43 x's):", "code"],
+    ["  -> refused: invalid_grant", "ok"],
+    ["     PKCE verification failed: Code mismatch", "ok"],
+    ["A NEW CODE, AND THE REAL VERIFIER:", "code"],
+    ["  -> tokens issued", "ok"],
+    ["---", ""],
+    ["WEAKER REQUESTS, REFUSED BY KEYCLOAK:", "code"],
+    ["  code_challenge_method=plain (the verifier itself travels)", "muted"],
+    ["    -> refused: invalid_request", "ok"],
+    ["       Invalid parameter: code challenge method is not matching the", "ok"],
+    ["       configured one", "muted"],
+    ["  no code_challenge at all", "muted"],
+    ["    -> refused: invalid_request", "ok"],
+    ["       Missing parameter: code_challenge_method", "ok"],
 ]
 
 [[act]]
-title = "Exact redirects, state, and codes that work once"
-summary = "Only the registered redirect address gets a code, the state check stops Mallory's code, a reused code ends the session at Keycloak but not at a local check, and a code lives 5 seconds."
+title = "Exact redirect addresses, state, and codes that work once"
+summary = "Of six requested redirect addresses Keycloak sends a code only to the registered one, while a prefix check would send it away 4 times; a callback with the attacker's code and state fails the app's state check; a reused code ends the session at Keycloak (401) while the API's own signature check still says 200; a code 11 seconds old is refused."
 detail = """
-The app registered exactly https://budget.example/callback. That address gets a code. The path trick, the lookalike host, the query, the upper-case host and the trailing slash are refused by Keycloak with an error page and no redirect. A prefix or wildcard match would have sent Ana's code to the others. Mallory's link carries her own code; the app checks the state against Ana's browser session and refuses it. A code is redeemed once and the access token works. The same code redeemed again is refused, and Keycloak's own check of the first access token now gives 401, a reused code ends the session. The API, which checks the signature and dates itself, still gives 200: a local check cannot know. A code redeemed after 6 seconds, in a realm that gives codes 5, is refused.
+The budgeting app registered exactly https://budget.example/callback and Keycloak compares the requested address with it exactly. Only that address gets a
+code; ../steal, budget.example.evil.test, ?next=evil, an upper-case host and a trailing slash each get the page Invalid parameter: redirect_uri, with no
+redirect. A check that the address starts with https://budget.example would have sent the code away four times. In a login forgery, Ana's browser opens a
+callback link with the attacker's code and state; the app compares the state with Ana's browser session and refuses it. A code redeemed once gives tokens
+and GET /accounts answers 200; the same code again is refused with Code not valid, and Keycloak ends the session: its userinfo check of the first access
+token answers 401, while the API, which checks the signature and the dates itself, still answers 200 until the token expires. In this realm a code lives
+10 seconds; redeemed 11 seconds later, even with the real verifier, it is refused.
+"""
+figure = "redirect_check"
+figure_title = "Exact match, state, and a code that works once"
+figure_speech = """
+Third demo: exact addresses, state, and codes that work once. [[slnc 400]] At the top, six redirect addresses a request could carry. [[slnc 300]] Only the first is the one the app registered. [[slnc 600]]
+The middle column is Keycloak's exact match. [[slnc 300]] Only the registered address gets a code. [[slnc 300]] Every other one gets an error page at Keycloak, and no redirect. [[slnc 600]]
+The right column is a careless check: does the address start with the expected host name? [[slnc 300]] Four of the five tricks pass it. [[slnc 700]]
+At the bottom, three more rules. [[slnc 300]] The state stops the attacker's link. [[slnc 300]] A code used twice ends Keycloak's session, but an A P I that checks tokens itself cannot know. [[slnc 300]] And a code older than ten seconds is refused.
 """
 speech = """
-Third demo: exact redirects, state, and codes that work once. [[slnc 400]] Only the exact registered address gets a code. [[slnc 300]] A path trick, a lookalike host, a query, and a trailing slash are all refused. [[slnc 600]]
-Mallory's link fails the state check. [[slnc 600]]
-A code works once. [[slnc 300]] Use it twice, and Keycloak ends the session. [[slnc 300]] But an A P I that checks tokens itself cannot know. [[slnc 600]]
-And a code expires after five seconds in this realm.
+Here is the output. [[slnc 400]] The registered address, then each requested address with Keycloak's answer, and a prefix check's answer. [[slnc 300]] Every refusal is the same page at Keycloak: invalid parameter, redirect U R I.
+[[page]]
+The login forgery. [[slnc 300]] Ana's browser opens a link with the attacker's code and state. [[slnc 300]] The app compares the state with Ana's browser session, and refuses it.
+[[page]]
+One code, redeemed twice. [[slnc 300]] The second time it is refused. [[slnc 300]] Keycloak's own check of the first token now says four oh one. [[slnc 300]] The A P I, which checks the signature itself, still says two hundred, until the token expires. [[slnc 400]] And a code eleven seconds old is refused.
 """
 rows = { redirects = "active ok" }
 console = [
-    ["https://budget.example/callback -> a code is sent there", "ok"],
-    ["a path trick, a lookalike host, a query, upper case, a trailing slash -> refused", "ok"],
-    ["the same code redeemed again -> refused; Keycloak's check of the first token -> 401", "ok"],
-    ["the API's local check of that token -> 200", "amber"],
+    ["THE REGISTERED ADDRESS (Keycloak compares it exactly):", "code"],
+    ["  https://budget.example/callback", "muted"],
+    ["THE ADDRESS IN THE REQUEST:                  EXACT    PREFIX", "code"],
+    ["  https://budget.example/callback            code     code", "muted"],
+    ["  https://budget.example/callback/../steal   refused  code", "muted"],
+    ["  https://budget.example.evil.test/callback  refused  code", "muted"],
+    ["  https://budget.example/callback?next=evil  refused  code", "muted"],
+    ["  https://BUDGET.example/callback            refused  refused", "muted"],
+    ["  https://budget.example/callback/           refused  code", "muted"],
+    ["each refusal is a page at Keycloak, with no redirect:", "code"],
+    ["  Invalid parameter: redirect_uri", "muted"],
+    ["a prefix check on https://budget.example sends the code away 4 times", "code"],
+    ["---", ""],
+    ["THE ATTACK (login forgery):", "code"],
+    ["  Ana's browser opens a callback link with the attacker's code", "muted"],
+    ["  and state, to sign Ana in to the attacker's account", "muted"],
+    ["THE APP'S CHECK (the state against Ana's browser session):", "code"],
+    ["  -> refused: invalid_state", "ok"],
+    ["     this browser did not start this sign-in", "ok"],
+    ["---", ""],
+    ["ONE CODE, REDEEMED TWICE:", "code"],
+    ["  first: tokens issued, GET /accounts -> 200", "muted"],
+    ["  second, by whoever copied the code:", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Code not valid", "ok"],
+    ["  the first access token now:", "muted"],
+    ["    at Keycloak (userinfo) -> 401  <- THE SESSION IS ENDED", "amber"],
+    ["    at the API (own signature check) -> 200  <- UNTIL IT EXPIRES", "amber"],
+    ["ONE CODE, REDEEMED 11 SECONDS LATER (this realm gives codes 10):", "code"],
+    ["  by the budgeting app, with the real verifier", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Code not valid", "ok"],
 ]
 
 [[act]]
 title = "Scopes and refresh tokens"
-summary = "An accounts.read token cannot pay, an unregistered scope is refused, a refresh token is rotated, and using the old one again ends the session so the thief and the real app both lose."
+summary = "The token carries openid accounts.read, so GET /accounts is 200 and POST /payments is 403 insufficient_scope; asking for payments.write is refused with Invalid scopes; refresh token R1 gives A2 and R2; a thief replaying R1 is refused, R2 is refused with Session doesn't have required client, and A2 is 401 at Keycloak; a token 331 seconds old is 401 at the API."
 detail = """
-The token carries openid accounts.read. GET /accounts is 200, and POST /payments with the same token is 403 insufficient_scope. Asking for payments.write, which the app never registered, is refused with invalid_scope. The app refreshes the token and gets a new access token and a new refresh token. The old refresh token, copied by a thief and used again, is refused: the maximum allowed reuse was exceeded. The newest refresh token, held by the real app, is refused too, the session no longer has the client, and the newest access token fails Keycloak's own check with 401. One reuse ends the session, so the theft is contained. An access token 5 minutes and 31 seconds old is refused by the API.
+The app asked for openid accounts.read and the token carries exactly that. GET /accounts answers 200 and POST /payments answers 403 insufficient_scope.
+Asking for payments.write too, which the client was never given, is refused with invalid_scope. When access token A1 runs out, the app sends refresh
+token R1 and gets A2 and R2, both new. A thief who copied R1 replays it: refused with Maximum allowed refresh token reuse exceeded, and Keycloak ends the
+session. R2, held by the real app, is refused with Session doesn't have required client, and Keycloak's userinfo check of A2 answers 401. An access
+token 331 seconds old is refused by the API: it lives 300 seconds, and the API allows 30 seconds for clocks that differ.
+"""
+figure = "token_family"
+figure_title = "One scope, and one family of tokens"
+figure_speech = """
+Fourth demo: scopes and refresh tokens. [[slnc 400]] On the left, the token's scope: open i d and accounts dot read. [[slnc 300]] Reading the accounts works. [[slnc 300]] A payment gets four oh three. [[slnc 300]] And asking for payments too is refused, because the client was never given that scope. [[slnc 700]]
+On the right, a family of tokens. [[slnc 300]] The app sends refresh token R one, and gets a new access token, A two, and a new refresh token, R two. [[slnc 300]] R one is now spent. [[slnc 600]]
+A thief copied R one, and replays it. [[slnc 300]] Keycloak refuses it, and ends the whole session. [[slnc 300]] R two and A two stop working too. [[slnc 300]] Ana signs in again, and the thief has nothing.
 """
 speech = """
-Fourth demo: scopes and refresh tokens. [[slnc 400]] A token for reading accounts cannot make payments. [[slnc 600]]
-Asking for a scope the app never registered is refused. [[slnc 600]]
-A refresh token is rotated. [[slnc 300]] If the old one is used again, the session ends, so the thief and the real app both lose. [[slnc 600]]
-And an access token that is five minutes old is refused.
+Here is the output. [[slnc 400]] The scope. [[slnc 300]] Reading gets two hundred, paying gets four oh three. [[slnc 300]] Asking for payments is an invalid scope. [[slnc 400]] Then the refresh: R one gives A two and R two, both new.
+[[page]]
+The theft. [[slnc 300]] R one again: maximum allowed reuse exceeded. [[slnc 300]] R two, held by the real app: refused, the session is gone. [[slnc 300]] A two at Keycloak: four oh one. [[slnc 400]] And at the A P I, a token three hundred and thirty one seconds old is refused.
 """
 rows = { scopes = "active ok" }
 console = [
-    ["POST /payments with an accounts.read token -> 403 insufficient_scope", "ok"],
-    ["payments.write requested -> refused (invalid_scope)", "ok"],
-    ["the old refresh token used again -> refused; the session ends", "ok"],
-    ["an access token 5 minutes 31 seconds old -> 401", "ok"],
+    ["THE SCOPE (asked for, agreed to, carried by the token):", "code"],
+    ["  openid accounts.read", "muted"],
+    ["THE API CALLS WITH THAT TOKEN:", "code"],
+    ["  GET /accounts -> 200", "muted"],
+    ["  POST /payments -> 403 insufficient_scope", "muted"],
+    ["ASKING FOR payments.write TOO (never registered):", "code"],
+    ["  -> refused: invalid_scope", "ok"],
+    ["     Invalid scopes: openid accounts.read payments.write", "ok"],
+    ["THE REFRESH (access token A1 ran out; the app sends R1):", "code"],
+    ["  R1 -> a new access token A2 and a new refresh token R2", "muted"],
+    ["  R2 differs from R1, and A2 from A1: true", "muted"],
+    ["---", ""],
+    ["THE THEFT (a thief copied R1 and replays it):", "code"],
+    ["  R1 again", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Maximum allowed refresh token reuse exceeded", "ok"],
+    ["  R2, held by the real app", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Session doesn't have required client", "ok"],
+    ["  A2 at Keycloak (userinfo) -> 401  <- THE SESSION IS ENDED", "amber"],
+    ["AN ACCESS TOKEN 331 SECONDS OLD (300, plus 30 for clock skew):", "code"],
+    ["  GET /accounts -> 401", "muted"],
 ]
 
 [[act]]
 title = "Current practice, and the bill"
-summary = "The implicit flow and the password grant are off, a confidential client needs its secret and still needs PKCE, and the resource server holds no passwords and no session."
+summary = "The implicit flow and the password grant are refused with unauthorized_client because they are switched off on the client; the confidential statements-service is refused with a wrong secret, with a code it was never given, and with a real code but no verifier; the API checks the key, issuer, audience, dates and scope of every token."
 detail = """
-The implicit flow, which put the access token in the address bar, is refused: the client is not allowed to initiate browser login with that response type. The password grant, which gives the app Ana's password, is refused: the client is not allowed direct access grants. Both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1. The statements service is a confidential client, so it also authenticates; with a wrong secret it is refused. With its secret and a code it does not have, it is refused. With its secret and a real code but no verifier, it is refused too: a secret does not replace PKCE. A public app on a phone cannot keep a secret, which is why PKCE protects its code.
+The implicit flow, response_type=token, is refused: Client is not allowed to initiate browser login with given response_type, Implicit flow is disabled
+for the client. The password grant is refused: Client not allowed for direct access grants. Both are removed by RFC 9700 and by OAuth 2.1, and here they
+are switched off on the client. The statements service is a confidential client: a wrong client secret is refused with Invalid client or Invalid client
+credentials; the right secret with a code it was never given gets Code not valid; and the right secret with a real code but no verifier gets PKCE code
+verifier not specified, because a secret does not replace PKCE. The accounts API keeps no session and checks Keycloak's signing key, the issuer, the
+audience accounts-api, the dates and the scope of every token. In production: TLS, backups, key rotation and monitoring of logins.
+"""
+figure = "grants_today"
+figure_title = "What current practice removes, and what it keeps"
+figure_speech = """
+Fifth demo: current practice, and the bill. [[slnc 400]] At the top, two older ways to get a token. [[slnc 300]] The implicit flow put the token straight into the address bar. [[slnc 300]] The password grant gave the app the customer's password. [[slnc 300]] Both are switched off on this client, so Keycloak refuses both. [[slnc 700]]
+Below, a confidential client, which runs on a server and has a secret. [[slnc 300]] A wrong secret is refused. [[slnc 300]] And even the right secret, with a real code, is refused without the verifier. [[slnc 300]] A secret does not replace P K C E. [[slnc 600]]
+On the right, what the A P I checks on every token. [[slnc 300]] Keycloak's key, the issuer, the audience, the dates, and the scope.
 """
 speech = """
-Fifth demo: current practice. [[slnc 400]] The implicit flow is switched off. [[slnc 300]] So is the password grant. [[slnc 600]]
-A confidential client needs its secret, and with a wrong secret it is refused. [[slnc 600]]
-With the secret and a real code but no verifier, it is refused as well, a secret does not replace P K C E. [[slnc 600]]
-A public app on a phone cannot keep a secret, which is why P K C E protects its code.
+Here is the output. [[slnc 400]] The implicit flow: refused, it is disabled for the client. [[slnc 300]] The password grant: refused, direct access grants are not allowed. [[slnc 300]] Both are removed by the current best practice.
+[[page]]
+The confidential client. [[slnc 300]] A wrong secret: refused. [[slnc 300]] The right secret with a made up code: refused. [[slnc 300]] The right secret and a real code, but no verifier: refused.
+[[page]]
+A secret does not replace P K C E. [[slnc 300]] The A P I checks the key, the issuer, the audience, the dates and the scope. [[slnc 300]] And in production Keycloak needs T L S, backups, key rotation, and someone watching its logins.
 """
-rows = { practice = "active ok" }
+rows = { practice = "active amber" }
 console = [
-    ["implicit flow (response_type=token) -> refused (unauthorized_client)", "ok"],
-    ["password grant -> refused (Client not allowed for direct access grants)", "ok"],
-    ["wrong client secret -> refused (unauthorized_client)", "ok"],
-    ["secret and a code but no verifier -> refused (PKCE code verifier not specified)", "ok"],
+    ["THE IMPLICIT FLOW (response_type=token: a token in the address):", "code"],
+    ["  -> refused: unauthorized_client", "ok"],
+    ["     Client is not allowed to initiate browser login with given", "ok"],
+    ["     response_type. Implicit flow is disabled for the client.", "muted"],
+    ["THE PASSWORD GRANT (the app would hold Ana's password):", "code"],
+    ["  -> refused: unauthorized_client", "ok"],
+    ["     Client not allowed for direct access grants", "ok"],
+    ["both are removed by RFC 9700 and by OAuth 2.1", "code"],
+    ["---", ""],
+    ["A CONFIDENTIAL CLIENT (statements-service, on a server):", "code"],
+    ["  a wrong client secret", "muted"],
+    ["    -> refused: unauthorized_client", "ok"],
+    ["       Invalid client or Invalid client credentials", "ok"],
+    ["  the right secret, but a code it was never given", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       Code not valid", "ok"],
+    ["  the right secret and a real code, but no verifier", "muted"],
+    ["    -> refused: invalid_grant", "ok"],
+    ["       PKCE code verifier not specified", "ok"],
+    ["---", ""],
+    ["a secret does not replace PKCE; a phone app has no secret at all", "code"],
+    ["WHAT THE API CHECKS ON EVERY TOKEN (it keeps no session):", "code"],
+    ["  Keycloak's signing key, the issuer, the audience accounts-api,", "muted"],
+    ["  the dates and the scope", "muted"],
+    ["in production: TLS, backups, key rotation, login monitoring", "code"],
 ]
+
+[highlight]
+console_green = ["STEP 4", "STEP 5", "STEP 6", "WHAT TRAVELS", "THE APP'S CHECK", "THE SCOPE", "THE REFRESH", "A CONFIDENTIAL CLIENT", "A NEW CODE, AND THE REAL", "WHAT THE API CHECKS"]
+console_rose = ["THE LEAK", "THE ATTACK", "THE THEFT", "ONE CODE", "THE IMPLICIT FLOW", "THE PASSWORD GRANT", "ASKING FOR", "A NEW CODE, AND A VERIFIER"]
+console_amber = ["STEP 1", "STEP 2", "STEP 3", "HOW THE S256", "WEAKER REQUESTS", "AN ACCESS TOKEN", "THE API CALLS"]
+console_cyan = ["THE VERIFIER", "THE REGISTERED ADDRESS", "THE ADDRESS IN THE REQUEST", "WHO SAW WHAT", "INSIDE THE ACCESS TOKEN"]
 
 [animation]
 subtitle = "An online bank, a budgeting app, and an authorization server that enforces the rules."
@@ -239,7 +474,7 @@ nongoals = [
 problem = """
 Teams copy OAuth settings from examples and leave the implicit flow, wildcard redirects, optional PKCE or reusable refresh tokens switched on.
 """
-roles = [["Authorization server", "`KeycloakLab`, `infra/bank-realm.json`"], ["The app and the browser", "`OAuthClient`"], ["Resource server", "`ApiSecurity`, `AccountsController`, `Running`"], ["Time", "`OffsetClock`"], ["Entry point", "`OAuthKeycloakDemo`"]]
+roles = [["Authorization server", "`KeycloakLab`, `infra/bank-realm.json`"], ["The app and the browser", "`OAuthClient`"], ["The S256 steps worked out by hand", "`ChallengeSteps`"], ["Resource server", "`ApiSecurity`, `AccountsController`, `Running`"], ["Time", "`OffsetClock`"], ["Entry point", "`OAuthKeycloakDemo`"]]
 requirements = [
     "The flow gives an access token for the accounts API only through a code redeemed with the right verifier.",
     "A failed redemption burns the code.",
@@ -293,7 +528,7 @@ title = "What the code and the verifier carry"
 caption = "The challenge goes out through the browser, the code comes back through the browser, and the verifier goes straight to the token endpoint."
 nodes = [
     { id = "challenge", label = "Challenge", sub = "S256 of the verifier", col = 0, row = 0, colour = "client" },
-    { id = "code", label = "Code", sub = "once, 5 seconds", col = 1, row = 0, colour = "amber" },
+    { id = "code", label = "Code", sub = "once, 10 seconds", col = 1, row = 0, colour = "amber" },
     { id = "verifier", label = "Verifier", sub = "from the app only", col = 2, row = 0, colour = "accent" },
     { id = "token", label = "Tokens", sub = "access, refresh, ID", col = 3, row = 0, colour = "green" },
 ]
@@ -429,15 +664,15 @@ residual = "The minutes between revocation and expiry"
 
 [poster]
 headline = [["OAUTH 2.0 + PKCE", "text"], ["WITH KEYCLOAK", "accent"]]
-taglines = [["The same flow against a real authorization server: the checks that make it safe are settin", "gold"]]
-before = { code = "Ana signs in at Keycloak and agrees on the consent p", note = "The flow, step by step", tag = "BEFORE" }
+taglines = [["The safety checks are client settings; Keycloak enforces them", "gold"]]
+before = { code = "public client, no PKCE", note = "The flow, step by step", tag = "BEFORE" }
 after = { code = "pkce.code.challenge.method = S256", note = "Current practice, and the bill", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "OAuth 2.0 Authorization Code with PKCE and Keycloak"
-narration = "Hello, and welcome. [[slnc 400]] This video explains the OAuth 2 authorization code flow, with P K C E, against a real Keycloak, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] The authorization code flow lets an app act for a customer without ever seeing the customer's password. [[slnc 300]] Keycloak runs the flow, and what makes it safe is a handful of settings on each client: exact redirect addresses, P K C E required, old flows switched off, and short, rotated tokens. [[slnc 300]] The app still has to check the state itself. [[slnc 600]] Think of a valet key that only starts the car, works for one driver, and only for a short while. [[slnc 600]] Our example is an online bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains the O Auth two authorization code flow, with P K C E, against a real Keycloak, in Java. [[slnc 300]] O Auth stands for open authorization, and P K C E for proof key for code exchange. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] The authorization code flow lets an app act for a customer without ever seeing the customer's password. [[slnc 300]] Keycloak runs the flow, and what makes it safe is a handful of settings on each client: exact redirect addresses, P K C E required, old flows switched off, and short, rotated tokens. [[slnc 300]] The app still has to check the state itself. [[slnc 600]] Think of a valet key that only starts the car, works for one driver, and only for a short while. [[slnc 600]] Our example is an online bank."
 
 [[scene]]
 key = "02-scenario"
@@ -445,6 +680,26 @@ kind = "bullets"
 title = "The Scenario"
 body = ["A budgeting app wants to read", "Ana's accounts at the bank.", "", "The demo starts a real Keycloak in Docker", "and the bank's accounts API on Spring Boot,", "drives the flow as a browser would,", "then tries every mistake."]
 narration = "Here is the scenario. [[slnc 400]] A budgeting app wants to read Ana's accounts at her bank. [[slnc 500]] The demo starts a real Keycloak in Docker, and the bank's accounts A P I on Spring Boot. [[slnc 300]] It drives the flow as a browser would, step by step. [[slnc 500]] Then it tries the mistakes: a leaked code, a wrong redirect address, a forged callback, a reused code, and a reused refresh token."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Keycloak: the bank's authorization server", "Realm: one set of users, clients and rules", "Client: an app registered in the realm", "Code: a short-lived ticket the browser carries", "Access token: a signed JWT the API checks", "Verifier and challenge: a secret and its hash"]
+narration = """Before the demos, the words. [[slnc 500]] Keycloak is the bank's authorization server: it signs Ana in and issues tokens. [[slnc 500]] A realm is one set of users, clients and rules; here, the bank realm. [[slnc 500]] A client is an app registered in the realm, with its own settings. [[slnc 500]] The code is a short lived ticket that the browser carries back. [[slnc 500]] The access token is a signed J W T that the A P I checks itself. [[slnc 500]] And the verifier is a secret the app makes for each sign in; the challenge is its hash."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-pkce-idea"
+kind = "figure"
+title = "Two roads: the hash through the browser, the secret direct"
+body = "pkce_idea"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] On the left, the app makes a secret for this one sign in: the verifier. [[slnc 300]] It hashes it with S H A two five six, and writes the result as letters. [[slnc 300]] That is the challenge. [[slnc 700]] On the right, the two roads. [[slnc 300]] The challenge travels through the browser in step one, where addresses end up in histories and logs. [[slnc 300]] That is fine: a hash cannot be turned back into the secret. [[slnc 600]] The verifier travels in step four, directly from the app to Keycloak. [[slnc 300]] Keycloak hashes it, and compares with the challenge it stored. [[slnc 700]] A thief who copies the code has no verifier. [[slnc 300]] Keycloak refuses the thief, and burns the code."""
 
 [[scene]]
 key = "03-acts"
@@ -460,18 +715,11 @@ body = ["Keycloak is one more service to run", "Every redirect address must be r
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Keycloak is one more service to run, patch, and back up. [[slnc 500]] Every redirect address must be registered exactly, one by one. [[slnc 500]] Reuse detection protects the customer, and can also sign a real customer out. [[slnc 500]] Short access tokens mean more refreshing. [[slnc 300]] And an A P I that checks tokens itself cannot see that Keycloak has ended a session, until the token expires."
 
 [[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["KeycloakLab, bank-realm.json: the sign-in server", "OAuthClient: the budgeting app and the browser", "ApiSecurity, AccountsController: the bank's API", "OffsetClock: moves time forward", "OAuthKeycloakDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] KeycloakLab starts Keycloak in Docker, and the bank realm file holds every client setting the video talks about. [[slnc 500]] OAuthClient plays the budgeting app, and the customer's browser. [[slnc 500]] ApiSecurity and AccountsController are the bank's accounts A P I, a Spring Security resource server that checks each token. [[slnc 500]] OffsetClock moves time forward. [[slnc 300]] And OAuthKeycloakDemo runs the five demos."
-
-[[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["A \"Sign in with your bank\" button", "A consent page listing what an app may do", "oauth2ResourceServer in Spring Security", "implicitFlowEnabled or", "  directAccessGrantsEnabled set to true"]
-narration = "You have probably met this already. [[slnc 400]] A sign in with your bank button, that sends you to the bank's own page, is this flow. [[slnc 500]] So is a consent page that lists what an app may do for you. [[slnc 500]] An O auth 2 resource server line, in a Spring Security configuration, is the A P I side of it. [[slnc 500]] And a Keycloak client with the implicit flow or direct access grants switched on is an old flow left open."
+narration = "You have probably met this already. [[slnc 400]] A sign in with your bank button, that sends you to the bank's own page, is this flow. [[slnc 500]] So is a consent page that lists what an app may do for you. [[slnc 500]] An O Auth two resource server line, in a Spring Security configuration, is the A P I side of it. [[slnc 500]] And a Keycloak client with the implicit flow or direct access grants switched on is an old flow left open."
 
 [[scene]]
 key = "07-verdict"
@@ -481,8 +729,144 @@ body = ["Authorization code with S256 PKCE, always", "Exact redirect addresses",
 narration = "So, how do you use it? [[slnc 400]] Use the authorization code flow with S two five six P K C E, for every client. [[slnc 500]] Register exact redirect addresses. [[slnc 300]] Switch off the implicit flow and the password grant. [[slnc 500]] Have the app check the state on every callback. [[slnc 500]] Rotate refresh tokens, and keep access tokens short. [[slnc 300]] And have the A P I check the issuer, the audience, the dates, and the scope of every token."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Register a second redirect", "address and test its lookalikes."]
-narration = "That's the OAuth 2 authorization code flow with P K C E and Keycloak. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The authorization code flow lets an app act for a customer without their password, and it is safe only because the redirect check, P K C E, the state and one-time codes are all enforced. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Register a second redirect address, and test the lookalikes of it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+narration = "That's the O Auth two authorization code flow with P K C E and Keycloak. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The authorization code flow lets an app act for a customer without their password, and it is safe only because the redirect check, P K C E, the state and one-time codes are all enforced. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Register a second redirect address, and test the lookalikes of it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Keycloak does the hard work; the Java side is the app, the browser, and the bank's A P I. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "KeycloakLab"
+what = "starts a real Keycloak in Docker with the bank realm"
+[[class.part]]
+title = "one container, the realm file imported"
+code = """
+static final String IMAGE = "quay.io/keycloak/keycloak:26.8.1";
+...
+Path realm = Path.of("infra", "bank-realm.json").toAbsolutePath();
+run(List.of("docker", "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::8080",
+"""
+speech = """Keycloak runs in Docker, bound to the loopback address on a free port. [[slnc 300]] The bank realm file holds every client setting the video talks about: exact redirects, S two five six required, no implicit flow, no password grant, rotated refresh tokens."""
+
+[[class]]
+name = "OAuthClient"
+what = "the budgeting app and the browser"
+[[class.part]]
+title = "the challenge, and the state check"
+code = """
+byte[] ascii = verifier.getBytes(StandardCharsets.US_ASCII);
+byte[] hash = MessageDigest.getInstance("SHA-256").digest(ascii);
+return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+...
+static String codeIfStateMatches(Outcome outcome, String expectedState) {
+    Map<String, String> p = outcome.parameters();
+    if (!expectedState.equals(p.get("state"))) {
+        throw new IllegalStateException("invalid_state: this browser did not start this sign-in");
+"""
+speech = """The app hashes its verifier into the challenge. [[slnc 300]] And on every callback it compares the state with the one it gave this browser, before it touches the code. [[slnc 300]] Keycloak cannot do this check for the app."""
+
+[[class]]
+name = "ChallengeSteps"
+what = "the same challenge, worked out by hand for the demo"
+[[class.part]]
+title = "every 3 bytes become 4 characters of 6 bits"
+code = """
+for (int i = 0; i < bytes.length; i += 3) {
+    int n = Math.min(3, bytes.length - i);
+    ...
+    for (int k = 0; k <= n; k++) {
+        out.append(ALPHABET.charAt((bits >> (18 - 6 * k)) & 63));
+"""
+speech = """This teaching class redoes the base sixty four step by hand: three bytes, twenty four bits, four letters of six bits. [[slnc 300]] A test, which needs no Docker, proves it matches the library."""
+
+[[class]]
+name = "ApiSecurity"
+what = "the accounts API: a Spring Security resource server"
+[[class.part]]
+title = "the key, the issuer, the audience and the dates"
+code = """
+NimbusJwtDecoder decoder = NimbusJwtDecoder
+        .withJwkSetUri(issuer + "/protocol/openid-connect/certs").build();
+JwtTimestampValidator timestamps = new JwtTimestampValidator(Duration.ofSeconds(30));
+...
+OAuth2TokenValidator<Jwt> audience =
+        new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(AUDIENCE));
+OAuth2TokenValidator<Jwt> issuedHere = new JwtIssuerValidator(issuer);
+decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuedHere, audience, timestamps));
+"""
+speech = """The A P I fetches Keycloak's public keys, and checks every token's signature, issuer, audience and dates, with thirty seconds for clock differences. [[slnc 300]] It never asks Keycloak about the session, which is why a revoked session goes unseen until the token expires."""
+[[class.part]]
+title = "the scope decides what a token may do"
+code = """
+.requestMatchers(HttpMethod.GET, "/accounts").hasAuthority("SCOPE_accounts.read")
+.requestMatchers(HttpMethod.POST, "/payments").hasAuthority("SCOPE_payments.write")
+.anyRequest().denyAll())
+"""
+speech = """Reading accounts needs the accounts dot read scope, paying needs payments dot write, and anything else is denied."""
+
+[[acronym]]
+short = "OAuth"
+long = "Open Authorization: limited access without the password"
+say = "O Auth is open authorization: a standard way for a customer to give an app limited access to an account, without the password."
+[[acronym]]
+short = "PKCE"
+long = "Proof Key for Code Exchange, said 'pixie'"
+say = "P K C E is proof key for code exchange, said pixie. The app proves it is the one that asked for the code."
+[[acronym]]
+short = "SHA-256, S256"
+long = "Secure Hash Algorithm, 256-bit result; S256 in PKCE"
+say = "S H A two five six is the secure hash algorithm with a two hundred and fifty six bit result. S two five six is P K C E's name for using it."
+[[acronym]]
+short = "ASCII"
+long = "American Standard Code for Information Interchange"
+say = "A S C I I is the American standard code for information interchange. Each letter or digit becomes one byte."
+[[acronym]]
+short = "hex, base64url"
+long = "a byte as 2 digits 0-9 a-f; 6 bits per URL-safe letter"
+say = "Hex writes a byte as two digits from zero to f. Base sixty four U R L writes six bits per letter, using dash and underscore so it is safe in a web address."
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: signed claims such as iss, aud, sub, exp"
+say = "J W T is a JSON web token: a set of signed claims, such as the issuer, the audience, the subject and the expiry time."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: text with names and values"
+say = "JSON is JavaScript object notation: text made of names and values."
+[[acronym]]
+short = "ID token"
+long = "OpenID Connect's token that says who signed in"
+say = "An I D token is the OpenID Connect token that tells the app who signed in. It is not for the A P I."
+[[acronym]]
+short = "RFC"
+long = "Request for Comments: numbered internet standards"
+say = "R F C means request for comments: the numbered internet standards. Seven six three six is P K C E, and nine seven hundred is the current best practice."
+[[acronym]]
+short = "URI, URL"
+long = "Uniform Resource Identifier / Locator: a web address"
+say = "U R I and U R L mean uniform resource identifier and locator: a web address."
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol; status 200, 302, 401, 403"
+say = "H T T P is the hypertext transfer protocol. Two hundred means O K, three oh two sends the browser elsewhere, four oh one means no valid token, and four oh three means not allowed."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: the bank's service"
+say = "A P I means application programming interface: here, the bank's accounts service."
+[[acronym]]
+short = "A1, A2, R1, R2"
+long = "the demo's names for access and refresh tokens"
+say = "A one and A two are access tokens, and R one and R two are refresh tokens, numbered in the order they are issued."
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: encrypted web traffic"
+say = "T L S is transport layer security, which encrypts web traffic."

@@ -49,7 +49,8 @@ final class BankApi {
                 return Response.of(401, "this token is bound to a key: a DPoP proof is required");
             }
             try {
-                String signedBy = dpop.verify(request.header("DPoP"), request.method(), request.url(), token);
+                String proof = request.header("DPoP");
+                String signedBy = dpop.verify(proof, request.method(), request.url(), token);
                 if (!Bytes.same(signedBy, boundTo)) {
                     return Response.of(401, "the proof's key is not the key the token is bound to");
                 }

@@ -63,13 +63,19 @@ public final class Design {
         return flows;
     }
 
+    public Part part(String id) {
+        return parts.stream().filter(p -> p.id().equals(id)).findFirst().orElseThrow();
+    }
+
     public static Design load(Path dsl) throws IOException {
         try {
             StructurizrDslParser parser = new StructurizrDslParser();
             parser.parse(Files.readString(dsl));
             Workspace workspace = parser.getWorkspace();
             Map<String, Part> byName = new java.util.LinkedHashMap<>();
-            for (Element e : workspace.getModel().getElements()) {
+            List<Element> elements = new java.util.ArrayList<>(workspace.getModel().getElements());
+            elements.sort(Comparator.comparingInt(e -> Integer.parseInt(e.getId())));    // the order of the DSL file
+            for (Element e : elements) {
                 Kind kind;
                 if (e instanceof Person) {
                     kind = Kind.PERSON;
@@ -83,7 +89,9 @@ public final class Design {
                     continue;
                 }
                 Map<String, String> props = e.getProperties();
-                byName.put(e.getId(), new Part(props.getOrDefault("id", e.getName()), e.getName(), kind, props.getOrDefault("zone", ""), props));
+                String id = props.getOrDefault("id", e.getName());
+                String zone = props.getOrDefault("zone", "");
+                byName.put(e.getId(), new Part(id, e.getName(), kind, zone, props));
             }
             List<Flow> flows = new java.util.ArrayList<>();
             for (Relationship r : workspace.getModel().getRelationships()) {

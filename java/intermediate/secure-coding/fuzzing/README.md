@@ -49,11 +49,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The example tests pass | Both parsers pass all 6 of their example tests, yet a line with only a product code crashes the order parser with an ArrayIndexOutOfBoundsException. |
-| 2. A mutation fuzzer | From 2 seeds each, 20000 runs find a missing-field crash at run 86 and an overflow at run 548 in the order parser, and 100000 runs find a stack overflow from deep nesting at run 1223 in the cart parser. |
-| 3. Guided by coverage | Blind, 100000 runs reach 14 branches and never find the gift-message bug; guided by coverage, keeping 10 inputs, the fuzzer reaches 18 branches and finds it at run 49776. |
-| 4. From crash to fix | Delta debugging shrinks the crashes to "SHO-1042", "BAG-0007,999999999,4" and {"note":"#"; each becomes a regression test, the fixed parsers show 0 crashes in the same runs, and 2000 of 2000 valid carts round-trip. |
-| 5. What fuzzing does not find | A cart with a quantity of -5 parses without a crash, so no fuzzer reports it; each parser needs a harness, builds need a budget, and Jazzer adds branch counters by itself. |
+| 1. The example tests pass | Both parsers pass all 6 of their example tests, SHO-1042,2,8990 gives 2 x 8990 = 17980 cents, yet a line with only a product code, SHO-1042, crashes the order parser with an ArrayIndexOutOfBoundsException. |
+| 2. A mutation fuzzer | Six kinds of change, one or two per run, from seeded random numbers. From 2 seeds, 20000 runs find a missing-field crash at run 86 and an int overflow at run 548 (999999999 x 4500 wraps to -1125730708); 100000 runs find a stack overflow at run 1223. |
+| 3. Guided by coverage | Blind, 100000 runs reach 14 branches and never find the gift-message bug. Guided, the fuzzer keeps 8 inputs that reached new branches, matching n, no, not, note one letter at a time, reaches 18 branches and finds the bug at run 49776: indexOf(':') is -1, so substring(1, -1) throws. |
+| 4. From crash to fix | Delta debugging shrinks the gift-message crash from 28 characters to 11, {"note":"#", in 7 steps; the four smallest inputs crash the careless parsers and are refused by the fixed ones, which show 0 crashes in 20000 and 100000 runs, and 2000 of 2000 valid carts round-trip. |
+| 5. What fuzzing does not find | A cart with a quantity of -5 parses with no crash, so no fuzzer reports it: whether -5 is allowed is a business rule. Two harnesses, a budget of runs in every build, longer runs at night, and Jazzer adds the branch counters by itself. |
 
 ## Test
 
@@ -61,7 +61,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-22 tests in `DemoRunsTest`, `FuzzerTest`, `MinimizerTest`, `ParsersTest`, `RegressionTest`. The fuzzer is seeded, so the tests check exact crash signatures and run numbers. The smallest crashing inputs are kept in RegressionTest, and the fixed parsers are fuzzed again in the tests.
+28 tests in `DemoRunsTest`, `FuzzerTest`, `MinimizerTest`, `ParsersTest`, `RegressionTest`, `TraceTest`. The fuzzer is seeded, so the tests check exact crash signatures and run numbers. The smallest crashing inputs are kept in RegressionTest, and the fixed parsers are fuzzed again in the tests.
 
 ## What the simulation got right, and what it left out
 

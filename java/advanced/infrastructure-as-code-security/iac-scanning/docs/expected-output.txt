@@ -1,48 +1,118 @@
---- our rules
-K1   Deployment/web         web
-K2   Deployment/web         web
-K3   Deployment/web         web
-K4   Deployment/web         web
-K7   Deployment/web         web
-K8   Deployment/web         web
-K2   Deployment/orders      orders
-K3   Deployment/orders      orders
-K4   Deployment/orders      orders
-K5   Deployment/orders      orders
-K7   Deployment/orders      orders
-K8   Deployment/orders      orders
-K6   DaemonSet/metrics-agent agent
-first version: 13 findings; after the fixes:
-K6   DaemonSet/metrics-agent agent
---- testing the rules
-8 of 8 rules fire on their bad sample and stay quiet on their good one
-a rule that only knows :latest: K3 does not fire on its bad sample
---- three scanners on the same files
-K1  privileged container               checkov=yes trivy=yes kics=yes
-K2  may run as root                    checkov=yes trivy=yes kics=yes
-K3  image is latest or has no tag      checkov=yes trivy=yes kics=yes
-K4  no cpu and memory limits           checkov=yes trivy=yes kics=yes
-K5  secret written in the manifest     checkov=no  trivy=no  kics=no
-K6  uses the host's network            checkov=yes trivy=yes kics=yes
-K7  root filesystem is writable        checkov=yes trivy=yes kics=yes
-K8  may gain more privileges           checkov=yes trivy=yes kics=yes
-the fixed files still draw advice: checkov=yes trivy=yes kics=yes
-the password written in the file is flagged by: checkov=no trivy=no kics=no
-the password read from a Secret is flagged by: checkov=yes trivy=no kics=yes
---- exceptions
-with a waiver that ends 2026-12-31, on 2026-10-22: 0 findings
-the same waiver on 2027-01-01: 1 finding, and 1 stale waiver
-a waiver with no owner hides: 0
-a waiver for another resource hides: 0
-checkov with an annotation in the file: CKV_K8S_19 still fails=no (before: yes)
-trivy with an ignore file: KSV-0009 still fails=no (before: yes)
---- a baseline in the build
-new: K2   Deployment/cart        cart
-new: K3   Deployment/cart        cart
-new: K4   Deployment/cart        cart
-new: K7   Deployment/cart        cart
-new: K8   Deployment/cart        cart
-fixed since the baseline: 0
---- the bill
-all three scanners miss the same thing (a password written in the file) and two flag the good practice
-an exception without an owner and an end date is a hole
+ONE. Eight rules in Java, on the store's manifests.
+  THE MANIFESTS (what each container sets, first version):
+    web     image=shop/web:latest, privileged=true
+    orders  image=shop/orders, DB_PASSWORD=hunter2,
+            REGION=eu-west-1
+    agent   image=shop/metrics-agent:2.4.1, hostNetwork=true,
+            limits=100m/64Mi, runAsNonRoot=true,
+            readOnlyRootFilesystem=true,
+            allowPrivilegeEscalation=false
+  THE RULES (a question about one container):
+    K1  privileged container
+    K2  may run as root
+    K3  image is latest or has no tag
+    K4  no cpu and memory limits
+    K5  secret written in the manifest
+    K6  uses the host's network
+    K7  root filesystem is writable
+    K8  may gain more privileges
+  THE FINDINGS (x: the container breaks the rule):
+             K1 K2 K3 K4 K5 K6 K7 K8
+    web      x  x  x  x  .  .  x  x   6
+    orders   .  x  x  x  x  .  x  x   6
+    agent    .  .  .  .  .  x  .  .   1
+  HOW THE FINDINGS ADD UP:
+    6 + 6 + 1 = 13 findings
+  AFTER THE FIXES (tag, limits, read-only, a Secret):
+             K1 K2 K3 K4 K5 K6 K7 K8
+    web      .  .  .  .  .  .  .  .   0
+    orders   .  .  .  .  .  .  .  .   0
+    agent    .  .  .  .  .  x  .  .   1
+    1 finding: K6 on DaemonSet/metrics-agent
+TWO. Testing the rules with their own samples.
+  THE SAMPLES (bad: must fire; good: must stay quiet):
+    K1  bad   securityContext: {privileged: true}
+        good  securityContext: {privileged: false}
+    K2  bad   imagePullPolicy: Always
+        good  securityContext: {runAsNonRoot: true}
+    K3  bad   image: shop/orders
+        good  image: shop/web:1.8.2
+    K4  bad   imagePullPolicy: Always
+        good  resources: {limits: {cpu: 1, memory: 1Gi}}
+    K5  bad   env: [{name: DB_PASSWORD, value: x}]
+        good  env: [{name: DB_PASSWORD,
+              valueFrom: {secretKeyRef: {name: s, key: k}}}]
+    K6  bad   pod: hostNetwork: true
+        good  pod: hostNetwork: false
+    K7  bad   imagePullPolicy: Always
+        good  securityContext: {readOnlyRootFilesystem: true}
+    K8  bad   imagePullPolicy: Always
+        good  securityContext: {allowPrivilegeEscalation: false}
+  THE RESULT:
+    8 of 8 rules fire on bad and stay quiet on good
+  A RULE WITH A MISTAKE (K3 written as: ends with :latest):
+    bad sample  image: shop/orders
+  THE RESULT:
+    K3 does not fire on its bad sample: the test fails
+  HOW THE REAL K3 READS shop/orders:
+    last part   orders
+    tag         none, so Kubernetes pulls latest
+    K3 fires    yes
+THREE. Three scanners on the same files.
+  THE TOOLS (pinned, so the checks do not change):
+    checkov 3.3.30, trivy 0.76.0, kics by image digest
+  OUR RULE, AND THE CHECK EACH TOOL FIRED (first files):
+        checkov     trivy     kics
+    K1  CKV_K8S_16  KSV-0017  Container Is Privileged
+    K2  CKV_K8S_23  KSV-0012  Container Running As Root
+    K3  CKV_K8S_14  KSV-0013  Invalid Image Tag
+    K4  CKV_K8S_11  KSV-0011  CPU Limits Not Set
+    K5  -           -         -
+    K6  CKV_K8S_19  KSV-0009  Shared Host Network Namespace
+    K7  CKV_K8S_22  KSV-0014  Root Container Not Mounted Read-only
+    K8  CKV_K8S_20  KSV-0001  Privilege Escalation Allowed
+  HOW THE COMPARISON IS MADE:
+    found by all three  7 of 8
+    found by none       K5 secret written in the manifest
+  THE PASSWORD, TWO WAYS (CKV_K8S_35, KSV-0109, KICS):
+    written in the file    checkov no  trivy no  kics no
+    read from a Secret     checkov yes trivy no  kics yes
+  THE FIXED FILES (checks that still fail):
+    checkov 12, trivy 8, kics 14: advice beyond our eight rules
+FOUR. Exceptions: a waiver with an owner and an end.
+  THE FINDING (fixed files):
+    K6   DaemonSet/metrics-agent agent
+  THE WAIVER:
+    for     K6 on DaemonSet/metrics-agent
+    owner   platform team
+    reason  reads node counters from the host network
+    ends    2026-12-31
+  THE RESULT (findings left, by day and waiver):
+    2026-10-22  this waiver          0
+    2027-01-01  this waiver          1, and 1 stale waiver
+    2026-10-22  no owner             1
+    2026-10-22  another resource     1
+  THE SAME INSIDE THE TOOLS:
+    checkov  annotation checkov.io/skip1: CKV_K8S_19
+    trivy    .trivyignore with the line KSV-0009
+  THE RESULT (does the host network check still fail?):
+    CKV_K8S_19  before yes   after no
+    KSV-0009    before yes   after no
+FIVE. A baseline in the build.
+  THE BASELINE (the findings accepted so far):
+    K6   DaemonSet/metrics-agent agent
+  THE CHANGE: a new Deployment/cart, image shop/cart:latest
+  THE SCAN NOW:
+    6 findings
+  HOW THE BUILD DECIDES:
+    6 now - 1 accepted = 5 new, so the build fails
+    new  K2   Deployment/cart        cart
+    new  K3   Deployment/cart        cart
+    new  K4   Deployment/cart        cart
+    new  K7   Deployment/cart        cart
+    new  K8   Deployment/cart        cart
+    fixed since the baseline: 0
+  WHAT IS LEFT FOR PEOPLE:
+    blind spot  no tool flags a password written in the file
+    noise       two flag the good practice of a Secret
+    exceptions  a waiver needs an owner and an end date

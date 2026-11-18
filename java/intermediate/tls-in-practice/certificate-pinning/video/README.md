@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Certificate pinning in Java: SPKI pins, backup pins, rotation outages and why browsers dropped HPKP.
+> Certificate pinning in Java for a mobile banking app, with real certificate chains: an interceptor whose root the device trusts, an SPKI pin that refuses it, the outage when the server renews with a new key (10,000 installs fail at once), pinning an issuing CA or a leaf with a backup key, a report-only mode, and why browsers dropped server-set pins (HPKP).

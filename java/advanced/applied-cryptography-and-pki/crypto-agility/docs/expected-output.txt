@@ -1,28 +1,108 @@
---- what the code asks for
-algorithm names in the source: 20 uses in 10 files
-approved 11, to migrate 5, forbidden 4, not on the list 0
-files with a forbidden algorithm: [Fingerprints.java, LegacyExport.java, PinBlocks.java]
---- a value that says how it was protected
-records written by the old system: {v1/key1=10000}
-after the bank starts writing AES-GCM under a new key: {v1/key1=10000, v2/key2=100}
-the old reader, which assumes the first suite, refuses a new record: yes
-the reader that picks the suite from the header reads: 10100 of 10100 records
---- moving the data
-retiring key 1 now would strand 10000 records: refused
-after 2000 reads that rewrite what they read: {v1/key1=8000, v2/key2=2100}
-a batch for the rest changed 8000 records: {v2/key2=10100}
-records that still read back as written: 10100 of 10100
---- the algorithm changes again
-ChaCha20-Poly1305 under a third key: 10100 records changed, {v3/key3=10100}, intact 10100 of 10100
---- retiring a key
-live records under key 1: 0, key 2: 0, key 3: 10100
-retiring key 1 and key 2: allowed
-a backup of 100 records taken before the migration can be read: 0 of 100
---- tampering and downgrade
-the version byte of a stored record changed: refused yes
-a record claiming the unauthenticated first suite: refused by the policy yes
-a version-1 record after the policy stopped reading version 1: refused yes
---- the bill
-agility is a header, a policy and a migration you have practised, not a configuration option
-a key cannot be retired until the records, the backups and the replicas under it are gone
-the policy decides what is read and what is written: an old version that is read forever is a downgrade waiting
+ONE. What the code asks for.
+  THE BANK'S SOURCE (each file, the names it asks getInstance for):
+    BatchFiles       AES/CBC/PKCS5Padding, HmacSHA256
+    CardVault        AES/GCM/NoPadding, SHA-256
+    Fingerprints     MD5, SHA-256
+    KeyWrap          RSA/ECB/PKCS1Padding, AES/GCM/NoPadding
+    LegacyExport     AES/ECB/PKCS5Padding, MD5
+    Messaging        ChaCha20-Poly1305, AES/GCM/NoPadding
+    Passwords        PBKDF2WithHmacSHA256, SHA-256
+    PinBlocks        DESede/CBC/PKCS5Padding, AES/CBC/PKCS5Padding
+    SessionTokens    HmacSHA256, SHA1PRNG
+    StatementSigner  SHA256withRSA, SHA-1
+  ---
+  THE INVENTORY, EACH NAME JUDGED BY THE POLICY:
+    AES/GCM/NoPadding        x3  approved
+    SHA-256                  x3  approved
+    HmacSHA256               x2  approved
+    ChaCha20-Poly1305        x1  approved
+    PBKDF2WithHmacSHA256     x1  approved
+    SHA256withRSA            x1  approved
+    AES/CBC/PKCS5Padding     x2  to migrate
+    RSA/ECB/PKCS1Padding     x1  to migrate
+    SHA-1                    x1  to migrate
+    SHA1PRNG                 x1  to migrate
+    MD5                      x2  forbidden
+    AES/ECB/PKCS5Padding     x1  forbidden
+    DESede/CBC/PKCS5Padding  x1  forbidden
+  ---
+  THE COUNT:
+    uses             20 in 10 files
+    approved         11
+    to migrate       5
+    forbidden        4
+    not on the list  0
+  FILES TO FIX FIRST (a forbidden name):
+    Fingerprints.java, LegacyExport.java, PinBlocks.java
+TWO. A value that says how it was protected.
+  ONE RECORD, BEFORE SEALING:
+    customer-1;balance=37 (21 bytes)
+  THE SAME RECORD, SEALED IN EACH SUITE (bytes):
+    v1 AES-CBC + HMAC-SHA256  3 + 16 + 32 + 32 = 83
+    v2 AES-GCM                3 + 12 + 21 + 16 = 52
+    v3 ChaCha20-Poly1305      3 + 12 + 21 + 16 = 52
+    (header + IV + ciphertext + tag; CBC pads 21 to 32)
+  HOW THE HEADER IS MADE (3 bytes, in hex):
+    magic    45  the letter 'E': this is an envelope
+    version  01 02 03  which suite sealed it
+    key id   01 02 03  which key sealed it
+    the tag covers the header too: it cannot be changed
+  ---
+  THE STORE, WRITTEN BY THE OLD SYSTEM:
+    v1/key1   10000 records
+  THE STORE, AFTER 100 NEW RECORDS IN AES-GCM UNDER KEY 2:
+    v1/key1   10000 records
+    v2/key2   100 records
+  TWO READERS, ONE NEW RECORD (header 45 02 02):
+    old reader, assumes v1      refused: it knows only v1
+    reader that follows header  reads 10100 of 10100
+THREE. Moving the data.
+  BEFORE THE MOVE:
+    v1/key1   10000 records
+    v2/key2   100 records
+    retire key 1 now?  refused, 10000 records need it
+  STEP 1, 2000 READS THAT REWRITE WHAT THEY READ:
+    v1/key1   8000 records
+    v2/key2   2100 records
+  STEP 2, A BATCH FOR THE REST:
+    changed   8000 records
+    v2/key2   10100 records
+  ---
+  HOW THE COUNTS ADD UP:
+    key 1  10000 - 2000 = 8000, then - 8000 = 0
+    key 2  100 + 2000 = 2100, then + 8000 = 10100
+  AFTER THE MOVE:
+    read back as written  10100 of 10100
+FOUR. The next rotation, and retiring a key.
+  BEFORE THE ROTATION:
+    v2/key2   10100 records
+  AFTER A BATCH TO ChaCha20-Poly1305 UNDER KEY 3:
+    changed   10100 records
+    v3/key3   10100 records
+    read back as written  10100 of 10100
+  LIVE RECORDS PER KEY:
+    key 1  0
+    key 2  0
+    key 3  10100
+    retire key 1 and key 2?  allowed, no live record needs them
+  ---
+  THE BACKUP, TAKEN BEFORE THE FIRST MOVE:
+    100 records, header 45 01 01 (v1/key1)
+    readable while key 1 lives  100 of 100
+  THE BACKUP, AFTER KEY 1 IS RETIRED:
+    readable  0 of 100
+    first record  refused: key 1 is retired
+FIVE. Tampering and downgrade.
+  THE RECORD, AS STORED:
+    record 5  header 45 03 03, 53 bytes: read
+  THE POLICY:
+    reads v1 v2 v3, writes v3
+    after the cut-off: reads v2 v3, writes v3
+  THREE CHANGES, BEFORE THE READ:
+    1  header 45 02 03, claims AES-GCM
+    2  header 45 00 03, claims AES-ECB, no tag
+    3  header 45 01 04, read after the cut-off
+  THE RESULT:
+    1  refused: the tag does not match
+    2  refused: version 0 is not accepted by the policy
+    3  refused: version 1 is not accepted by the policy

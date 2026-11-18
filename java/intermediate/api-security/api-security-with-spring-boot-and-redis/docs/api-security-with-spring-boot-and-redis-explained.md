@@ -8,23 +8,29 @@ An API names the fields it accepts, names the fields it returns, caps what a cal
 
 ### 1. The first version
 
-The PATCH of displayName works, with role customer and a credit limit of 50000. Whatever the caller sends becomes a field: a body with role admin and a credit limit of 100000000 is applied and the answer has role admin. The record comes back whole, with nine fields including the card number and the PIN hash. A page size of 1000000 returns 300 accounts, every field. A thousand requests in a loop are all answered, none slowed down.
+The first controller binds the body to the stored `Account` with `@RequestBody Account patch`. Ana's app sends `{"displayName":"Ana K"}` and gets back the stored record: nine fields, among them the card number 4111 1111 1111 0001, the PIN hash, the risk score and the role.
+With two keys added by hand, `{"role":"admin","creditLimitCents":100000000}`, Ana is an admin with a limit of 100000000 cents. A page size of 1000000 returns 300 accounts x 9 fields = 2700 values, and 1000 requests in a loop are all answered.
 
 ### 2. A request model
 
-An UpdateProfileRequest record names displayName and email. The same displayName update returns the five-field view. The body with role and creditLimitCents gets 400 unknown field, and afterwards the role is customer and the credit limit 50000. An email that is not an email, a name of 41 letters and an empty name are each a 400 with the field named, and a body that is not JSON is a 400 unreadable body.
+The second controller binds the body to `UpdateProfileRequest`, a record with two fields and their limits: displayName with `@Size(min = 1, max = 40)`, email with `@Email @Size(max = 80)`. The property `spring.jackson.deserialization.fail-on-unknown-properties=true` turns any other field into an error.
+A new display name gets 200 and an `AccountView`. The role and credit limit body gets 400 unknown field; a bad e-mail, a 41-letter name and an empty name get 400 invalid; a body that is not JSON gets 400 unreadable body. The record still says customer and 50000.
 
 ### 3. A response model and a page ceiling
 
-GET /accounts/acc-0001 returns id, displayName, email, balanceCents and cardLast4, with the card as ****0001: no role, no limit, no risk score, no PIN hash. GET /accounts?size=1000000 returns 50 accounts with id and displayName only. A size of 0 is a 400 invalid parameter, and a request with no login is a 401.
+The controller returns an `AccountView` record instead of the stored account: id, displayName, email, balanceCents and cardLast4 = ****0001. No role, no limit, no risk score, no PIN hash.
+The directory caps the page with `bank.page.max=50`: min(1000000, 50) = 50 entries, each a `DirectoryEntry` of id and display name. `@Min(1)` refuses size=0 with 400 invalid parameter, and a request with no login gets 401 from Spring Security before any controller runs.
 
 ### 4. The budget runs out, and refills
 
-Each signed-in caller has a bucket of 50 tokens that refills at one a second. A thousand requests in a loop get 50 answered, then 429 with Retry-After 1s. After the clock moves on by one second, one more request is answered. Ben, meanwhile, gets his own full bucket and a page of 5 accounts. The buckets are the keys rate:ana and rate:ben in Redis, and the script that takes a token runs in one step so two servers cannot take the same one.
+A filter takes one token from the signed-in caller's bucket before the controller runs. The bucket lives in Redis under `rate:<caller>`, holds 50 tokens and refills 1 a second, and a Lua script reads, refills, takes and writes it back in one step.
+1000 requests at one moment: 50 are answered, 950 get 429 with `Retry-After: 1`. The wait is the missing token over the refill rate: ceil((1 - 0) / 0.001) = 1000 ms, and the header is ceil(1000 / 1000) = 1 second.
+One second later the bucket holds 0 + 1 = 1 token, the call is answered and 0 are left. Ben has his own bucket; Redis holds the keys rate:ana and rate:ben.
 
 ### 5. The bill
 
-Two servers, each with its own budget in memory: of 1000 requests alternating between them, 100 are answered, a budget per server and not per caller. With the budget in Redis, 50 are answered. When Redis stops answering, the API refuses with 503 rather than run without a budget, and answers again when Redis does. A budget protects the service and the other callers, not the data: it does not replace the request model or the response model.
+Two servers with a budget each in their own memory answer 50 + 50 = 100 of 1000 requests that alternate between them: each server's budget is a budget per server, not per caller. With the budget in Redis, the same 1000 requests get 25 + 25 = 50.
+Redis is now part of every request. When its container is paused, the API refuses with 503 rather than run with no budget; when Redis answers again, so does the API. A budget protects the service, not the data: it does not replace the request or the response model.
 
 ## The verdict
 

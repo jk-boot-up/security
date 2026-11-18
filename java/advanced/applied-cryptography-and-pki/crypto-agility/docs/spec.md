@@ -23,6 +23,7 @@ Data is encrypted once, with nothing to say how, and the algorithm cannot be cha
 | The versioned value | `Envelope` |
 | The keys | `KeyRing` |
 | The records and the migration | `Store` |
+| Where each byte of an envelope goes (teaching) | `Layout` |
 | Entry point | `CryptoAgilityDemo` |
 
 ## Requirements
@@ -38,10 +39,10 @@ Data is encrypted once, with nothing to say how, and the algorithm cannot be cha
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 28 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 108 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:01, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -18,20 +18,20 @@ final class ActuatorChecker {
     List<Finding> check(Running store) throws IOException, InterruptedException {
         String m = store.managementUrl();
         List<Finding> out = new ArrayList<>();
-        out.add(refused("environment hidden", "GET /actuator/env", wire.status(m + "/actuator/env", null)));
+        out.add(refused("env hidden", "GET /actuator/env", wire.status(m + "/actuator/env", null)));
         out.add(refused("heap dump hidden", "GET /actuator/heapdump", wire.status(m + "/actuator/heapdump", null)));
         Wire.Reply listing = wire.get(m + "/actuator", "ops");
-        out.add(new Finding("no shutdown switch, even for an operator", !listing.body().contains("\"shutdown\""),
-                "operator's list of endpoints offers shutdown: " + listing.body().contains("\"shutdown\"")));
+        boolean shutdown = listing.body().contains("\"shutdown\"");
+        out.add(new Finding("no shutdown", !shutdown, "ops's list offers shutdown: " + shutdown));
         int post = wire.post(m + "/actuator/loggers/ROOT", "ops", "{\"configuredLevel\":\"OFF\"}").status();
-        out.add(new Finding("log levels cannot be changed, even by an operator", post < 200 || post >= 300, "POST /actuator/loggers/ROOT as ops: " + post));
-        out.add(refused("route map hidden, even from an operator", "GET /actuator/mappings as ops", wire.status(m + "/actuator/mappings", "ops")));
+        out.add(new Finding("loggers read-only", post < 200 || post >= 300, "POST .../loggers/ROOT, ops -> " + post));
+        out.add(refused("route map hidden", "GET /actuator/mappings, ops", wire.status(m + "/actuator/mappings", "ops")));
         Wire.Reply health = wire.get(m + "/actuator/health", null);
-        out.add(new Finding("health shows no details to strangers", !health.body().contains("components"),
-                "GET /actuator/health shows components: " + health.body().contains("components")));
+        boolean details = health.body().contains("components");
+        out.add(new Finding("health status only", !details, "strangers see components: " + details));
         int onCustomerPort = wire.status(store.customerUrl() + "/actuator/health", null);
-        out.add(new Finding("nothing on the customers' port", onCustomerPort != 200, "GET /actuator/health on the customer port: " + onCustomerPort));
-        out.add(refused("the list of endpoints needs a login", "GET /actuator", wire.status(m + "/actuator", null)));
+        out.add(new Finding("customers' port", onCustomerPort != 200, "GET /actuator/health there -> " + onCustomerPort));
+        out.add(refused("list needs a login", "GET /actuator", wire.status(m + "/actuator", null)));
         return out;
     }
 
@@ -40,6 +40,6 @@ final class ActuatorChecker {
     }
 
     private static Finding refused(String name, String request, int status) {
-        return new Finding(name, status != 200, request + ": " + status);
+        return new Finding(name, status != 200, request + " -> " + status);
     }
 }

@@ -16,17 +16,38 @@ Chapters:
 
 ```
 00:00 Introduction
-01:53 The Scenario
-02:14 Act One — One Monday of logs, in OpenSearch
-02:31 Act Two — A first version of each rule, as a query
-02:49 Act Three — Tuning one threshold
-03:04 Act Four — The tuned set as monitors of the alerting plugin
-03:24 Act Five — The bill
-03:43 What It Costs
-04:09 Who Does What
-04:34 Where You Have Seen It
-04:50 How To Use It
-05:13 Thanks for Watching
+00:51 The Scenario
+01:23 The Words
+02:00 What the Letters Stand For
+02:51 One rule as a query
+03:46 An event becomes a document under a mapping
+04:48 Act One — One Monday of logs, in OpenSearch
+05:03 Act One — One Monday of logs, in OpenSearch
+05:26 29 alerts from four queries: true in green, false in amber
+06:30 Act Two — A first version of each rule, as a query
+07:01 Act Two — A first version of each rule, as a query
+07:11 Act Two — A first version of each rule, as a query
+07:25 The safe range between normal and attack
+08:18 Act Three — Tuning one threshold
+08:42 Act Three — Tuning one threshold
+08:58 Ten alerts on the day's clock, from monitors and code
+09:53 Act Four — The tuned set as monitors of the alerting plugin
+10:17 Act Four — The tuned set as monitors of the alerting plugin
+10:30 Act Four — The tuned set as monitors of the alerting plugin
+10:45 Thirty failures, two buckets, and a sliding window
+11:41 Act Five — The bill
+12:03 Act Five — The bill
+12:32 What It Costs
+13:05 Where You Have Seen It
+13:37 How To Use It
+14:12 The Java Classes
+14:26 Detections — brute force: filter, group, bucket, threshold
+14:46 QueryParts — what OpenSearch receives, in words
+14:59 Monitors — a schedule, a query and a trigger
+15:20 OpenSearch — the mapping, before the first event
+15:34 Buckets — a time rounded down to the interval
+15:52 ImpossibleTravelRule — the same person's previous login
+16:08 Thanks for Watching
 ```
 
 ## Tags

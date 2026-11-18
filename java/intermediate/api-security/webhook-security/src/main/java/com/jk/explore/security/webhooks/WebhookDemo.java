@@ -6,9 +6,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.Locale;
 
-/** Runs the online store story in five numbered acts and prints exact, repeatable results. Ports are never printed. */
+/**
+ * Runs the online store story in six numbered acts and prints exact, repeatable results: each message and its response in separate labelled
+ * sections, and the signature worked out step by step. The clock is simulated, so every time and signature is the same on every run; ports are
+ * never printed.
+ */
 public class WebhookDemo {
 
     static final byte[] SECRET = "whsec-demo-shop-2026".getBytes(StandardCharsets.UTF_8);
@@ -24,10 +30,11 @@ public class WebhookDemo {
     public static String run() throws IOException, InterruptedException {
         StringBuilder out = new StringBuilder();
         act1Trusting(out);
-        act2Signatures(out);
-        act3Replays(out);
-        act4Idempotency(out);
-        act5TheBill(out);
+        act2Signing(out);
+        act3Checking(out);
+        act4Replays(out);
+        act5Idempotency(out);
+        act6TheBill(out);
         return out.toString();
     }
 
@@ -50,6 +57,23 @@ public class WebhookDemo {
         }
     }
 
+    /** A JSON body on two lines, split before the order field, so it fits a slide; the bytes themselves are unchanged. */
+    private static void body(StringBuilder out, String indent, byte[] raw) {
+        String text = new String(raw, StandardCharsets.UTF_8);
+        int split = text.indexOf("\"order\"");
+        line(out, indent + text.substring(0, split).stripTrailing());
+        line(out, indent + text.substring(split));
+    }
+
+    /** The v1 part of a signature header. */
+    private static String v1(String header) {
+        return header.substring(header.indexOf("v1=") + 3);
+    }
+
+    private static String bytes(byte[] value, int count) {
+        return HexFormat.ofDelimiter(" ").formatHex(Arrays.copyOf(value, count)) + " ...";
+    }
+
     private static void act1Trusting(StringBuilder out) throws IOException, InterruptedException {
         line(out, "ONE. An endpoint that trusts whatever is posted to it.");
         SimClock clock = new SimClock(START);
@@ -57,38 +81,87 @@ public class WebhookDemo {
         Orders orders = orders();
         try (WebhookServer server = new WebhookServer(new Receiver(Receiver.Policy.trusting(), clock, orders))) {
             byte[] forged = new Event("evt_forged1", Event.PAID, "A-1001", 4200).toJson();
-            line(out, "  anyone posts {\"type\":\"payment.succeeded\",\"order\":\"A-1001\"} to the store's webhook address, with no signature");
-            line(out, "  the store answers: " + post(server.endpoint(), forged, null));
-            line(out, "  the provider's own records for A-1001: " + provider.status("A-1001") + "  <- MARKED PAID, NEVER PAID");
-            line(out, "  the webhook address is public, so a message to it proves nothing about who sent it");
+            line(out, "  THE REQUEST (posted by anyone, with no signature):");
+            line(out, "    POST /webhooks/payments");
+            body(out, "    ", forged);
+            line(out, "  THE RESPONSE:");
+            line(out, "    " + post(server.endpoint(), forged, null));
+            line(out, "  THE PROVIDER'S OWN RECORDS FOR A-1001:");
+            line(out, "    " + provider.status("A-1001") + "  <- MARKED PAID, NEVER PAID");
+            line(out, "  the address is public: a message to it proves nothing");
         }
     }
 
-    private static void act2Signatures(StringBuilder out) throws IOException, InterruptedException {
-        line(out, "TWO. A signature over the exact bytes.");
+    private static void act2Signing(StringBuilder out) {
+        line(out, "TWO. How the provider signs a message.");
+        Event event = new Event("evt_1001paid", Event.PAID, "A-1001", 4200);
+        byte[] raw = event.toJson();
+        line(out, "  THE INPUTS:");
+        line(out, "    secret  " + new String(SECRET, StandardCharsets.UTF_8) + "  (" + SECRET.length + " bytes, shared)");
+        line(out, "    time t  " + START + "  (seconds since 1 January 1970)");
+        line(out, "    raw body (" + raw.length + " bytes):");
+        body(out, "      ", raw);
+        line(out, "  STEP 1, WHAT IS SIGNED: t, a dot, the raw body");
+        body(out, "    ", Signatures.signedContent(START, raw));
+        HmacSteps.Steps steps = HmacSteps.of(SECRET, Signatures.signedContent(START, raw));
+        line(out, "  STEP 2, THE KEY PADDED WITH ZEROS TO 64 BYTES, THEN MIXED:");
+        line(out, "    padded key   " + bytes(steps.paddedKey(), 8));
+        line(out, "    XOR 36 each  " + bytes(steps.innerKey(), 8) + "  inner key");
+        line(out, "    XOR 5c each  " + bytes(steps.outerKey(), 8) + "  outer key");
+        String inner = HexFormat.of().formatHex(steps.inner());
+        String mac = HexFormat.of().formatHex(steps.mac());
+        line(out, "  STEP 3, TWO SHA-256 HASHES:");
+        line(out, "    inner = SHA-256(inner key + what is signed)");
+        line(out, "          = " + inner.substring(0, 32));
+        line(out, "            " + inner.substring(32));
+        line(out, "    v1    = SHA-256(outer key + inner)");
+        line(out, "          = " + mac.substring(0, 32));
+        line(out, "            " + mac.substring(32));
+        String header = Signatures.header(SECRET, START, raw);
+        line(out, "  THE HEADER SENT WITH THE BODY (" + Signatures.HEADER + "):");
+        line(out, "    " + header.substring(0, header.indexOf(',') + 1));
+        line(out, "    v1=" + v1(header).substring(0, 32));
+        line(out, "       " + v1(header).substring(32));
+        line(out, "  the same as the JDK's Mac HmacSHA256: " + mac.equals(v1(header)));
+    }
+
+    private static void check(StringBuilder out, Receiver receiver, String what, byte[] body, String header) {
+        line(out, "    " + what);
+        if (header != null) {
+            line(out, "      v1 sent " + v1(header).substring(0, 16) + "...  computed "
+                    + v1(Signatures.header(SECRET, START, body)).substring(0, 16) + "...");
+        }
+        line(out, "      " + receiver.receive(body, header));
+    }
+
+    private static void act3Checking(StringBuilder out) throws IOException, InterruptedException {
+        line(out, "THREE. The store checks the signature.");
         SimClock clock = new SimClock(START);
         Provider provider = new Provider(clock, SECRET);
         Receiver receiver = new Receiver(Receiver.Policy.signedOnly(), clock, orders(), SECRET);
         Provider.Delivery real = provider.send(new Event("evt_1001paid", Event.PAID, "A-1001", 4200));
-        line(out, "  the provider signs HMAC-SHA256 of the timestamp and the raw body with the secret it shares with the store");
-        line(out, "  the real event, as signed: " + receiver.receive(real.body(), real.signature()));
         byte[] changed = new String(real.body(), StandardCharsets.UTF_8).replace("A-1001", "A-1002").getBytes(StandardCharsets.UTF_8);
-        line(out, "  the same signature on a body changed to order A-1002: " + receiver.receive(changed, real.signature()));
         byte[] forged = new Event("evt_forged2", Event.PAID, "A-1002", 1999).toJson();
-        line(out, "  a forged event with no signature: " + receiver.receive(forged, null));
-        line(out, "  a forged event signed with a secret that is not the provider's: "
-                + receiver.receive(forged, Signatures.header(OTHER_SECRET, clock.now(), forged)));
-        line(out, "  the comparison takes the same time however many bytes match (MessageDigest.isEqual)");
+        line(out, "  THE STORE'S STEPS:");
+        line(out, "    read t and v1 from the header");
+        line(out, "    compute the HMAC of t, a dot and the raw body received");
+        line(out, "    compare it with v1 in constant time (MessageDigest.isEqual)");
+        line(out, "  THE MESSAGES AND RESPONSES:");
+        check(out, receiver, "1 the real event, as signed", real.body(), real.signature());
+        check(out, receiver, "2 the body changed to A-1002, the same header", changed, real.signature());
+        check(out, receiver, "3 a forged event with no header", forged, null);
+        check(out, receiver, "4 a forged event signed with another secret", forged, Signatures.header(OTHER_SECRET, clock.now(), forged));
         Receiver overHttp = new Receiver(Receiver.Policy.signedOnly(), clock, orders(), SECRET);
         try (WebhookServer server = new WebhookServer(overHttp)) {
-            line(out, "  the same checks over the local HTTP server: real event " + post(server.endpoint(), real.body(), real.signature()).status()
-                    + ", changed body " + post(server.endpoint(), changed, real.signature()).status()
-                    + ", no signature " + post(server.endpoint(), forged, null).status());
+            line(out, "  THE SAME OVER THE LOCAL HTTP SERVER (POST only, 4096 bytes):");
+            line(out, "    1 real " + post(server.endpoint(), real.body(), real.signature()).status()
+                    + ", 2 changed " + post(server.endpoint(), changed, real.signature()).status()
+                    + ", 3 no header " + post(server.endpoint(), forged, null).status());
         }
     }
 
-    private static void act3Replays(StringBuilder out) {
-        line(out, "THREE. A real message sent again.");
+    private static void act4Replays(StringBuilder out) {
+        line(out, "FOUR. A real message sent again.");
         SimClock clock = new SimClock(START);
         Provider provider = new Provider(clock, SECRET);
         Orders orders = orders();
@@ -96,11 +169,16 @@ public class WebhookDemo {
         Provider.Delivery paid = provider.send(new Event("evt_1001paid", Event.PAID, "A-1001", 4200));
         signedOnly.receive(paid.body(), paid.signature());
         Provider.Delivery refund = provider.send(new Event("evt_1001refund", Event.REFUNDED, "A-1001", 4200));
-        line(out, "  with signatures only, a real refund: " + signedOnly.receive(refund.body(), refund.signature()));
+        line(out, "  THE MESSAGE (a real refund, " + refund.signature().substring(0, refund.signature().indexOf(',')) + "):");
+        body(out, "    ", refund.body());
+        line(out, "  WITH SIGNATURES ONLY:");
+        line(out, "    the real refund, at t + 0 seconds:");
+        line(out, "      " + signedOnly.receive(refund.body(), refund.signature()));
         clock.advance(3600);
-        line(out, "  someone who saw that message sends a copy an hour later: " + signedOnly.receive(refund.body(), refund.signature()));
-        line(out, "  refunds paid for A-1001: " + orders.refunds("A-1001") + ", " + orders.refundedCents("A-1001")
-                + " cents for a 4200-cent order  <- A REAL MESSAGE, REPLAYED");
+        line(out, "    a copy, sent again at t + 3600 seconds:");
+        line(out, "      " + signedOnly.receive(refund.body(), refund.signature()));
+        line(out, "    refunds paid: " + orders.refunds("A-1001") + ", " + orders.refundedCents("A-1001")
+                + " cents for a 4200-cent order  <- REPLAYED");
 
         clock = new SimClock(START);
         provider = new Provider(clock, SECRET);
@@ -109,34 +187,48 @@ public class WebhookDemo {
         paid = provider.send(new Event("evt_1001paid", Event.PAID, "A-1001", 4200));
         complete.receive(paid.body(), paid.signature());
         refund = provider.send(new Event("evt_1001refund", Event.REFUNDED, "A-1001", 4200));
-        line(out, "  with a 300-second window on the signed time, and a record of processed event ids:");
-        line(out, "    the real refund: " + complete.receive(refund.body(), refund.signature()));
+        line(out, "  WITH A 300-SECOND WINDOW AND A RECORD OF EVENT IDS:");
+        line(out, "    the real refund, at t + 0 seconds:");
+        line(out, "      " + complete.receive(refund.body(), refund.signature()));
         clock.advance(30);
-        line(out, "    the same message again after 30 seconds: " + complete.receive(refund.body(), refund.signature()));
+        line(out, "    the copy at t + 30 (age 30 <= 300, id already seen):");
+        line(out, "      " + complete.receive(refund.body(), refund.signature()));
         clock.advance(3600);
-        line(out, "    the same message again an hour later: " + complete.receive(refund.body(), refund.signature()));
+        long age = clock.now() - START;
+        line(out, "    the copy at t + " + age + " (age " + age + " > 300):");
+        line(out, "      " + complete.receive(refund.body(), refund.signature()));
         String newTime = refund.signature().replaceFirst("t=[0-9]+", "t=" + clock.now());
-        line(out, "    the same message with its time edited to now: " + complete.receive(refund.body(), newTime)
-                + ", because the time is part of what is signed");
-        line(out, "    refunds paid for A-1001: " + orders.refunds("A-1001") + ", " + orders.refundedCents("A-1001") + " cents");
+        line(out, "    the copy with its t edited to " + clock.now() + " (age 0):");
+        line(out, "      " + complete.receive(refund.body(), newTime));
+        line(out, "    refunds paid: " + orders.refunds("A-1001") + ", " + orders.refundedCents("A-1001") + " cents");
+        line(out, "  the time is signed too, so it cannot be changed");
     }
 
-    private static void act4Idempotency(StringBuilder out) {
-        line(out, "FOUR. The same event twice, events out of order, and a new secret.");
+    private static void act5Idempotency(StringBuilder out) {
+        line(out, "FIVE. The same event twice, out of order, and a new secret.");
         SimClock clock = new SimClock(START);
         Provider provider = new Provider(clock, SECRET);
         Orders orders = orders();
         Receiver receiver = new Receiver(Receiver.Policy.complete(), clock, orders, SECRET);
-        Provider.Delivery paid = provider.send(new Event("evt_1001paid", Event.PAID, "A-1001", 4200));
-        receiver.receive(paid.body(), paid.signature());
-        receiver.receive(paid.body(), paid.signature());
-        line(out, "  the provider retries the payment event, so it arrives twice: order changes " + orders.changes() + " time, A-1001 is "
-                + orders.state("A-1001").name().toLowerCase(Locale.ROOT));
-        Provider.Delivery refundFirst = provider.send(new Event("evt_1002refund", Event.REFUNDED, "A-1002", 1999));
-        line(out, "  a refund for A-1002 arrives before its payment: " + receiver.receive(refundFirst.body(), refundFirst.signature()));
-        Provider.Delivery payment = provider.send(new Event("evt_1002paid", Event.PAID, "A-1002", 1999));
-        line(out, "  then the payment: " + receiver.receive(payment.body(), payment.signature()));
-        line(out, "  then the provider's retry of the refund: " + receiver.receive(refundFirst.body(), refundFirst.signature()));
+        Provider.Delivery paid1001 = provider.send(new Event("evt_1001paid", Event.PAID, "A-1001", 4200));
+        Provider.Delivery refund1002 = provider.send(new Event("evt_1002refund", Event.REFUNDED, "A-1002", 1999));
+        Provider.Delivery paid1002 = provider.send(new Event("evt_1002paid", Event.PAID, "A-1002", 1999));
+        Provider.Delivery[] arrivals = {paid1001, paid1001, refund1002, paid1002, refund1002};
+        String[] notes = {"", "  (a retry)", "  (before its payment)", "", "  (a retry)"};
+        line(out, "  THE EVENTS, IN THE ORDER THEY ARRIVE:");
+        for (int i = 0; i < arrivals.length; i++) {
+            Event e = Event.parse(arrivals[i].body()).orElseThrow();
+            line(out, String.format("    %d %-15s%s %s%s", i + 1, e.id(), e.order(), e.type(), notes[i]));
+        }
+        line(out, "  THE RESPONSES (event, the order's state before, reply):");
+        for (int i = 0; i < arrivals.length; i++) {
+            String order = Event.parse(arrivals[i].body()).orElseThrow().order();
+            String before = orders.state(order).name().toLowerCase(Locale.ROOT);
+            line(out, String.format("    %d %-5s%s", i + 1, before, receiver.receive(arrivals[i].body(), arrivals[i].signature())));
+        }
+        line(out, "  the orders changed " + orders.changes() + " times; A-1001 is "
+                + orders.state("A-1001").name().toLowerCase(Locale.ROOT) + ", A-1002 is "
+                + orders.state("A-1002").name().toLowerCase(Locale.ROOT));
 
         SimClock rotation = new SimClock(START);
         Provider shop = new Provider(rotation, SECRET);
@@ -145,28 +237,44 @@ public class WebhookDemo {
         store.addSecret(NEW_SECRET);
         shop.rotateTo(NEW_SECRET);
         Provider.Delivery signedAfter = shop.send(new Event("evt_new", Event.PAID, "A-1002", 1999));
-        line(out, "  changing the secret: the store accepts both for a while; a message signed with the old secret: "
-                + store.receive(signedBefore.body(), signedBefore.signature()).status()
-                + ", with the new one: " + store.receive(signedAfter.body(), signedAfter.signature()).status());
+        String oldName = new String(SECRET, StandardCharsets.UTF_8);
+        String newName = new String(NEW_SECRET, StandardCharsets.UTF_8);
+        line(out, "  CHANGING THE SECRET, THE SECRETS THE STORE ACCEPTS:");
+        line(out, "    before      " + oldName);
+        line(out, "    changeover  " + oldName + ", " + newName);
+        line(out, "    after       " + newName);
+        line(out, "  THE MESSAGES AND RESPONSES:");
+        line(out, "    changeover, signed with " + oldName + ":");
+        line(out, "      " + store.receive(signedBefore.body(), signedBefore.signature()));
+        line(out, "    changeover, signed with " + newName + ":");
+        line(out, "      " + store.receive(signedAfter.body(), signedAfter.signature()));
         store.removeSecret(SECRET);
         Provider.Delivery late = new Provider(rotation, SECRET).send(new Event("evt_late", Event.REFUNDED, "A-1001", 4200));
-        line(out, "  after the old secret is removed, a message signed with it: " + store.receive(late.body(), late.signature()));
+        line(out, "    after, signed with " + oldName + ":");
+        line(out, "      " + store.receive(late.body(), late.signature()));
     }
 
-    private static void act5TheBill(StringBuilder out) {
-        line(out, "FIVE. The bill.");
+    private static void act6TheBill(StringBuilder out) {
+        line(out, "SIX. The bill.");
         SimClock clock = new SimClock(START);
         Provider provider = new Provider(clock, SECRET);
         Receiver receiver = new Receiver(Receiver.Policy.complete(), clock, orders(), SECRET);
         Event event = new Event("evt_1001paid", Event.PAID, "A-1001", 4200);
         Provider.Delivery real = provider.send(event);
-        line(out, "  a framework that parses the body and writes it again with other spacing, then checks the signature: "
-                + receiver.receive(event.toPrettyJson(), real.signature()));
-        line(out, "  so the raw bytes must be kept, and checked, before anything parses them");
-        line(out, "  the real event: " + receiver.receive(real.body(), real.signature()));
-        line(out, "  and before shipping, the store asks the provider's API about A-1001: " + provider.status("A-1001")
-                + ", which matches the event");
-        line(out, "  the shared secret lives outside the code, is changed on a schedule with a changeover, and leaks are a forged-payment risk");
-        line(out, "  events can arrive late, twice or out of order, so every handler must be idempotent and check the order's state");
+        byte[] pretty = event.toPrettyJson();
+        line(out, "  THE RAW BODY, AS SIGNED (" + real.body().length + " bytes):");
+        body(out, "    ", real.body());
+        line(out, "  THE SAME EVENT, PARSED AND WRITTEN AGAIN (" + pretty.length + " bytes):");
+        body(out, "    ", pretty);
+        line(out, "  THE RESPONSES (the header's v1 is " + v1(real.signature()).substring(0, 16) + "...):");
+        line(out, "    written again: computed v1 " + v1(Signatures.header(SECRET, START, pretty)).substring(0, 16) + "...");
+        line(out, "      " + receiver.receive(pretty, real.signature()));
+        line(out, "    raw body:      computed v1 " + v1(Signatures.header(SECRET, START, real.body())).substring(0, 16) + "...");
+        line(out, "      " + receiver.receive(real.body(), real.signature()));
+        line(out, "  THE PROVIDER'S API, ASKED BEFORE SHIPPING A-1001:");
+        line(out, "    " + provider.status("A-1001") + ", which matches the event");
+        line(out, "  keep the raw bytes, and check them before parsing");
+        line(out, "  keep the secret outside the code; change it on a schedule");
+        line(out, "  events come late, twice or out of order: handlers are idempotent");
     }
 }

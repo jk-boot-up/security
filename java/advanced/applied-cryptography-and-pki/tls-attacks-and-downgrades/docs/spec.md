@@ -40,10 +40,10 @@ Weak TLS settings are found by a scanner grade that does not say what a recordin
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 58 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 131 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 21:05, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

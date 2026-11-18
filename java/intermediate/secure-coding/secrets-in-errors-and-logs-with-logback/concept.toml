@@ -9,7 +9,7 @@ title = "Secrets in Logs with Logback"
 short_title = "Logs with Logback"
 package = "logging"
 main_class = "LoggingDemo"
-tagline = "A log is a second database that nobody protects; make secrets unprintable first, cover the shapes you know second, and write events as data"
+tagline = "A log is a second database that nobody protects: make secrets unprintable first"
 bold = "With Logback 1.6 and logstash-logback-encoder 9 a careless message puts the card, the cvv, the token and the database password in the file and lets a line break forge a second event; a masking layout and a masking JSON decorator cover the shapes they know (a card only if it passes Luhn), types that print as [REDACTED] or ****1111 need no masking at all, JSON keeps one event on one line, but a record is written as its fields, a mask never covers a shape it has not seen, and the log file stays data that needs an owner."
 domain = "an online store"
 domain_note = ""
@@ -28,7 +28,7 @@ What it shows:
 - **Covering shapes in the layout.** A `%mask` conversion word and a `%maskedEx` word (class and message of the exception and its causes, no frames). A card is covered only if it passes the **Luhn** check, so a 16-digit order number is left alone; the line break becomes `\\n`.
 - **Make the secret unprintable.** `Secret` prints `[REDACTED]`, `Card` prints `****1111`, a `CheckoutRequest` record made of them prints safely under a plain layout. An exception from a library is logged by class, with a reference.
 - **Structured logs.** JSON events keep a line break inside one line; a record is written as its **fields**, not its `toString` (`PlainCard` leaks `number`, `Card` with `@JsonValue` does not); path masks and a value masker cover the rest.
-- **The bill.** A pin, a code word and an SSN in free text are in shapes nobody listed; a log file needs an owner, a retention and a level.
+- **What a mask cannot see.** A pin, a code word and an SSN in free text are in shapes nobody listed; a log file needs an owner, a retention and a level.
 
 **Maps to:** OWASP Top 10 (2025) A09 Security Logging and Alerting Failures · CWE-532 (sensitive information in a log file), CWE-209, CWE-117 (improper output neutralization for logs).
 """
@@ -64,87 +64,243 @@ test_note = "The tests run the real Logback and need no other tool."
 
 [[act]]
 title = "What the log keeps"
-summary = "A careless message puts the card, the cvv, the token and the database password in the file, and a line break forges a second event."
+summary = "Three careless log calls through a plain layout write 4 lines: the card, the CVV, the token and the database password are all in the file, and a name with a line break forges a login line."
 detail = """
-Three events written with a plain layout: a map of the request with the card number and the cvv, and a token; an exception from the driver whose message holds the database URL with its password; and a customer name with a line break. The file holds the card, the cvv, the token and the password, and the forged line: 4 lines from 3 events. The log is a second database that nobody protects.
+The input is three log calls: a map of the request with the card and the CVV, plus the token; an error with the driver's SQLException, whose message holds the database URL and password; and a customer name with a line break inside it.
+The result, through the plain layout %level %msg%plainEx%n: 4 lines from 3 events. A canary search finds every fake secret in the file: the card number, cvv=737, the session token and s3cr3t-db-password. Line 4, "INFO login succeeded user=admin ip=10.0.0.1", was written by the customer.
+"""
+figure = "plain_log"
+figure_title = "Three log calls, four lines, four secrets"
+figure_speech = """
+First demo: what the log keeps. [[slnc 400]] At the top, the input: three log calls, the way they are often written. [[slnc 300]] The first logs the whole request and the token. [[slnc 300]] The second logs a database error. [[slnc 300]] The third logs a customer name, which has a line break inside it. [[slnc 700]]
+Below, the result: the log file, through a plain Logback layout. [[slnc 300]] The card number, the C V V and the token are in line one, in red. [[slnc 300]] The database password is in line two, from the exception's message. [[slnc 700]]
+On the right, a canary search for each fake secret: found, found, found, found. [[slnc 300]] And three events became four lines. [[slnc 300]] Line four looks like a login by the administrator, but the customer wrote it.
 """
 speech = """
-First demo: what the log keeps. [[slnc 400]] The card, the cvv, the token and the database password are all in the file. [[slnc 600]]
-And a customer name with a line break writes a second event of its own.
+Here is the real output. [[slnc 400]] The input: three log calls, and the customer's name, with its line break shown as backslash n.
+[[page]]
+The log file, through a plain layout. [[slnc 300]] Line one: the card, the C V V and the token. [[slnc 300]] Line two: the database password. [[slnc 300]] Lines three and four: one event, split in two by the name.
+[[page]]
+The canary search: every fake secret is found in the file. [[slnc 300]] And three events made four lines.
 """
 rows = { keeps = "active wrong" }
 console = [
-    ["card=4111 1111 1111 1111, cvv=737, token=eyJ...", "bad"],
-    ["password=s3cr3t-db-password in the exception message", "bad"],
-    ["a line break in a name: 4 lines from 3 events", "bad"],
+    ["THE EVENTS (what the code logs, 3 calls):", "code"],
+    ["  1 info(\"checkout started: {} token={}\", params, token)", "muted"],
+    ["  2 error(\"checkout failed\", databaseDown())", "muted"],
+    ["  3 info(\"checkout started for {}\", name)", "muted"],
+    ["  the name: Mallory\\nINFO login succeeded user=admin ip=10.0.0.1", "muted"],
+    ["---", ""],
+    ["THE LOG FILE (layout %level %msg%plainEx%n, 4 lines):", "code"],
+    ["  1 INFO checkout started: {name=Ana,", "muted"],
+    ["    card=4111 1111 1111 1111, cvv=737, order=1042}", "bad"],
+    ["    token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl", "bad"],
+    ["  2 ERROR checkout failed | SQLException: Connection to", "muted"],
+    ["    jdbc:postgresql://db.internal.shop.example:5432/shop", "muted"],
+    ["    ?user=app&password=s3cr3t-db-password refused while saving", "bad"],
+    ["    order o-1042", "muted"],
+    ["  3 INFO checkout started for Mallory", "muted"],
+    ["  4 INFO login succeeded user=admin ip=10.0.0.1", "bad"],
+    ["---", ""],
+    ["CANARY SEARCH (each fake secret, in the log file):", "code"],
+    ["  card number    found", "bad"],
+    ["  cvv            found", "bad"],
+    ["  session token  found", "bad"],
+    ["  db password    found", "bad"],
+    ["  the file       3 events -> 4 lines", "muted"],
 ]
 
 [[act]]
 title = "Covering the shapes of secrets in the layout"
-summary = "A %mask conversion word and a %maskedEx word cover what they recognise; a card only if it passes Luhn; a line break becomes \\n."
+summary = "The same three calls through %mask and %maskedEx write 3 lines with no fake secret left; a card is covered only when the Luhn sum ends in 0 (30 for the card, 31 for the order number)."
 detail = """
-The same three events through %mask and %maskedEx: the card becomes [CARD ****1111], the cvv and the token [REDACTED], the database password in the exception is covered and the exception is written as class and message only. A 16-digit order number that fails the Luhn check is left alone. The line break in the forged name became the two characters \\n: one event is one line.
+The input is the same three log calls. The result, through the layout %level %mask%maskedEx%n: 3 lines; the card is [CARD ****1111], the CVV, the token and the database password are [REDACTED], and the forged name stays on line 3 with its line break written as \\n. The canary search finds nothing.
+Before and after masking: in "charge 4111 1111 1111 1111 for order 4111111111111112" only the card is covered; password=, api_key and Bearer values are covered by name and shape.
+How the Luhn check is made: from the right every second digit is doubled (9 taken off a result over 9) and all are added. 4111111111111111 gives 30, which ends in 0: a card. 4111111111111112 gives 31: not a card.
+"""
+figure = "mask_layout"
+figure_title = "The same events, masked in the layout"
+figure_speech = """
+Second demo: covering the shapes of secrets in the layout. [[slnc 400]] The input is the same three log calls. [[slnc 300]] The layout now has two conversion words of our own: mask, for the message, and masked ex, for the exception. [[slnc 700]]
+At the top, the result. [[slnc 300]] The card is covered, showing only its last four digits. [[slnc 300]] The C V V, the token and the password are redacted, in green. [[slnc 300]] The forged name stays on one line, with the line break written as backslash n. [[slnc 300]] The canary search finds nothing. [[slnc 700]]
+At the bottom, how the mask tells a card from an order number: the Luhn check. [[slnc 300]] From the right, every second digit is doubled. [[slnc 300]] For the card, the sum is thirty, which ends in zero: a card. [[slnc 300]] For the order number, it is thirty one: not a card, so it is left alone.
 """
 speech = """
-Second demo: covering the shapes of secrets in the layout. [[slnc 400]] A mask converter and a masked exception converter. [[slnc 600]]
-A card is covered only if it passes the Luhn check, so an order number is left alone. [[slnc 300]] A line break becomes two characters, and one event stays one line.
+The log file through mask and masked ex. [[slnc 300]] Three lines for three events. [[slnc 300]] The card shows its last four digits, and the rest is redacted.
+[[page]]
+The canary search: nothing found. [[slnc 400]] Then two texts before and after masking. [[slnc 300]] The card is covered and the order number is not. [[slnc 300]] The password, the A P I key and the bearer token are covered by name.
+[[page]]
+How the Luhn check is made, for the card and for the order number. [[slnc 300]] Thirty is a card. [[slnc 300]] Thirty one is not.
 """
 rows = { mask = "active ok" }
 console = [
-    ["card=[CARD ****1111], cvv=[REDACTED], token=[REDACTED]", "ok"],
-    ["order 4111111111111112 is left alone (fails Luhn)", "ok"],
-    ["the forged line is one line with \\n in it", "ok"],
+    ["THE LOG FILE (layout %level %mask%maskedEx%n, 3 lines):", "code"],
+    ["  1 INFO checkout started: {name=Ana, card=[CARD ****1111],", "ok"],
+    ["    cvv=[REDACTED], order=1042} token=[REDACTED]", "ok"],
+    ["  2 ERROR checkout failed | SQLException: Connection to", "muted"],
+    ["    jdbc:postgresql://db.internal.shop.example:5432/shop", "muted"],
+    ["    ?user=app&password=[REDACTED] refused while saving order", "ok"],
+    ["    o-1042", "muted"],
+    ["  3 INFO checkout started for Mallory\\nINFO login succeeded", "muted"],
+    ["    user=admin ip=10.0.0.1", "muted"],
+    ["---", ""],
+    ["CANARY SEARCH (each fake secret, in the log file):", "code"],
+    ["  card number    not found", "ok"],
+    ["  cvv            not found", "ok"],
+    ["  session token  not found", "ok"],
+    ["  db password    not found", "ok"],
+    ["  the file       3 events -> 3 lines", "muted"],
+    ["BEFORE MASKING:", "code"],
+    ["  charge 4111 1111 1111 1111 for order 4111111111111112", "muted"],
+    ["  login failed password=hunter2&user=ana, json", "muted"],
+    ["  {\"api_key\":\"k-123\"}, Authorization: Bearer abcdefgh12345", "muted"],
+    ["AFTER MASKING:", "code"],
+    ["  charge [CARD ****1111] for order 4111111111111112", "ok"],
+    ["  login failed password=[REDACTED]&user=ana, json", "ok"],
+    ["  {\"api_key\":\"[REDACTED]\"}, Authorization: Bearer [REDACTED]", "ok"],
+    ["---", ""],
+    ["HOW THE LUHN CHECK IS MADE (the card, the order number):", "code"],
+    ["  digits        4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1", "muted"],
+    ["  every 2nd x2  8 1 2 1 2 1 2 1 2 1 2 1 2 1 2 1", "muted"],
+    ["  sum           30, ends in 0: a card", "muted"],
+    ["  digits        4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2", "muted"],
+    ["  every 2nd x2  8 1 2 1 2 1 2 1 2 1 2 1 2 1 2 2", "muted"],
+    ["  sum           31, does not end in 0: not a card", "muted"],
 ]
 
 [[act]]
 title = "Make the secret unprintable"
-summary = "Types that print as [REDACTED] and ****1111 need no mask at all, and a library's exception is logged by class with a reference."
+summary = "A CheckoutRequest made of a Card and a Secret logs as card=****1111, cvv=[REDACTED] through a plain layout with no masking; reveal() gives 737 only where the value is used; a library's exception is logged by class with ref-0001."
 detail = """
-A CheckoutRequest made of a Card and a Secret prints as CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042] under a plain layout, with no masking. The value is read where it is used, by name, and a search for reveal( finds every place that does. An exception from a library carries whatever the library put in its message, so it is logged by class, with a reference, or through %maskedEx.
+The input is what the code holds: name "Ana", new Card("4111111111111111"), new Secret("737") and order 1042.
+How each one prints: a Card's toString is ****1111 (the last 4 of 16 digits), a Secret's toString is [REDACTED], and reveal() gives 737, only where the value is used.
+The result, through the plain layout %level %msg%n with no masking: CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042], and the token as [REDACTED]. A library's exception carries whatever the library put in its message, so it is logged by class, SQLException, with the reference ref-0001.
+"""
+figure = "types_print"
+figure_title = "Types that print safely"
+figure_speech = """
+Third demo: make the secret unprintable. [[slnc 400]] On the left, the input: what the code holds. [[slnc 300]] A name, a Card with the full number, a Secret with the C V V, and the order number. [[slnc 700]]
+On the right, how each one prints. [[slnc 300]] A Card's to string method gives four stars and the last four digits. [[slnc 300]] A Secret's to string gives redacted. [[slnc 300]] Only reveal gives the value, and only the code that needs it calls it. [[slnc 700]]
+At the bottom, the result: the log file, through a plain layout, with no masking at all. [[slnc 300]] Nothing to mask, because the secret never reached the line. [[slnc 300]] And the library's exception is logged by its class name and a reference, never by its message.
 """
 speech = """
-Third demo: make the secret unprintable. [[slnc 400]] A card prints as the last four digits. A secret prints as redacted. [[slnc 600]]
-There is nothing to mask, because the value never reaches the line. [[slnc 300]] An exception from a library is logged by class, with a reference.
+The input: a name, a card, a secret and an order. [[slnc 300]] How each one prints: the card as its last four digits, the secret as redacted. [[slnc 300]] reveal gives seven three seven, only where it is used.
+[[page]]
+The log file, with no masking: the card and the C V V print safely, and so does the token. [[slnc 300]] A library's exception is logged by class, with reference ref zero zero zero one.
 """
 rows = { types = "active ok" }
 console = [
-    ["CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042]", "ok"],
-    ["token [REDACTED] with no mask configured", "ok"],
-    ["library exceptions: by class, with a reference", "ok"],
+    ["THE OBJECTS (what the code holds):", "code"],
+    ["  name   \"Ana\"", "muted"],
+    ["  card   new Card(\"4111111111111111\")", "muted"],
+    ["  cvv    new Secret(\"737\")", "muted"],
+    ["  order  1042", "muted"],
+    ["HOW EACH ONE PRINTS (its toString):", "code"],
+    ["  Card    ****1111  (the last 4 of 16 digits)", "ok"],
+    ["  Secret  [REDACTED]", "ok"],
+    ["  reveal  737  (only where the value is used)", "muted"],
+    ["---", ""],
+    ["THE LOG FILE (layout %level %msg%n, no masking, 2 lines):", "code"],
+    ["  1 INFO checkout started: CheckoutRequest[name=Ana,", "muted"],
+    ["    card=****1111, cvv=[REDACTED], order=1042]", "ok"],
+    ["  2 INFO checkout started for Ana with token [REDACTED]", "ok"],
+    ["A LIBRARY'S EXCEPTION (by class, with a reference, 1 line):", "code"],
+    ["  1 ERROR checkout failed [ref-0001], the database said:", "muted"],
+    ["    SQLException", "muted"],
 ]
 
 [[act]]
 title = "Structured logs"
-summary = "JSON events keep a line break inside one line; a record is written as its fields; path masks and a value masker cover the rest."
+summary = "As JSON, the forged name stays inside one line as \\n; a PlainCard record is written as its fields (the full number) while a Card with @JsonValue is ****1111; the masking decorator covers /cvv and /card/number by path and the password in the exception by shape."
 detail = """
-JSON events from logstash-logback-encoder: fields are data, a line break in a value is escaped, so the forged name stays one event of one line. A record is written as its fields, not as its toString: PlainCard leaks number and holder, while a Card with @JsonValue is written as ****1111. The masking decorator covers /cvv and /card/number by path and the shapes of secrets in any string, including the exception message.
+The input is the forged name and a charge with order and amount fields, written as JSON events by logstash-logback-encoder. The result: one line per event; the line break in the name is escaped as \\n inside the message string, and the fields are data.
+A record is written as its fields, not as its toString: PlainCard gives "number":"4111111111111111" and "holder":"Ana", and the cvv 737. A Card with @JsonValue is written as "****1111".
+After the masking decorator (paths /cvv and /card/number, and a value masker for shapes): the number and the cvv are "[REDACTED]", and the password in the exception's message is [REDACTED].
+"""
+figure = "json_events"
+figure_title = "Events as data"
+figure_speech = """
+Fourth demo: structured logs. [[slnc 400]] Each event is written as one line of J S O N, with named fields. [[slnc 700]]
+At the top, the forged name. [[slnc 300]] Inside a J S O N string, a line break must be escaped, so it is written as backslash n, in amber. [[slnc 300]] One event is one line, whatever the customer types. [[slnc 700]]
+In the middle, a trap. [[slnc 300]] A Java record is written as its fields, not as its to string. [[slnc 300]] So PlainCard puts the full card number in the log, in red. [[slnc 300]] A Card with the J S O N value annotation is written as its last four digits. [[slnc 700]]
+At the bottom, the masking decorator. [[slnc 300]] It covers the card number and the C V V by their paths, and the password in the exception's message by its shape.
 """
 speech = """
-Fourth demo: structured logs. [[slnc 400]] An event is one line of J S O N, and a line break in a value is escaped. [[slnc 600]]
-A record is written as its fields, so it leaks. [[slnc 300]] Path masks and a value masker cover what is left.
+The forged name as J S O N: one line, with the line break escaped. [[slnc 300]] The charge has its order and amount as fields. [[slnc 400]] A record as J S O N: PlainCard writes the full number and the C V V. [[slnc 300]] Card writes four stars and the last four digits.
+[[page]]
+After the masking decorator: the number and the C V V are redacted by path. [[slnc 300]] And the password in the exception's message is redacted by its shape.
 """
 rows = { json = "active ok" }
 console = [
-    ["a forged name stays one JSON line", "ok"],
-    ["PlainCard: number and holder in the JSON", "bad"],
-    ["/card/number and /cvv masked; the password in the message too", "ok"],
+    ["JSON EVENTS (the forged name, and fields as data, 2 lines):", "code"],
+    ["  1 {\"level\":\"INFO\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"checkout started for Mallory\\nINFO login", "muted"],
+    ["    succeeded user=admin ip=10.0.0.1\",\"requestId\":\"r-77\"}", "muted"],
+    ["  2 {\"level\":\"INFO\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"charge\",\"requestId\":\"r-77\",\"order\":1042,", "muted"],
+    ["    \"amount\":\"180.00\"}", "muted"],
+    ["A RECORD AS JSON (PlainCard, then Card, 2 lines):", "code"],
+    ["  1 {\"level\":\"INFO\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"charge\",\"card\":{\"number\":\"4111111111111111\",", "bad"],
+    ["    \"holder\":\"Ana\"},\"cvv\":737}", "bad"],
+    ["  2 {\"level\":\"INFO\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"charge\",\"card\":\"****1111\"}", "ok"],
+    ["---", ""],
+    ["AFTER THE MASKING DECORATOR (paths and shapes, 2 lines):", "code"],
+    ["  1 {\"level\":\"INFO\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"charge\",\"card\":{\"number\":\"[REDACTED]\",", "ok"],
+    ["    \"holder\":\"Ana\"},\"cvv\":\"[REDACTED]\"}", "ok"],
+    ["  2 {\"level\":\"ERROR\",\"logger_name\":\"shop.checkout\",", "muted"],
+    ["    \"message\":\"checkout failed\",", "muted"],
+    ["    \"throwable_class\":\"SQLException\",", "muted"],
+    ["    \"throwable_message\":\"Connection to", "muted"],
+    ["    jdbc:postgresql://db.internal.shop.example:5432/shop", "muted"],
+    ["    ?user=app&password=[REDACTED] refused while saving order", "ok"],
+    ["    o-1042\"}", "muted"],
 ]
 
 [[act]]
-title = "The bill"
-summary = "A pin, a code word and an SSN in free text are in shapes nobody listed; the file needs an owner, a retention and a level."
+title = "What a mask cannot see"
+summary = "'my pin is 4921 and the code is hunter2, ssn 078-05-1120' passes the mask unchanged: card, CVV, token and password are covered, the pin, the code word and the SSN are missed. The order of defence: do not log it, make it unprintable, mask the shapes you know, test with canaries."
 detail = """
-A customer says: my pin is 4921 and the code is hunter2, ssn 078-05-1120. A mask cannot cover what it has never seen. So the order of defence is: do not log it, make it unprintable, then cover the shapes you know, and test the last one with the secrets you really have. A log file is data: who can read it, how long it is kept, who can delete a person from it and where it is copied are decisions. Debug logging in production is a second logging policy.
+The input is a sentence a customer typed: "customer says: my pin is 4921 and the code is hunter2, ssn 078-05-1120". The result after masking is the same sentence: none of its secrets has a name or shape the mask was given.
+What the mask knows, each secret in a sentence: card number, cvv, session token and db password are covered; pin, code word and SSN are missed.
+So the order of defence is: 1 do not log it, 2 make it unprintable (Secret, Card), 3 mask the shapes you know (%mask, the decorator), 4 test with fake secrets of your own.
+"""
+figure = "mask_misses"
+figure_title = "What the mask knows, and what it misses"
+figure_speech = """
+Fifth demo: what a mask cannot see. [[slnc 400]] At the top, the input: a sentence a customer typed into a support chat. [[slnc 300]] A pin, a code word, and a social security number. [[slnc 300]] Below it, the result after masking: exactly the same sentence. [[slnc 700]]
+On the left, what the mask knows. [[slnc 300]] Each secret, in a sentence, through the mask. [[slnc 300]] The card, the C V V, the token and the password are covered, in green. [[slnc 300]] The pin, the code word and the S S N are missed, in red. [[slnc 300]] A mask cannot cover a shape it has never seen. [[slnc 700]]
+On the right, the order of defence. [[slnc 300]] Do not log it. [[slnc 300]] Make it unprintable. [[slnc 300]] Mask the shapes you know. [[slnc 300]] And test with fake secrets of your own.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] A pin, a code word, a social security number in free text: no mask knew those shapes. [[slnc 600]]
-Do not log it. Make it unprintable. Then cover the shapes you know.
+Before and after masking: the sentence is unchanged. [[slnc 400]] What the mask knows: four secrets covered, and three missed: the pin, the code word and the S S N.
+[[page]]
+So the order of defence. [[slnc 300]] Do not log it. [[slnc 300]] Make it unprintable. [[slnc 300]] Mask the shapes you know. [[slnc 300]] And test with canaries.
 """
 rows = { bill = "active wrong" }
 console = [
-    ["pin 4921, code hunter2, ssn 078-05-1120: not covered", "bad"],
-    ["do not log it; make it unprintable; then mask", "ok"],
-    ["a log file needs an owner, a retention and a level", "ok"],
+    ["BEFORE MASKING:", "code"],
+    ["  customer says: my pin is 4921 and the code is hunter2, ssn", "muted"],
+    ["  078-05-1120", "muted"],
+    ["AFTER MASKING:", "code"],
+    ["  customer says: my pin is 4921 and the code is hunter2, ssn", "muted"],
+    ["  078-05-1120", "muted"],
+    ["WHAT THE MASK KNOWS (each secret in a sentence, masked):", "code"],
+    ["  card number    covered", "ok"],
+    ["  cvv            covered", "ok"],
+    ["  session token  covered", "ok"],
+    ["  db password    covered", "ok"],
+    ["  pin            missed", "bad"],
+    ["  code word      missed", "bad"],
+    ["  ssn            missed", "bad"],
+    ["---", ""],
+    ["THE ORDER OF DEFENCE:", "code"],
+    ["  1 do not log it", "muted"],
+    ["  2 make it unprintable (Secret, Card)", "muted"],
+    ["  3 mask the shapes you know (%mask, the decorator)", "muted"],
+    ["  4 test with fake secrets of your own (canaries)", "muted"],
 ]
 
 [animation]
@@ -154,7 +310,7 @@ boxes = [
     ["mask", "Masking", "the shapes you know"],
     ["types", "Unprintable types", "nothing to mask"],
     ["json", "JSON events", "data, not text"],
-    ["bill", "The bill", "unknown shapes, retention"],
+    ["bill", "What a mask misses", "shapes nobody listed"],
 ]
 
 [docs.problem]
@@ -354,6 +510,7 @@ out_of_scope = [
 ]
 tests = [
     "`LoggingTest` runs the real Logback for the masker, Luhn, idempotency, the layout and exception converters, the types, the JSON events and the decorator.",
+    "`TeachingStepsTest` checks the Luhn steps, the line wrapping and the canaries the demo prints.",
     "`DemoRunsTest` compares the whole demo with the golden output.",
 ]
 next = """
@@ -386,9 +543,9 @@ residual = "Copies made by tools nobody listed"
 
 [poster]
 headline = [["SECRETS IN LOGS", "text"], ["WITH LOGBACK", "accent"]]
-taglines = [["A log is a second database that nobody protects; make secrets unprintable first, cover the", "gold"]]
+taglines = [["A log is a second database that nobody protects", "gold"]]
 before = { code = "card=4111 1111 1111 1111, cvv=737, token=eyJ...", note = "What the log keeps", tag = "BEFORE" }
-after = { code = "%level %mask%maskedEx%n", note = "The bill", tag = "AFTER" }
+after = { code = "%level %mask%maskedEx%n", note = "Covering the shapes in the layout", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -404,6 +561,28 @@ body = ["An online store logs its checkout.", "", "The demo writes the same thre
 narration = "Here is the scenario. [[slnc 400]] An online store logs its checkout. [[slnc 500]] The demo writes the same three events four ways: carelessly, with masks in the layout, with types that cannot print, and as structured J S O N. [[slnc 500]] It uses Logback and the logstash encoder, writes into memory, and reads exactly what each way leaves behind. [[slnc 300]] Every card, token and password is fake."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Layout: turns a log event into a line of text", "Conversion word: a %name in the layout", "Masking: covering a secret in text that was written", "Structured log: an event as named fields", "Canary: a known fake secret, searched for by a test", "Log injection: a line break that forges a line"]
+narration = """Before the demos, the words. [[slnc 500]] A layout turns a log event into a line of text. [[slnc 500]] A conversion word is a name with a percent sign in the layout, like percent level or percent message. [[slnc 500]] Masking covers a secret in text that was already written. [[slnc 500]] A structured log writes each event as named fields, here as J S O N. [[slnc 500]] A canary is a known fake secret, sent through on purpose, so a test can search for it. [[slnc 500]] And log injection is a line break in a value, which forges an extra log line."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-four-ways"
+kind = "figure"
+title = "One card number, four ways"
+body = "four_ways"
+narration = """Let's see the core idea on one example: one card number, logged four ways. [[slnc 400]] At the top, the input: the test card, four one one one, and twelve more digits. [[slnc 700]]
+First, a plain layout writes it as it is, in red. [[slnc 300]] Second, the mask in the layout recognises its shape and covers it. [[slnc 300]] Third, a Card type prints only its last four digits, so there is nothing to mask. [[slnc 300]] Fourth, a J S O N event with the masking decorator covers it by its field path. [[slnc 700]]
+Three of the four ways keep the number out of the file. [[slnc 300]] But only the type works without knowing what a card looks like. [[slnc 300]] That is the order of defence in this video: make it unprintable first, and mask as a safety net."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -415,13 +594,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["A mask is a guess about shapes", "Unprintable types need discipline", "JSON logs need a pipeline that reads JSON", "Records are written as their fields", "Every log line is data you keep"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A mask is a guess about the shapes of secrets, and some will not match. [[slnc 500]] Types that cannot print need discipline, everywhere a secret is held. [[slnc 500]] J S O N logs need a log pipeline that reads J S O N. [[slnc 500]] Records and beans are written as their fields, not as their text, so their fields leak. [[slnc 300]] And every log line is data you keep, and must protect."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["LogSetup: configures Logback in code", "Masker, MaskConverter: mask in the layout", "MaskedThrowableConverter: exceptions without secrets", "Secret, Card, CheckoutRequest: print safely", "PlainCard: a record that leaks", "LoggingDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] LogSetup configures Logback in code, and keeps the output in memory. [[slnc 500]] Masker and MaskConverter mask the shapes of secrets, in the layout. [[slnc 300]] MaskedThrowableConverter logs an exception's class and message, masked, with no stack frames. [[slnc 500]] Secret, Card, and CheckoutRequest are types that print safely. [[slnc 300]] PlainCard is a record that does not, for comparison. [[slnc 300]] And LoggingDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -438,8 +610,118 @@ body = ["Do not log secrets", "Give them types that cannot print", "Mask the sha
 narration = "So, how do you use it? [[slnc 400]] Do not log secrets at all. [[slnc 300]] Give them types that cannot print. [[slnc 500]] Mask the shapes you know, as a safety net. [[slnc 300]] Write events as J S O N, so a line break stays inside one line. [[slnc 500]] Test the net with fake secrets of your own. [[slnc 300]] And give every log an owner, and an end date."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a conversion word that", "hashes the user id instead of printing it."]
 narration = "That's secrets in logs, with Logback. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Whatever reaches a log line stays there, so the safest secret is one that never reaches it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a conversion word that hashes the user id, instead of printing it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Logback and the logstash encoder do the writing. [[slnc 300]] Our classes decide what reaches the line."""
+
+[[class]]
+name = "LogSetup"
+what = "configures Logback in code, writing into memory"
+[[class.part]]
+title = "our own conversion words"
+code = '''
+layout.setPattern(pattern);
+layout.getInstanceConverterMap().put("mask", MaskConverter::new);
+layout.getInstanceConverterMap().put("maskedEx", MaskedThrowableConverter::new);
+'''
+speech = """A pattern layout learns two new conversion words: percent mask and percent masked ex. [[slnc 300]] Each one names a converter class that turns an event into text."""
+
+[[class]]
+name = "MaskConverter"
+what = "%mask: the message, masked, on one line"
+[[class.part]]
+title = "mask, then escape line breaks"
+code = '''
+public String convert(ILoggingEvent event) {
+    return Masker.mask(event.getFormattedMessage())
+            .replace("\r", "\\r").replace("\n", "\\n");
+'''
+speech = """The converter masks the formatted message. [[slnc 300]] Then it writes every line break as backslash n, so one event is always one line."""
+
+[[class]]
+name = "Masker"
+what = "finds the shapes of secrets, and covers them"
+[[class.part]]
+title = "patterns, then cards"
+code = '''
+out = URL_PASSWORD.matcher(out).replaceAll("$1[REDACTED]$3");
+out = BEARER.matcher(out).replaceAll("$1[REDACTED]");
+out = JWT.matcher(out).replaceAll("[REDACTED]");
+out = PAIR.matcher(out).replaceAll("$1[REDACTED]");
+out = cards(out);
+'''
+speech = """The masker runs its patterns one after the other: a password in a U R L, a bearer token, a J W T, and values named password, key, token or C V V. [[slnc 300]] Then it looks for card numbers."""
+[[class.part]]
+title = "a card only if Luhn passes"
+code = '''
+String cover = luhn(digits)
+        ? "[CARD ****" + digits.substring(digits.length() - 4) + "]" : m.group();
+...
+return IntStream.of(luhnSteps(digits)).sum() % 10 == 0;
+'''
+speech = """A long run of digits is covered only if its Luhn sum ends in zero. [[slnc 300]] So the order number is left alone."""
+
+[[class]]
+name = "Secret and Card"
+what = "types that print safely"
+[[class.part]]
+title = "toString and @JsonValue"
+code = '''
+public String toString() {
+    return "[REDACTED]";
+}
+...
+@JsonValue
+public String masked() {
+    return "****" + number.substring(number.length() - 4);
+'''
+speech = """A Secret's to string is always redacted. [[slnc 300]] A Card prints its last four digits, and the J S O N value annotation makes J S O N use the same text."""
+
+[[class]]
+name = "LoggingDemo.masking"
+what = "the masking decorator for JSON events"
+[[class.part]]
+title = "by path, and by shape"
+code = '''
+mask.addPath("/cvv");
+mask.addPath("/card/number");
+mask.addValueMasker((context, value) -> {
+'''
+speech = """The decorator covers two fields by their path in the J S O N. [[slnc 300]] And a value masker runs the same Masker over every string, so the password in an exception's message is covered too."""
+
+[[acronym]]
+short = "CVV"
+long = "Card Verification Value: the 3-digit security code"
+say = "C V V is card verification value: the three digit security code on the back of a card."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: a text format for data"
+say = "J S O N is JavaScript object notation: a text format for data, with named fields."
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: a signed token, often a session"
+say = "J W T is J S O N web token: a signed token that often proves who is logged in."
+[[acronym]]
+short = "URL"
+long = "Uniform Resource Locator: a web or database address"
+say = "U R L is uniform resource locator: an address, of a web page or a database."
+[[acronym]]
+short = "SSN"
+long = "Social Security Number: a US person identifier"
+say = "S S N is social security number, a number that identifies a person in the United States."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: a key for one"
+say = "A P I is application programming interface; an A P I key is a password for a program."

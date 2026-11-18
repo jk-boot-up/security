@@ -3,22 +3,28 @@ package com.jk.explore.security.securitychaos;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Runs the experiments against one version of the service, through Toxiproxy, and keeps the scoreboard. */
 final class Lab {
 
-    static final int DEADLINE_MS = 800;
+    static final int DEADLINE_MS = 1500;
     static final int PROBE_ROUNDS = 4;
     static final int PAYMENTS = 6;
     static final int BURST = 40;
     static final int AUDIT_BURST = 20;
     static final int AUDIT_SMALL = 4;
 
-    /** The result of one experiment. */
-    record Result(Experiment experiment, boolean steadyState, String observed, boolean controlHeld, String failure,
-                  String alert, boolean alertHeld) {
+    /**
+     * The result of one experiment: the steady state before it, what was counted while the failure was in place, the verdict
+     * on the control, the audit records the trail dropped or kept waiting, and the monitor's probes of the hurt dependency.
+     */
+    record Result(Experiment experiment, boolean steadyState, List<Decision> steady, int steadyAudit, int approved, int total,
+                  int unscreened, int reviews, int lost, int dropped, int waiting, boolean controlHeld, String failure,
+                  List<Integer> probes, boolean alertRaised, boolean alertHeld) {
 
         int held() {
             return (controlHeld ? 1 : 0) + (alertHeld ? 1 : 0);
@@ -43,18 +49,10 @@ final class Lab {
     }
 
     /** Runs every experiment; the hardened flag picks the version of the service. */
-    Map<Experiment, Result> runAll(boolean hardened, StringBuilder out) throws IOException, InterruptedException {
+    Map<Experiment, Result> runAll(boolean hardened) throws IOException, InterruptedException {
         Map<Experiment, Result> results = new LinkedHashMap<>();
         for (Experiment e : Experiment.all()) {
-            Result r = run(e, hardened);
-            results.put(e, r);
-            out.append("--- ").append(e.label()).append(" ").append(e.title()).append('\n');
-            out.append("hypothesis: ").append(e.hypothesis()).append('\n');
-            out.append("injected: ").append(e.dependency()).append(", ").append(e.fault().description()).append('\n');
-            out.append("steady state before: ").append(r.steadyState() ? "yes" : "NO").append('\n');
-            out.append("observed: ").append(r.observed()).append('\n');
-            out.append("control: ").append(r.controlHeld() ? "held" : "BROKEN, " + r.failure()).append('\n');
-            out.append("alert: ").append(r.alert()).append(" -> ").append(r.alertHeld() ? "held" : "BROKEN").append('\n');
+            results.put(e, run(e, hardened));
         }
         return results;
     }
@@ -67,7 +65,8 @@ final class Lab {
              AuditTrail audit = hardened ? new SpooledAudit(http, url(Backends.AUDIT), dir.resolve("journal.log"))
                      : new DroppingAudit(http, url(Backends.AUDIT))) {
             BankPayments service = new BankPayments(endpoints(), hardened, http, audit);
-            boolean steady = steadyState(service, audit);
+            List<Decision> steady = steadyState(service, audit);
+            int steadyAudit = backends.auditCount();
             backends.reset();
 
             proxy.inject(e.dependency(), e.fault());
@@ -79,15 +78,19 @@ final class Lab {
                 }
             }
             boolean auditScenario = e.scenario() == Experiment.Scenario.AUDIT_BURST || e.scenario() == Experiment.Scenario.AUDIT_SMALL;
+            int dropped = 0;
+            int waiting = 0;
             if (auditScenario) {
                 audit.flush(); // let the sender give up on everything it holds while the fault is still in place
+                dropped = audit instanceof DroppingAudit d ? d.dropped() : 0;
+                waiting = audit instanceof SpooledAudit w ? w.waiting() : 0;
             }
             proxy.reset();
             if (auditScenario) {
                 audit.flush();
                 obs = auditObservation(e, obs.approved, obs.total);
             }
-            return result(e, steady, obs, monitor, hardened);
+            return result(e, steady, steadyAudit, obs, dropped, waiting, monitor, hardened);
         } finally {
             try (var files = Files.list(dir)) {
                 for (Path p : files.toList()) {
@@ -107,13 +110,21 @@ final class Lab {
     }
 
     /** Four ordinary payments with every dependency healthy: two good ones, a risky one and a revoked certificate. */
-    private boolean steadyState(BankPayments service, AuditTrail audit) {
-        boolean ok = service.pay(new Payment("s1", "std-1", 120, "ok-1")).approved();
-        ok &= service.pay(new Payment("s2", "std-2", 80, "ok-1")).approved();
-        ok &= !service.pay(new Payment("s3", "std-3", 9000, "ok-1")).approved();
-        ok &= !service.pay(new Payment("s4", "std-4", 120, "rev-7")).approved();
+    static final List<Payment> STEADY = List.of(new Payment("s1", "std-1", 120, "ok-1"), new Payment("s2", "std-2", 80, "ok-1"),
+            new Payment("s3", "std-3", 9000, "ok-1"), new Payment("s4", "std-4", 120, "rev-7"));
+
+    private List<Decision> steadyState(BankPayments service, AuditTrail audit) {
+        List<Decision> decisions = new ArrayList<>();
+        for (Payment p : STEADY) {
+            decisions.add(service.pay(p));
+        }
         audit.flush();
-        return ok && backends.auditCount() == 4;
+        return decisions;
+    }
+
+    /** The steady state holds when the two good payments are approved, the other two refused and every decision audited. */
+    static boolean steadyHolds(List<Decision> d, int audited) {
+        return d.get(0).approved() && d.get(1).approved() && !d.get(2).approved() && !d.get(3).approved() && audited == STEADY.size();
     }
 
     private record Observation(int approved, int total, int unscreened, int reviews, int lost) {
@@ -154,57 +165,49 @@ final class Lab {
         return new Observation(approved, total, 0, 0, total - backends.auditCount());
     }
 
-    private Result result(Experiment e, boolean steady, Observation o, Monitor monitor, boolean hardened) {
-        String observed;
+    private Result result(Experiment e, List<Decision> steady, int steadyAudit, Observation o, int dropped, int waiting, Monitor monitor,
+                          boolean hardened) {
         boolean held;
         String failure;
         switch (e.scenario()) {
             case AUTHORIZATION -> {
-                observed = "approved " + o.approved + " of " + o.total;
                 held = o.approved == 0;
                 failure = "fails open";
             }
             case FRAUD -> {
-                observed = "approved without a fraud score " + o.unscreened + " of " + o.total + ", held for review " + o.reviews;
                 held = o.unscreened == 0;
                 failure = "payments go unscreened";
             }
             case REVOCATION -> {
-                observed = "approved with a revoked certificate " + o.approved + " of " + o.total;
                 held = o.approved == 0;
                 failure = "the check soft-fails";
             }
             case RATE_BURST -> {
-                observed = "approved " + o.approved + " of " + o.total + " from one account, limit " + BankPayments.LIMIT;
                 held = o.approved <= BankPayments.LIMIT;
                 failure = "the limit disappears";
             }
             default -> {
-                observed = "payments approved " + o.approved + " of " + o.total + ", audit records lost " + o.lost + " of " + o.total;
                 held = o.lost == 0;
                 failure = "audit records silently lost";
             }
         }
         boolean raised = monitor.alerted(e.dependency());
         boolean other = monitor.alerts().stream().anyMatch(a -> !a.dependency().equals(e.dependency()));
-        String alert;
         boolean alertHeld;
         if (!hardened) {
-            alert = "no monitor, none raised";
             alertHeld = !e.alertExpected();
         } else if (raised) {
             int n = monitor.alerts().stream().filter(a -> a.dependency().equals(e.dependency())).findFirst().orElseThrow().failedProbes();
-            alert = "raised for " + e.dependency() + " after " + n + " failed probes";
             alertHeld = e.alertExpected() && !other && n <= Monitor.THRESHOLD;
         } else {
-            alert = "none in " + PROBE_ROUNDS + " probe rounds";
             alertHeld = !e.alertExpected() && !other;
         }
-        return new Result(e, steady, observed, held, failure, alert, alertHeld);
+        return new Result(e, steadyHolds(steady, steadyAudit), steady, steadyAudit, o.approved, o.total, o.unscreened, o.reviews, o.lost,
+                dropped, waiting, held, failure, monitor.history(e.dependency()), raised, alertHeld);
     }
 
     /** The one case the hardened version still accepts: a certificate revoked after its last good answer was cached. */
-    String staleCacheRisk() throws IOException, InterruptedException {
+    int staleCacheRisk() throws IOException, InterruptedException {
         proxy.reset();
         backends.reset();
         try (Http http = new Http(DEADLINE_MS); AuditTrail audit = new SpooledAudit(http, url(Backends.AUDIT),
@@ -215,7 +218,7 @@ final class Lab {
             proxy.inject(Backends.OCSP, Fault.DOWN);
             boolean approved = service.pay(new Payment("w2", "late-acc-2", 120, "late-8")).approved();
             proxy.reset();
-            return "certificate revoked while the responder is down, last answer was good: approved " + (approved ? 1 : 0) + " of 1";
+            return approved ? 1 : 0;
         }
     }
 }

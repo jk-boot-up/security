@@ -256,8 +256,9 @@ final class Raw implements AutoCloseable {
             MemorySegment priv = a.allocate(8);
             List<Attr> pubT = List.of(Attr.bool(CKA_TOKEN, true), Attr.bool(CKA_VERIFY, true), Attr.ulong(CKA_MODULUS_BITS, 2048),
                     new Attr(CKA_PUBLIC_EXPONENT, new byte[] {1, 0, 1}), new Attr(CKA_ID, id), Attr.text(CKA_LABEL, label));
-            List<Attr> privT = List.of(Attr.bool(CKA_TOKEN, true), Attr.bool(CKA_PRIVATE, true), Attr.bool(CKA_SENSITIVE, true),
-                    Attr.bool(CKA_EXTRACTABLE, false), Attr.bool(CKA_SIGN, true), new Attr(CKA_ID, id), Attr.text(CKA_LABEL, label));
+            List<Attr> privT = List.of(Attr.bool(CKA_TOKEN, true), Attr.bool(CKA_PRIVATE, true),
+                    Attr.bool(CKA_SENSITIVE, true), Attr.bool(CKA_EXTRACTABLE, false),
+                    Attr.bool(CKA_SIGN, true), new Attr(CKA_ID, id), Attr.text(CKA_LABEL, label));
             long rv = call(GENERATE_PAIR, session, mechanism(a, CKM_RSA_PKCS_KEY_PAIR_GEN), template(a, pubT), (long) pubT.size(), template(a, privT),
                     (long) privT.size(), pub, priv);
             if (rv != 0) {

@@ -2,6 +2,7 @@ package com.jk.explore.security.files;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -112,5 +113,25 @@ class FilesTest {
         assertFalse(ReturnLink.isOwnHost("https://evilshop.example/x"));
         assertFalse(ReturnLink.isOwnHost("https://shop.example@evil.example/x"));
         assertFalse(ReturnLink.isOwnHost("not a url"));
+    }
+
+    @Test
+    void returnLinkGivesTheReasonItRefused() {
+        assertNull(ReturnLink.reason("/orders?page=2"));
+        assertEquals("does not start with /", ReturnLink.reason("https://evil.example/login"));
+        assertEquals("starts with //: another host", ReturnLink.reason("//evil.example"));
+        assertEquals("has a backslash: browsers read /\\ as //", ReturnLink.reason("/\\evil.example"));
+        assertEquals("has a control character", ReturnLink.reason("/ok\r\nSet-Cookie: a=b"));
+    }
+
+    @Test
+    void namesAreDecodedExactlyOnce() {
+        assertEquals("../secrets/db.txt", SafeDownloads.decodeOnce("%2e%2e%2fsecrets%2fdb.txt"));
+        assertEquals("%2e%2e%2f", SafeDownloads.decodeOnce("%252e%252e%252f")); // a second layer stays encoded, and fails the shape check
+    }
+
+    @Test
+    void firstBytesShowHexAndCharacters() {
+        assertEquals("89 50 4e 47  .PNG", FilesDemo.firstBytes(FilesDemo.PNG));
     }
 }

@@ -37,6 +37,20 @@ public final class Monitors {
         return Map.of("size", 0, "query", failures(), "aggs", Map.of("composite_agg", agg));
     }
 
+    /** A monitor's schedule as text, such as "1 MINUTES". */
+    @SuppressWarnings("unchecked")
+    public static String schedule(Map<String, Object> monitor) {
+        Map<String, Object> period = (Map<String, Object>) ((Map<String, Object>) monitor.get("schedule")).get("period");
+        return period.get("interval") + " " + period.get("unit");
+    }
+
+    /** A bucket-level monitor's trigger condition, the script that decides which buckets are alerts. */
+    @SuppressWarnings("unchecked")
+    public static String condition(Map<String, Object> monitor) {
+        Map<String, Object> trigger = (Map<String, Object>) ((List<Map<String, Object>>) monitor.get("triggers")).getFirst().get("bucket_level_trigger");
+        return ((Map<String, Object>) ((Map<String, Object>) trigger.get("condition")).get("script")).get("source").toString();
+    }
+
     public static Map<String, Object> bruteForce(int n) {
         return monitor("brute-force(" + n + ")", "bucket_level_monitor", composite("user", "5m", Map.of("attack", Map.of("terms", Map.of("field", "attack")))), bucketTrigger("at least " + n + " failures", Map.of("_count", "_count"), "params._count >= " + n));
     }

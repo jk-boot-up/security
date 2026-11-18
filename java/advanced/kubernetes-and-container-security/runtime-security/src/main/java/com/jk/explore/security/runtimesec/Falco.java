@@ -14,13 +14,24 @@ public final class Falco {
 
     /** Whether Falco accepts the rules file (together with its own default rules, which define the macros the rules use). */
     public static boolean validates(Path rulesDir, String file) throws IOException, InterruptedException {
-        return Sh.run(List.of("docker", "run", "--rm", "-v", rulesDir.toAbsolutePath() + ":/r:ro", IMAGE, "falco",
-                "--validate", "/etc/falco/falco_rules.yaml", "--validate", "/r/" + file)).ok();
+        return Sh.run(List.of("docker", "run", "--rm", "-v", rulesDir.toAbsolutePath() + ":/r:ro",
+                IMAGE, "falco", "--validate", "/etc/falco/falco_rules.yaml",
+                "--validate", "/r/" + file)).ok();
     }
 
     /** The number of rules in a Falco rules file. */
     public static long countRules(String yaml) {
         return yaml.lines().filter(l -> l.startsWith("- rule:")).count();
+    }
+
+    /** The names of the rules in a Falco rules file, in file order. */
+    public static List<String> ruleNames(String yaml) {
+        return yaml.lines().filter(l -> l.startsWith("- rule:")).map(l -> l.substring("- rule:".length()).strip()).toList();
+    }
+
+    /** Falco's version, from the pinned image tag. */
+    public static String version() {
+        return IMAGE.substring(IMAGE.indexOf(':') + 1);
     }
 
     /** Starts Falco with its modern eBPF driver for a few seconds: the line that says why it stopped, or "started". */

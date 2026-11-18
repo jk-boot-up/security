@@ -1,5 +1,8 @@
 package com.jk.explore.security.misconfig;
 
+import static java.nio.file.attribute.PosixFilePermission.GROUP_READ;
+import static java.nio.file.attribute.PosixFilePermission.OTHERS_READ;
+
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.file.Files;
@@ -28,6 +31,6 @@ final class ConfigFile {
 
     static boolean readableByOthers(Path file) throws IOException {
         Set<PosixFilePermission> p = Files.getPosixFilePermissions(file);
-        return p.contains(PosixFilePermission.GROUP_READ) || p.contains(PosixFilePermission.OTHERS_READ);
+        return p.contains(GROUP_READ) || p.contains(OTHERS_READ);
     }
 }

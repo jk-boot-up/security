@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The perimeter | 7 min |
-| 0:17 | Act 2: Who is calling | 7 min |
-| 0:24 | Act 3: May they | 7 min |
-| 0:31 | Act 4: Logged | 7 min |
-| 0:38 | Act 5: A token outlives its session | 7 min |
+| 0:10 | Act 1: Before: the ledger trusts the network | 7 min |
+| 0:17 | Act 2: Who is calling: the token, checked by hand | 7 min |
+| 0:24 | Act 3: May they: OPA decides | 7 min |
+| 0:31 | Act 4: A token outlives its session | 7 min |
+| 0:38 | Act 5: One record per request | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

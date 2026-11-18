@@ -10,37 +10,33 @@ import java.util.TreeMap;
 final class ResilientAuthorizer {
 
     private final FraudService fraud;
-    private final SimClock clock;
     private final CircuitBreaker breaker;
     private final int alertAfterRefusals;
     private final Map<String, Integer> refusals = new TreeMap<>();
     private boolean alerted;
 
-    ResilientAuthorizer(FraudService fraud, SimClock clock, CircuitBreaker breaker, int alertAfterRefusals) {
+    ResilientAuthorizer(FraudService fraud, CircuitBreaker breaker, int alertAfterRefusals) {
         this.fraud = fraud;
-        this.clock = clock;
         this.breaker = breaker;
         this.alertAfterRefusals = alertAfterRefusals;
     }
 
     Decision authorize(Payment payment) {
         if (!breaker.allowsCall()) {
-            return refuse("fraud check unavailable, breaker open");
+            return refuse("breaker open");
         }
         for (int attempt = 1; attempt <= 2; attempt++) {
-            long start = clock.now();
             try {
-                boolean risky = fraud.risky(payment);
-                if (clock.now() - start > SafeAuthorizer.FRAUD_BUDGET_MS) {
-                    breaker.failure();
-                    return refuse("fraud check too slow");
-                }
+                boolean risky = fraud.risky(payment, SafeAuthorizer.FRAUD_BUDGET_MS);
                 breaker.success();
                 return risky ? refuse("looks fraudulent") : Decision.approve("-");
+            } catch (TimeoutException e) {
+                breaker.failure();
+                return refuse("fraud check too slow");
             } catch (ServiceException e) {
                 breaker.failure();
                 if (!breaker.allowsCall()) {
-                    return refuse("fraud check unavailable, breaker open");
+                    return refuse("breaker open");
                 }
             }
         }

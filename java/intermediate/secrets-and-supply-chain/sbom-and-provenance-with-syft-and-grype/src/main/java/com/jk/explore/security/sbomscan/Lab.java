@@ -57,6 +57,15 @@ public final class Lab {
         return "shop-sbom:" + tag;
     }
 
+    /** The SHA-1 of one downloaded library jar, in hex, as a cataloguer records it. */
+    String sha1(String artifact, String version) throws IOException, InterruptedException {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-1").digest(Files.readAllBytes(download(artifact, version))));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+    }
+
     private Path download(String artifact, String version) throws IOException, InterruptedException {
         Path target = jars.resolve(artifact + "-" + version + ".jar");
         if (!Files.exists(target)) {

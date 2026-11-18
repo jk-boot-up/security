@@ -19,10 +19,11 @@ Secrets are committed by accident, removed by a later commit and forgotten, whil
 | Role | Class |
 | --- | --- |
 | The planted truth | `Planted` |
-| The repository | `BankRepo` |
+| The repository | `BankRepo`, `Git` |
 | The scanner written here | `Detector` |
-| gitleaks | `Gitleaks` |
-| The scoring | `Score` |
+| Entropy, worked out in steps | `EntropySteps` |
+| gitleaks, pinned | `Gitleaks` |
+| The scoring | `Score`, `Finding` |
 | Entry point | `SecretScanningDemo` |
 
 ## Requirements
@@ -38,10 +39,10 @@ Secrets are committed by accident, removed by a later commit and forgotten, whil
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 26 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 94 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:28, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:06, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

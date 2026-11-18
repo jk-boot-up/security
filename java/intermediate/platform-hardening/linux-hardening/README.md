@@ -2,11 +2,15 @@
 
 ```
 src/main/java/com/jk/explore/security/linuxhard/
+├── BuildGate.java           The scan as a build step: the build fails when any finding is at least this severe
 ├── Finding.java             One thing the checker found
+├── Fix.java                 One permission change: the mode before, the bits taken away or kept, and the mode after
 ├── Fixture.java             A prepared file system with the usual mistakes, made in a temporary directory: stands in for a container image mounted at a path
+├── HostFiles.java           Reads the text files that describe a host's accounts, its SSH daemon and its kernel settings
 ├── LinuxHardeningDemo.java  Runs the host-checking story in four numbered acts and prints exact, repeatable results
 ├── Modes.java               Reads and sets the Unix permission bits of a file, including the set-user-id, set-group-id and sticky bits that the POSIX permission set leaves out
 ├── Policy.java              What this host is allowed to have
+├── PortTable.java           Reads a {@code /proc/net/tcp} table, the kernel's list of TCP sockets
 ├── Scanner.java             A host checker
 └── Severity.java            How bad a finding is
 ```
@@ -33,7 +37,7 @@ A building inspector with a checklist who also carries a screwdriver: they tight
 
 ## The scenario
 
-A server image for a small web shop, built from a base image plus the shop's application. The demo builds a prepared copy of such an image in a temporary directory, with real Unix permission bits (including set-user-id), account files, an SSH configuration, kernel settings and a table of listening ports,
+A server image for the online store, built from a base image plus the shop's application. The demo builds a prepared copy of such an image in a temporary directory, with real Unix permission bits (including set-user-id), account files, an SSH configuration, kernel settings and a table of listening ports,
 and scans it before and after the fixes.
 
 ## Run
@@ -46,10 +50,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the checker finds on a typical image | 20 findings: 7 critical, 8 high, 3 medium and 2 low, of which 7 can be fixed mechanically. |
-| 2. The fixes a machine can make | Seven permission changes are applied and 13 findings are left, none of them permissions: accounts, SSH, kernel settings and ports. |
-| 3. The decisions a person makes | After removing the second root account and the test account, switching off passwords and root login for SSH, setting the kernel options and closing the extra ports, the scan reports 0 findings. |
-| 4. Running it again | A second scan of the hardened tree reports 0 findings, and the same scan in the build makes a regression fail it. |
+| 1. The shop's server image, before any fix | Two modes read digit by digit: /tmp/.hidden-shell is 4755 (set-user-id, rwx r-x r-x) and not allowed; /etc/shadow is 0644 (rw- r-- r--) where the policy allows at most 0640. The scan reports 20 findings: 7 critical + 8 high + 3 medium + 2 low; 7 are file permissions a machine can fix, 13 = 3 accounts + 4 sshd + 3 kernel + 3 ports need a person. |
+| 2. The fixes a machine can make | Seven permission changes, each worked out: 4755 - 4000 = 0755 (no set-user-id), 0775 - 0020 = 0755 (no group write), 0644 & 0640 = 0640 and 0644 & 0600 = 0600 (the policy's maximum), 0777 - 0002 = 0775 and 0666 - 0002 = 0664 (no write for others). 20 - 7 = 13 findings are left, none of them a permission; a second run changes nothing. |
+| 3. The decisions a person makes | The account line toor:x:0:0 has UID 0, root's number, so it is a second root; the shadow line test:: has an empty password field. The port table is hex: 00000000:0017 is 0.0.0.0 port 0x0017 = 23 on every interface, 0100007F:0CEA is 127.0.0.1 port 3306, this host only. A person removes toor and test, turns off root login, passwords, empty passwords and X11 forwarding, sets the three kernel options and stops ports 23, 2375 and 6379: 13 findings become 0. |
+| 4. Running it again, in every build | The build fails at HIGH or worse. The hardened image has 0 findings and the build passes; after a deployment script runs chmod 0777 /var/www/uploads and an engineer adds a test account with a login shell, the scan finds 2 HIGH findings and the build fails. |
 
 ## Test
 
@@ -57,7 +61,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `DemoRunsTest`, `LinuxHardeningTest`. The temporary directory's name is never printed, and the tests are skipped on systems without Unix file modes.
+23 tests in `DemoRunsTest`, `LinuxHardeningTest`, `ReadingTest`. The temporary directory's name is never printed, and the tests are skipped on systems without Unix file modes.
 
 ## What the simulation got right, and what it left out
 

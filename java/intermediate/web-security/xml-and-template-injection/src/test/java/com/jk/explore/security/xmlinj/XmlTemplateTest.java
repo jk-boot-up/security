@@ -61,6 +61,17 @@ class XmlTemplateTest {
     }
 
     @Test
+    void traceWalksTheSamePathAsRenderAndEndsAtTheSameValue() throws Exception {
+        ExpressionEngine e = new ExpressionEngine(App.demo());
+        Customer ana = new Customer("Ana", "a@x.test");
+        for (String path : java.util.List.of("app.config.smtpPassword", "customer.class.name", "customer.name")) {
+            java.util.List<String> steps = e.trace(path, ana);
+            assertEquals(path.split("\\.").length, steps.size());
+            assertTrue(steps.get(steps.size() - 1).endsWith(" -> " + e.render("${" + path + "}", ana)));
+        }
+    }
+
+    @Test
     void expressionEngineDoesNotReEvaluateDataButADeveloperMustPassItAsData() {
         TemplateEngine e = new ExpressionEngine(App.demo());
         Customer mallory = new Customer("${app.config.smtpPassword}", "m@x.test");

@@ -1,28 +1,68 @@
 ONE. Thymeleaf escapes by default.
-  Ana's review is the text <b>Great boots</b>, written with th:text
-  the page answers 200, and the review is written as: &lt;b&gt;Great boots&lt;/b&gt;
-  bold elements on the page: 0, so the review stayed text
-  nothing had to be remembered: th:text is the ordinary way to write a value
+  THE VALUE (Ana's review, put in the model):
+    <b>Great boots</b>
+  THE TEMPLATE LINE (product.html):
+    <p class="review" th:text="${review}">review</p>
+  THE PAGE (as the server sent it, status 200):
+    <p class="review">&lt;b&gt;Great boots&lt;/b&gt;</p>
+  THE RESULT (the elements a browser finds):
+    html head meta title body h1 p p a script
+    b elements: 0, so the review stayed text
+  nothing had to be remembered: th:text is the ordinary way
 TWO. th:utext, the one switch that turns escaping off.
-  the same review written with th:utext: <b>Great boots</b>
-  bold elements on the page: 1, and the shop wrote none  <- THE REVIEW BECAME PART OF THE PAGE
-  th:utext means unescaped text: it is for markup the shop wrote itself, never for anything a customer typed
-  a search of the templates for th:utext finds every place this can happen: 1 of 2 templates, and a test fails if another one appears
+  THE TEMPLATE LINE (product-unescaped.html):
+    <p class="review" th:utext="${review}">review</p>
+  THE PAGE (as the server sent it, status 200):
+    <p class="review"><b>Great boots</b></p>
+  THE RESULT (the elements a browser finds):
+    html head meta title body h1 p b
+    b elements: 1, and the shop wrote none  <- THE PAGE CHANGED
+  THE GUARD (a search of the templates for th:utext):
+    product.html             no
+    product-unescaped.html   uses it
+    a test fails if any other template starts to use it
+  th:utext is for markup the shop wrote, never for customer text
 THREE. The other places a value can go.
-  in an attribute, with th:attr: Ben's fit note reads back whole: Fits 5" boots  (true)
-  in a link, with @{/search(q=...)}: /search?q=size%205%20%26%20up
-  the search text is one parameter, and its & did not start a second one: true
-  in a script, with th:inline="javascript": const note = "It's \"great\""
-  each value went through the escaping for its own place, chosen by how it was written in the template
-FOUR. A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page.
-  the product page answers with a policy: true
-  the policy names a nonce, and the shop's own script carries the same one: true
-  the next page has a different nonce: true
-  the shop's script may run: true
-  a script that slipped in without the nonce may run: false  <- A SECOND LINE OF DEFENCE
-  the nonce comes from a filter that runs before Spring Security writes its headers, so the header and the page always agree
-FIVE. The bill.
-  the session cookie is HttpOnly: true, and SameSite=Strict: true
-  escaping by default protects only the values written through it: th:utext, and HTML built in Java code, skip it
-  a value placed in an event handler or a style needs more than escaping: keep customer text out of those places
-  Spring Security writes a fixed policy unless the application supplies the nonce, as this store does with one small filter
+  THE VALUES (put in the model):
+    fitNote     Fits 5" boots
+    search      size 5 & up
+    scriptNote  It's "great"
+  THE TEMPLATE (how each one is written):
+    th:attr="data-fit=${fitNote}"
+    th:href="@{/search(q=${search})}"
+    th:inline="javascript" and [[${scriptNote}]]
+  THE PAGE (what Thymeleaf wrote for each):
+    data-fit="Fits 5&quot; boots"
+    href="/search?q=size%205%20%26%20up"
+    const note = "It's \"great\"";
+  HOW THE CHARACTERS WERE WRITTEN:
+    " -> &quot; in an attribute, \" in a script string
+    space -> %20, & -> %26 in a link (& is 38 = 2 x 16 + 6)
+  THE RESULT (what the browser reads back):
+    fit note    Fits 5" boots  (whole: true)
+    link        parameters: 1, so the & stayed text
+    script      one string, no early end: true
+FOUR. A strict Content-Security-Policy from Spring Security.
+  THE REQUEST:
+    GET /product
+  THE RESPONSE (the nonce shown as <nonce>):
+    status 200, and the header Content-Security-Policy:
+      default-src 'self'
+      script-src 'nonce-<nonce>' 'strict-dynamic'
+      object-src 'none'
+      base-uri 'none'
+      frame-ancestors 'none'
+    Set-Cookie: JSESSIONID=<id>; Path=/; HttpOnly; SameSite=Strict
+    <script nonce="<nonce>">
+  HOW THE NONCE GETS THERE (one request):
+    NonceFilter: 16 random bytes, written in Base64
+    16 bytes -> 6 groups of up to 3 -> 24 characters
+    it runs before Spring Security writes its headers
+    request attribute cspNonce, read by the header and the page
+    this page's nonce: 24 characters
+    the header's nonce is the script's nonce: true
+    the next page's nonce differs: true
+  WHICH SCRIPTS MAY RUN (what a browser decides):
+    the shop's script, with the nonce   yes
+    a script without the nonce          no  <- BLOCKED
+    the cookie is HttpOnly: true, SameSite=Strict: true

@@ -16,6 +16,20 @@ final class CartParser {
 
     private static final String NOTE = "note";
 
+    /** What reaching a branch means, for the branches the demo prints. */
+    static String branchName(int branch) {
+        return switch (branch) {
+            case 30 -> "an empty list";
+            case 31 -> "a comma in a list";
+            case 40 -> "an empty object";
+            case 50, 51, 52, 53 -> "\"" + NOTE.substring(0, branch - 49) + "\" matched";
+            case 60 -> "a note";
+            case 61 -> "a note with #";
+            case 71 -> "an escape";
+            default -> "branch " + branch;
+        };
+    }
+
     private final String text;
     private final Coverage coverage;
     private final boolean careful;

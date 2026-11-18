@@ -14,10 +14,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** The instance metadata service as a server on a loopback port, in the two versions, and the two web features that reach it. */
+/**
+ * The instance metadata service as a server on a loopback port, in the two versions, and the two web features that reach it.
+ * Version 1 answers any GET; version 2 wants a token, got with a PUT, in a header; a PUT that came through a proxy gets no token.
+ */
 public final class Imds implements AutoCloseable {
 
     static final String ROLE_PATH = "/latest/meta-data/iam/security-credentials/web-role";
+    static final String TOKEN_PATH = "/latest/api/token";
+    static final String TOKEN_HEADER = "X-aws-ec2-metadata-token";
+    static final String TTL_HEADER = "X-aws-ec2-metadata-token-ttl-seconds";
     static final String SECRET = "{\"AccessKeyId\":\"ASIAEXAMPLE\",\"SecretAccessKey\":\"example-secret\",\"Token\":\"example-session\"}";
 
     private final HttpServer server;
@@ -32,14 +38,17 @@ public final class Imds implements AutoCloseable {
     private void handle(HttpExchange ex, boolean tokenRequired) throws IOException {
         int status = 200;
         String body = "";
-        if (ex.getRequestHeaders().containsKey("X-Forwarded-For")) {
-            status = 403;
-        } else if (ex.getRequestMethod().equals("PUT") && ex.getRequestURI().getPath().equals("/latest/api/token")) {
-            String token = UUID.randomUUID().toString();
-            tokens.put(token, true);
-            body = token;
-        } else if (ex.getRequestMethod().equals("GET") && ex.getRequestURI().getPath().equals(ROLE_PATH)) {
-            String t = ex.getRequestHeaders().getFirst("X-aws-ec2-metadata-token");
+        String path = ex.getRequestURI().getPath();
+        if (ex.getRequestMethod().equals("PUT") && path.equals(TOKEN_PATH)) {
+            if (ex.getRequestHeaders().containsKey("X-Forwarded-For")) {
+                status = 403;   // a token request that came through a proxy is refused
+            } else {
+                String token = UUID.randomUUID().toString();
+                tokens.put(token, true);
+                body = token;
+            }
+        } else if (ex.getRequestMethod().equals("GET") && path.equals(ROLE_PATH)) {
+            String t = ex.getRequestHeaders().getFirst(TOKEN_HEADER);
             if (tokenRequired && (t == null || !tokens.containsKey(t))) {
                 status = 401;
             } else {
@@ -72,6 +81,7 @@ public final class Imds implements AutoCloseable {
         }
     }
 
+    static final String VISITOR = "203.0.113.9";
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     /** "Import a picture from a link": the server does a GET of any address it is given. */
@@ -82,9 +92,21 @@ public final class Imds implements AutoCloseable {
 
     /** A "webhook tester": the visitor chooses the method and one header, so a PUT with the token header is possible. */
     public static Fetched webhookTester(String method, String url, String headerName, String headerValue) throws IOException, InterruptedException {
+        return send(method, url, headerName, headerValue, false);
+    }
+
+    /** The same feature behind a reverse proxy, which adds X-Forwarded-For with the visitor's address. */
+    public static Fetched throughProxy(String method, String url, String headerName, String headerValue) throws IOException, InterruptedException {
+        return send(method, url, headerName, headerValue, true);
+    }
+
+    private static Fetched send(String method, String url, String headerName, String headerValue, boolean proxied) throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).method(method, HttpRequest.BodyPublishers.noBody());
         if (headerName != null) {
             b.header(headerName, headerValue);
+        }
+        if (proxied) {
+            b.header("X-Forwarded-For", VISITOR);
         }
         HttpResponse<String> r = CLIENT.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Fetched(r.statusCode(), r.body());

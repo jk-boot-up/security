@@ -21,7 +21,7 @@ youtube_tags = ["security chaos engineering", "toxiproxy", "fail closed", "fail 
 
 [readme]
 intro = """
-A security control is a dependency like any other: it is a call over a network, and it can be slow, hung, reset or gone. What the service does then is a decision somebody made, often by accident. This project asks the question by experiment. A **bank payments service** (built with the JDK `HttpServer`) calls five dependencies through **Toxiproxy**, which runs in Docker and is driven from Java through its HTTP API. Each of 10 experiments states a **steady state**, **injects a failure**, **observes** and gives a **verdict**, for two hypotheses: the control **fails closed**, and **an alert fires**. The first version has planted weaknesses; the hardened version fixes them. The demo needs Docker and the `ghcr.io/shopify/toxiproxy` image (a few MB) and is tagged `integration`: `./gradlew integrationTest`.
+A security control is a dependency like any other: it is a call over a network, and it can be slow, hung, reset or gone. What the service does then is a decision somebody made, often by accident. This project asks the question by experiment. A **bank payments service** (built with the JDK `HttpServer`) calls five dependencies through **Toxiproxy**, which runs in Docker and is driven from Java through its HTTP API. Each of 10 experiments states a **steady state**, **injects a failure**, **observes** and gives a **verdict**, for two hypotheses: the control **fails closed**, and **an alert fires**. The first version has planted weaknesses; the hardened version fixes them. The demo needs Docker and the `ghcr.io/shopify/toxiproxy:2.13.0` image (a few MB) and is tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **Fail open.** With authorization down, slow or reset the first version approves **6 of 6** payments; the hardened one approves **0 of 6**.
@@ -60,94 +60,297 @@ This is a project of the [resilience-and-recovery](..) module. The earlier modul
 twin = """
 Toxiproxy is real and runs in Docker. The payments service and its five dependencies are the project's own small programs; the failures are injected on the real connections between them. Nothing is simulated in the service's own code.
 """
-test_note = "The service, the audit trails and the monitor are tested with stub dependencies and no Docker. The demo starts Toxiproxy (./gradlew integrationTest)."
+test_note = "The service, the audit trails, the monitor and its probe history, and the trickle arithmetic are tested with stub dependencies and no Docker. The demo starts Toxiproxy (./gradlew integrationTest)."
 
 [[act]]
-title = "Steady state"
-summary = "Before every experiment four ordinary payments give the expected answers and 4 of 4 audit records arrive."
+title = "The service, the faults and the steady state"
+summary = "Five controls, each a call to a dependency through its own Toxiproxy proxy; six faults; a 1500 ms deadline; and a steady state that holds before 20 of 20 runs."
 detail = """
-A chaos experiment starts from a steady state that is checked, not assumed. Two good payments are approved, a risky one is refused by the fraud score and a payment with a revoked certificate is refused, and 4 of 4 audit records reach the sink. Both versions pass this in all 10 experiments, so any later difference is caused by the failure.
+The input: a bank payments service with five controls, each a call to a dependency: the rate limit (ratelimit), the certificate revocation check (revocation), authorization, the fraud score (fraud) and the audit trail (audit). The first version, when a call fails, reads it as no limit, not revoked, allow, a clean score, and drops the audit record.
+Toxiproxy 2.13.0 sits between the service and each dependency and can inject six faults: down (connections refused), slow (answers held back 5000 ms), hang (accepted, nothing sent), reset, trickle (1 KB per second) and slow close (3000 ms after the answer). Every call has a deadline of 1500 ms, body included.
+The steady state, checked before each experiment in both versions: s1 and s2 are approved, s3 (9000) is denied by the fraud score, s4 (certificate rev-7) is denied by the revocation check, and 4 of 4 audit records arrive. It held before 20 of 20 runs, so every difference later is caused by the fault.
+"""
+figure = "controls_map"
+figure_title = "Five controls, five proxies, six faults"
+figure_speech = """
+First demo: the service, and how it is hurt. [[slnc 400]] On the left, the bank's payments service. [[slnc 300]] Every payment goes through five controls, and each control is a call to another service. [[slnc 300]] The rate limit store, the certificate revocation responder, authorization, the fraud score, and the audit sink. [[slnc 700]]
+In the middle, Toxiproxy. [[slnc 300]] Each dependency is reached through its own proxy, so a failure can be injected on exactly one connection, on purpose. [[slnc 600]]
+At the bottom, the six faults it can inject. [[slnc 300]] Down, slow, a hang, a reset, a trickle, and a slow close. [[slnc 600]] An experiment is always the same four steps: check the steady state, inject one fault, count what the service does, and give a verdict.
 """
 speech = """
-First demo: the steady state. [[slnc 400]] Four ordinary payments, four right answers, four audit records. [[slnc 600]] Both versions pass, so the difference comes from the failure.
+Here is the real output. [[slnc 400]] The five controls, the dependency each one calls, and what the first version does when that call fails. [[slnc 300]] No limit, not revoked, allow, a clean score, and drop the record. [[slnc 300]] Every one of them says yes.
+[[page]]
+The six faults, as Toxiproxy injects them. [[slnc 400]] And the deadline: one and a half seconds for the whole call, body included.
+[[page]]
+The steady state, checked before every experiment. [[slnc 300]] Two good payments approved, a large one denied by the fraud score, and a revoked certificate denied. [[slnc 300]] Four of four audit records. [[slnc 400]] It held before all twenty runs.
 """
 rows = { steady = "active ok" }
 console = [
-    ["steady state before: yes", "ok"],
-    ["audit records: 4 of 4", "ok"],
-    ["both versions pass, 10 of 10", "ok"],
+    ["THE CONTROLS (each one a call to a dependency):", "code"],
+    ["  control        dependency     first version, when it fails", "muted"],
+    ["  rate limit     ratelimit      no limit", "muted"],
+    ["  revocation     revocation     not revoked (soft fail)", "muted"],
+    ["  authorization  authorization  allow", "muted"],
+    ["  fraud score    fraud          a clean score", "muted"],
+    ["  audit trail    audit          drop the record", "muted"],
+    ["---", ""],
+    ["THE FAULTS (Toxiproxy 2.13.0, one proxy per dependency):", "code"],
+    ["  down        the proxy is disabled, connections are refused", "muted"],
+    ["  slow        every answer is held back 5000 ms", "muted"],
+    ["  hang        accepted, and then nothing is ever sent", "muted"],
+    ["  reset       the connection is reset by the peer", "muted"],
+    ["  trickle     the answer trickles at 1 KB per second", "muted"],
+    ["  slow close  the connection closes 3000 ms after the answer", "muted"],
+    ["THE DEADLINE: 1500 ms for the whole call, body included", "code"],
+    ["---", ""],
+    ["THE STEADY STATE (before every experiment, both versions):", "code"],
+    ["       amount  cert   decision", "muted"],
+    ["  s1      120  ok-1   approved: screened", "muted"],
+    ["  s2       80  ok-1   approved: screened", "muted"],
+    ["  s3     9000  ok-1   denied: fraud score", "muted"],
+    ["  s4      120  rev-7  denied: certificate", "muted"],
+    ["  audit records received: 4 of 4", "muted"],
+    ["  steady state held before 20 of 20 runs", "muted"],
 ]
 
 [[act]]
-title = "Authorization and fraud"
-summary = "The first version approves 6 of 6 payments with authorization down, slow or reset, and 6 of 6 without a fraud score; the hardened one approves 0 and holds 6 for review."
+title = "Authorization: down, slow, reset"
+summary = "With authorization down, slow or reset the first version approves 6 of 6 payments; the hardened version approves 0 of 6."
 detail = """
-Toxiproxy refuses the connection, holds every answer back 5 seconds, resets the connection, accepts and sends nothing, or trickles the answer at 1 KB per second, while the service has a deadline of under a second. The first version reads an unreachable authorization service as yes and an unreachable fraud service as a clean score. The hardened version denies, or holds the payment for review.
+The hypotheses: no payment is approved while authorization is down (E1), answers too late (E2) or has its connection reset (E3). Six payments are made in each experiment.
+The first version reads an unanswered call as allow: approved 6 of 6 in all three, and the control is BROKEN. The hardened version reads it as a deny: approved 0 of 6 in all three, and the control holds.
+"""
+figure = "authz_bars"
+figure_title = "Approved while authorization fails"
+figure_speech = """
+Second demo: authorization. [[slnc 400]] Three experiments: the service is down, it answers after five seconds, or its connection is reset. [[slnc 300]] Six payments each. [[slnc 700]]
+Every square is a payment. [[slnc 300]] A filled rose square was approved, although nobody said yes. [[slnc 600]] In the first version, all six are approved, in all three experiments. [[slnc 300]] A catch block somewhere decided that a flaky authorization service should not block customers. [[slnc 600]]
+In the hardened version, the same failures approve nothing. [[slnc 300]] No answer means no.
 """
 speech = """
-Second demo: authorization and fraud. [[slnc 400]] Down, slow, reset, hung, on a trickle. [[slnc 600]] The first version says yes every time. [[slnc 600]] The hardened one says no, or waits for a person.
+The output: the three hypotheses, then the first version. [[slnc 300]] Down, slow and reset each approve six of six, and the control is broken. [[slnc 400]] The hardened version approves zero of six, and the control holds.
 """
 rows = { authz = "active wrong" }
 console = [
-    ["authorization down, slow, reset: approved 6 of 6", "bad"],
-    ["fraud hung or trickling: unscreened 6 of 6", "bad"],
-    ["hardened: approved 0 of 6, review 6", "ok"],
+    ["THE HYPOTHESES (3 experiments, one fault each):", "code"],
+    ["  E1   no payment is approved while authorization is down", "muted"],
+    ["  E2   none is approved when authorization answers too late", "muted"],
+    ["  E3   none is approved when the authorization link is reset", "muted"],
+    ["THE FIRST VERSION (an unanswered call is read as allow):", "code"],
+    ["  E1   down        approved 6 of 6              BROKEN", "bad"],
+    ["  E2   slow        approved 6 of 6              BROKEN", "bad"],
+    ["  E3   reset       approved 6 of 6              BROKEN", "bad"],
+    ["THE HARDENED VERSION (an unanswered call is a deny):", "code"],
+    ["  E1   down        approved 0 of 6              held", "muted"],
+    ["  E2   slow        approved 0 of 6              held", "muted"],
+    ["  E3   reset       approved 0 of 6              held", "muted"],
 ]
 
 [[act]]
-title = "Audit, limit and revocation"
-summary = "The first version loses 20 of 20 audit records, lets 40 of 40 through a limit of 5 and approves 6 of 6 revoked certificates; the hardened one loses 0 and approves 5 of 40 and 0 of 6."
+title = "The fraud score: a hang and a trickle"
+summary = "With the fraud service hung or on a trickle the first version approves 6 of 6 payments unscreened; the hardened one holds 6 for review. A 4009-byte answer at 1024 bytes a second takes 3.9 s, past the 1.5 s deadline."
 detail = """
-With the audit sink down for a burst of 20 decisions the first version drops them from a small buffer and nobody knows; the hardened version writes a journal first and sends it when the sink is back. When the rate-limit store resets connections the first version has no limit; the hardened one counts in its own process. When the revocation responder is down or slow the first version reads silence as not revoked; the hardened one refuses.
+The hypotheses: no payment is approved without a fraud score when the fraud service hangs (E4) or trickles (E5).
+The first version reads no score as a clean score: unscreened 6 of 6, review 0, BROKEN. The hardened version holds the payment for a person: unscreened 0 of 6, review 6, held.
+How the trickle misses the deadline: an answer is 4009 bytes, the score line and a padding; at 1024 bytes a second that is 4009 / 1024 = 3.9 s, more than the 1.5 s deadline. A deadline on the connection alone would wait for every byte.
+"""
+figure = "fraud_trickle"
+figure_title = "No score, and a trickle that misses the deadline"
+figure_speech = """
+Third demo: the fraud score. [[slnc 400]] At the top, the two experiments. [[slnc 300]] The fraud service accepts the connection and then hangs, or it answers one kilobyte a second. [[slnc 600]] The first version approves all six payments without any score. [[slnc 300]] The hardened version holds all six for a person to review. [[slnc 700]]
+At the bottom, why the trickle is a failure at all. [[slnc 300]] The answer is four thousand and nine bytes. [[slnc 300]] At one thousand and twenty four bytes a second, it takes three point nine seconds to arrive. [[slnc 300]] The green line is the deadline, one and a half seconds, for the whole call, body included. [[slnc 300]] So the service gives up long before the answer is complete.
 """
 speech = """
-Third demo: audit, limit and revocation. [[slnc 400]] Twenty audit records lost without a sound. [[slnc 600]] A limit of five that lets forty through. [[slnc 600]] A revoked certificate accepted because nobody answered.
+The output: the hypotheses, then the first version, with six of six unscreened and none held for review. [[slnc 400]] The hardened version: zero unscreened, six held for review. [[slnc 400]] And the trickle, worked out: four thousand and nine bytes, at one thousand and twenty four a second, is three point nine seconds, more than the deadline.
+"""
+rows = { fraud = "active wrong" }
+console = [
+    ["THE HYPOTHESES (2 experiments, one fault each):", "code"],
+    ["  E4   no payment is approved without a fraud score", "muted"],
+    ["  E5   none is approved without a score when it trickles", "muted"],
+    ["THE FIRST VERSION (no score is read as a clean score):", "code"],
+    ["  E4   hang        unscreened 6 of 6, review 0  BROKEN", "bad"],
+    ["  E5   trickle     unscreened 6 of 6, review 0  BROKEN", "bad"],
+    ["THE HARDENED VERSION (no score: held for a person to review):", "code"],
+    ["  E4   hang        unscreened 0 of 6, review 6  held", "muted"],
+    ["  E5   trickle     unscreened 0 of 6, review 6  held", "muted"],
+    ["HOW THE TRICKLE MISSES THE DEADLINE:", "code"],
+    ["  an answer is 4009 bytes (the score line and a padding)", "muted"],
+    ["  4009 bytes / 1024 bytes a second = 3.9 s > 1.5 s deadline", "muted"],
+]
+
+[[act]]
+title = "The audit trail: the sink down, then a slow close"
+summary = "With the audit sink down for a burst the first version loses 20 of 20 records without a sound; the hardened one keeps 20 in a journal and sends 20 when the sink is back. A slow close loses nothing in either."
+detail = """
+The hypotheses: every decision reaches the audit sink once it is back (E6), and a slow close loses no record and raises no false alarm (E7).
+The first version keeps a buffer of 5 records in memory and drops what cannot be sent: in E6 the 20 payments are approved and 20 of 20 records are lost; dropped 20, and nobody is told. The hardened version writes each record to a journal on disk first, then sends it: 20 wait in the journal while the sink is down, and 20 are sent when it is back, so 0 of 20 are lost.
+The slow close (E7) costs nothing: 4 approved, 0 of 4 lost, in both versions.
+"""
+figure = "audit_paths"
+figure_title = "Twenty decisions while the audit sink is down"
+figure_speech = """
+Fourth demo: the audit trail. [[slnc 400]] Every decision the service makes must reach the audit sink, and here the sink is down during a burst of twenty payments. [[slnc 700]]
+At the top, the first version. [[slnc 300]] Records go into a small buffer in memory, and a sender thread posts them. [[slnc 300]] Each post fails, and each record is dropped. [[slnc 300]] All twenty are gone, and the payments were still approved, so nobody notices. [[slnc 700]]
+At the bottom, the hardened version. [[slnc 300]] Each record is written to a journal on disk first. [[slnc 300]] While the sink is down, twenty wait there. [[slnc 300]] When it is back, all twenty are sent, and none is lost.
+"""
+speech = """
+The output: the two hypotheses. [[slnc 300]] The first version loses twenty of twenty records while the sink is down, and the slow close loses nothing. [[slnc 400]] The hardened version loses zero: twenty wait in the journal, and twenty are sent when the sink is back.
 """
 rows = { audit = "active wrong" }
 console = [
-    ["audit records lost: 20 of 20 against 0 of 20", "bad"],
-    ["one account, limit 5: 40 of 40 against 5 of 40", "bad"],
-    ["revoked certificate: 6 of 6 against 0 of 6", "bad"],
+    ["THE HYPOTHESES (2 experiments, one fault each):", "code"],
+    ["  E6   every decision reaches the audit sink once it is back", "muted"],
+    ["  E7   a slow close loses no record and raises no false alarm", "muted"],
+    ["THE FIRST VERSION (a buffer of 5 in memory, drop what fails):", "code"],
+    ["  E6   down        approved 20, lost 20 of 20   BROKEN", "bad"],
+    ["  E7   slow close  approved 4, lost 0 of 4      held", "muted"],
+    ["  E6: dropped while the sink was down: 20, nobody told", "muted"],
+    ["THE HARDENED VERSION (a journal on disk first, then send):", "code"],
+    ["  E6   down        approved 20, lost 0 of 20    held", "muted"],
+    ["  E7   slow close  approved 4, lost 0 of 4      held", "muted"],
+    ["  E6: waiting in the journal while down: 20, sent when back: 20", "muted"],
+]
+
+[[act]]
+title = "The rate limit and the revocation check"
+summary = "With the rate-limit store resetting, one account gets 40 of 40 payments through a limit of 5 in the first version and 5 of 40 in the hardened one; a revoked certificate is approved 6 of 6 against 0 of 6."
+detail = """
+The hypotheses: one account never gets more than 5 approved in a burst (E8), and a revoked certificate is never approved when the responder is down (E9) or late (E10).
+The first version has no limit without its limiter and reads no revocation answer as good: approved 40 of 40, and revoked approved 6 of 6 twice; all BROKEN. The hardened version counts locally and refuses without an answer: approved 5 of 40, and revoked approved 0 of 6.
+How the local count holds the limit: payments 1 to 5 bring the count to 1 to 5, which is at most 5, so they are approved; payments 6 to 40 bring it to 6 to 40, more than 5, so they are refused.
+"""
+figure = "limit_burst"
+figure_title = "Forty payments from one account, and a revoked certificate"
+figure_speech = """
+Fifth demo: the rate limit and the revocation check. [[slnc 400]] One account sends forty payments in a burst, and the limit is five. [[slnc 300]] The store that keeps the shared count resets every connection. [[slnc 600]]
+In the first version, forty of forty are approved. [[slnc 300]] With the limiter gone, there is no limit at all. [[slnc 600]] In the hardened version, the service keeps its own count. [[slnc 300]] The first five are approved, and the other thirty five are refused. [[slnc 700]]
+At the bottom, the revocation check. [[slnc 300]] When the responder is down or late, the first version reads silence as not revoked, and approves six of six with a revoked certificate. [[slnc 300]] The hardened version approves none.
+"""
+speech = """
+The output: the three hypotheses, and the first version. [[slnc 300]] Forty of forty approved from one account, and six of six revoked certificates, twice. [[slnc 300]] All broken.
+[[page]]
+The hardened version: five of forty, and zero of six. [[slnc 400]] And how the local count holds: payments one to five keep the count at five or less, and payments six to forty push it past five, so they are refused.
+"""
+rows = { limit = "active wrong" }
+console = [
+    ["THE HYPOTHESES (3 experiments, one fault each):", "code"],
+    ["  E8   one account never gets more than 5 approved in a burst", "muted"],
+    ["  E9   a revoked certificate is never approved", "muted"],
+    ["  E10  a revoked certificate is never approved when it is late", "muted"],
+    ["THE FIRST VERSION (no limiter: no limit; no answer: good):", "code"],
+    ["  E8   reset       approved 40 of 40            BROKEN", "bad"],
+    ["  E9   down        revoked, approved 6 of 6     BROKEN", "bad"],
+    ["  E10  slow        revoked, approved 6 of 6     BROKEN", "bad"],
+    ["---", ""],
+    ["THE HARDENED VERSION (count locally; no answer: refuse):", "code"],
+    ["  E8   reset       approved 5 of 40             held", "muted"],
+    ["  E9   down        revoked, approved 0 of 6     held", "muted"],
+    ["  E10  slow        revoked, approved 0 of 6     held", "muted"],
+    ["HOW THE LOCAL COUNT HOLDS THE LIMIT (E8, one account):", "code"],
+    ["  payments 1 to 5: count 1 to 5 <= 5, approved", "muted"],
+    ["  payments 6 to 40: count 6 to 40 > 5, refused", "muted"],
 ]
 
 [[act]]
 title = "Does anybody hear it?"
-summary = "The first version raises 0 alerts; the hardened version raises one after 3 failed probes, and none for a slow close."
+summary = "The hardened version's monitor raises an alert after 3 failed probes, 9 of 9 times, and none for the slow close; the first version raises 0 of 9."
 detail = """
-A monitor probes the health endpoint of every dependency through its proxy. Three failed probes in a row raise one alert, so the delay is counted in probes and does not depend on the clock. The first version has no monitor, so 9 of the 9 outages that needed an alert were never reported. The slow close of the audit sink does not fail a probe, and the hardened version raises no false alarm for it.
+The monitor probes the health endpoint of each of the 5 dependencies once a round; 3 failed probes in a row raise one alert, and an experiment runs 4 rounds. The delay is counted in probes, not seconds, so it is the same on every machine.
+In E1, authorization down, the probes fail 1, 2, 3 in a row and the third raises the alert; the fourth adds none. In E7, the slow close, all 4 rounds are answered and nothing is raised.
+9 outages need an alert and E7 needs none. The first version has no monitor and raises 0 of 9; the hardened version raises 9 of 9, each after 3 failed probes, with 0 false alarms.
+"""
+figure = "probe_rounds"
+figure_title = "The probes, round by round"
+figure_speech = """
+Sixth demo: does anybody hear it? [[slnc 400]] A control that fails closed still needs someone to be told, or the bank only finds out from angry customers. [[slnc 600]]
+At the top, the probes during the authorization outage. [[slnc 300]] Each round, the monitor asks the health endpoint. [[slnc 300]] Round one fails, then round two, then round three: three in a row, and that raises one alert. [[slnc 300]] Round four fails too, but the alert is already out. [[slnc 700]]
+In the middle, the slow close of the audit sink. [[slnc 300]] Every probe is answered, so there is no alert, and that is right: a slow close costs nothing. [[slnc 600]] Counting in probes, not seconds, keeps the result the same on every machine.
 """
 speech = """
-Fourth demo: does anybody hear it? [[slnc 400]] Three failed probes, then one alert. [[slnc 600]] The first version has no monitor at all. [[slnc 600]] And a harmless slow close raises nothing.
+The output: the monitor, three failed probes in a row, four rounds. [[slnc 400]] Then the probes of the authorization outage: failed one, two, three in a row, and the alert.
+[[page]]
+The probes of the slow close: answered every time. [[slnc 400]] And the totals: the first version raised none of the nine alerts it needed, the hardened version all nine, with no false alarm.
 """
 rows = { alert = "active ok" }
 console = [
-    ["first version: 9 of 9 alerts missing", "bad"],
-    ["hardened: alert after 3 failed probes", "ok"],
-    ["slow close: no false alarm", "ok"],
+    ["THE MONITOR (hardened version only):", "code"],
+    ["  each round probes /health of the 5 dependencies", "muted"],
+    ["  3 failed probes in a row raise one alert; 4 rounds", "muted"],
+    ["THE PROBES IN E1 (authorization, down):", "code"],
+    ["  round 1  failed, 1 in a row", "muted"],
+    ["  round 2  failed, 2 in a row", "muted"],
+    ["  round 3  failed, 3 in a row  -> ALERT", "ok"],
+    ["  round 4  failed, 4 in a row", "muted"],
+    ["---", ""],
+    ["THE PROBES IN E7 (audit, slow close):", "code"],
+    ["  round 1  answered", "muted"],
+    ["  round 2  answered", "muted"],
+    ["  round 3  answered", "muted"],
+    ["  round 4  answered", "muted"],
+    ["THE ALERTS (9 outages need one, E7 needs none):", "code"],
+    ["  first version    raised 0 of 9 (no monitor)", "muted"],
+    ["  hardened         raised 9 of 9, after 3 failed probes", "muted"],
+    ["  false alarms     0", "muted"],
 ]
 
 [[act]]
-title = "The scoreboard"
-summary = "Hypotheses held: 2 of 20 for the first version, 20 of 20 for the hardened one, with one gap measured: 1 of 1 certificate revoked during an outage is approved."
+title = "The scoreboard, and what is left"
+summary = "Hypotheses held: 2 of 20 for the first version and 20 of 20 for the hardened one; one gap remains: a certificate revoked during an outage, with a good cached answer, is approved 1 of 1."
 detail = """
-The scoreboard lists the 10 experiments with two verdicts each. The first version holds 2 of 20 hypotheses and the hardened version 20 of 20. The hardened version still has a gap that the experiments measure: a certificate whose last cached answer was good and which is revoked while the responder is down is approved, 1 of 1. Fail closed also has a price: the payments are refused or wait in review while a dependency is down.
+The scoreboard lists the 10 experiments with two verdicts each, the control and the alert. 10 experiments x 2 hypotheses = 20. The first version holds 2 of 20 (both in E7) and breaks 18; the hardened version holds 20 of 20.
+The gap the hardened version still has: a certificate revoked while the responder is down, whose last cached answer was good, is approved 1 of 1.
+The bill: no answer is still a decision, and the first version said yes; a dropping audit buffer fails in silence and only a count finds it; without probes, 9 of the 9 outages were never reported; and failing closed has a price, because payments wait or are refused while a dependency is down.
+"""
+figure = "scoreboard_grid"
+figure_title = "Twenty hypotheses, before and after"
+figure_speech = """
+The last demo: the scoreboard. [[slnc 400]] Ten experiments, each with two hypotheses: the control holds, and the alert fires. [[slnc 300]] Ten times two is twenty. [[slnc 600]]
+On the left, the first version. [[slnc 300]] Rose almost everywhere: it holds only two of twenty, both in the slow close experiment, where nothing needed to happen. [[slnc 600]] On the right, the hardened version: green everywhere, twenty of twenty. [[slnc 600]]
+Green is not the same as safe. [[slnc 300]] The next slides show the one gap that the experiments still find, and what failing closed costs.
 """
 speech = """
-Fifth demo: the scoreboard. [[slnc 400]] Two of twenty hypotheses held, then twenty of twenty. [[slnc 600]] And one gap that is still open, measured and written down.
+The scoreboard: control and alert, for each experiment, in both versions. [[slnc 400]] Broken almost everywhere in the first version, held everywhere in the hardened one.
+[[page]]
+How the score is worked out: ten experiments, two hypotheses each, twenty. [[slnc 300]] Two held, then twenty. [[slnc 400]] The gap: a certificate revoked during an outage, whose last answer was good, is still approved. [[slnc 400]] And the bill: failing closed means payments wait, or are refused.
 """
 rows = { score = "active ok" }
 console = [
-    ["held: 2 of 20 against 20 of 20", "ok"],
-    ["stale cache: revoked during outage approved 1 of 1", "bad"],
-    ["fail closed costs: payments wait in review", "ok"],
+    ["THE SCOREBOARD               first           hardened", "code"],
+    ["                             ctl    alert   ctl    alert", "muted"],
+    ["  E1   authorization down    BROKEN BROKEN  held   held", "bad"],
+    ["  E2   authorization slow    BROKEN BROKEN  held   held", "bad"],
+    ["  E3   authorization reset   BROKEN BROKEN  held   held", "bad"],
+    ["  E4   fraud hang            BROKEN BROKEN  held   held", "bad"],
+    ["  E5   fraud trickle         BROKEN BROKEN  held   held", "bad"],
+    ["  E6   audit down            BROKEN BROKEN  held   held", "bad"],
+    ["  E7   audit slow close      held   held    held   held", "muted"],
+    ["  E8   ratelimit reset       BROKEN BROKEN  held   held", "bad"],
+    ["  E9   revocation down       BROKEN BROKEN  held   held", "bad"],
+    ["  E10  revocation slow       BROKEN BROKEN  held   held", "bad"],
+    ["---", ""],
+    ["HOW THE SCORE IS WORKED OUT:", "code"],
+    ["  10 experiments x 2 hypotheses (control, alert) = 20", "muted"],
+    ["  first version    held 2 of 20, broken 18", "muted"],
+    ["  hardened         held 20 of 20, broken 0", "muted"],
+    ["THE GAP THE HARDENED VERSION STILL HAS:", "code"],
+    ["  a certificate revoked while the responder is down,", "muted"],
+    ["  whose last cached answer was good: approved 1 of 1", "muted"],
+    ["THE BILL:", "code"],
+    ["  no answer is still a decision: the first version said yes", "muted"],
+    ["  a dropping audit buffer fails in silence; only a count finds it", "muted"],
+    ["  without probes, 9 of the 9 outages were never reported", "muted"],
+    ["  failing closed has a price: payments wait or are refused", "muted"],
 ]
 
 [animation]
 subtitle = "A bank's controls, hurt on purpose."
 boxes = [
-    ["steady", "Steady state", "4 of 4"],
-    ["authz", "Authorization and fraud", "6 of 6"],
-    ["audit", "Audit, limit and revocation", "20 of 20"],
+    ["steady", "The service and the steady state", "20 of 20"],
+    ["authz", "Authorization: down, slow, reset", "6 of 6, then 0"],
+    ["fraud", "The fraud score", "review 6"],
+    ["audit", "The audit trail", "lost 20, then 0"],
+    ["limit", "Rate limit and revocation", "40 of 40, then 5"],
     ["alert", "Does anybody hear it?", "3 probes"],
     ["score", "The scoreboard", "2, then 20"],
 ]
@@ -175,7 +378,7 @@ not_required = [
     "A cluster",
     "A cloud account",
 ]
-install = ["docker pull ghcr.io/shopify/toxiproxy"]
+install = ["docker pull ghcr.io/shopify/toxiproxy:2.13.0"]
 
 [docs.session]
 objectives = [
@@ -220,7 +423,7 @@ nongoals = [
 problem = """
 Security controls are tested when they work and rarely when their dependencies fail.
 """
-roles = [["The payments service", "`BankPayments`"], ["The five dependencies", "`Backends`"], ["Toxiproxy from Java", "`Toxiproxy`, `Fault`"], ["The audit trails", "`DroppingAudit`, `SpooledAudit`"], ["The monitor", "`Monitor`"], ["The experiments and scoreboard", "`Experiment`, `Lab`"]]
+roles = [["The payments service", "`BankPayments`"], ["The five dependencies", "`Backends`"], ["Toxiproxy from Java", "`Toxiproxy`, `Fault`"], ["The audit trails", "`DroppingAudit`, `SpooledAudit`"], ["The monitor", "`Monitor`"], ["A deadline on the whole call", "`Http`"], ["The experiments and scoreboard", "`Experiment`, `Lab`"]]
 requirements = [
     "Every dependency is reached through its own Toxiproxy proxy.",
     "Each experiment checks a steady state, injects one failure, observes and gives a verdict.",
@@ -379,7 +582,7 @@ residual = "Degradations the probes do not see"
 
 [poster]
 headline = [["SECURITY", "text"], ["CHAOS", "accent"]]
-taglines = [["Inject failures into the security controls of a bank payments service with Toxiproxy and c", "gold"]]
+taglines = [["Do your controls fail closed?", "gold"]]
 before = { code = "if (authz.isEmpty()) approve();", note = "approved 6 of 6, alerts 0", tag = "BEFORE" }
 after = { code = "if (authz.isEmpty()) deny();", note = "approved 0 of 6, alert after 3 probes", tag = "AFTER" }
 
@@ -397,6 +600,26 @@ body = ["A bank's payments service checks every payment", "with 5 controls: a ra
 narration = "Here is the scenario. [[slnc 400]] A bank's payments service checks every payment with five controls: a rate limit, a certificate revocation check, authorization, a fraud score, and an audit trail. [[slnc 500]] Each one calls a dependency. [[slnc 300]] Toxiproxy sits in between, and breaks them one at a time: down, slow, hung, reset, or on a trickle. [[slnc 500]] Ten experiments each test two hypotheses: the control holds, and an alert fires."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Steady state: what normal looks like, checked first", "Hypothesis: what must stay true under the fault", "Fail open: no answer is read as yes", "Fail closed: no answer is read as no", "Deadline: the most time a whole call may take", "Probe: a small health check; 3 failures, an alert"]
+narration = """Before the demos, the words. [[slnc 500]] The steady state is what normal looks like, and it is checked before every experiment. [[slnc 500]] A hypothesis is what must stay true while the fault is in place. [[slnc 500]] A control fails open when no answer is read as yes. [[slnc 500]] It fails closed when no answer is read as no. [[slnc 500]] A deadline is the most time a whole call may take, body included. [[slnc 500]] And a probe is a small health check: three failures in a row raise an alert."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-idea"
+kind = "figure"
+title = "One call, two answers to silence"
+body = "fail_open_closed"
+narration = """Let's see the core idea on one call. [[slnc 400]] The payments service asks authorization whether this account may pay. [[slnc 300]] But Toxiproxy has switched that connection off, so the question is refused, and no answer comes back. [[slnc 700]] Now the service has to decide what silence means. [[slnc 600]] On the left, the first version. [[slnc 300]] Its code says: if there is no answer, approve. [[slnc 300]] So six of six payments are approved, and the control is broken. [[slnc 600]] On the right, the hardened version. [[slnc 300]] If there is no answer, deny. [[slnc 300]] Zero of six are approved, and the control holds. [[slnc 500]] One line of code, chosen once, decides what every outage does."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -406,15 +629,8 @@ narration = "unused"
 key = "04-costs"
 kind = "bullets"
 title = "What It Costs"
-body = ["Failing closed refuses good payments", "  while a dependency is down", "Holding payments for review needs people", "A journal for audit records needs disk", "Experiments must be run with care", "  outside a test copy"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Failing closed refuses good payments while a dependency is down. [[slnc 500]] Holding payments for review needs people to review them. [[slnc 500]] Keeping audit records in a journal until the sink is back needs disk, and a flush. [[slnc 500]] And experiments outside a test copy must be planned, small, and easy to stop."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["BankPayments: the service, first and hardened", "Backends: the five dependencies", "Toxiproxy, Fault: inject a failure", "Experiment, Lab: hypothesis, run and scoreboard", "DroppingAudit, SpooledAudit: the audit trail", "Monitor: probes, and raises an alert"]
-narration = "Here is who does what in the code. [[slnc 400]] BankPayments is the service, in a first version and a hardened one. [[slnc 500]] Backends are the five dependencies. [[slnc 300]] Toxiproxy and Fault inject a failure between them. [[slnc 500]] Experiment and Lab state a hypothesis, run it, and keep the scoreboard. [[slnc 500]] DroppingAudit loses records when the sink fails, and SpooledAudit keeps them in a journal. [[slnc 300]] And Monitor probes each dependency, and raises an alert."
+body = ["Failing closed refuses good payments", "  while a dependency is down", "Holding payments for review needs people", "A journal for audit records needs disk", "A local count or cache has its own gap", "Experiments must be run with care"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Failing closed refuses good payments while a dependency is down. [[slnc 500]] Holding payments for review needs people to review them. [[slnc 500]] Keeping audit records in a journal until the sink is back needs disk, and a flush. [[slnc 500]] A local count, or a cached answer, has its own gap, like the revoked certificate. [[slnc 300]] And experiments outside a test copy must be planned, small, and easy to stop."
 
 [[scene]]
 key = "06-recognise"
@@ -431,9 +647,121 @@ body = ["Decide fail open or closed for each control", "Put a deadline on the wh
 narration = "So, how do you use it? [[slnc 400]] Decide, on purpose, whether each control fails open or closed. [[slnc 500]] Put a deadline on the whole call, body included. [[slnc 500]] When a check cannot answer, hold the payment for review, instead of approving it blind. [[slnc 500]] Never drop an audit record in silence. [[slnc 300]] And alert when a control is failing, then prove all of it by experiment."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Make the audit sink slow", "instead of down, and see what holds."]
 narration = "That's security chaos engineering. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Break each control's dependency on purpose, and check that the control holds, and that somebody hears about it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add an experiment that makes the audit sink slow instead of down. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[highlight]
+console_cyan = ["THE CONTROLS", "THE FAULTS", "THE DEADLINE", "THE STEADY STATE", "THE HYPOTHESES", "THE MONITOR"]
+console_rose = ["THE FIRST VERSION", "THE GAP", "THE BILL", "THE PROBES IN E1"]
+console_green = ["THE HARDENED VERSION", "THE PROBES IN E7", "THE ALERTS", "THE SCOREBOARD"]
+console_amber = ["HOW "]
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Most of the difference between the two versions is a few lines that decide what silence means. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "BankPayments"
+what = "the payments service, first and hardened"
+[[class.part]]
+title = "no answer from authorization: deny, or carry on"
+code = """
+Optional<String> authz = http.get(at.authorization()
+    + "/check?account=" + p.account() + "&amount=" + p.amount());
+if (authz.isEmpty()) {
+    if (hardened) {
+        return Decision.deny("authorization unreachable");
+    }
+"""
+speech = """An empty answer means the call failed. [[slnc 300]] The hardened version denies. [[slnc 300]] The first version falls through, and the payment carries on as if authorization had said yes."""
+[[class.part]]
+title = "no fraud score: hold for review, or approve unscreened"
+code = """
+if (fraud.isEmpty()) {
+    return hardened ? Decision.review("fraud score unreachable")
+        : Decision.approve(false, "no score, treated as clean");
+}
+"""
+speech = """Without a score, the hardened version asks a person. [[slnc 300]] The first version approves, and marks the payment as unscreened, which is how the demo can count them."""
+
+[[class]]
+name = "Http"
+what = "a client with one deadline for the whole call"
+[[class.part]]
+title = "the deadline covers the body too"
+code = """
+CompletableFuture<HttpResponse<String>> call =
+    client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+try {
+    HttpResponse<String> response =
+        call.get(deadlineMillis, TimeUnit.MILLISECONDS);
+"""
+speech = """The whole exchange, body included, must finish within the deadline. [[slnc 300]] So a trickle of bytes cannot keep the service waiting."""
+
+[[class]]
+name = "SpooledAudit"
+what = "the hardened audit trail: a journal first"
+[[class.part]]
+title = "write the journal, then send; if the journal fails, say no"
+code = """
+try {
+    Files.writeString(journal, id + "\\n",
+        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+} catch (IOException e) {
+    return false;
+}
+pending.add(id);
+"""
+speech = """The record is on disk before anything is sent. [[slnc 300]] If even the journal cannot be written, the payment is refused, rather than made without a record."""
+
+[[class]]
+name = "Monitor"
+what = "probes, and an alert after three failures"
+[[class.part]]
+title = "three failed probes in a row raise one alert"
+code = """
+int n = failures.merge(name, 1, Integer::sum);
+seen.add(n);
+if (n == THRESHOLD) {
+    alerts.add(new Alert(name, n));
+"""
+speech = """A failure adds one to the count in a row, and an answer resets it. [[slnc 300]] Exactly at three, one alert is raised."""
+
+[[class]]
+name = "Toxiproxy"
+what = "the proxy container, driven over its interface"
+[[class.part]]
+title = "a fault is a disabled proxy or a toxic"
+code = """
+int status = fault == Fault.DOWN
+    ? call("POST", "/proxies/" + proxy, "{\\"enabled\\":false}")
+    : call("POST", "/proxies/" + proxy + "/toxics",
+        fault.toxicJson());
+"""
+speech = """Down switches the proxy off. [[slnc 300]] Every other fault adds a toxic, such as latency, a reset or a bandwidth limit, on that one connection."""
+
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol: how the services talk"
+say = "H T T P is the hypertext transfer protocol, how the service talks to its dependencies."
+[[acronym]]
+short = "KB"
+long = "kilobyte: here 1024 bytes"
+say = "K B is a kilobyte, here one thousand and twenty four bytes."
+[[acronym]]
+short = "ms"
+long = "millisecond: a thousandth of a second"
+say = "M S is a millisecond, a thousandth of a second."
+[[acronym]]
+short = "E1-E10"
+long = "the ten experiments, numbered"
+say = "E one to E ten are the ten experiments."

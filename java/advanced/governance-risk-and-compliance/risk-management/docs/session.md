@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Heat map against money | 7 min |
-| 0:17 | Act 2: The whole register | 7 min |
-| 0:24 | Act 3: Controls within a budget | 7 min |
-| 0:31 | Act 4: Appetite and what is left | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: One risk, from ranges to money | 7 min |
+| 0:17 | Act 2: The register: the heat map against money | 7 min |
+| 0:24 | Act 3: The whole register: the bad years | 7 min |
+| 0:31 | Act 4: Controls within a budget | 7 min |
+| 0:38 | Act 5: The appetite, and what is left | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

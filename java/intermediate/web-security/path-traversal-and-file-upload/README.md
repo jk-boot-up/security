@@ -3,7 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/files/
 ├── Downloads.java        "Download invoice {name}": returns the text of the file
-├── FilesDemo.java        Runs the invoice download, photo upload and "return to" story in five numbered acts and prints exact, repeatable results
+├── FilesDemo.java        Runs the invoice download, photo upload and "return to" story in seven numbered acts
 ├── Layout.java           The folders of the store's server, made in a temporary directory so the demo and the tests touch nothing else: <pre> invoices/ what customers may download invoices-private/ a sibling whose name starts the same way secrets/ the database settings config/ the application's settings webroot/ files the web server hands out as they are uploads-private/ where the fixed version keeps uploads, outside the web root </pre>
 ├── NaiveDownloads.java   The first version: the file is whatever the base folder plus the name says, {@code ..} included
 ├── NaiveUploads.java     The first version: the file is saved in the web root under the name the customer gave, whatever it contains
@@ -48,16 +48,17 @@ invoices, a sibling folder with a similar name, secrets, settings and a web root
 ./gradlew run
 ```
 
-The demo tells the story in 6 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Downloading an invoice | An honest name reads invoice 1001. |
-| 2. A name with .. leaves the folder | ../secrets/db.txt returns the database settings and ../config/app.properties returns the application settings. |
-| 3. A text check on the path is not a path check | Comparing the resolved path as text refuses ../secrets but accepts ../invoices-private, whose name starts the same way. |
-| 4. Names, paths and links, all checked | The name must look like an invoice name, the path is compared element by element, and links are followed before being trusted; encoded dots are decoded once and then refused. |
-| 5. Uploads | The naive upload overwrites the settings and serves a script as a page; the fixed one decides from the bytes, names the file itself, stores it outside the web root and serves it as a download. |
-| 6. Where to send the customer next | The naive link goes anywhere, including //evil.example and javascript:; the fixed one sends only paths on this site and everything else to /account; absolute hosts are matched exactly. |
+| 1. An honest name downloads one invoice | The server's folders are made in a temporary folder; the customer asks for invoice-1001.txt; the server joins it to the invoices folder and reads Invoice 1001: Ana, 42.50. |
+| 2. A name with .. climbs out of the folder | ../secrets/db.txt is joined to the invoices folder; the disk reads .. as the folder above and opens .../secrets/db.txt, so the customer gets the database password; ../config/app.properties gets the settings. |
+| 3. A text check is not a path check | The second version removes .. and checks that the path's text starts with .../invoices: the secrets file is refused, but .../invoices-private/payroll.txt starts with the same letters and is read; compared as a path, its element invoices-private is not invoices. |
+| 4. The fixed version checks in four layers | Decode once, then the shape invoice-NNNN.txt, then the path compared as a path, then the real path after links: honest invoice-1001.txt is read, every .. name and the encoded one fail the shape, and a link named invoice-5555.txt that points at the secrets file is refused only by the last layer. |
+| 5. The naive upload trusts the customer's name | cat.png, page.html and a file named ../../config/app.properties are saved in the web root under their own names: the page is served as text/html, inline, a page on our own site, and the settings now read admin=mallory. |
+| 6. The fixed upload decides for itself | Size 1 to 1000 bytes; PNG or JPEG from the first bytes; a name the server counts; storage outside the web root: the photo becomes /photos/photo-0001.png, both scripts are refused, the .. name is ignored, the big file is refused, and the download is sent as image/png, attachment, nosniff. |
+| 7. Return links stay on our own site | The naive redirect sends the customer wherever the returnTo link says; the fixed one keeps /orders?page=2 and sends every other link to /account with its reason; an absolute link is allowed only when its host is exactly shop.example. |
 
 ## Test
 
@@ -65,7 +66,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `FilesTest`. The temporary folder's name is random and never printed, so the demo prints the same text on every run.
+14 tests in `DemoRunsTest`, `FilesTest`. The temporary folder's name is random and never printed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

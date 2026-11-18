@@ -14,7 +14,7 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: What a bill of materials answers | 7 min |
+| 0:10 | Act 1: What a bill of materials answers, and what it does not | 7 min |
 | 0:17 | Act 2: Scanning it against known advisories | 7 min |
 | 0:24 | Act 3: Fixing it, and checking that it is fixed | 7 min |
 | 0:31 | Act 4: A gate that reads the scan | 7 min |

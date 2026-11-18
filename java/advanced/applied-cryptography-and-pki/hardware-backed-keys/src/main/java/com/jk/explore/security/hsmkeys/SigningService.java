@@ -46,7 +46,8 @@ final class SigningService {
         while (!recent.isEmpty() && recent.peekFirst() <= r.second() - windowSeconds) {
             recent.removeFirst();
         }
-        if (r.totalCents() >= dualControlCents && r.approvers().stream().filter(a -> !a.equals(r.requester())).distinct().count() < 2) {
+        long others = r.approvers().stream().filter(a -> !a.equals(r.requester())).distinct().count();
+        if (r.totalCents() >= dualControlCents && others < 2) {
             audit.append("refused-approvers", r.file(), r.content());
             return new Result(Decision.NEEDS_TWO_APPROVERS, null);
         }

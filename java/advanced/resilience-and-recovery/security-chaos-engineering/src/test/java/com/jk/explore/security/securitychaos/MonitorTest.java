@@ -28,6 +28,7 @@ class MonitorTest {
             m.round();
             m.round();
             assertEquals(1, m.alerts().size());
+            assertEquals(List.of(1, 2, 3, 4, 5), m.history("fraud"));
         }
     }
 
@@ -39,6 +40,7 @@ class MonitorTest {
                 m.round();
             }
             assertFalse(m.alerted("audit"));
+            assertEquals(List.of(0, 0, 0, 0, 0, 0), m.history("audit"));
         }
     }
 }

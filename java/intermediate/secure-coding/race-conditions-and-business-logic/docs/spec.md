@@ -20,7 +20,7 @@ Developers test one request at a time, so overlapping requests and retries find 
 | Role | Class |
 | --- | --- |
 | Requests as steps | `Steps` |
-| Running steps in a written order | `Interleaving` |
+| Running steps in a written order, and every order | `Interleaving`, `EveryOrder` |
 | Shared state of the model | `Ledger`, `CouponBook` |
 | Withdrawals | `NaiveWithdrawal`, `LockedWithdrawal`, `CasWithdrawal` |
 | Coupons | `CouponRedemption` |
@@ -46,10 +46,10 @@ Developers test one request at a time, so overlapping requests and retries find 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 24, all passing |
-| Demo output | 69 lines, identical on every run |
+| Tests | 27, all passing |
+| Demo output | 166 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:43, 1920×1080, narrated in the amy-slow voice |
+| Video | 21:39, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

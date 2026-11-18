@@ -62,7 +62,7 @@ class ClassFileTest {
     void patchingMakesAnyKeyPassInBothSamples() throws Exception {
         for (Sample s : List.of(plain, obf)) {
             Path out = Files.createTempDirectory("p");
-            assertEquals(1, Patcher.patchAll(s.classes(), out));
+            assertEquals(1, Patcher.patchAll(s.classes(), out).size());
             assertTrue(s.with(out).run("wrong").startsWith("licensed"));
             assertTrue(s.with(out).run(null).startsWith("licensed"));
         }

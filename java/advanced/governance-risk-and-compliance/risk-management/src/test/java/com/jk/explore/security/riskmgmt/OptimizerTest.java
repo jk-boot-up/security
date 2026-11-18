@@ -52,4 +52,21 @@ class OptimizerTest {
             assertTrue(ids.containsAll(c.effects().keySet()), c.id());
         }
     }
+
+    @Test
+    void setsWithinCountsEverySetThatFitsTheBudget() {
+        Control a = new Control("a", "a", 100, Map.of());
+        Control b = new Control("b", "b", 200, Map.of());
+        Control c = new Control("c", "c", 400, Map.of());
+        assertEquals(3, Optimizer.setsWithin(List.of(a, b, c), 350));
+        assertEquals(7, Optimizer.setsWithin(List.of(a, b, c), 700));
+    }
+
+    @Test
+    void theCheapestSetWithinTheAppetiteIsFoundAndNoneWhenNothingIsEnough() {
+        Control weak = new Control("weak", "weak", 100_000, Map.of("big", new Control.Effect(1, 0.9)));
+        Control strong = new Control("strong", "strong", 500_000, Map.of("big", new Control.Effect(1, 0.4)));
+        assertEquals(List.of(strong), Optimizer.cheapestWithinAppetite(sim, List.of(weak, strong), 1_500_000, 0.05).orElseThrow().controls());
+        assertTrue(Optimizer.cheapestWithinAppetite(sim, List.of(weak), 1_500_000, 0.05).isEmpty());
+    }
 }

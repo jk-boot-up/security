@@ -26,10 +26,15 @@ final class Browser {
     record Cookie(String name, String value, String sameSite, boolean secure) {
     }
 
+    /** The last request as the browser sent it: what the bank sees, so the demo can print it. */
+    record Sent(String method, String url, String body, Map<String, String> headers) {
+    }
+
     private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
     private final int port;
     private final boolean legacy;
     private final Map<String, Map<String, Cookie>> jar = new HashMap<>();
+    private Sent last;
 
     Browser(BankServer server, boolean legacy) {
         this.port = server.port();
@@ -57,6 +62,10 @@ final class Browser {
         return send(initiator, method, url, form, false, headers);
     }
 
+    Sent lastSent() {
+        return last;
+    }
+
     Optional<Cookie> cookie(String host, String name) {
         return Optional.ofNullable(jar.getOrDefault(host, Map.of()).get(name));
     }
@@ -73,18 +82,21 @@ final class Browser {
         } else {
             b.header("Content-Type", "application/x-www-form-urlencoded").method(method, HttpRequest.BodyPublishers.ofString(encode(form)));
         }
+        Map<String, String> sent = new LinkedHashMap<>();
         String cookieHeader = cookiesFor(initiator, method, url, topLevel);
         if (!cookieHeader.isEmpty()) {
-            b.header("Cookie", cookieHeader);
-        }
-        if (!legacy) {
-            b.header("Sec-Fetch-Site", Site.fetchSite(initiator, url));
-            b.header("Sec-Fetch-Mode", topLevel ? "navigate" : "cors");
+            sent.put("Cookie", cookieHeader);
         }
         if (initiator != null && !"GET".equals(method)) {
-            b.header("Origin", initiator);
+            sent.put("Origin", initiator);
         }
-        extra.forEach(b::header);
+        if (!legacy) {
+            sent.put("Sec-Fetch-Site", Site.fetchSite(initiator, url));
+            sent.put("Sec-Fetch-Mode", topLevel ? "navigate" : "cors");
+        }
+        sent.putAll(extra);
+        sent.forEach(b::header);
+        last = new Sent(method, url, "GET".equals(method) ? "" : encode(form), sent);
         HttpResponse<String> response = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         Map<String, String> headers = new LinkedHashMap<>();
         response.headers().firstValue("set-cookie").ifPresent(v -> {
@@ -134,6 +146,7 @@ final class Browser {
 
     private static String encode(Map<String, String> form) {
         return form.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
                 .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
     }

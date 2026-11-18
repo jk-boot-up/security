@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Importing an image | 7 min |
+| 0:10 | Act 1: An honest import works | 7 min |
 | 0:17 | Act 2: The server fetches whatever it is told | 7 min |
 | 0:24 | Act 3: A blocklist of names is easy to walk around | 7 min |
 | 0:31 | Act 4: Check the address the connection really uses | 7 min |
-| 0:38 | Act 5: Why checking and then connecting is not enough | 7 min |
+| 0:38 | Act 5: A second lookup can give a different answer | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

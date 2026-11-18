@@ -37,10 +37,10 @@ Developers check that a signature is valid and then read an assertion, without m
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 22 lines, identical on every run |
-| Acts | 4 |
-| Video | 06:27, 1920×1080, narrated in the amy-slow voice |
+| Tests | 14, all passing |
+| Demo output | 95 lines, identical on every run |
+| Acts | 5 |
+| Video | 18:44, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

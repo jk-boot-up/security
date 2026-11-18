@@ -76,7 +76,11 @@ final class Browser {
     /** Everything a script running on the page can read: localStorage entries and cookies without HttpOnly. */
     Map<String, String> readableByScripts() {
         Map<String, String> view = new LinkedHashMap<>(localStorage);
-        cookies.values().stream().filter(c -> !c.httpOnly()).forEach(c -> view.put("cookie " + c.name(), c.value()));
+        for (Cookie c : cookies.values()) {
+            if (!c.httpOnly()) {
+                view.put("cookie " + c.name(), c.value());
+            }
+        }
         return view;
     }
 

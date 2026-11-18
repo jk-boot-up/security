@@ -25,6 +25,11 @@ public final class BruteForceRule implements Rule {
     }
 
     @Override
+    public String describe() {
+        return threshold + " failures, 1 account, " + window.toMinutes() + " minutes";
+    }
+
+    @Override
     public List<Alert> evaluate(List<Event> log) {
         Map<String, Deque<Event>> recent = new HashMap<>();
         Map<String, Boolean> firing = new HashMap<>();

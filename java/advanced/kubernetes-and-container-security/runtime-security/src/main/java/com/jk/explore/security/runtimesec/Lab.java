@@ -52,9 +52,18 @@ public final class Lab implements AutoCloseable {
         this.mark = events().stream().mapToLong(e -> Long.parseLong(e.id())).max().orElse(0);
     }
 
-    /** Waits for the sensor to copy the records of what just ran. */
-    private void settle() throws InterruptedException {
+    /** Waits for the sensor to copy the records of what just ran: until its log stops growing (at most about half a minute). */
+    private void settle() throws IOException, InterruptedException {
         Thread.sleep(4_000);
+        int before = sensor.log().length();
+        for (int i = 0; i < 8; i++) {
+            Thread.sleep(3_000);
+            int now = sensor.log().length();
+            if (now == before) {
+                return;
+            }
+            before = now;
+        }
     }
 
     private List<Event> events() throws IOException, InterruptedException {
@@ -69,6 +78,19 @@ public final class Lab implements AutoCloseable {
         all.removeAll(reported);
         reported.addAll(all);
         return all;
+    }
+
+    /** The newest connect event of a pod to a port, judged or not, or null. */
+    Event lastConnect(String pod, int port) throws IOException, InterruptedException {
+        Map<String, String> pods = cluster.containers();
+        Event found = null;
+        for (Event e : events()) {
+            if ("connect".equals(e.key()) && e.address() != null && e.address().endsWith(":" + port)
+                    && e.containerId() != null && pod.equals(pods.get(e.containerId()))) {
+                found = e;
+            }
+        }
+        return found;
     }
 
     /** The kinds of syscall the sensor has seen from a pod (exec, write, connect). */

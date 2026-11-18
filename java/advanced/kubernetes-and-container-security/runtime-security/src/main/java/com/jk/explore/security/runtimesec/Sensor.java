@@ -19,7 +19,8 @@ public final class Sensor implements AutoCloseable {
         try (InputStream in = Sensor.class.getResourceAsStream("/collector.sh")) {
             script = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        Sh.must(List.of("docker", "run", "-d", "--name", name, "--privileged", "--pid=host", "-e", "COLLECTOR=" + script,
+        Sh.must(List.of("docker", "run", "-d", "--name", name,
+                "--privileged", "--pid=host", "-e", "COLLECTOR=" + script,
                 "alpine:3.22", "sh", "-c", "printf '%s\\n' \"$COLLECTOR\" > /collector.sh; exec sh /collector.sh"));
         for (int i = 0; i < 120; i++) {
             if (Sh.run("docker", "exec", name, "test", "-f", "/ready").ok()) {

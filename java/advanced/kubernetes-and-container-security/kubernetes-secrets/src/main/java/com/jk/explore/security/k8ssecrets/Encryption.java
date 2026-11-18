@@ -9,12 +9,15 @@ final class Encryption {
     /** What etcd holds in front of a value the API server has encrypted with aescbc and the key named key1. */
     static final String MARKER = "k8s:enc:aescbc:v1:key1";
 
+    /** A 256-bit key for AES. */
+    static final int KEY_BYTES = 32;
+
     private Encryption() {
     }
 
     /** A new random 256-bit key, as base64 (the format the file wants). Never printed. */
     static String newKey() {
-        byte[] key = new byte[32];
+        byte[] key = new byte[KEY_BYTES];
         new SecureRandom().nextBytes(key);
         return Base64.getEncoder().encodeToString(key);
     }

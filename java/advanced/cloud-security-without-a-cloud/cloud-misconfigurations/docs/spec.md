@@ -18,10 +18,10 @@ Cloud settings are easy to get wrong and hard to see.
 
 | Role | Class |
 | --- | --- |
-| The account | `Environment` |
+| The account and the fixes | `Environment`, `Cloud` |
 | The emulator | `Venv.Moto` |
-| The scanner | `Scanner` |
-| The file scanners | `IacScanners` |
+| The scanner and its rules | `Scanner`, `Snapshot`, `Rules`, `Finding` |
+| The file scanners | `IacScanners`, `Terraform` |
 | The metadata service | `Imds` |
 | Entry point | `CloudMisconfigurationsDemo` |
 
@@ -29,8 +29,8 @@ Cloud settings are easy to get wrong and hard to see.
 
 1. The setup is deployed with the AWS SDK to a local emulator.
 2. Nine rules scan buckets, policies, groups, servers and disks.
-3. The fixes leave no findings.
-4. Checkov and Trivy scan the same setup as files and are compared.
+3. The fixes leave no findings, and say which are edits and which are replacements.
+4. Checkov and Trivy, at pinned versions, scan the same setup as files and are compared rule by rule.
 5. The metadata service is simulated in both versions.
 6. The demo prints the same output on every run and never prints an id.
 
@@ -39,10 +39,10 @@ Cloud settings are easy to get wrong and hard to see.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 14, all passing |
-| Demo output | 34 lines, identical on every run |
+| Tests | 26, all passing |
+| Demo output | 124 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:49, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:43, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

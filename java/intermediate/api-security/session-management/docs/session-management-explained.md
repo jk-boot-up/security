@@ -9,34 +9,35 @@ absolute timeouts, and ended on the server at sign-out, everywhere and after a p
 
 ### 1. A session id: random, and never stored as itself
 
-A new session id is 128 bits from SecureRandom, written as 22 base64url characters, and a thousand new ids are all different. Ana's id does not contain her
-name, a time or a counter: it is only randomness. The store keeps the SHA-256 of each id, so a stolen copy of its three keys, sent as cookies, opens no session.
-Ana's real id reads her account; the same id with its last character changed is refused. The hash is compared in constant time, and ids are never printed or logged.
+A session id starts as 16 random bytes, 128 bits, from SecureRandom. The demo shows the steps on 16 fixed example bytes: base64url reads the bits as one row and cuts it into groups of 6, and each group, a number from 0 to 63, picks one of 64 characters, so the first 3 bytes, 4f 1a 9c, become Txqc and all 16 become the 22-character id TxqcJ9PosFpsH3LppNA7jg.
+The store never keeps the id. It keeps the id's SHA-256, 64 hex characters, as the key of the session. Real ids are random: a thousand are all different, and none contains the customer's name, a time or a counter.
+A stolen copy of the store's three keys, sent back as cookies, opens no session, because the bank hashes what arrives and the hash of a hash matches nothing. Ana's real id reads her account; the same id with its last character changed is refused. Hashes are compared in constant time, and ids are never printed or logged.
 
 ### 2. A new id at every sign-in and step-up
 
-A stranger opens the bank's site, gets an id for a visitor who has not signed in, and gets it into Ana's browser. A bank that keeps the id at sign-in makes
-Ana's signed-in id the planted one, and the stranger's copy reads her account: session fixation. A bank that issues a new id at sign-in refuses the stranger's
-copy and lets Ana's new id in. Before a payment Ana gives her password again, and the id changes again: the id from before the step-up is refused, and the new one pays.
+Before Ana signs in, a stranger asks the bank for a visitor id, called planted here, and gets it into Ana's browser, for example through a link or a shared computer.
+After sign-in, a bank that keeps the id leaves Ana with the planted id: the stranger sends it and reads her account. That is session fixation.
+After sign-in, a bank that issues a new id gives Ana a new one: the stranger's planted id is refused, and Ana's new id is allowed. Before a payment Ana gives her password again, a step-up, and the id changes once more: the id from before is refused, and the newer one pays.
 
 ### 3. How long a session lives
 
-The bank's settings are an idle timeout of 15 minutes, an absolute timeout of 8 hours, and the password again for a payment after 5 minutes. Ana idle for 14 minutes
-is still signed in; idle for 16 more she is refused, and that id stays dead. A busy Ana with a request every 10 minutes gets 47 requests, and then at 8 hours
-the session ends anyway. A payment 3 minutes after signing in is allowed; 6 minutes after, the bank asks for the password again, while reading the account still works.
+The bank's settings: an idle timeout of 15 minutes without a request, an absolute timeout of 8 hours after sign-in whether busy or not, and the password again for a payment 5 minutes after it was given.
+Idle: after 14 minutes Ana is still allowed; after 16 more she is refused, and that id stays dead.
+Absolute: with a request every 10 minutes, 8 hours is 480 minutes and 480 / 10 = 48, so requests 1 to 47, from 0:10 to 7:50, are allowed and request 48, at 8:00, is refused.
+Payments: 3 minutes after the password a payment is allowed; at 6 minutes the bank asks for the password again, while reading the account still works.
 
 ### 4. Signing out, everywhere, and the cookie
 
-On a real local server, signing in sets a __Host-session cookie with Path=/, Secure, HttpOnly and SameSite=Strict, with no problems found. The account page answers 200;
-sign-out answers 200 and tells the browser to forget the cookie; and a copy of the cookie made before sign-out, sent again, gets 401, because the server ended the session.
-A bank whose sign-out only clears the browser's cookie leaves the copy working. A cookie named SESSIONID with no attributes has four problems. Sign out everywhere ends
-Ana's three sessions; a password change on the laptop ends the two others and gives the laptop a new id; and with a limit of three, a fourth sign-in ends the oldest.
+On a real HTTP server on this machine's loopback address, the sign-in response has status 200 and sets the cookie __Host-session with Path=/, Secure, HttpOnly and SameSite=Strict: no problems. The account page with that cookie answers 200.
+The sign-out response has status 200 and a Set-Cookie with Max-Age=0, which tells the browser to forget the cookie. A copy of the cookie made before sign-out, sent again, gets 401, because the server ended the session. A bank whose sign-out only clears the browser's cookie leaves the copy reading the account.
+A weak cookie, SESSIONID with no attributes, has four problems: no Secure, no HttpOnly, no SameSite and no __Host- prefix.
+Ana signed in on her phone, laptop and tablet: sign out everywhere ends 3 sessions. A password change on the laptop ends the 2 others and gives the laptop a new id. With a limit of 3 sessions, a fourth sign-in ends the oldest, the phone's.
 
 ### 5. The bill
 
-Two servers, each with its own session memory: Ana signs in on A and her next request lands on B, which refuses it. With one store shared by both servers it is allowed;
-the -with-spring-session-and-redis version keeps that store in Redis. A customer who stops for 20 minutes to read a statement must sign in again: the price of a short timeout.
-A stolen id works only until it is rotated, times out or is ended, which is what these rules limit. And a session only starts after the right password.
+Ana signs in on server A and her next request lands on server B. If each server keeps its own session memory, B refuses her: unknown session. With one store shared by both servers, B allows her; the -with-spring-session-and-redis version keeps that store in Redis.
+A customer who stops for 20 minutes to read a statement must sign in again: the price of a short idle timeout.
+A stolen id still works, but for at most 15 idle minutes or 8 hours in all, or until it is rotated or ended. And a wrong password never starts a session.
 
 ## The verdict
 

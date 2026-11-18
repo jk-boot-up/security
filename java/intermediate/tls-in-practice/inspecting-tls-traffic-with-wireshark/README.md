@@ -3,23 +3,26 @@
 ```
 src/main/java/com/jk/explore/security/tlscapture/
 ├── Client.java          The openssl command as a TLS client; with a key log file it writes the secrets of the connection, as a browser does when SSLKEYLOGFILE is set
+├── ClientHello.java     The first record a client sends, read by hand from the bytes: what anyone on the path can read before any key exists
+├── KeyLog.java          A key log file (the format SSLKEYLOGFILE writes): one line per secret, each a label, the connection's client random and the secret, in hex
 ├── LegacyServer.java    A server that uses RSA key exchange (TLS 1.2), so no forward secrecy: the client encrypts the session secret with the server's public key
 ├── LocalCa.java         A root made with the step command, and the certificates it signs, good and bad
 ├── Nginx.java           A real nginx with a login page, on a loopback port
 ├── Pcap.java            Writes a capture file (pcap, raw IPv4 packets) of one TCP connection between two loopback ports, from the bytes a tap saw
 ├── Procs.java           Small helpers for running programs
+├── Suites.java          Cipher suite names, and what a name says about the key exchange and the size of a secret
 ├── Tap.java             A tap between a client and a server on loopback: it forwards every byte and writes a capture file of what went through
-├── TlsCaptureDemo.java  One login through a tap, which writes {@code pcap}; the client writes its secrets to {@code keys} when that is not null
+├── TlsCaptureDemo.java  Five demos: what a capture of a login shows, what a key log is, what it opens, what it does not, and what a leaked server key opens
 └── Tshark.java          The tshark command reading a capture file, with or without the secrets of the connection
 ```
 
 **A capture of a real TLS 1.3 login shows the server name, the cipher the server chose and encrypted records, and nothing of the password; tshark with the key log the client wrote opens that connection (and its encrypted certificate) and no other, a log with only the client's lines opens only requests, and a leaked server key opens a recording made with RSA key exchange but not one made with ephemeral keys.**
 
-The plain [inspecting-tls-traffic](../inspecting-tls-traffic) project decrypts a recorded TLS 1.3 session in Java with HKDF. This one uses the real tools: **nginx**, the **openssl** client with `-keylogfile`, and **tshark** (`brew install nginx step wireshark`). Nothing is captured from a network card, which needs rights a test should not ask for: a small **tap** in Java sits between the client and the server on loopback, forwards every byte and writes a capture file (pcap) of what went through, which is all that a machine on the path would see. The tests are tagged `integration` (the capture-file test is not): `./gradlew integrationTest`.
+The plain [inspecting-tls-traffic](../inspecting-tls-traffic) project decrypts a recorded TLS 1.3 session in Java with HKDF. This one uses the real tools: **nginx**, the **openssl** client with `-keylogfile`, and **tshark** (`brew install nginx step wireshark`). Nothing is captured from a network card, which needs rights a test should not ask for: a small **tap** in Java sits between the client and the server on loopback, forwards every byte and writes a capture file (pcap) of what went through, which is all that a machine on the path would see. The tests that run the tools are tagged `integration` (`./gradlew integrationTest`); `./gradlew test` checks the capture writer and three small classes that redo by hand what tshark reads: the Client Hello, the key log match and the key exchange.
 
 What it shows:
-- **What the wire shows.** The Client Hello names the shop in the clear, the Server Hello picks `TLS_AES_256_GCM_SHA384`, the rest is encrypted records: no certificate, no HTTP, no password.
-- **A key log.** `openssl s_client -keylogfile` writes five lines (the client random and a secret each), the same format a browser writes when `SSLKEYLOGFILE` is set. It holds no private key.
+- **What the wire shows.** The Client Hello, read by hand, names the shop in the clear; the Server Hello picks `TLS_AES_256_GCM_SHA384`; the rest is encrypted records: no certificate, no HTTP, no password. The size still shows: a 163-byte request becomes a 163 + 1 + 16 = 180-byte record.
+- **A key log.** `openssl s_client -keylogfile` writes five lines (a label, the client random and a secret each; the secret is 384 / 8 = 48 bytes for a SHA-384 suite), the same format a browser writes when `SSLKEYLOGFILE` is set. It holds no private key.
 - **The same capture with the key log.** tshark shows `POST /login`, the form fields, the cookie, and the encrypted certificate.
 - **One connection only.** A second login is closed to the first login's key log; one file with both logs opens both; a log with only the client's lines opens the requests and not the responses.
 - **The server's own key.** A TLS 1.2 certificate is visible in the clear. With the server's private key, a recording made with ECDHE stays closed and a recording made with RSA key exchange opens, password and all.
@@ -44,11 +47,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the wire shows | The capture shows the server name, the chosen cipher and encrypted records; the certificate, the request and the password are not there. |
-| 2. A key log: the secrets of one connection | The client writes five lines, each tied to one connection by its client random, and no private key. |
-| 3. The same capture, read with the key log | tshark with the key log shows the request, the form fields, the cookie and the certificate. |
-| 4. A key log opens its own connection and no other | A second login is closed to the first key log; one file with both opens both; a log with only the client's lines opens only requests. |
-| 5. The server's own key is a different matter | A TLS 1.2 certificate is in the clear; a leaked server key opens an RSA key exchange recording and not an ECDHE one. |
+| 1. What the wire shows | With no secrets, the capture shows the server name, the chosen cipher and encrypted records of known sizes; the certificate, the request and the password are not there. |
+| 2. A key log: the secrets of one connection | The openssl client writes five lines; each is a label, the connection's client random and a 48-byte secret, and none is a private key. |
+| 3. The same capture, read with the key log | With the key log, tshark opens the request and its form, the response and its cookie, and the certificate that TLS 1.3 encrypts. |
+| 4. A key log opens its own connection and no other | A second login stays closed to the first login's key log, because the client random does not match; one file with both logs opens both; the client's two lines open only the requests. |
+| 5. The server's own key is a different matter | A TLS 1.2 certificate travels in the clear; a leaked server key opens a recording made with RSA key exchange, password and all, and nothing of one made with ECDHE. |
 
 ## Test
 
@@ -56,11 +59,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `PcapTest`, `TlsCaptureTest`. The capture-file writer is tested with no program. The other tests need nginx, openssl, step and tshark (./gradlew integrationTest).
+22 tests in `ClientHelloTest`, `DemoRunsTest`, `KeyLogTest`, `PcapTest`, `SuitesTest`, `TlsCaptureTest`. The unit tests (./gradlew test) need no program: the capture-file writer, the Client Hello read by hand from one the JDK writes, the key log match and the suite rules. The other tests need nginx, openssl, step and tshark (./gradlew integrationTest), and check the by-hand values against tshark.
 
 ## What the simulation got right, and what it left out
 
-nginx, openssl and tshark are the real programs; the tap writes a real pcap file. Secrets, ports and packet counts are never printed; the demo takes about half a minute.
+nginx, openssl and tshark are the real programs; the tap writes a real pcap file. Secrets, randoms, ports and packet counts are never printed, only their sizes and whether they match; the demo takes about half a minute.
 
 ## Technologies and versions
 

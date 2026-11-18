@@ -41,16 +41,16 @@ class VerifierTest {
     void eachKindOfChangeIsRefusedWithItsReason() {
         Verifier verifier = verifier(ring());
         SignedRelease release = stable.sign(statement);
-        assertEquals("the artifact does not match the signed digest", verifier.verify(jar.withByteChanged(10), release, "shop-app", "stable").reason());
+        assertEquals("jar differs from the signed digest", verifier.verify(jar.withByteChanged(10), release, "shop-app", "stable").reason());
         Statement edited = new Statement("shop-app", "2.4.1", "stable", statement.sha256(), 120);
-        assertEquals("the signature does not match",
+        assertEquals("bad signature",
                 verifier.verify(jar, new SignedRelease(edited.bytes(), release.keyId(), release.signature()), "shop-app", "stable").reason());
-        assertEquals("the signature does not match",
+        assertEquals("bad signature",
                 verifier.verify(jar, SigningKey.demo("stable-2026a", "stable", "forger").sign(statement), "shop-app", "stable").reason());
         assertEquals("unknown key x", verifier.verify(jar, SigningKey.demo("x", "stable").sign(statement), "shop-app", "stable").reason());
         assertEquals("no signature", verifier.verify(jar, null, "shop-app", "stable").reason());
         assertEquals("signed for shop-app, not other-app", verifier.verify(jar, release, "other-app", "stable").reason());
-        assertEquals("the statement is not a release statement",
+        assertEquals("not a release statement",
                 verifier.verify(jar, new SignedRelease("junk".getBytes(StandardCharsets.UTF_8), release.keyId(), release.signature()), "shop-app", "stable").reason());
     }
 

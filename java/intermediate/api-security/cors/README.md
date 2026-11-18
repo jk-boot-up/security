@@ -7,6 +7,7 @@ src/main/java/com/jk/explore/security/cors/
 ├── CorsDemo.java     Runs the bank API story in five numbered acts and prints exact, repeatable results
 ├── CorsPolicy.java   Decides which {@code Origin} header values the bank API will name in {@code Access-Control-Allow-Origin}
 ├── FetchResult.java  What a script on a page got: did the request reach the bank's code, and was the page allowed to read the answer?
+├── Origin.java       An origin is three parts of a web address: the scheme, the host and the port
 ├── Request.java      A request as the bank API sees it: method, path, headers with lower-case names, and whether the browser attached the session cookie
 └── Response.java     A response: status, headers with lower-case names, and a body
 ```
@@ -51,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Same origin needs no CORS | The bank's own page reads its balance. |
-| 2. No CORS headers: a page may send, but not read | An attacker's page cannot read the account, but its simple POST to /transfer still reaches the bank and is processed; a JSON PUT is stopped by the preflight. |
-| 3. Policies that look like fixes | Reflecting the origin lets every site read; an exact list that allows null lets a sandboxed page read; a suffix match lets evilbank.example read. |
-| 4. An exact allow-list | Only partner.example can read, including a JSON PUT after a successful preflight; evil.example, a look-alike and null are blocked; public rates are readable by anyone; responses carry Vary: Origin. |
-| 5. Wildcard and cookies never combine | A browser refuses Access-Control-Allow-Origin: * when the request carried cookies, and accepts it without them. |
+| 1. The bank's own page needs no CORS | An origin is scheme, host and port; the bank's own page has the API's origin, so it reads the balance with no CORS rules at all. |
+| 2. With no CORS headers, a page may send but not read | With no CORS headers, the attacker's page cannot read the account, but its simple POST to /transfer reaches the bank and runs; a JSON PUT needs a preflight, which fails, so it is never sent. |
+| 3. Three policies that look like fixes | Reflecting the origin lets every site read; a list that also allows null lets a sandboxed page read; a suffix test lets evilbank.example read, because its name ends with bank.example. |
+| 4. An exact allow-list names one partner | The list holds https://partner.example; the partner's preflight and GET are answered with its origin and credentials, the browser's check passes, and every other page is blocked; public rates use * without cookies; answers carry Vary: Origin. |
+| 5. A wildcard and cookies never combine | A browser refuses Access-Control-Allow-Origin: * for a request made with cookies, and accepts it for one without. |
 
 ## Test
 
@@ -63,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `CorsTest`, `DemoRunsTest`. Everything is fixed data, so the demo prints the same text on every run.
+14 tests in `CorsTest`, `DemoRunsTest`. Everything is fixed data, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

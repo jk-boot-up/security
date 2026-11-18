@@ -1,6 +1,7 @@
 package com.jk.explore.security.cloudmisconf;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -10,7 +11,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** Starts a real Moto server and runs Checkov and Trivy: needs Python and Trivy (./gradlew integrationTest). */
+/** Starts a real Moto server and runs Checkov and Trivy: needs Python and Docker (./gradlew integrationTest). */
 @Tag("integration")
 class CloudTest {
 
@@ -41,6 +42,6 @@ class CloudTest {
         Venv venv = new Venv(Path.of("build"));
         Path dir = Terraform.write(Path.of("build/tf-test"), Terraform.FIRST);
         assertTrue(IacScanners.checkov(venv, dir).ids().contains("CKV_AWS_355"));
-        assertTrue(IacScanners.catches(IacScanners.trivy(dir).ids(), IacScanners.TRIVY.get("iam-wildcard-admin")).isEmpty());
+        assertFalse(IacScanners.trivy(dir).caught(IacScanners.TRIVY.get("iam-wildcard-admin")));
     }
 }

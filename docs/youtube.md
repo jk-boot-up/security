@@ -1,6 +1,6 @@
 # Security in Java — YouTube Uploads
 
-**44 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
+**149 of 151** projects are on YouTube. 56 reviewed before upload (20 needed corrections), 0 draft, 0 held back for playlist order.
 
 Every video is reviewed for technical accuracy before it is uploaded; a correction is made in the project's `concept.toml` (and code, if the demo printed it), the video is rebuilt, and the fix is checked in the captions. Videos go up in the order of the [learning path](../java/learning-path.md), so each playlist lists them in learning order.
 
@@ -19,9 +19,9 @@ Every video is checked as YouTube serves it before it goes public: each slide's 
 | Level | On YouTube | Reviewed | Projects |
 | --- | ---: | ---: | ---: |
 | Beginner | 41 | 41 | 41 |
-| Intermediate | 3 | 15 | 76 |
-| Advanced | 0 | 0 | 34 |
-| **All** | **44** | **56** | **151** |
+| Intermediate | 76 | 15 | 76 |
+| Advanced | 32 | 0 | 34 |
+| **All** | **149** | **56** | **151** |
 
 ## Playlists
 
@@ -42,40 +42,40 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | TLS and Certificates in Java - With Tools | 4 | 4 |
 | Safe Habits in Java - Without Tools | 3 | 3 |
 | Safe Habits in Java - With Tools | 5 | 5 |
-| Web Security in Java - Without Tools | 2 | 8 |
-| Web Security in Java - With Tools | 1 | 7 |
-| Secure Configuration in Java - Without Tools | 0 | 2 |
-| Secure Configuration in Java - With Tools | 0 | 2 |
-| API Security in Java - Without Tools | 0 | 4 |
-| API Security in Java - With Tools | 0 | 3 |
-| Identity and Access in Java - Without Tools | 0 | 6 |
-| Identity and Access in Java - With Tools | 0 | 6 |
-| TLS in Practice in Java - Without Tools | 0 | 4 |
-| TLS in Practice in Java - With Tools | 0 | 4 |
-| Secure Coding in Java - Without Tools | 0 | 4 |
-| Secure Coding in Java - With Tools | 0 | 4 |
-| Secrets and Supply Chain Security in Java - Without Tools | 0 | 4 |
-| Secrets and Supply Chain Security in Java - With Tools | 0 | 4 |
-| Platform Hardening in Java - Without Tools | 0 | 2 |
-| Platform Hardening in Java - With Tools | 0 | 2 |
-| Detection and Response in Java - Without Tools | 0 | 3 |
-| Detection and Response in Java - With Tools | 0 | 2 |
-| Secure Design in Java - Without Tools | 0 | 3 |
-| Secure Design in Java - With Tools | 0 | 2 |
-| Cloud Security Without a Cloud in Java - Without Tools | 0 | 1 |
-| Cloud Security Without a Cloud in Java - With Tools | 0 | 2 |
-| Infrastructure as Code Security in Java - With Tools | 0 | 2 |
-| Kubernetes and Container Security in Java - With Tools | 0 | 4 |
-| DevSecOps Pipelines in Java - With Tools | 0 | 4 |
-| Service Identity and Zero Trust in Java - With Tools | 0 | 4 |
-| Applied Cryptography and PKI in Java - With Tools | 0 | 4 |
-| Applied Cryptography and PKI in Java - Without Tools | 0 | 1 |
-| Detection Engineering in Java - With Tools | 0 | 1 |
-| Detection Engineering in Java - Without Tools | 0 | 2 |
-| Offensive Security Methodology in Java - With Tools | 0 | 3 |
-| Resilience and Recovery in Java - With Tools | 0 | 2 |
-| Governance, Risk and Compliance in Java - Without Tools | 0 | 1 |
-| Governance, Risk and Compliance in Java - With Tools | 0 | 3 |
+| Web Security in Java - Without Tools | 8 | 8 |
+| Web Security in Java - With Tools | 7 | 7 |
+| Secure Configuration in Java - Without Tools | 2 | 2 |
+| Secure Configuration in Java - With Tools | 2 | 2 |
+| API Security in Java - Without Tools | 4 | 4 |
+| API Security in Java - With Tools | 3 | 3 |
+| Identity and Access in Java - Without Tools | 6 | 6 |
+| Identity and Access in Java - With Tools | 6 | 6 |
+| TLS in Practice in Java - Without Tools | 4 | 4 |
+| TLS in Practice in Java - With Tools | 4 | 4 |
+| Secure Coding in Java - Without Tools | 4 | 4 |
+| Secure Coding in Java - With Tools | 4 | 4 |
+| Secrets and Supply Chain Security in Java - Without Tools | 4 | 4 |
+| Secrets and Supply Chain Security in Java - With Tools | 4 | 4 |
+| Platform Hardening in Java - Without Tools | 2 | 2 |
+| Platform Hardening in Java - With Tools | 2 | 2 |
+| Detection and Response in Java - Without Tools | 3 | 3 |
+| Detection and Response in Java - With Tools | 2 | 2 |
+| Secure Design in Java - Without Tools | 3 | 3 |
+| Secure Design in Java - With Tools | 2 | 2 |
+| Cloud Security Without a Cloud in Java - Without Tools | 1 | 1 |
+| Cloud Security Without a Cloud in Java - With Tools | 2 | 2 |
+| Infrastructure as Code Security in Java - With Tools | 2 | 2 |
+| Kubernetes and Container Security in Java - With Tools | 4 | 4 |
+| DevSecOps Pipelines in Java - With Tools | 4 | 4 |
+| Service Identity and Zero Trust in Java - With Tools | 4 | 4 |
+| Applied Cryptography and PKI in Java - With Tools | 4 | 4 |
+| Applied Cryptography and PKI in Java - Without Tools | 1 | 1 |
+| Detection Engineering in Java - With Tools | 1 | 1 |
+| Detection Engineering in Java - Without Tools | 2 | 2 |
+| Offensive Security Methodology in Java - With Tools | 3 | 3 |
+| Resilience and Recovery in Java - With Tools | 2 | 2 |
+| Governance, Risk and Compliance in Java - Without Tools | 1 | 1 |
+| Governance, Risk and Compliance in Java - With Tools | 1 | 3 |
 
 ## Beginner
 
@@ -183,16 +183,16 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | Module | Without tools | With tools | On YouTube | Projects |
 | --- | ---: | ---: | ---: | ---: |
-| [Web security](#web-security) | 8 | 7 | 3 | 15 |
-| [Secure configuration](#secure-configuration) | 2 | 2 | 0 | 4 |
-| [Api security](#api-security) | 4 | 3 | 0 | 7 |
-| [Identity and access](#identity-and-access) | 6 | 6 | 0 | 12 |
-| [TLS in practice](#tls-in-practice) | 4 | 4 | 0 | 8 |
-| [Secure coding](#secure-coding) | 4 | 4 | 0 | 8 |
-| [Secrets and supply chain](#secrets-and-supply-chain) | 4 | 4 | 0 | 8 |
-| [Platform hardening](#platform-hardening) | 2 | 2 | 0 | 4 |
-| [Detection and response](#detection-and-response) | 3 | 2 | 0 | 5 |
-| [Secure design](#secure-design) | 2 | 3 | 0 | 5 |
+| [Web security](#web-security) | 8 | 7 | 15 | 15 |
+| [Secure configuration](#secure-configuration) | 2 | 2 | 4 | 4 |
+| [Api security](#api-security) | 4 | 3 | 7 | 7 |
+| [Identity and access](#identity-and-access) | 6 | 6 | 12 | 12 |
+| [TLS in practice](#tls-in-practice) | 4 | 4 | 8 | 8 |
+| [Secure coding](#secure-coding) | 4 | 4 | 8 | 8 |
+| [Secrets and supply chain](#secrets-and-supply-chain) | 4 | 4 | 8 | 8 |
+| [Platform hardening](#platform-hardening) | 2 | 2 | 4 | 4 |
+| [Detection and response](#detection-and-response) | 3 | 2 | 5 | 5 |
+| [Secure design](#secure-design) | 2 | 3 | 5 | 5 |
 
 <a id="web-security"></a>
 
@@ -203,18 +203,18 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 | 42 | [Broken Access Control in Java (IDOR, BOLA, Deny by Default) - OWASP A01](../java/intermediate/web-security/broken-access-control/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/7tARXr10wdU) |
 | 43 | [Broken Access Control with Spring Security (Deny by Default, BOLA, Route Inventory) - OWASP A01](../java/intermediate/web-security/broken-access-control-with-spring-security/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/UvxR-mH6g-s) |
 | 44 | [SQL Injection and Its Defences in Java](../java/intermediate/web-security/sql-injection/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/98SbOdoLFyE) |
-| 45 | [SQL Injection in Hibernate: JPQL, Native Queries and PostgreSQL Least Privilege](../java/intermediate/web-security/sql-injection-with-hibernate-and-postgres/README.md) | With tools | ok | — | to upload |
-| 46 | [Cross-Site Scripting (XSS) in Java: Output Encoding and a Strict CSP](../java/intermediate/web-security/cross-site-scripting/README.md) | Without tools | ok | — | to upload |
-| 47 | [XSS Defences in Spring Boot: Thymeleaf Escaping and a Nonce-Based CSP](../java/intermediate/web-security/cross-site-scripting-with-spring-boot/README.md) | With tools | ok | — | to upload |
-| 48 | [Cross-Site Request Forgery (CSRF) Defences in Java (Tokens, SameSite, Fetch Metadata)](../java/intermediate/web-security/cross-site-request-forgery/README.md) | Without tools | ok | — | to upload |
-| 49 | [CSRF in Spring Security: Tokens, SPA Cookie Mode and What Disabling CSRF Costs](../java/intermediate/web-security/cross-site-request-forgery-with-spring-security/README.md) | With tools | ok | — | to upload |
-| 50 | [Server-Side Request Forgery (SSRF) Defences in Java](../java/intermediate/web-security/server-side-request-forgery/README.md) | Without tools | ok | — | to upload |
-| 51 | [SSRF in Spring Boot: RestClient, Resolved Addresses, Redirects and DNS Rebinding](../java/intermediate/web-security/server-side-request-forgery-with-spring-boot/README.md) | With tools | ok | — | to upload |
-| 52 | [XXE and Template Injection in Java](../java/intermediate/web-security/xml-and-template-injection/README.md) | Without tools | ok | — | to upload |
-| 53 | [Insecure Deserialization and Its Defences in Java](../java/intermediate/web-security/insecure-deserialization/README.md) | Without tools | ok | — | to upload |
-| 54 | [Insecure Deserialization with Jackson 3: Polymorphic Typing Traps and Their Fixes](../java/intermediate/web-security/insecure-deserialization-with-jackson/README.md) | With tools | ok | — | to upload |
-| 55 | [Path Traversal, File Upload and Open Redirects in Java](../java/intermediate/web-security/path-traversal-and-file-upload/README.md) | Without tools | ok | — | to upload |
-| 56 | [Path Traversal and File Upload in Spring Boot: Multipart, Resource Handler and Open Redirects](../java/intermediate/web-security/path-traversal-and-file-upload-with-spring-boot/README.md) | With tools | ok | — | to upload |
+| 45 | [SQL Injection in Hibernate: JPQL, Native Queries and PostgreSQL Least Privilege](../java/intermediate/web-security/sql-injection-with-hibernate-and-postgres/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/arWayzdbo_M) |
+| 46 | [Cross-Site Scripting (XSS) in Java: Output Encoding and a Strict CSP](../java/intermediate/web-security/cross-site-scripting/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/36GDr5NWx0g) |
+| 47 | [XSS Defences in Spring Boot: Thymeleaf Escaping and a Nonce-Based CSP](../java/intermediate/web-security/cross-site-scripting-with-spring-boot/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/vN_Ho9R1dTQ) |
+| 48 | [Cross-Site Request Forgery (CSRF) Defences in Java (Tokens, SameSite, Fetch Metadata)](../java/intermediate/web-security/cross-site-request-forgery/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/we3U-gDTEvA) |
+| 49 | [CSRF in Spring Security: Tokens, SPA Cookie Mode and What Disabling CSRF Costs](../java/intermediate/web-security/cross-site-request-forgery-with-spring-security/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/Q4_a12nAFkY) |
+| 50 | [Server-Side Request Forgery (SSRF) Defences in Java](../java/intermediate/web-security/server-side-request-forgery/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/I6-Dh7LBHuE) |
+| 51 | [SSRF in Spring Boot: RestClient, Resolved Addresses, Redirects and DNS Rebinding](../java/intermediate/web-security/server-side-request-forgery-with-spring-boot/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/oHKCCE0mjtA) |
+| 52 | [XXE and Template Injection in Java](../java/intermediate/web-security/xml-and-template-injection/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/pSGxjphORuU) |
+| 53 | [Insecure Deserialization and Its Defences in Java](../java/intermediate/web-security/insecure-deserialization/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/4pBE_rPVDWA) |
+| 54 | [Insecure Deserialization with Jackson 3: Polymorphic Typing Traps and Their Fixes](../java/intermediate/web-security/insecure-deserialization-with-jackson/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/R_ZK1T1Snug) |
+| 55 | [Path Traversal, File Upload and Open Redirects in Java](../java/intermediate/web-security/path-traversal-and-file-upload/README.md) | Without tools | ok | — | [▶ Watch](https://youtu.be/tqVemVY_dvM) |
+| 56 | [Path Traversal and File Upload in Spring Boot: Multipart, Resource Handler and Open Redirects](../java/intermediate/web-security/path-traversal-and-file-upload-with-spring-boot/README.md) | With tools | ok | — | [▶ Watch](https://youtu.be/7qAQ3sr3434) |
 
 <a id="secure-configuration"></a>
 
@@ -222,10 +222,10 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 57 | [Security Misconfiguration in Java (OWASP A02: Defaults, Debug Pages, Drift)](../java/intermediate/secure-configuration/security-misconfiguration/README.md) | Without tools | — | — | to upload |
-| 58 | [Spring Boot Actuator Misconfiguration (OWASP A02: Env, Heap Dump, Shutdown)](../java/intermediate/secure-configuration/security-misconfiguration-with-spring-boot-actuator/README.md) | With tools | — | — | to upload |
-| 59 | [Failing Closed in Java: Secure Error Handling (OWASP A10)](../java/intermediate/secure-configuration/fail-closed-error-handling/README.md) | Without tools | — | — | to upload |
-| 60 | [Failing Closed in Spring Boot: Fraud Checks, @Transactional Traps, Error Responses (OWASP A10)](../java/intermediate/secure-configuration/fail-closed-error-handling-with-spring-boot/README.md) | With tools | — | — | to upload |
+| 57 | [Security Misconfiguration in Java (OWASP A02: Defaults, Debug Pages, Drift)](../java/intermediate/secure-configuration/security-misconfiguration/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/W63hUHdjeEc) |
+| 58 | [Spring Boot Actuator Misconfiguration (OWASP A02: Env, Heap Dump, Shutdown)](../java/intermediate/secure-configuration/security-misconfiguration-with-spring-boot-actuator/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/zD-zMCYWHDQ) |
+| 59 | [Failing Closed in Java: Secure Error Handling (OWASP A10)](../java/intermediate/secure-configuration/fail-closed-error-handling/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/8KLiydn_aKQ) |
+| 60 | [Failing Closed in Spring Boot: Fraud Checks, @Transactional Traps, Error Responses (OWASP A10)](../java/intermediate/secure-configuration/fail-closed-error-handling-with-spring-boot/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/72e2z8Zo_Xw) |
 
 <a id="api-security"></a>
 
@@ -233,13 +233,13 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 61 | [API Security in Java: Mass Assignment, Data Exposure and Rate Limits](../java/intermediate/api-security/api-security/README.md) | Without tools | — | — | to upload |
-| 62 | [API Security with Spring Boot: Mass Assignment, Response Models and a Redis Rate Limiter](../java/intermediate/api-security/api-security-with-spring-boot-and-redis/README.md) | With tools | — | — | to upload |
-| 63 | [Session Management in Java (Session Fixation, Timeouts, Secure Cookies)](../java/intermediate/api-security/session-management/README.md) | Without tools | — | — | to upload |
-| 64 | [Sessions in Redis with Spring Session: Fixation, Timeouts, Sign-Out Everywhere (OWASP A07)](../java/intermediate/api-security/session-management-with-spring-session-and-redis/README.md) | With tools | — | — | to upload |
-| 65 | [CORS Done Right: Reflected Origins, null and Exact Allow-Lists](../java/intermediate/api-security/cors/README.md) | Without tools | — | — | to upload |
-| 66 | [CORS in Spring Boot: Reflecting Origins, null, Lookalikes and the Preflight (OWASP A02)](../java/intermediate/api-security/cors-with-spring-boot/README.md) | With tools | — | — | to upload |
-| 67 | [Webhook Security in Java (HMAC Signatures, Replay Protection, Idempotency)](../java/intermediate/api-security/webhook-security/README.md) | Without tools | — | — | to upload |
+| 61 | [API Security in Java: Mass Assignment, Data Exposure and Rate Limits](../java/intermediate/api-security/api-security/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Bqq-qQnlTsY) |
+| 62 | [API Security with Spring Boot: Mass Assignment, Response Models and a Redis Rate Limiter](../java/intermediate/api-security/api-security-with-spring-boot-and-redis/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/ZrLEr-xHyvI) |
+| 63 | [Session Management in Java (Session Fixation, Timeouts, Secure Cookies)](../java/intermediate/api-security/session-management/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/5Gr1_bACSWs) |
+| 64 | [Sessions in Redis with Spring Session: Fixation, Timeouts, Sign-Out Everywhere (OWASP A07)](../java/intermediate/api-security/session-management-with-spring-session-and-redis/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/0UT3pe-isds) |
+| 65 | [CORS Done Right: Reflected Origins, null and Exact Allow-Lists](../java/intermediate/api-security/cors/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/ZgDZP0k1Cpo) |
+| 66 | [CORS in Spring Boot: Reflecting Origins, null, Lookalikes and the Preflight (OWASP A02)](../java/intermediate/api-security/cors-with-spring-boot/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/ifwUPYDIYsE) |
+| 67 | [Webhook Security in Java (HMAC Signatures, Replay Protection, Idempotency)](../java/intermediate/api-security/webhook-security/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Cp8GHnzwbjw) |
 
 <a id="identity-and-access"></a>
 
@@ -247,18 +247,18 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 68 | [JWT Done Right in Java (alg none, kid, aud, exp, RFC 8725) - OWASP A07](../java/intermediate/identity-and-access/jwt-done-right/README.md) | Without tools | — | — | to upload |
-| 69 | [JWT Validation with Nimbus JOSE + JWT: Algorithms, Claims, JWKS Caching and Rotation (OWASP A07)](../java/intermediate/identity-and-access/jwt-done-right-with-nimbus-jose-jwt/README.md) | With tools | — | — | to upload |
-| 70 | [OAuth 2.0 Authorization Code Flow with PKCE in Java (RFC 7636, RFC 9700)](../java/intermediate/identity-and-access/oauth2-authorization-code-pkce/README.md) | Without tools | — | — | to upload |
-| 71 | [OAuth 2.0 Authorization Code + PKCE with Keycloak: Redirects, State, Code Reuse, Refresh Rotation](../java/intermediate/identity-and-access/oauth2-authorization-code-pkce-with-keycloak/README.md) | With tools | — | — | to upload |
-| 72 | [OpenID Connect in Java (ID Token, Nonce, Discovery, Back-Channel Logout) - OWASP A07](../java/intermediate/identity-and-access/openid-connect/README.md) | Without tools | — | — | to upload |
-| 73 | [OpenID Connect with Spring Security and Keycloak: ID Token Checks, Account Takeover, Back-Channel Logout](../java/intermediate/identity-and-access/openid-connect-with-spring-security-and-keycloak/README.md) | With tools | — | — | to upload |
-| 74 | [Tokens in the Browser: Backend for Frontend and DPoP in Java (RFC 9449) - OWASP A07](../java/intermediate/identity-and-access/tokens-in-the-browser/README.md) | Without tools | — | — | to upload |
-| 75 | [Tokens in the Browser: Spring Boot BFF and DPoP with Keycloak (RFC 9449)](../java/intermediate/identity-and-access/tokens-in-the-browser-with-spring-boot/README.md) | With tools | — | — | to upload |
-| 76 | [Passkeys and WebAuthn in Java (Phishing-Resistant Sign-In) - OWASP A07](../java/intermediate/identity-and-access/passkeys/README.md) | Without tools | — | — | to upload |
-| 77 | [Passkeys with Spring Security 7: WebAuthn Registration, Sign-In, User Verification and Clone Detection](../java/intermediate/identity-and-access/passkeys-with-spring-security/README.md) | With tools | — | — | to upload |
-| 78 | [SAML Basics: Signed Assertions and Signature Wrapping in Java](../java/intermediate/identity-and-access/saml-basics/README.md) | Without tools | — | — | to upload |
-| 79 | [SAML with Spring Security and Keycloak: Signature Wrapping, Replay, Audience and Key Rotation](../java/intermediate/identity-and-access/saml-basics-with-keycloak/README.md) | With tools | — | — | to upload |
+| 68 | [JWT Done Right in Java (alg none, kid, aud, exp, RFC 8725) - OWASP A07](../java/intermediate/identity-and-access/jwt-done-right/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/3g8ewaqGqFM) |
+| 69 | [JWT Validation with Nimbus JOSE + JWT: Algorithms, Claims, JWKS Caching and Rotation (OWASP A07)](../java/intermediate/identity-and-access/jwt-done-right-with-nimbus-jose-jwt/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/slZVutWcUts) |
+| 70 | [OAuth 2.0 Authorization Code Flow with PKCE in Java (RFC 7636, RFC 9700)](../java/intermediate/identity-and-access/oauth2-authorization-code-pkce/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/mRfpQS047QU) |
+| 71 | [OAuth 2.0 Authorization Code + PKCE with Keycloak: Redirects, State, Code Reuse, Refresh Rotation](../java/intermediate/identity-and-access/oauth2-authorization-code-pkce-with-keycloak/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/9DcmwpRLldM) |
+| 72 | [OpenID Connect in Java (ID Token, Nonce, Discovery, Back-Channel Logout) - OWASP A07](../java/intermediate/identity-and-access/openid-connect/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/80end6BSCag) |
+| 73 | [OpenID Connect with Spring Security and Keycloak: ID Token Checks, Takeover, Back-Channel Logout](../java/intermediate/identity-and-access/openid-connect-with-spring-security-and-keycloak/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/ulqfRySf5ag) |
+| 74 | [Tokens in the Browser: Backend for Frontend and DPoP in Java (RFC 9449) - OWASP A07](../java/intermediate/identity-and-access/tokens-in-the-browser/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/fxoPOQmZ4Gc) |
+| 75 | [Tokens in the Browser: Spring Boot BFF and DPoP with Keycloak (RFC 9449)](../java/intermediate/identity-and-access/tokens-in-the-browser-with-spring-boot/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/UBaGCWzQuzU) |
+| 76 | [Passkeys and WebAuthn in Java (Phishing-Resistant Sign-In) - OWASP A07](../java/intermediate/identity-and-access/passkeys/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/DEixsAMtLOg) |
+| 77 | [Passkeys with Spring Security 7: WebAuthn Registration, Sign-In, User Verification, Clone Detection](../java/intermediate/identity-and-access/passkeys-with-spring-security/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/LMvsLw_5OLw) |
+| 78 | [SAML Basics: Signed Assertions and Signature Wrapping in Java](../java/intermediate/identity-and-access/saml-basics/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/HyzGVMMGmUQ) |
+| 79 | [SAML with Spring Security and Keycloak: Signature Wrapping, Replay, Audience and Key Rotation](../java/intermediate/identity-and-access/saml-basics-with-keycloak/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/W6doaTTue_w) |
 
 <a id="tls-in-practice"></a>
 
@@ -266,14 +266,14 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 80 | [Build a Certificate Authority in Java: Issue, Revoke and Short-Lived Certificates](../java/intermediate/tls-in-practice/local-certificate-authority/README.md) | Without tools | — | — | to upload |
-| 81 | [A Local Certificate Authority with step-ca: Tokens, ACME, Renewal and Revocation (OWASP A04)](../java/intermediate/tls-in-practice/local-certificate-authority-with-step-ca/README.md) | With tools | — | — | to upload |
-| 82 | [TLS Servers in Practice with nginx and Caddy: Protocols, HSTS, Redirects and Renewal (OWASP A02, A04)](../java/intermediate/tls-in-practice/tls-servers-in-practice-with-nginx-and-caddy/README.md) | With tools | — | — | to upload |
-| 83 | [Finding TLS Misconfigurations in Java (Protocols, Ciphers, Certificates, HSTS)](../java/intermediate/tls-in-practice/tls-misconfigurations/README.md) | Without tools | — | — | to upload |
-| 84 | [TLS Misconfigurations with testssl.sh: Scanning Local Servers and Writing a Gate (OWASP A02, A04)](../java/intermediate/tls-in-practice/tls-misconfigurations-with-testssl/README.md) | With tools | — | — | to upload |
-| 85 | [Inspecting TLS Traffic with a Key Log (SSLKEYLOGFILE) in Java](../java/intermediate/tls-in-practice/inspecting-tls-traffic/README.md) | Without tools | — | — | to upload |
-| 86 | [Inspecting TLS Traffic with Wireshark and tshark: Key Logs and Leaked Keys (OWASP A04)](../java/intermediate/tls-in-practice/inspecting-tls-traffic-with-wireshark/README.md) | With tools | — | — | to upload |
-| 87 | [Certificate Pinning in Java: Backup Pins, Rotation Outages and Why HPKP Died](../java/intermediate/tls-in-practice/certificate-pinning/README.md) | Without tools | — | — | to upload |
+| 80 | [Build a Certificate Authority in Java: Issue, Revoke and Short-Lived Certificates](../java/intermediate/tls-in-practice/local-certificate-authority/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Qsa0yfBM44U) |
+| 81 | [A Local Certificate Authority with step-ca: Tokens, ACME, Renewal and Revocation (OWASP A04)](../java/intermediate/tls-in-practice/local-certificate-authority-with-step-ca/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/YD8DvMe-AhE) |
+| 82 | [TLS Servers in Practice with nginx and Caddy: Protocols, HSTS, Redirects, Renewal (OWASP A02, A04)](../java/intermediate/tls-in-practice/tls-servers-in-practice-with-nginx-and-caddy/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/19TfK61n-nA) |
+| 83 | [Finding TLS Misconfigurations in Java (Protocols, Ciphers, Certificates, HSTS)](../java/intermediate/tls-in-practice/tls-misconfigurations/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/oVYiJ8c_DKo) |
+| 84 | [TLS Misconfigurations with testssl.sh: Scanning Local Servers and Writing a Gate (OWASP A02, A04)](../java/intermediate/tls-in-practice/tls-misconfigurations-with-testssl/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/QcZ80IS6PKw) |
+| 85 | [Inspecting TLS Traffic with a Key Log (SSLKEYLOGFILE) in Java](../java/intermediate/tls-in-practice/inspecting-tls-traffic/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/p2UUCWSsE2o) |
+| 86 | [Inspecting TLS Traffic with Wireshark and tshark: Key Logs and Leaked Keys (OWASP A04)](../java/intermediate/tls-in-practice/inspecting-tls-traffic-with-wireshark/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/V-8sKltd8zo) |
+| 87 | [Certificate Pinning in Java: Backup Pins, Rotation Outages and Why HPKP Died](../java/intermediate/tls-in-practice/certificate-pinning/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/OW1wQYs7IMs) |
 
 <a id="secure-coding"></a>
 
@@ -281,14 +281,14 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 88 | [Input Validation Done Right in Java (Allow-Lists, Unicode, ReDoS)](../java/intermediate/secure-coding/input-validation/README.md) | Without tools | — | — | to upload |
-| 89 | [Input Validation with Hibernate Validator: Constraints, Groups, Custom Rules and ReDoS (OWASP A05)](../java/intermediate/secure-coding/input-validation-with-hibernate-validator/README.md) | With tools | — | — | to upload |
-| 90 | [Race Conditions and Business Logic Flaws in Java (OWASP A06)](../java/intermediate/secure-coding/race-conditions-and-business-logic/README.md) | Without tools | — | — | to upload |
-| 91 | [Race Conditions with PostgreSQL and Hibernate: Row Locks, Isolation Levels and Optimistic Locking (CWE-362)](../java/intermediate/secure-coding/race-conditions-and-business-logic-with-postgres/README.md) | With tools | — | — | to upload |
-| 92 | [Secrets in Errors and Logs: Redaction, Log Injection and Safe Errors (Java)](../java/intermediate/secure-coding/secrets-in-errors-and-logs/README.md) | Without tools | — | — | to upload |
-| 93 | [Secrets in Logs with Logback: Masking, Unprintable Types and Structured JSON (OWASP A09)](../java/intermediate/secure-coding/secrets-in-errors-and-logs-with-logback/README.md) | With tools | — | — | to upload |
-| 94 | [Fuzzing in Java (Mutation, Coverage Guidance, Delta Debugging)](../java/intermediate/secure-coding/fuzzing/README.md) | Without tools | — | — | to upload |
-| 95 | [Fuzzing with Jazzer: Seeds, Crashes, Sanitizers and Regression Tests for Java Parsers (SSDF PW.8)](../java/intermediate/secure-coding/fuzzing-with-jazzer/README.md) | With tools | — | — | to upload |
+| 88 | [Input Validation Done Right in Java (Allow-Lists, Unicode, ReDoS)](../java/intermediate/secure-coding/input-validation/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/mB7HwQ2dMRo) |
+| 89 | [Input Validation with Hibernate Validator: Constraints, Groups, Custom Rules and ReDoS (OWASP A05)](../java/intermediate/secure-coding/input-validation-with-hibernate-validator/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/91K_MSk8w6E) |
+| 90 | [Race Conditions and Business Logic Flaws in Java (OWASP A06)](../java/intermediate/secure-coding/race-conditions-and-business-logic/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/kZ3jHWfjQAo) |
+| 91 | [Race Conditions with PostgreSQL and Hibernate: Row Locks, Isolation, Optimistic Locking (CWE-362)](../java/intermediate/secure-coding/race-conditions-and-business-logic-with-postgres/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/naAqHv0dH-g) |
+| 92 | [Secrets in Errors and Logs: Redaction, Log Injection and Safe Errors (Java)](../java/intermediate/secure-coding/secrets-in-errors-and-logs/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/kYQDD9J8Gew) |
+| 93 | [Secrets in Logs with Logback: Masking, Unprintable Types and Structured JSON (OWASP A09)](../java/intermediate/secure-coding/secrets-in-errors-and-logs-with-logback/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/Wz85VJb7Li8) |
+| 94 | [Fuzzing in Java (Mutation, Coverage Guidance, Delta Debugging)](../java/intermediate/secure-coding/fuzzing/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/XYZlx0D9CoY) |
+| 95 | [Fuzzing with Jazzer: Seeds, Crashes, Sanitizers and Regression Tests for Java Parsers (SSDF PW.8)](../java/intermediate/secure-coding/fuzzing-with-jazzer/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/zUngiZc4JQo) |
 
 <a id="secrets-and-supply-chain"></a>
 
@@ -296,14 +296,14 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 96 | [Secrets Management in Java (Leaks, Run-Time Injection, Leases, Rotation)](../java/intermediate/secrets-and-supply-chain/secrets-management/README.md) | Without tools | — | — | to upload |
-| 97 | [Secrets Management with OpenBao: AppRole, Leased Database Logins, Rotation and Revocation](../java/intermediate/secrets-and-supply-chain/secrets-management-with-openbao/README.md) | With tools | — | — | to upload |
-| 98 | [Artifact Signing in Java (Ed25519 Releases, Key Rotation, Transparency Logs)](../java/intermediate/secrets-and-supply-chain/artifact-signing/README.md) | Without tools | — | — | to upload |
-| 99 | [Signing Container Images with cosign: Digests, Claims, Attestations and Rotation (OWASP A08)](../java/intermediate/secrets-and-supply-chain/artifact-signing-with-cosign/README.md) | With tools | — | — | to upload |
-| 100 | [SBOMs and Build Provenance in Java (CycloneDX, SLSA, in-toto, DSSE)](../java/intermediate/secrets-and-supply-chain/sbom-and-provenance/README.md) | Without tools | — | — | to upload |
-| 101 | [SBOMs and Scanning with syft and grype: log4j, a Gate, Exceptions and Blind Spots (OWASP A03, A06)](../java/intermediate/secrets-and-supply-chain/sbom-and-provenance-with-syft-and-grype/README.md) | With tools | — | — | to upload |
-| 102 | [Dependency Confusion: How a Public Package Hijacks a Private Name (and How to Stop It)](../java/intermediate/secrets-and-supply-chain/dependency-confusion/README.md) | Without tools | — | — | to upload |
-| 103 | [Dependency Confusion with Gradle: Content Filters and Dependency Verification (OWASP A03)](../java/intermediate/secrets-and-supply-chain/dependency-confusion-with-gradle/README.md) | With tools | — | — | to upload |
+| 96 | [Secrets Management in Java (Leaks, Run-Time Injection, Leases, Rotation)](../java/intermediate/secrets-and-supply-chain/secrets-management/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/3toXMw_3zbI) |
+| 97 | [Secrets Management with OpenBao: AppRole, Leased Database Logins, Rotation and Revocation](../java/intermediate/secrets-and-supply-chain/secrets-management-with-openbao/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/VS7yNb2mkF8) |
+| 98 | [Artifact Signing in Java (Ed25519 Releases, Key Rotation, Transparency Logs)](../java/intermediate/secrets-and-supply-chain/artifact-signing/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/MebeKSUFaBQ) |
+| 99 | [Signing Container Images with cosign: Digests, Claims, Attestations and Rotation (OWASP A08)](../java/intermediate/secrets-and-supply-chain/artifact-signing-with-cosign/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/stUJnsuMBgg) |
+| 100 | [SBOMs and Build Provenance in Java (CycloneDX, SLSA, in-toto, DSSE)](../java/intermediate/secrets-and-supply-chain/sbom-and-provenance/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/iNIB9UDPDss) |
+| 101 | [SBOMs and Scanning with syft and grype: log4j, a Gate, Exceptions and Blind Spots (OWASP A03, A06)](../java/intermediate/secrets-and-supply-chain/sbom-and-provenance-with-syft-and-grype/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/LW1S_DCOVR8) |
+| 102 | [Dependency Confusion: How a Public Package Hijacks a Private Name (and How to Stop It)](../java/intermediate/secrets-and-supply-chain/dependency-confusion/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/0CmHIdO541g) |
+| 103 | [Dependency Confusion with Gradle: Content Filters and Dependency Verification (OWASP A03)](../java/intermediate/secrets-and-supply-chain/dependency-confusion-with-gradle/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/kGg1bytuTzE) |
 
 <a id="platform-hardening"></a>
 
@@ -311,10 +311,10 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 104 | [Linux Hardening Checker in Java: Permissions, SUID, Accounts, SSH, Ports](../java/intermediate/platform-hardening/linux-hardening/README.md) | Without tools | — | — | to upload |
-| 105 | [Linux Hardening with Docker: Scanning a Real Container and Fixing the Image (CIS Benchmarks)](../java/intermediate/platform-hardening/linux-hardening-with-docker/README.md) | With tools | — | — | to upload |
-| 106 | [Container Hardening: What a Compromised Process Can Reach (Docker and Kubernetes)](../java/intermediate/platform-hardening/container-hardening/README.md) | Without tools | — | — | to upload |
-| 107 | [Container Hardening with Docker and kind: 13 Real Attacks, Pod Security Standards (CIS Benchmarks)](../java/intermediate/platform-hardening/container-hardening-with-docker-and-kind/README.md) | With tools | — | — | to upload |
+| 104 | [Linux Hardening Checker in Java: Permissions, SUID, Accounts, SSH, Ports](../java/intermediate/platform-hardening/linux-hardening/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/1hAvyPKWt1A) |
+| 105 | [Linux Hardening with Docker: Scanning a Real Container and Fixing the Image (CIS Benchmarks)](../java/intermediate/platform-hardening/linux-hardening-with-docker/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/DXcUDtuGEGg) |
+| 106 | [Container Hardening: What a Compromised Process Can Reach (Docker and Kubernetes)](../java/intermediate/platform-hardening/container-hardening/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/--KLIPLbmPE) |
+| 107 | [Container Hardening with Docker and kind: 13 Real Attacks, Pod Security Standards (CIS Benchmarks)](../java/intermediate/platform-hardening/container-hardening-with-docker-and-kind/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/8vOcxQNzcPs) |
 
 <a id="detection-and-response"></a>
 
@@ -322,11 +322,11 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 108 | [Security Logging in Java (OWASP A09: What to Log, Redaction, Tamper Evidence)](../java/intermediate/detection-and-response/security-logging/README.md) | Without tools | — | — | to upload |
-| 109 | [Security Logging with Loki and Grafana: LogQL, Labels, Alert Rules and Tenants (OWASP A09)](../java/intermediate/detection-and-response/security-logging-with-loki-and-grafana/README.md) | With tools | — | — | to upload |
-| 110 | [Detecting Attacks in Logs: Rules, Thresholds and False Positives (Java)](../java/intermediate/detection-and-response/detecting-attacks/README.md) | Without tools | — | — | to upload |
-| 111 | [Detecting Attacks with OpenSearch: Queries, Monitors, Tuning and What a Query Cannot Say (OWASP A09)](../java/intermediate/detection-and-response/detecting-attacks-with-opensearch/README.md) | With tools | — | — | to upload |
-| 112 | [Incident Response: One Breach, Three Responses (NIST 800-61, Java)](../java/intermediate/detection-and-response/incident-response/README.md) | Without tools | — | — | to upload |
+| 108 | [Security Logging in Java (OWASP A09: What to Log, Redaction, Tamper Evidence)](../java/intermediate/detection-and-response/security-logging/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Iv__S6_L-yg) |
+| 109 | [Security Logging with Loki and Grafana: LogQL, Labels, Alert Rules and Tenants (OWASP A09)](../java/intermediate/detection-and-response/security-logging-with-loki-and-grafana/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/X5QGdcqWB68) |
+| 110 | [Detecting Attacks in Logs: Rules, Thresholds and False Positives (Java)](../java/intermediate/detection-and-response/detecting-attacks/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/U2mDUk_NPD8) |
+| 111 | [Detecting Attacks with OpenSearch: Queries, Monitors, Tuning and What a Query Cannot Say (OWASP A09)](../java/intermediate/detection-and-response/detecting-attacks-with-opensearch/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/OELriMqm9Ho) |
+| 112 | [Incident Response: One Breach, Three Responses (NIST 800-61, Java)](../java/intermediate/detection-and-response/incident-response/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/ykhqroUy4J0) |
 
 <a id="secure-design"></a>
 
@@ -334,26 +334,26 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 113 | [Threat Modeling with STRIDE in Java (OWASP A06, Insecure Design)](../java/intermediate/secure-design/threat-modeling/README.md) | Without tools | — | — | to upload |
-| 114 | [Threat Modeling with pytm: 113 Threats, Answers That Change the Findings, Diagrams and Reports (OWASP A06)](../java/intermediate/secure-design/threat-modeling-with-pytm/README.md) | With tools | — | — | to upload |
-| 115 | [Attack Trees and Abuse Cases: Which Defence Cuts the Cheapest Path? (Java)](../java/intermediate/secure-design/attack-trees-and-abuse-cases/README.md) | Without tools | — | — | to upload |
-| 116 | [Attack Trees and Abuse Cases in OWASP Threat Dragon: A Model File, Validation and a Plan (OWASP A06)](../java/intermediate/secure-design/attack-trees-and-abuse-cases-with-threat-dragon/README.md) | With tools | — | — | to upload |
-| 117 | [Security Requirements with OWASP ASVS in Java (Levels, Checks, Coverage)](../java/intermediate/secure-design/security-requirements-with-asvs/README.md) | With tools | — | — | to upload |
+| 113 | [Threat Modeling with STRIDE in Java (OWASP A06, Insecure Design)](../java/intermediate/secure-design/threat-modeling/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Pgr3ImXwPy4) |
+| 114 | [Threat Modeling with pytm: 113 Threats, Answers That Change Findings, Diagrams, Reports (OWASP A06)](../java/intermediate/secure-design/threat-modeling-with-pytm/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/0AK1CPx9lDQ) |
+| 115 | [Attack Trees and Abuse Cases: Which Defence Cuts the Cheapest Path? (Java)](../java/intermediate/secure-design/attack-trees-and-abuse-cases/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/ESZeiL2dB8o) |
+| 116 | [Attack Trees and Abuse Cases in OWASP Threat Dragon: A Model File, Validation and a Plan (OWASP A06)](../java/intermediate/secure-design/attack-trees-and-abuse-cases-with-threat-dragon/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/15lSZy6eIQs) |
+| 117 | [Security Requirements with OWASP ASVS in Java (Levels, Checks, Coverage)](../java/intermediate/secure-design/security-requirements-with-asvs/README.md) | With tools | — | — | [▶ Watch](https://youtu.be/kx12-5cF7ps) |
 
 ## Advanced
 
 | Module | Without tools | With tools | On YouTube | Projects |
 | --- | ---: | ---: | ---: | ---: |
-| [Cloud security without a cloud](#cloud-security-without-a-cloud) | 3 | 0 | 0 | 3 |
-| [Infrastructure as code security](#infrastructure-as-code-security) | 2 | 0 | 0 | 2 |
-| [Kubernetes and container security](#kubernetes-and-container-security) | 4 | 0 | 0 | 4 |
-| [Devsecops pipelines](#devsecops-pipelines) | 4 | 0 | 0 | 4 |
-| [Service identity and zero trust](#service-identity-and-zero-trust) | 4 | 0 | 0 | 4 |
-| [Applied cryptography and pki](#applied-cryptography-and-pki) | 5 | 0 | 0 | 5 |
-| [Detection engineering](#detection-engineering) | 3 | 0 | 0 | 3 |
-| [Offensive security methodology](#offensive-security-methodology) | 3 | 0 | 0 | 3 |
-| [Resilience and recovery](#resilience-and-recovery) | 2 | 0 | 0 | 2 |
-| [Governance risk and compliance](#governance-risk-and-compliance) | 4 | 0 | 0 | 4 |
+| [Cloud security without a cloud](#cloud-security-without-a-cloud) | 3 | 0 | 3 | 3 |
+| [Infrastructure as code security](#infrastructure-as-code-security) | 2 | 0 | 2 | 2 |
+| [Kubernetes and container security](#kubernetes-and-container-security) | 4 | 0 | 4 | 4 |
+| [Devsecops pipelines](#devsecops-pipelines) | 4 | 0 | 4 | 4 |
+| [Service identity and zero trust](#service-identity-and-zero-trust) | 4 | 0 | 4 | 4 |
+| [Applied cryptography and pki](#applied-cryptography-and-pki) | 5 | 0 | 5 | 5 |
+| [Detection engineering](#detection-engineering) | 3 | 0 | 3 | 3 |
+| [Offensive security methodology](#offensive-security-methodology) | 3 | 0 | 3 | 3 |
+| [Resilience and recovery](#resilience-and-recovery) | 2 | 0 | 2 | 2 |
+| [Governance risk and compliance](#governance-risk-and-compliance) | 4 | 0 | 2 | 4 |
 
 <a id="cloud-security-without-a-cloud"></a>
 
@@ -361,9 +361,9 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 118 | [Cloud IAM Models: Policy Evaluation, Roles, Boundaries, the Confused Deputy and Escalation Paths (Java)](../java/advanced/cloud-security-without-a-cloud/cloud-iam-models/README.md) | Without tools | — | — | to upload |
-| 119 | [Network Isolation: Measuring What a Taken-Over Service Can Reach (Docker Networks, Intent as Code)](../java/advanced/cloud-security-without-a-cloud/network-isolation/README.md) | Without tools | — | — | to upload |
-| 120 | [Cloud Misconfigurations: Finding and Fixing Them on an AWS Emulator (Moto, Checkov, Trivy, IMDSv2)](../java/advanced/cloud-security-without-a-cloud/cloud-misconfigurations/README.md) | Without tools | — | — | to upload |
+| 118 | [Cloud IAM Models in Java: Policy Evaluation, Roles, the Confused Deputy and Escalation Paths](../java/advanced/cloud-security-without-a-cloud/cloud-iam-models/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/uAvjfLFuFFw) |
+| 119 | [Network Isolation in Java: Measuring What a Taken-Over Service Can Reach (Docker Networks)](../java/advanced/cloud-security-without-a-cloud/network-isolation/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/g_FN4nlXKoU) |
+| 120 | [Cloud Misconfigurations: Finding and Fixing Them on an AWS Emulator (Moto, Checkov, Trivy, IMDSv2)](../java/advanced/cloud-security-without-a-cloud/cloud-misconfigurations/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/-lIDBBKKOZw) |
 
 <a id="infrastructure-as-code-security"></a>
 
@@ -371,8 +371,8 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 121 | [IaC Scanning: Writing Rules, Comparing Checkov, Trivy and KICS, Exceptions and Baselines](../java/advanced/infrastructure-as-code-security/iac-scanning/README.md) | Without tools | — | — | to upload |
-| 122 | [Policy as Code: Deny-by-Default Rego Rules, Testing the Policy and Its Tests (OPA, Conftest)](../java/advanced/infrastructure-as-code-security/policy-as-code/README.md) | Without tools | — | — | to upload |
+| 121 | [IaC Scanning: Writing Rules, Comparing Checkov, Trivy and KICS, Exceptions and Baselines](../java/advanced/infrastructure-as-code-security/iac-scanning/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/tUFDhfNWmTE) |
+| 122 | [Policy as Code: Deny-by-Default Rego Rules, Testing the Policy and Its Tests (OPA, Conftest)](../java/advanced/infrastructure-as-code-security/policy-as-code/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/JRe5HDJ06Zk) |
 
 <a id="kubernetes-and-container-security"></a>
 
@@ -380,10 +380,10 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 123 | [Kubernetes Admission Control: Kyverno Policies, Signed Images and Exceptions on a Real Cluster](../java/advanced/kubernetes-and-container-security/kubernetes-admission-control/README.md) | Without tools | — | — | to upload |
-| 124 | [Kubernetes Network Policies: Default Deny and Measuring Every Pair of Pods](../java/advanced/kubernetes-and-container-security/kubernetes-network-policies/README.md) | Without tools | — | — | to upload |
-| 125 | [Runtime Security: Detecting a Shell, a Write and a Connection in a Container with Falco](../java/advanced/kubernetes-and-container-security/runtime-security/README.md) | Without tools | — | — | to upload |
-| 126 | [Kubernetes Secrets: Base64, Encryption at Rest, OpenBao and Short-Lived Tokens](../java/advanced/kubernetes-and-container-security/kubernetes-secrets/README.md) | Without tools | — | — | to upload |
+| 123 | [Kubernetes Admission Control: Kyverno Policies, Signed Images and Exceptions on a Real Cluster](../java/advanced/kubernetes-and-container-security/kubernetes-admission-control/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/_pdLQMOegNE) |
+| 124 | [Kubernetes Network Policies: Default Deny and Measuring Every Pair of Pods](../java/advanced/kubernetes-and-container-security/kubernetes-network-policies/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/PXZD4B92OGg) |
+| 125 | [Runtime Security: Detecting a Shell, a Write and a Connection in a Container with Falco](../java/advanced/kubernetes-and-container-security/runtime-security/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/YWdsHQ0leBc) |
+| 126 | [Kubernetes Secrets: Base64, Encryption at Rest, OpenBao and Short-Lived Tokens](../java/advanced/kubernetes-and-container-security/kubernetes-secrets/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/SoaJZzn93JA) |
 
 <a id="devsecops-pipelines"></a>
 
@@ -391,10 +391,10 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 127 | [Static Analysis with Semgrep: Taint Rules, Rule Tests and Triage](../java/advanced/devsecops-pipelines/sast/README.md) | Without tools | — | — | to upload |
-| 128 | [Dynamic Analysis with OWASP ZAP: Passive, Active and Logged-In Scans](../java/advanced/devsecops-pipelines/dast/README.md) | Without tools | — | — | to upload |
-| 129 | [Secret Scanning: Gitleaks, Git History, Pre-Commit and Pre-Receive Hooks](../java/advanced/devsecops-pipelines/secret-scanning/README.md) | Without tools | — | — | to upload |
-| 130 | [Secure Pipeline: Reproducible Builds, Signing, Provenance and Gates That Fail Closed](../java/advanced/devsecops-pipelines/secure-pipeline/README.md) | Without tools | — | — | to upload |
+| 127 | [Static Analysis with Semgrep: Taint Rules, Rule Tests and Triage](../java/advanced/devsecops-pipelines/sast/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/CsdUUm9crp8) |
+| 128 | [Dynamic Analysis with OWASP ZAP: Passive, Active and Logged-In Scans](../java/advanced/devsecops-pipelines/dast/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/0NESp1n8mLs) |
+| 129 | [Secret Scanning: Gitleaks, Git History, Pre-Commit and Pre-Receive Hooks](../java/advanced/devsecops-pipelines/secret-scanning/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/n2ewD6_nIqs) |
+| 130 | [Secure Pipeline: Reproducible Builds, Signing, Provenance and Gates That Fail Closed](../java/advanced/devsecops-pipelines/secure-pipeline/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/p42WbnAc88c) |
 
 <a id="service-identity-and-zero-trust"></a>
 
@@ -402,10 +402,10 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 131 | [Mutual TLS Between Services: Client Certificates, Identity and Rotation](../java/advanced/service-identity-and-zero-trust/mutual-tls-between-services/README.md) | Without tools | — | — | to upload |
-| 132 | [Service Mesh mTLS with Linkerd: Identities, Policy and What It Does Not Protect](../java/advanced/service-identity-and-zero-trust/service-mesh-mtls/README.md) | Without tools | — | — | to upload |
-| 133 | [Workload Identity with SPIFFE and SPIRE: Short-Lived SVIDs Instead of Shared Secrets](../java/advanced/service-identity-and-zero-trust/workload-identity/README.md) | Without tools | — | — | to upload |
-| 134 | [Zero Trust Access: Identity-Aware Proxy with Keycloak and OPA, Audit and Revocation](../java/advanced/service-identity-and-zero-trust/zero-trust-access/README.md) | Without tools | — | — | to upload |
+| 131 | [Mutual TLS Between Services: Client Certificates, Identity and Rotation](../java/advanced/service-identity-and-zero-trust/mutual-tls-between-services/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/-ZCrqyPonW0) |
+| 132 | [Service Mesh mTLS with Linkerd: Identities, Policy and What It Does Not Protect](../java/advanced/service-identity-and-zero-trust/service-mesh-mtls/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/3Rlwu9aunTw) |
+| 133 | [Workload Identity with SPIFFE and SPIRE: Short-Lived SVIDs Instead of Shared Secrets](../java/advanced/service-identity-and-zero-trust/workload-identity/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/3FIdGWtuby0) |
+| 134 | [Zero Trust Access: Identity-Aware Proxy with Keycloak and OPA, Audit and Revocation](../java/advanced/service-identity-and-zero-trust/zero-trust-access/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/wJPluFm6Yfw) |
 
 <a id="applied-cryptography-and-pki"></a>
 
@@ -413,11 +413,11 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 135 | [Certificate Lifecycle: OCSP, CRL, Stapling, Short-Lived Certificates and Missed Renewals](../java/advanced/applied-cryptography-and-pki/certificate-lifecycle/README.md) | Without tools | — | — | to upload |
-| 136 | [TLS Attacks and Downgrades: Weak Servers, testssl.sh, SCSV and What TLS 1.3 Removed](../java/advanced/applied-cryptography-and-pki/tls-attacks-and-downgrades/README.md) | Without tools | — | — | to upload |
-| 137 | [Post-Quantum Cryptography in the JDK: ML-KEM, ML-DSA and Hybrid Key Exchange](../java/advanced/applied-cryptography-and-pki/post-quantum-cryptography/README.md) | Without tools | — | — | to upload |
-| 138 | [Crypto Agility: Versioned Envelopes, Rotating Algorithms and Retiring Keys](../java/advanced/applied-cryptography-and-pki/crypto-agility/README.md) | Without tools | — | — | to upload |
-| 139 | [Hardware-Backed Keys: PKCS#11, SoftHSM and What a Token Does Not Protect](../java/advanced/applied-cryptography-and-pki/hardware-backed-keys/README.md) | Without tools | — | — | to upload |
+| 135 | [Certificate Lifecycle: OCSP, CRL, Stapling, Short-Lived Certificates and Missed Renewals](../java/advanced/applied-cryptography-and-pki/certificate-lifecycle/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/jTvSXU0JjmY) |
+| 136 | [TLS Attacks and Downgrades: Weak Servers, testssl.sh, SCSV and What TLS 1.3 Removed](../java/advanced/applied-cryptography-and-pki/tls-attacks-and-downgrades/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/Wg6ngJbsZyU) |
+| 137 | [Post-Quantum Cryptography in the JDK: ML-KEM, ML-DSA and Hybrid Key Exchange](../java/advanced/applied-cryptography-and-pki/post-quantum-cryptography/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/S8CMCn7deSk) |
+| 138 | [Crypto Agility: Versioned Envelopes, Rotating Algorithms and Retiring Keys](../java/advanced/applied-cryptography-and-pki/crypto-agility/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/9y_-HWwtjTw) |
+| 139 | [Hardware-Backed Keys: PKCS#11, SoftHSM and What a Token Does Not Protect](../java/advanced/applied-cryptography-and-pki/hardware-backed-keys/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/om_EwCH4YxI) |
 
 <a id="detection-engineering"></a>
 
@@ -425,9 +425,9 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 140 | [Detection as Code: Sigma Rules, ATT&CK Coverage and False-Positive Budgets](../java/advanced/detection-engineering/detection-as-code/README.md) | Without tools | — | — | to upload |
-| 141 | [SIEM Basics: Parsing, Normalizing, Time and Correlating Across Sources](../java/advanced/detection-engineering/siem-basics/README.md) | Without tools | — | — | to upload |
-| 142 | [Threat Hunting: Hypotheses, Leads, False Leads and Turning a Hunt into a Rule](../java/advanced/detection-engineering/threat-hunting/README.md) | Without tools | — | — | to upload |
+| 140 | [Detection as Code: Sigma Rules, ATT&CK Coverage and False-Positive Budgets](../java/advanced/detection-engineering/detection-as-code/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/5W_vaFB16Q8) |
+| 141 | [SIEM Basics: Parsing, Normalizing, Time and Correlating Across Sources](../java/advanced/detection-engineering/siem-basics/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/WcKCEZIAX9g) |
+| 142 | [Threat Hunting: Hypotheses, Leads, False Leads and Turning a Hunt into a Rule](../java/advanced/detection-engineering/threat-hunting/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/NtuekrsZ_ns) |
 
 <a id="offensive-security-methodology"></a>
 
@@ -435,9 +435,9 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 143 | [Vulnerability Research: Fuzzing with Jazzer, Root Cause, Patch and Advisory](../java/advanced/offensive-security-methodology/vulnerability-research/README.md) | Without tools | — | — | to upload |
-| 144 | [Reverse Engineering Java: Constant Pool, javap, CFR and Patching a Licence Check](../java/advanced/offensive-security-methodology/reverse-engineering-fundamentals/README.md) | Without tools | — | — | to upload |
-| 145 | [Malware Analysis Fundamentals: Hashes, Strings, Entropy, YARA and a Disposable Sandbox](../java/advanced/offensive-security-methodology/malware-analysis-fundamentals/README.md) | Without tools | — | — | to upload |
+| 143 | [Vulnerability Research: Fuzzing with Jazzer, Root Cause, Patch and Advisory](../java/advanced/offensive-security-methodology/vulnerability-research/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/oYXqVUlz6P4) |
+| 144 | [Reverse Engineering Java: Constant Pool, javap, CFR and Patching a Licence Check](../java/advanced/offensive-security-methodology/reverse-engineering-fundamentals/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/KJvoRFah9ek) |
+| 145 | [Malware Analysis Fundamentals: Hashes, Strings, Entropy, YARA and a Disposable Sandbox](../java/advanced/offensive-security-methodology/malware-analysis-fundamentals/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/8f8ZR2Pvtps) |
 
 <a id="resilience-and-recovery"></a>
 
@@ -445,8 +445,8 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 146 | [Ransomware Resilience: Immutable Backups, Isolated Recovery and a Timed Restore](../java/advanced/resilience-and-recovery/ransomware-resilience/README.md) | Without tools | — | — | to upload |
-| 147 | [Security Chaos Engineering: Do Your Controls Fail Closed? Toxiproxy Experiments](../java/advanced/resilience-and-recovery/security-chaos-engineering/README.md) | Without tools | — | — | to upload |
+| 146 | [Ransomware Resilience: Immutable Backups, Isolated Recovery and a Timed Restore](../java/advanced/resilience-and-recovery/ransomware-resilience/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/tPJ-FSiL8W8) |
+| 147 | [Security Chaos Engineering: Do Your Controls Fail Closed? Toxiproxy Experiments](../java/advanced/resilience-and-recovery/security-chaos-engineering/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/lbClD_Lbjrw) |
 
 <a id="governance-risk-and-compliance"></a>
 
@@ -454,7 +454,7 @@ Two per module: the plain-Java videos, and the versions that add a framework or 
 
 | # | Video | Kind | Review | Quality | YouTube |
 | ---: | --- | --- | --- | --- | --- |
-| 148 | [Risk Management: Monte Carlo Risk Register, Controls Within a Budget and Risk Appetite](../java/advanced/governance-risk-and-compliance/risk-management/README.md) | Without tools | — | — | to upload |
-| 149 | [Controls and Evidence: NIST CSF 2.0, ISO 27001 and Evidence from Tests](../java/advanced/governance-risk-and-compliance/controls-and-evidence/README.md) | Without tools | — | — | to upload |
+| 148 | [Risk Management: Monte Carlo Risk Register, Controls Within a Budget and Risk Appetite](../java/advanced/governance-risk-and-compliance/risk-management/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/hhyJrtVGLM4) |
+| 149 | [Controls and Evidence: NIST CSF 2.0, ISO 27001 and Evidence from Tests](../java/advanced/governance-risk-and-compliance/controls-and-evidence/README.md) | Without tools | — | — | [▶ Watch](https://youtu.be/iS0ujT-JFTg) |
 | 150 | [Security Architecture Review: Trust Boundaries, Data Flows and Decision Records (Structurizr, ADRs)](../java/advanced/governance-risk-and-compliance/security-architecture-review/README.md) | Without tools | — | — | to upload |
 | 151 | [Privacy Engineering: Minimization, Pseudonyms, Retention and Erasure in PostgreSQL](../java/advanced/governance-risk-and-compliance/privacy-engineering/README.md) | Without tools | — | — | to upload |

@@ -14,16 +14,16 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Who gets in | 7 min |
-| 0:17 | Act 2: Identity, not the network | 7 min |
-| 0:24 | Act 3: Rotation | 7 min |
-| 0:31 | Act 4: A compromised certificate | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: The identity in a certificate | 7 min |
+| 0:17 | Act 2: Who gets through the handshake | 7 min |
+| 0:24 | Act 3: Allowed by identity, not by the network | 7 min |
+| 0:31 | Act 4: Rotation: a certificate that lives 8 seconds | 7 min |
+| 0:38 | Act 5: A stolen certificate, and revocation | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run the demo and compare the second act with the first: the same host gets two answers. Open Identities.java and see which part of the certificate is the identity. Then read the rotation act and find where the server stops using the old certificate.
+Run the demo and read the chain in the first act, then compare the third act with the second: the same host gets two answers. Open Identities.java and see which part of the certificate is the identity. Then read the rotation act and find where the server stops using the old certificate.
 
 ## Exercises
 

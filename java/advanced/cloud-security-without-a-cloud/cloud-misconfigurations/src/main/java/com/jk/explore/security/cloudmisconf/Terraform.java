@@ -56,6 +56,7 @@ public final class Terraform {
             resource "aws_instance" "web" {
               ami           = "ami-03cf127a"
               instance_type = "t3.micro"
+              tags          = { Name = "web" }
               metadata_options {
                 http_tokens                 = "optional"
                 http_put_response_hop_limit = 2
@@ -130,6 +131,7 @@ public final class Terraform {
             resource "aws_instance" "web" {
               ami           = "ami-03cf127a"
               instance_type = "t3.micro"
+              tags          = { Name = "web" }
               metadata_options {
                 http_tokens                 = "required"
                 http_put_response_hop_limit = 1
@@ -144,6 +146,11 @@ public final class Terraform {
               encrypted         = true
             }
             """;
+
+    /** How many resource blocks a file declares. */
+    static int resources(String text) {
+        return (int) text.lines().filter(l -> l.startsWith("resource \"")).count();
+    }
 
     public static Path write(Path dir, String text) throws IOException {
         Files.createDirectories(dir);

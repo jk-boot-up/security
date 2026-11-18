@@ -50,7 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `SizesTest`, `HybridTest`, `MoscaTest`, `InventoryTest`, `SignaturesTest` and `InteropTest` check the standards' lengths, the hybrid, the inequality, the scan and the two implementations.
+- `SizesTest`, `HybridTest`, `MoscaTest`, `InventoryTest`, `SignaturesTest` and `InteropTest` check the standards' lengths, the hybrid and HKDF by hand, the inequality, the inventory order and the two implementations.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

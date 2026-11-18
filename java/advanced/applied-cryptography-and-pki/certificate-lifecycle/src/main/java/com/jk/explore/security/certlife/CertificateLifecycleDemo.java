@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.cert.X509CRL;
+import java.security.cert.X509CRLEntry;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
 import java.time.Duration;
@@ -38,91 +39,130 @@ public class CertificateLifecycleDemo {
         // The JDK waits 15 seconds for an OCSP responder; the demo waits 1 second (these two values are in seconds).
         System.setProperty("com.sun.security.ocsp.timeout", "1");
         System.setProperty("com.sun.security.ocsp.readtimeout", "1");
+        StepCa.requirePinnedVersions();
         StringBuilder out = new StringBuilder();
         Path work = Files.createTempDirectory(Files.createDirectories(buildDir), "certlife-");
         try {
             Openssl ssl = Openssl.find();
             int ocspPort = Responder.reservePort();
             Pki pki = new Pki(ssl, work.resolve("pki"), "http://127.0.0.1:" + ocspPort);
-            authorityAndCertificate(out, ssl, pki, ocspPort);
+            Pki.Issued api = issueAndRead(out, pki);
+            act(out, "TWO", "Revocation: OCSP, a CRL and a dead responder.");
+            ocsp(out, pki, ocspPort);
+            crl(out, pki, api);
             crlSizes(out, ssl, work.resolve("crl-sizes"));
+            stapling(out, ssl, pki, ocspPort);
             stepCa(out, work.resolve("step"));
             fleet(out, ssl, work.resolve("fleet"));
-            bill(out);
         } finally {
             deleteTree(work);
         }
         return out.toString();
     }
 
-    // ----------------------------------------------------------------------------------------------------------- the authority and one certificate
+    // ----------------------------------------------------------------------------------------------------------- ONE. the authority and one certificate
 
-    private static void authorityAndCertificate(StringBuilder out, Openssl ssl, Pki pki, int ocspPort) throws Exception {
+    private static Pki.Issued issueAndRead(StringBuilder out, Pki pki) throws Exception {
         X509Certificate root = pki.root();
         X509Certificate inter = pki.intermediate();
-        out.append("--- the authority: a root and an intermediate, both made with openssl\n");
-        out.append("root: self-signed " + yn(selfSigned(root)) + ", CA " + yn(root.getBasicConstraints() >= 0) + ", path length limit "
-                + pathLength(root) + ", key usage " + keyUsage(root) + "\n");
-        out.append("intermediate: signed by the root " + yn(signedBy(inter, root)) + ", CA " + yn(inter.getBasicConstraints() >= 0) + ", path length limit "
-                + pathLength(inter) + ", key usage " + keyUsage(inter) + ", signature " + inter.getSigAlgName() + "\n");
-        out.append("the root key signs only the intermediate; the intermediate key signs every certificate and every CRL and OCSP response below\n");
+        act(out, "ONE", "Issue and read: a root, an intermediate, a certificate.");
+        head(out, "THE AUTHORITY (made with openssl):");
+        row(out, 14, "root", dn(root));
+        row(out, 14, "", "self-signed " + yn(selfSigned(root)) + ", CA " + yn(root.getBasicConstraints() >= 0) + ", path length " + pathLength(root));
+        row(out, 14, "intermediate", dn(inter));
+        row(out, 14, "", "signed by the root " + yn(signedBy(inter, root)) + ", CA " + yn(inter.getBasicConstraints() >= 0) + ", path length " + pathLength(inter));
+        row(out, 14, "both", "key usage " + keyUsage(root) + (keyUsage(root).equals(keyUsage(inter)) ? "" : " / " + keyUsage(inter)));
+        row(out, 14, "", "the root signs only the intermediate;");
+        row(out, 14, "", "the intermediate signs every certificate, CRL");
+        row(out, 14, "", "and OCSP answer below");
 
         Instant now = Instant.now();
         Path key = pki.newKeyAndRequest("api");
         Pki.Issued api = pki.issue("api.bank.example", key, List.of("api.bank.example", "payments.bank.example"), now.minusSeconds(60),
                 now.plus(30, ChronoUnit.DAYS), true);
         X509Certificate leaf = api.cert();
-        List<X509Certificate> intermediates = List.of(inter);
-        out.append("--- a server certificate issued by the intermediate, read in Java\n");
-        out.append("names (subject alternative names): " + names(leaf) + "\n");
-        out.append("key usage: " + keyUsage(leaf) + "; extended key usage: " + extendedKeyUsage(leaf) + "; CA: " + yn(leaf.getBasicConstraints() >= 0) + "\n");
-        out.append("public key: " + leaf.getPublicKey().getAlgorithm() + " " + ((ECPublicKey) leaf.getPublicKey()).getParams().getOrder().bitLength()
-                + " bits; signature: " + leaf.getSigAlgName() + "\n");
-        out.append("lifetime: " + Duration.between(leaf.getNotBefore().toInstant(), leaf.getNotAfter().toInstant()).plusMinutes(1).toDays() + " days\n");
-        out.append("pointers inside the certificate: OCSP responder " + yn(leaf.getExtensionValue("1.3.6.1.5.5.7.1.1") != null)
-                + ", CRL distribution point " + yn(leaf.getExtensionValue("2.5.29.31") != null) + "\n");
-        Instant t = Instant.now();
-        out.append("chain to the root with the intermediate: " + Chains.validate(leaf, intermediates, root, t, Chains.Source.NONE, Chains.Policy.HARD, List.of()).word() + "\n");
-        out.append("chain to the root without the intermediate: " + Chains.validate(leaf, List.of(), root, t, Chains.Source.NONE, Chains.Policy.HARD, List.of()).word() + "\n");
-        out.append("same chain 31 days later: " + Chains.validate(leaf, intermediates, root, t.plus(31, ChronoUnit.DAYS), Chains.Source.NONE, Chains.Policy.HARD, List.of()).word() + "\n");
-        out.append("same chain a day before it was issued: " + Chains.validate(leaf, intermediates, root, t.minus(1, ChronoUnit.DAYS), Chains.Source.NONE, Chains.Policy.HARD, List.of()).word() + "\n");
+        head(out, "THE CERTIFICATE (issued by the intermediate, read in Java):");
+        row(out, 10, "names", names(leaf));
+        row(out, 10, "usage", keyUsage(leaf) + "; extended " + extendedKeyUsage(leaf) + "; CA " + yn(leaf.getBasicConstraints() >= 0));
+        row(out, 10, "key", leaf.getPublicKey().getAlgorithm() + " " + ((ECPublicKey) leaf.getPublicKey()).getParams().getOrder().bitLength()
+                + " bits, signed " + leaf.getSigAlgName());
+        row(out, 10, "lifetime", Duration.between(leaf.getNotBefore().toInstant(), leaf.getNotAfter().toInstant()).plusMinutes(1).toDays() + " days");
+        row(out, 10, "pointers", "OCSP responder " + yn(leaf.getExtensionValue("1.3.6.1.5.5.7.1.1") != null)
+                + ", CRL distribution point " + yn(leaf.getExtensionValue("2.5.29.31") != null));
 
-        ocsp(out, ssl, pki, ocspPort, root, inter);
-        crl(out, pki, root, inter, leaf, api);
-        stapling(out, ssl, pki, ocspPort, root);
+        Instant t = Instant.now();
+        List<ChainSteps.Step> steps = ChainSteps.check(leaf, List.of(inter), root, t);
+        head(out, "HOW THE CHAIN IS CHECKED (by hand, now):");
+        for (int i = 0; i < steps.size(); i++) {
+            row(out, 44, (i + 1) + " " + steps.get(i).what(), yn(steps.get(i).ok()));
+        }
+        head(out, "THE CHECKS (by hand, then by the JDK):");
+        row(out, 24, "the chain", String.format("%-12s%s", "by hand", "the JDK"));
+        Object[][] cases = {{"with the intermediate", List.of(inter), t}, {"no intermediate", List.<X509Certificate>of(), t},
+            {"31 days later", List.of(inter), t.plus(31, ChronoUnit.DAYS)}, {"a day before issue", List.of(inter), t.minus(1, ChronoUnit.DAYS)}};
+        for (Object[] c : cases) {
+            @SuppressWarnings("unchecked")
+            List<X509Certificate> chain = (List<X509Certificate>) c[1];
+            Instant when = (Instant) c[2];
+            List<ChainSteps.Step> s = ChainSteps.check(leaf, chain, root, when);
+            String hand = ChainSteps.accepted(s) ? "accepted" : "fails at " + ChainSteps.firstFailure(s);
+            row(out, 24, (String) c[0], String.format("%-12s%s", hand, Chains.validate(leaf, chain, root, when, Chains.Source.NONE, Chains.Policy.HARD, List.of()).word()));
+        }
+        return api;
     }
 
-    // ----------------------------------------------------------------------------------------------------------------------------------- OCSP
+    private static String dn(X509Certificate c) {
+        return c.getSubjectX500Principal().getName().replace(",", ", ");
+    }
 
-    private static void ocsp(StringBuilder out, Openssl ssl, Pki pki, int port, X509Certificate root, X509Certificate inter) throws Exception {
-        List<X509Certificate> chain = List.of(inter);
+    // ----------------------------------------------------------------------------------------------------------------------------------- TWO. OCSP
+
+    private static void ocsp(StringBuilder out, Pki pki, int port) throws Exception {
+        X509Certificate root = pki.root();
+        List<X509Certificate> chain = List.of(pki.intermediate());
         Instant now = Instant.now();
         Pki.Issued fine = issueFor(pki, "ledger.bank.example", now);
         Pki.Issued stolen = issueFor(pki, "cards.bank.example", now);
-        out.append("--- revocation by OCSP: an openssl ocsp responder that is up, down or hanging\n");
-        out.append("hard fail = the client refuses when it cannot learn the status; soft fail = it accepts\n");
+        head(out, "WHEN THE STATUS CANNOT BE LEARNED, A CLIENT CAN:");
+        row(out, 11, "hard fail", "refuse the certificate");
+        row(out, 11, "soft fail", "accept it anyway");
+        head(out, "OCSP: THE CLIENT ASKS THE RESPONDER (openssl ocsp):");
+        row(out, 24, "certificate, responder", String.format("%-18s%s", "hard fail", "soft fail"));
+        int softLetThrough = 0;
         try (Responder responder = new Responder(pki, port)) {
-            out.append(row("good certificate, responder up", pki, fine, chain, root, responder));
-            out.append("OCSP requests the responder saw for those 2 checks: " + responder.requests() + "\n");
+            ocspRow(out, "good, up", fine, chain, root);
+            int seen = responder.requests();
             pki.revoke(stolen);
             responder.reload();
-            out.append(row("revoked certificate, responder up", pki, stolen, chain, root, responder));
+            ocspRow(out, "revoked, up", stolen, chain, root);
             responder.mode(Responder.Mode.DOWN);
-            out.append(row("good certificate, responder down", pki, fine, chain, root, responder));
-            out.append(row("revoked certificate, responder down", pki, stolen, chain, root, responder));
+            ocspRow(out, "good, down", fine, chain, root);
+            softLetThrough += ocspRow(out, "revoked, down", stolen, chain, root);
             responder.mode(Responder.Mode.HANG);
             long start = System.nanoTime();
-            out.append(row("revoked certificate, responder hangs", pki, stolen, chain, root, responder));
+            softLetThrough += ocspRow(out, "revoked, hangs", stolen, chain, root);
             long millis = (System.nanoTime() - start) / 1_000_000;
-            out.append("each check of the hanging responder waited about 1 second (the demo's timeout; the JDK default is 15): " + yn(millis > 1800 && millis < 6000) + "\n");
-            out.append("a revoked certificate gets through a soft-fail client whenever the answer can be blocked: yes\n");
+            head(out, "THE RESULT:");
+            row(out, 37, "requests for the 2 good checks", String.valueOf(seen));
+            row(out, 37, "a hanging check waited about 1 s", yn(millis > 1800 && millis < 6000) + " (the JDK default is 15 s)");
+            row(out, 37, "revoked, blocked, soft fail accepts", softLetThrough + " of 2");
         }
     }
 
-    private static String row(String label, Pki pki, Pki.Issued cert, List<X509Certificate> chain, X509Certificate root, Responder responder) throws Exception {
+    /** One row of the OCSP table; returns 1 when a revoked certificate was accepted by the soft-fail client. */
+    private static int ocspRow(StringBuilder out, String label, Pki.Issued cert, List<X509Certificate> chain, X509Certificate root) {
         Verdict hard = Chains.validate(cert.cert(), chain, root, Instant.now(), Chains.Source.OCSP, Chains.Policy.HARD, List.of());
         Verdict soft = Chains.validate(cert.cert(), chain, root, Instant.now(), Chains.Source.OCSP, Chains.Policy.SOFT, List.of());
-        return label + ": hard fail " + hard.word() + ", soft fail " + soft.word() + "\n";
+        row(out, 24, label, String.format("%-18s%s", brief(hard), brief(soft)));
+        return label.startsWith("revoked") && soft.accepted() ? 1 : 0;
+    }
+
+    /** A verdict in two words for a table: accepted, refused: revoked, refused: unknown. */
+    private static String brief(Verdict v) {
+        if (v.accepted()) {
+            return "accepted";
+        }
+        return "refused: " + (v.why().equals("revocation status unknown") ? "unknown" : v.why());
     }
 
     private static Pki.Issued issueFor(Pki pki, String name, Instant now) throws Exception {
@@ -130,124 +170,159 @@ public class CertificateLifecycleDemo {
         return pki.issue(name, key, List.of(name), now.minusSeconds(60), now.plus(30, ChronoUnit.DAYS), true);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------ CRL
+    // ------------------------------------------------------------------------------------------------------------------------------------ TWO. CRL
 
-    private static void crl(StringBuilder out, Pki pki, X509Certificate root, X509Certificate inter, X509Certificate leaf, Pki.Issued api) throws Exception {
+    private static void crl(StringBuilder out, Pki pki, Pki.Issued api) throws Exception {
+        X509Certificate root = pki.root();
+        X509Certificate inter = pki.intermediate();
+        X509Certificate leaf = api.cert();
         List<X509Certificate> chain = List.of(inter);
-        out.append("--- revocation by CRL: a signed list that the client downloads\n");
         X509CRL before = pki.generateCrl(3600);
         before.verify(inter.getPublicKey());
         int beforeEntries = before.getRevokedCertificates() == null ? 0 : before.getRevokedCertificates().size();
-        out.append("CRL signed by the intermediate and verified in Java: yes; entries: " + beforeEntries + "; good for 3600 seconds in this lab (the entry is the card service certificate revoked above)\n");
+        head(out, "A CRL: THE CLIENT DOWNLOADS A SIGNED LIST (good for 3600 s):");
+        row(out, 15, "the CRL", beforeEntries + " entry, verified with the intermediate's key");
         pki.revoke(api);
-        out.append("the certificate is revoked after that CRL was published; a client holding the old CRL: "
-                + Chains.validate(leaf, chain, root, Instant.now(), Chains.Source.CRL, Chains.Policy.HARD, List.of(before)).word() + "\n");
+        row(out, 15, "revoked after", "api.bank.example; a client with that CRL: "
+                + Chains.validate(leaf, chain, root, Instant.now(), Chains.Source.CRL, Chains.Policy.HARD, List.of(before)).word());
         X509CRL after = pki.generateCrl(3600);
         after.verify(inter.getPublicKey());
-        out.append("new CRL: entries " + after.getRevokedCertificates().size() + "; a client holding it: "
-                + Chains.validate(leaf, chain, root, Instant.now(), Chains.Source.CRL, Chains.Policy.HARD, List.of(after)).word() + "\n");
+        row(out, 15, "the next CRL", after.getRevokedCertificates().size() + " entries; a client with it: "
+                + Chains.validate(leaf, chain, root, Instant.now(), Chains.Source.CRL, Chains.Policy.HARD, List.of(after)).word());
         Instant later = Instant.now().plus(2, ChronoUnit.HOURS);
-        out.append("client clock 2 hours later, the CRL's next update has passed: hard fail "
-                + Chains.validate(leaf, chain, root, later, Chains.Source.CRL, Chains.Policy.HARD, List.of(after)).word() + ", soft fail "
-                + Chains.validate(leaf, chain, root, later, Chains.Source.CRL, Chains.Policy.SOFT, List.of(after)).word() + "\n");
-        out.append("a revoked certificate stays usable for clients that hold the old list until their next download: up to 3600 seconds in this lab\n");
+        row(out, 15, "2 hours later", "next update passed: hard " + Chains.validate(leaf, chain, root, later, Chains.Source.CRL,
+                Chains.Policy.HARD, List.of(after)).word().replace(" (revocation status unknown)", "") + ", soft "
+                + Chains.validate(leaf, chain, root, later, Chains.Source.CRL, Chains.Policy.SOFT, List.of(after)).word());
+        row(out, 15, "the gap", "a client with the old list accepts for up to 3600 s");
     }
 
-    // --------------------------------------------------------------------------------------------------------------------------------- CRL size
+    // ------------------------------------------------------------------------------------------------------------------------------- TWO. CRL size
 
     private static void crlSizes(StringBuilder out, Openssl ssl, Path dir) throws Exception {
         Pki pki = new Pki(ssl, dir, "http://127.0.0.1:1");
         Instant now = Instant.now();
-        out.append("--- how big a CRL gets (the CA database is written with this many revoked entries, then openssl ca writes the CRL)\n");
-        int empty = crlSize(pki, 0, 0, now, false);
+        int empty = crlSize(pki, 0, 0, now, false).getEncoded().length;
+        head(out, "HOW BIG A CRL GETS (openssl ca writes it):");
+        row(out, 10, "entries", String.format("%-10s%-12s%s", "size", "per entry", "at 1 Mbit/s"));
+        X509CRL small = null;
+        X509CRL large = null;
         for (int n : new int[] {1_000, 10_000, 100_000}) {
-            int size = crlSize(pki, n, 0, now, false);
-            out.append("revoked entries " + String.format("%,d", n) + ": CRL " + size / 1024 + " KB, " + Math.round((size - empty) / (double) n) + " bytes per entry"
-                    + ", a phone at 1 Mbit/s needs " + String.format("%.1f", size * 8 / 1_000_000.0) + " seconds for it\n");
+            X509CRL crl = crlSize(pki, n, 0, now, false);
+            int size = crl.getEncoded().length;
+            small = small == null ? crl : small;
+            large = crl;
+            row(out, 10, String.format("%,d", n), String.format("%-10s%-12s%s", size / 1024 + " KB", Math.round((size - empty) / (double) n) + " bytes",
+                    String.format("%.1f s", size * 8 / 1_000_000.0)));
         }
-        int marked = crlSize(pki, 100_000, 90_000, now, true);
-        out.append("100,000 revoked entries, 90,000 of them for certificates that have expired, after openssl ca -updatedb: CRL " + marked / 1024
-                + " KB (openssl keeps revoked entries after expiry; -updatedb only marks valid ones)\n");
-        int dropped = crlSize(pki, 10_000, 0, now, false);
-        out.append("the same CA if it dropped the 90,000 entries that RFC 5280 lets it drop: CRL " + dropped / 1024 + " KB\n");
-        out.append("a CA that drops expired entries keeps the list as long as the lifetimes of the certificates on it: short lifetimes, short lists\n");
+        X509CRLEntry first = small.getRevokedCertificates().iterator().next();
+        X509CRLEntry last = large.getRevokedCertificates().stream().max(Comparator.comparing(X509CRLEntry::getSerialNumber)).orElseThrow();
+        head(out, "HOW ONE ENTRY IS MADE (DER, read from the CRL):");
+        entry(out, first);
+        entry(out, last);
+        row(out, 14, "time", "size x 8 bits / 1,000,000 bits a second");
+        int marked = crlSize(pki, 100_000, 90_000, now, true).getEncoded().length;
+        int dropped = crlSize(pki, 10_000, 0, now, false).getEncoded().length;
+        head(out, "100,000 REVOKED, 90,000 OF THEM ALREADY EXPIRED:");
+        row(out, 29, "openssl ca -updatedb keeps", marked / 1024 + " KB");
+        row(out, 29, "dropped, as RFC 5280 allows", dropped / 1024 + " KB: short lives, short lists");
     }
 
-    private static int crlSize(Pki pki, int revoked, int expired, Instant now, boolean prune) throws Exception {
+    private static void entry(StringBuilder out, X509CRLEntry e) throws GeneralSecurityException {
+        int serial = e.getSerialNumber().toByteArray().length;
+        int total = e.getEncoded().length;
+        row(out, 14, "serial " + e.getSerialNumber().toString(16).toUpperCase(), "2 + (2 + " + serial + " serial) + (2 + 13 date) = " + total + " bytes");
+    }
+
+    private static X509CRL crlSize(Pki pki, int revoked, int expired, Instant now, boolean prune) throws Exception {
         Files.writeString(pki.indexFile(), Crls.index(revoked, expired, now));
         if (prune) {
             pki.updateDatabase();
         }
-        return pki.generateCrl(3600).getEncoded().length;
+        return pki.generateCrl(3600);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------- stapling
+    // ------------------------------------------------------------------------------------------------------------------------------- THREE. stapling
 
-    private static void stapling(StringBuilder out, Openssl ssl, Pki pki, int port, X509Certificate root) throws Exception {
+    private static void stapling(StringBuilder out, Openssl ssl, Pki pki, int port) throws Exception {
+        X509Certificate root = pki.root();
         Instant now = Instant.now();
         Pki.Issued shop = issueFor(pki, "shop.bank.example", now);
         Path staple = pki.ocspResponseFor(shop, "staple-1");
-        out.append("--- OCSP stapling: the server sends a signed, dated OCSP response inside the TLS handshake (openssl s_server -status_file)\n");
-        out.append("size of the response: under 512 bytes " + yn(Files.size(staple) < 512) + "\n");
+        act(out, "THREE", "Stapling: the server brings the answer.");
+        head(out, "THE STAPLE (openssl s_server -status_file):");
+        row(out, 10, "what", "the OCSP answer, signed and dated, in the handshake");
+        row(out, 10, "size", "under 512 bytes: " + yn(Files.size(staple) < 512));
+        int w = 20;
         try (Responder responder = new Responder(pki, port)) {
             try (StaplingServer plain = new StaplingServer(ssl, pki, shop, null);
                     StaplingServer stapled = new StaplingServer(ssl, pki, shop, staple)) {
+                head(out, "THE RESPONDER UP (a hard-fail client):");
+                row(out, w, "server", String.format("%-10s%-14s%s", "verdict", "in handshake", "to responder"));
                 responder.resetCount();
                 StapleClient viaStaple = new StapleClient(root, Chains.Policy.HARD, true, Instant.now());
                 StapleClient.Outcome o = viaStaple.connect(stapled.port());
-                out.append("server that staples, responder up: " + o.verdict().word() + ", responses in the handshake " + o.stapledResponses()
-                        + ", requests to the responder " + responder.requests() + "\n");
+                row(out, w, "staples", String.format("%-10s%-14s%s", o.verdict().word(), o.stapledResponses(), responder.requests()));
                 responder.resetCount();
                 o = viaStaple.connect(plain.port());
-                out.append("server that does not staple, responder up: " + o.verdict().word() + ", responses in the handshake " + o.stapledResponses()
-                        + ", requests to the responder " + responder.requests() + " (the responder learns which site the client visits)\n");
+                row(out, w, "does not staple", String.format("%-10s%-14s%s", o.verdict().word(), o.stapledResponses(), responder.requests()));
+                row(out, w, "", "and the responder sees which site");
                 responder.mode(Responder.Mode.DOWN);
+                head(out, "THE RESPONDER DOWN:");
                 o = viaStaple.connect(plain.port());
-                out.append("server that does not staple, responder down: hard fail " + o.verdict().word() + ", soft fail "
-                        + new StapleClient(root, Chains.Policy.SOFT, true, Instant.now()).connect(plain.port()).verdict().word() + "\n");
+                row(out, w, "does not staple", "hard fail " + brief(o.verdict()) + ", soft fail "
+                        + brief(new StapleClient(root, Chains.Policy.SOFT, true, Instant.now()).connect(plain.port()).verdict()));
                 o = viaStaple.connect(stapled.port());
-                out.append("server that staples, responder down: hard fail " + o.verdict().word() + "\n");
+                row(out, w, "staples", "hard fail " + brief(o.verdict()));
                 o = new StapleClient(root, Chains.Policy.HARD, true, Instant.now().plus(2, ChronoUnit.DAYS)).connect(stapled.port());
-                out.append("same staple read 2 days later, past its next update, responder down: hard fail " + o.verdict().word() + "\n");
+                row(out, w, "staples, 2 days on", "past next update: hard " + brief(o.verdict()).replace("OCSP response ", ""));
                 responder.mode(Responder.Mode.ANSWER);
                 pki.revoke(shop);
                 responder.reload();
                 responder.resetCount();
+                head(out, "THE CERTIFICATE IS REVOKED (the responder up):");
                 o = new StapleClient(root, Chains.Policy.HARD, true, Instant.now()).connect(stapled.port());
-                out.append("certificate revoked, the server still sends the staple made before: " + o.verdict().word() + ", requests to the responder "
-                        + responder.requests() + "\n");
+                row(out, 30, "the old staple", brief(o.verdict()) + ", " + responder.requests() + " requests to it");
                 o = new StapleClient(root, Chains.Policy.HARD, false, Instant.now()).connect(stapled.port());
-                out.append("same server, a client that ignores the staple and asks the responder: " + o.verdict().word() + "\n");
+                row(out, 30, "a client asking the responder", brief(o.verdict()));
             }
             Path fresh = pki.ocspResponseFor(shop, "staple-2");
             try (StaplingServer refreshed = new StaplingServer(ssl, pki, shop, fresh)) {
                 StapleClient.Outcome o = new StapleClient(root, Chains.Policy.HARD, true, Instant.now()).connect(refreshed.port());
-                out.append("server with a staple made after the revocation: " + o.verdict().word() + "\n");
+                row(out, 30, "a staple made after it", brief(o.verdict()));
             }
         }
-        out.append("a staple moves the question to the server and survives a dead responder; it is as old as its last refresh (1 day in this lab)\n");
+        row(out, 30, "so a staple is as old as", "its last refresh (1 day here)");
     }
 
-    // -------------------------------------------------------------------------------------------------------------------------------- step-ca
+    // ---------------------------------------------------------------------------------------------------------------------------- FOUR. step-ca
 
     private static void stepCa(StringBuilder out, Path dir) throws Exception {
-        out.append("--- short-lived certificates from step-ca, renewed after two thirds of their life\n");
+        act(out, "FOUR", "Short lives and automatic rotation.");
         try (StepCa ca = new StepCa(dir)) {
             X509Certificate caRoot = ca.rootCertificate();
             Credential first = ca.issue("svc0", "ledger.bank.example", LIFE);
             long life = Duration.between(first.leaf().getNotBefore().toInstant(), first.leaf().getNotAfter().toInstant()).toSeconds();
-            out.append("lifetime of each certificate: " + LIFE + " seconds (as issued: within a second of that " + yn(Math.abs(life - LIFE) <= 1) + "), chain sent: "
-                    + first.chain().size() + " certificates\n");
-            out.append("a renewal is due " + LIFE * 2 / 3 + " seconds after issue; a stolen certificate is worth at most " + LIFE + " seconds instead of 30 days\n");
+            head(out, "THE CERTIFICATE (step-ca, ledger.bank.example):");
+            row(out, 12, "lifetime", LIFE + " seconds (as issued, within a second: " + yn(Math.abs(life - LIFE) <= 1) + ")");
+            row(out, 12, "chain sent", first.chain().size() + " certificates");
+            Instant t0 = Instant.EPOCH;
+            Instant due = Renewer.renewAt(t0, t0.plusSeconds(LIFE));
+            head(out, "HOW THE SCHEDULE IS MADE:");
+            row(out, 12, "renew at", LIFE + " x 2/3 = " + Duration.between(t0, due).toSeconds() + " seconds after issue");
+            row(out, 12, "headroom", LIFE + " - " + Duration.between(t0, due).toSeconds() + " = " + (LIFE - Duration.between(t0, due).toSeconds())
+                    + " seconds for the CA to be away");
+            row(out, 12, "alert at", "a quarter of the life left: " + LIFE + " / 4 = " + LIFE / 4 + " seconds");
+            row(out, 12, "if stolen", "worth " + LIFE + " seconds at most, not 30 days");
 
             try (Service service = new Service(first); Renewer renewer = new Renewer(ca, service, "svc0"); ExpiryWatch watch = new ExpiryWatch(service.port())) {
                 Load load = new Load(caRoot, "ledger.bank.example", service.port());
                 Load.Tally tally = load.run(300, 100);
-                out.append("window of 30 seconds, one handshake every 100 ms: " + tally.attempts() + " handshakes, " + tally.refused() + " failed\n");
-                out.append("renewals in the window: " + renewer.renewed() + ", failed renewals: " + renewer.failed() + "\n");
-                out.append("expiry alerts raised while rotation works: " + (watch.firstAlert() == null ? 0 : 1) + "\n");
-                out.append("the service now presents a different certificate than at the start: "
-                        + yn(!service.credential().leaf().getSerialNumber().equals(first.leaf().getSerialNumber())) + "\n");
+                head(out, "ROTATION (30 seconds, a handshake every 100 ms):");
+                row(out, 12, "handshakes", tally.attempts() + ", failed " + tally.refused());
+                row(out, 12, "renewals", renewer.renewed() + ", failed " + renewer.failed());
+                row(out, 12, "alerts", String.valueOf(watch.firstAlert() == null ? 0 : 1));
+                row(out, 12, "serial", "not the one at the start: "
+                        + yn(!service.credential().leaf().getSerialNumber().equals(first.leaf().getSerialNumber())));
             }
 
             hiccup(out, ca, caRoot);
@@ -272,45 +347,51 @@ public class CertificateLifecycleDemo {
             Thread.sleep(1500);
             ca.start();
             Load.Tally tally = run.get();
-            out.append("--- the CA is unreachable for about 2 seconds, just before a renewal is due (the headroom is " + LIFE / 3 + " seconds)\n");
-            out.append("handshakes in 20 seconds: " + tally.attempts() + ", failed: " + tally.refused() + "\n");
-            out.append("renewal attempts that failed while the CA was away: " + yn(renewer.failed() > 0) + ", renewed once it was back: " + yn(renewer.renewed() > 0) + "\n");
+            head(out, "THE CA AWAY FOR ABOUT 2 S, JUST BEFORE A RENEWAL:");
+            row(out, 12, "handshakes", tally.attempts() + " in 20 seconds, failed " + tally.refused());
+            row(out, 12, "renewals", "failed while away: " + yn(renewer.failed() > 0) + ", done once back: " + yn(renewer.renewed() > 0));
         }
     }
+
+    // ---------------------------------------------------------------------------------------------------------------------------- FIVE. missed
 
     /** The CA stays away past the end of the certificate: nobody renews, and the service stops answering. */
     private static void missed(StringBuilder out, StepCa ca, X509Certificate caRoot) throws Exception {
         Credential cred = ca.issue("miss0", "ledger.bank.example", LIFE);
-        out.append("--- a missed renewal: the CA stays down past the end of the certificate\n");
+        act(out, "FIVE", "The missed renewal, and a monitor.");
+        head(out, "THE CA STAYS DOWN PAST THE EXPIRY:");
+        int w = 20;
         try (Service service = new Service(cred); Renewer renewer = new Renewer(ca, service, "miss0"); ExpiryWatch watch = new ExpiryWatch(service.port())) {
             ca.stop();
             Load load = new Load(caRoot, "ledger.bank.example", service.port());
             Load.Tally before = load.run(50, 100);
-            out.append("before the expiry: " + before.attempts() + " handshakes, " + before.refused() + " refused\n");
+            row(out, w, "before the expiry", before.attempts() + " handshakes, " + before.refused() + " refused");
             long wait = Duration.between(Instant.now(), cred.leaf().getNotAfter().toInstant().plusSeconds(1)).toMillis();
             Thread.sleep(Math.max(0, wait));
             Load.Tally after = load.run(100, 100);
-            out.append("after the expiry: " + after.attempts() + " handshakes, " + after.refused() + " refused, the reason: " + after.firstReason() + "\n");
-            out.append("renewal attempts that failed: more than 10 " + yn(renewer.failed() > 10) + ", renewals: " + renewer.renewed() + "\n");
+            row(out, w, "after the expiry", after.attempts() + " handshakes, " + after.refused() + " refused");
+            row(out, w, "", "the reason: " + after.firstReason());
+            row(out, w, "renewals", "failed, more than 10: " + yn(renewer.failed() > 10) + "; done " + renewer.renewed());
             Instant alert = watch.firstAlert();
             boolean early = alert != null && after.firstRefusal() != null && alert.isBefore(after.firstRefusal());
-            out.append("the expiry monitor (an alert at a quarter of the life left) alerted before the first refused handshake: " + yn(early)
-                    + ", at least 2 seconds before: " + yn(early && Duration.between(alert, after.firstRefusal()).toMillis() >= 2000) + "\n");
+            row(out, w, "the monitor", "alerted before the first refusal: " + yn(early));
+            row(out, w, "", "and at least 2 seconds before: " + yn(early && Duration.between(alert, after.firstRefusal()).toMillis() >= 2000));
             renewer.close();
             ca.start();
             Path crt = ca.file("miss0.crt");
-            out.append("the CA is back; renewing the expired certificate: refused " + yn(!ca.tryRenew("miss0", "miss-again").ok()) + " (it has to be issued anew)\n");
+            head(out, "THE CA IS BACK:");
+            row(out, w, "renew the old one", "refused " + yn(!ca.tryRenew("miss0", "miss-again").ok()) + " (it has to be issued anew)");
             Credential reissued = ca.issue("miss1", "ledger.bank.example", LIFE);
             service.install(reissued);
             Load.Tally recovered = load.run(20, 100);
-            out.append("after a new certificate is installed: " + recovered.attempts() + " handshakes, " + recovered.refused() + " refused\n");
+            row(out, w, "a new one", recovered.attempts() + " handshakes, " + recovered.refused() + " refused");
             if (!Files.exists(crt)) {
                 throw new IllegalStateException("lost the certificate file");
             }
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------------------------- fleet
+    // ----------------------------------------------------------------------------------------------------------------------------- FIVE. fleet
 
     private static void fleet(StringBuilder out, Openssl ssl, Path dir) throws Exception {
         Pki pki = new Pki(ssl, dir, "http://127.0.0.1:1");
@@ -337,35 +418,41 @@ public class CertificateLifecycleDemo {
             Files.copy(c.certFile(), inventory.resolve("service-%03d.crt".formatted(n)));
         }
         List<Fleet.Entry> entries = Fleet.scan(inventory);
-        out.append("--- an inventory of " + entries.size() + " certificates, scanned by an expiry monitor\n");
         Map<Fleet.Bucket, Integer> counts = Fleet.count(entries, Instant.now());
+        head(out, "AN INVENTORY OF " + entries.size() + " CERTIFICATES (the monitor's first scan):");
         for (Fleet.Bucket b : Fleet.Bucket.values()) {
-            out.append("  " + b.label + ": " + counts.get(b) + "\n");
+            row(out, 18, b.label, String.valueOf(counts.get(b)));
         }
-        out.append("the first scan finds " + counts.get(Fleet.Bucket.EXPIRED) + " certificates that are already refused by clients, before anyone reported them\n");
-        out.append("model: 60 days, a scan every morning, a certificate expiring in that window is an outage unless its owner renews in time\n");
+        row(out, 18, "", counts.get(Fleet.Bucket.EXPIRED) + " expired, found before any report");
         Instant now = Instant.now();
         Fleet.Model none = Fleet.model(entries, now, 60, 0, 0, false);
-        out.append("expiring inside the 60 days: " + none.expiringInHorizon() + "\n");
-        out.append("no monitor: " + none.outages() + " outages\n");
+        head(out, "THE NEXT 60 DAYS (a scan every morning, " + none.expiringInHorizon() + " expire):");
+        row(out, 30, "the monitor", String.format("%-10s%s", "outages", "prevented"));
+        row(out, 30, "none", String.format("%-10s%s", none.outages(), none.prevented()));
         for (int[] cfg : new int[][] {{7, 3}, {7, 10}, {30, 10}}) {
             Fleet.Model m = Fleet.model(entries, now, 60, cfg[0], cfg[1], true);
-            out.append("alert under " + cfg[0] + " days, owner needs " + cfg[1] + " days: " + m.outages() + " outages, " + m.prevented() + " prevented\n");
+            row(out, 30, "alert " + cfg[0] + " d, owner needs " + cfg[1] + " d", String.format("%-10s%s", m.outages(), m.prevented()));
         }
-        out.append("an alert is worth the time the owner needs: a 7 day alert does not help a team with a 10 day change process\n");
-    }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------ bill
-
-    private static void bill(StringBuilder out) {
-        out.append("--- the bill\n");
-        out.append("revocation is a question that needs an answer: with hard fail a dead responder is an outage, with soft fail it is a bypass\n");
-        out.append("a CRL is big and old, an OCSP answer is small and live but must be asked for, a staple is small and moves the ask to the server\n");
-        out.append("a short life makes revocation almost unnecessary and turns renewal into the thing that must never fail\n");
-        out.append("the headroom for a CA outage is a third of the life; a monitor that counts the days left is the last line\n");
+        head(out, "HOW AN OUTAGE IS COUNTED:");
+        row(out, 10, "alert", "the first morning with fewer than the alert's days left");
+        row(out, 10, "renewed", "the alert day + the days the owner needs");
+        row(out, 10, "outage", "renewed after the expiry: a 7 day alert cannot help");
+        row(out, 10, "", "a team that needs 10 days");
     }
 
     // ----------------------------------------------------------------------------------------------------------------------------------- helpers
+
+    private static void act(StringBuilder out, String number, String title) {
+        out.append(number).append(". ").append(title).append('\n');
+    }
+
+    private static void head(StringBuilder out, String text) {
+        out.append("  ").append(text).append('\n');
+    }
+
+    private static void row(StringBuilder out, int width, String label, String value) {
+        out.append(("    " + String.format("%-" + width + "s", label) + value).stripTrailing()).append('\n');
+    }
 
     static boolean selfSigned(X509Certificate c) throws GeneralSecurityException {
         return signedBy(c, c) && c.getSubjectX500Principal().equals(c.getIssuerX500Principal());

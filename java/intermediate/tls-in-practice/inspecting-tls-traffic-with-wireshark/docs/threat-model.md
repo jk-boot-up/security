@@ -52,6 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `PcapTest` reads back the capture file the tap writes, byte by byte.
+- `ClientHelloTest`, `KeyLogTest` and `SuitesTest` check the by-hand classes with no program; `ClientHelloTest` parses a Client Hello the JDK writes.
 - `TlsCaptureTest` runs nginx, the openssl client, a tap and tshark for what the capture shows, the key log, one connection only and the server key.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

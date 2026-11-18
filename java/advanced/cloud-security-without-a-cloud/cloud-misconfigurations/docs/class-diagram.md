@@ -1,6 +1,6 @@
 # Cloud Misconfigurations — Class Diagram
 
-A cloud, an environment and a scanner.
+The scanner only reads; the rules judge plain values.
 
 ![The classes and what they hold](images/class-diagram.png)
 

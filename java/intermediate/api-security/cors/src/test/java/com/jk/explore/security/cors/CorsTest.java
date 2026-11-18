@@ -101,4 +101,20 @@ class CorsTest {
     void sameOriginNeedsNoCors() {
         assertTrue(new Browser(new BankApi(CorsPolicy.NONE, false)).fetch(BankApi.ORIGIN, "GET", "/account", null, true).readable());
     }
+
+    @Test
+    void anOriginIsSchemeHostAndPortWithTheDefaultPort() {
+        Origin bank = Origin.parse(BankApi.ORIGIN);
+        assertEquals(new Origin("https", "bank.example", 443), bank);
+        assertTrue(bank.sameAs(Origin.parse("https://bank.example:443/account")));
+        assertFalse(bank.sameAs(Origin.parse("http://bank.example")));
+        assertFalse(bank.sameAs(Origin.parse(CorsDemo.LOOKALIKE)));
+    }
+
+    @Test
+    void simpleRequestsAreGetHeadOrPostWithAFormOrTextBody() {
+        assertTrue(Browser.isSimple("POST", "text/plain"));
+        assertFalse(Browser.isSimple("POST", "application/json"));
+        assertFalse(Browser.isSimple("PUT", null));
+    }
 }

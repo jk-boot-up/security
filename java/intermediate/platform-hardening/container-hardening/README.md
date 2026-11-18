@@ -2,13 +2,13 @@
 
 ```
 src/main/java/com/jk/explore/security/container/
-├── Attack.java            One thing an attacker with code execution inside the container tries
+├── Attack.java            One thing an attacker with code execution inside the container tries, and what it reaches: the container, the kernel, the host or the node's resources
 ├── Attacker.java          "What can a process do once it is taken over?" For each attack, a rule that says whether this container's settings allow it
 ├── ContainerDemo.java     Runs the container story in five numbered acts and prints exact, repeatable results
 ├── ContainerSpec.java     The settings of a container that matter when the process inside is taken over: who it runs as, what it may do to the kernel, what it can write, what of the host it can see, and how much it may use
 ├── Outcome.java           Whether an attack works against a container, and the setting that decides it
-├── PodSecurityLevel.java  The three Kubernetes Pod Security Standards levels, strictest last
-├── Renderer.java          Writes the settings as Docker flags and as a Kubernetes container {@code securityContext}, so the checked configuration is the one that is deployed
+├── PodSecurityLevel.java  The three Kubernetes Pod Security Standards levels, strictest last, and the checks that decide them
+├── Renderer.java          Writes the settings as Docker flags, as a Kubernetes container {@code securityContext} and as a short summary, so the checked configuration is the one that is deployed
 └── Seccomp.java           Which system calls the container may make
 ```
 
@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What 'docker run' with no options gives an attacker | 7 of 13 attacks are possible and the level is Baseline: root, a writable file system, raw sockets, and no memory or process limits. |
-| 2. The configuration from the tutorial | --privileged, the Docker socket, the host's /etc, the host network and PID namespace, and unconfined seccomp make all 13 attacks possible; the level is Privileged. |
-| 3. One setting at a time | Removing host access takes 13 down to 9, seccomp 8, dropping capabilities 6, a non-root user alone changes nothing, no new privileges 5, a read-only root 3, and limits 1. |
-| 4. The hardened container | The result as Docker flags and a Kubernetes securityContext, at the Restricted level; the one thing still possible is reading the secrets the application needs. |
-| 5. Settings that look harmless | NET_RAW added to the hardened container drops it to Baseline with 1 attack possible because it is not root; root with SYS_ADMIN makes it Privileged with 3 possible. |
+| 1. What 'docker run' with no options gives an attacker | The input is Docker's defaults: root, 14 capabilities, a writable root, new privileges allowed, the default seccomp profile, no host access, no limits, secrets in the environment. The result: container 4 + kernel 1 + host 0 + resources 2 = 7 of 13 attacks possible, and the level is Baseline because the three Restricted checks fail. |
+| 2. The configuration from the tutorial | The input is a command found in many tutorials: --privileged, unconfined seccomp, the host network and PID namespace, the Docker socket and /etc mounted. The result: 4 + 3 + 4 + 2 = 13 of 13 attacks possible, six reasons it is not even Baseline, so the level is Privileged. |
+| 3. One setting at a time | Starting from 13 of 13: no host access 9, the default seccomp profile 8, drop all capabilities 6 (Baseline), a user that is not root 6 (blocks nothing alone), no new privileges 5 (Restricted), a read-only root with a noexec /tmp 3, memory and process limits 1: only read-secrets is left. |
+| 4. The hardened container | The same settings as a docker run command and as a Kubernetes securityContext; all nine Pod Security checks pass, so the level is Restricted. The one attack left is read-secrets: the app must read its secrets, so a hijacked app can too. |
+| 5. Settings that look harmless | Before: the hardened container, 1 of 13 and Restricted. Adding NET_RAW: still 1 of 13 (sniff-network stays blocked because the user is not root), but Baseline, as drops ALL capabilities now fails. Running as root with SYS_ADMIN: 3 of 13 (become-root and mount-host come back) and Privileged. |
 
 ## Test
 
@@ -58,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `ContainerTest`, `DemoRunsTest`. Everything is fixed data, so the demo prints the same text on every run.
+15 tests in `ContainerTest`, `DemoRunsTest`. Everything is fixed data, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

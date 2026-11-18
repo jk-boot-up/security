@@ -21,6 +21,7 @@ Images collect settings that nobody chose, and fixes made in running containers 
 | The images | `Images` |
 | A running container | `Host`, `Docker` |
 | The rules | `Scanner`, `Finding` |
+| The readers | `Snapshot`, `Listeners` |
 | Entry point | `HostScanDemo` |
 
 ## Requirements
@@ -36,10 +37,10 @@ Images collect settings that nobody chose, and fixes made in running containers 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 14, all passing |
-| Demo output | 57 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 115 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:27, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:12, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

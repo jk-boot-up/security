@@ -39,10 +39,10 @@ Internal APIs answer anyone on the network and cannot say who did what.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 78 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 117 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:48, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

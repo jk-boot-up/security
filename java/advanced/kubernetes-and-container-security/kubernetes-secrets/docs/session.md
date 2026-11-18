@@ -15,7 +15,7 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: Base64 is not encryption | 7 min |
-| 0:17 | Act 2: Raw etcd, before | 7 min |
+| 0:17 | Act 2: Raw etcd, before encryption | 7 min |
 | 0:24 | Act 3: Encryption at rest | 7 min |
 | 0:31 | Act 4: OpenBao and a 10 second token | 7 min |
 | 0:38 | Act 5: A bound ServiceAccount token | 7 min |

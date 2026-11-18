@@ -96,8 +96,8 @@ final class Model {
                 continue;
             }
             if (crosses(f) && boundaryOf(f).isEmpty()) {
-                problems.add(f.id() + " goes from " + zoneOf(f.from()) + " to " + zoneOf(f.to())
-                        + " with no single boundary between them: it skips a boundary, or one is missing from the picture");
+                problems.add(f.id() + " goes from " + zoneOf(f.from())
+                        + " to " + zoneOf(f.to()) + ", skipping a boundary");
             }
         }
         for (Element e : elements.values()) {

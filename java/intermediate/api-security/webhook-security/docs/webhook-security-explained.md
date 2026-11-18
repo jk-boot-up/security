@@ -5,39 +5,48 @@
 A webhook endpoint is a public address, so every message must be verified: an HMAC signature over the signed time and exact raw body, a short time window and a record of processed
 events against replays, idempotent state-checked handlers for retries and disorder, a rotated secret, and the provider's API for anything valuable.
 
-## The 5 acts
+## The 6 acts
 
 ### 1. An endpoint that trusts whatever is posted
 
-Anyone posts a "payment succeeded" event for order A-1001 to the store's webhook address, with no signature. The store answers 200 and marks the order
-paid. The provider's own records for A-1001 say: no payment. The webhook address is public, so a message to it proves nothing about who sent it.
+The request: anyone posts {"id":"evt_forged1","type":"payment.succeeded","order":"A-1001","amount":4200} to POST /webhooks/payments, with no signature.
+The response: 200 order A-1001 is now paid. The provider's own records for A-1001 say: no payment. The order is marked paid and was never paid.
+The webhook address is public, so a message to it proves nothing about who sent it.
 
-### 2. A signature over the exact bytes
+### 2. How the provider signs a message
 
-The provider signs an HMAC-SHA256 of the timestamp and the raw body with the secret it shares with the store. The real event, as signed, is accepted. The same
-signature on a body changed to order A-1002 is refused with 401; a forged event with no signature is refused with 400; and one signed with a secret that is not the
-provider's is refused with 401. The comparison takes the same time however many bytes match. Over the local HTTP server the answers are the same: 200, 401 and 400.
+The inputs: the shared secret whsec-demo-shop-2026 (20 bytes), the time t = 1800000000 seconds since 1 January 1970, and the raw body of 79 bytes.
+Step 1: what is signed is t, a dot, and the raw body: 1800000000.{"id":"evt_1001paid",...}. Step 2: the secret is padded with zeros to one 64-byte block; each byte
+XOR 36 gives the inner key, each byte XOR 5c the outer key. Step 3: inner = SHA-256(inner key + what is signed), and v1 = SHA-256(outer key + inner).
+The header sent with the body is Shop-Signature: t=1800000000,v1=dc14c6ef9d7ef5d1fd993788607f660adf0d0e8e177d6a0e2f5748dcce6c5cc3. The hand-made value equals the JDK's Mac.
 
-### 3. A real message sent again
+### 3. The store checks the signature
 
-With signatures only, a real refund is applied and pays back 4200 cents. Someone who saw that message sends a copy an hour later; it is still correctly signed, so it is
-applied again: two refunds, 8400 cents for a 4200-cent order. With a 300-second window on the signed time and a record of processed event ids, the real refund is applied;
-the same message after 30 seconds is answered "already processed, nothing changed"; an hour later it is refused as signed too long ago; and with its time edited to now
-the signature no longer matches, because the time is part of what is signed. One refund, 4200 cents.
+The store's steps: read t and v1 from the header, compute the HMAC of t, a dot and the raw body received, and compare it with v1 in constant time (MessageDigest.isEqual).
+The real event, as signed: v1 sent dc14c6ef9d7ef5d1..., computed dc14c6ef9d7ef5d1..., 200 order A-1001 is now paid. The body changed to A-1002 with the same header:
+computed 8dfb52122bf9f611..., 401 refused: the signature does not match. A forged event with no header: 400 refused: no signature. A forged event signed with another
+secret: 401. Over the local HTTP server (POST only, at most 4096 bytes) the answers are the same: 200, 401, 400.
 
-### 4. Twice, out of order, and a new secret
+### 4. A real message sent again
 
-The provider retries the payment event, so it arrives twice: the order changes once, and A-1001 is paid. A refund for A-1002 arrives before its payment and is answered
-409, "not applied: order is new, try again later", and is not recorded as processed; then the payment is applied, and the provider's retry of the refund is applied.
-When the secret changes, the store accepts both for a while, so messages signed with the old and the new secret both get 200; once the old secret is removed, a message
-signed with it is refused with 401.
+The message: a real refund for A-1001, signed at t=1800000000. With signatures only, the real refund at t + 0 is applied, and a copy sent again at t + 3600 is applied too:
+two refunds, 8400 cents for a 4200-cent order. With a 300-second window on the signed time and a record of processed event ids: the real refund is applied; the copy at
+t + 30 (age 30 <= 300, id already seen) gets 200 already processed, nothing changed; the copy at t + 3630 (age 3630 > 300) gets 400 refused: signed too long ago; and the
+copy with its t edited to 1800003630 gets 401, because the time is part of what is signed. One refund, 4200 cents.
 
-### 5. The bill
+### 5. Twice, out of order, and a new secret
 
-A framework that parses the body and writes it again with other spacing, then checks the signature, refuses the real event with 401: the raw bytes must be kept, and checked,
-before anything parses them. The real event is accepted. Before shipping, the store asks the provider's API about A-1001, and the answer, payment.succeeded 4200, matches the event.
-The shared secret lives outside the code, is changed on a schedule with a changeover, and a leak is a forged-payment risk. Events can arrive late, twice or out of order, so every
-handler must be idempotent and check the order's state.
+The events arrive in this order: the payment for A-1001, the same payment again (a retry), a refund for A-1002 before its payment, the payment for A-1002, and the refund again
+(a retry). The responses, with each order's state before: new, 200 paid; paid, 200 already processed; new, 409 not applied: order is new, try again later; new, 200 paid;
+paid, 200 refunded, 1999 cents paid back. The orders changed 3 times. To change the secret, the store accepts whsec-demo-shop-2026 and whsec-demo-shop-2027 during a
+changeover: messages signed with either get 200. After the old one is removed, a message signed with it gets 401.
+
+### 6. The bill
+
+The raw body, as signed, is 79 bytes. The same event, parsed and written again with other spacing, is 88 bytes. With the same header, whose v1 is dc14c6ef9d7ef5d1...,
+the re-written body computes 909d1bd03dc6ecc1... and is refused with 401; the raw body computes dc14c6ef9d7ef5d1... and gets 200. So the raw bytes must be kept, and checked,
+before anything parses them. Before shipping, the store asks the provider's API about A-1001: payment.succeeded 4200, which matches the event. The secret lives outside the code
+and is changed on a schedule; events come late, twice or out of order, so handlers are idempotent.
 
 ## The verdict
 

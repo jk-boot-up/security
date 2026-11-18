@@ -3,13 +3,14 @@
 ```
 src/main/java/com/jk/explore/security/webhooks/
 ├── Event.java          A payment event: its unique id, its type, the order and the amount in cents
+├── HmacSteps.java      HMAC-SHA256 worked out by hand, for teaching (RFC 2104): the key is padded to one 64-byte block, mixed with 0x36 for an inner hash and with 0x5c for an outer hash
 ├── Orders.java         The store's orders and the money a refund event pays out
 ├── Provider.java       The payment provider, simulated: it records what really happened, signs the events it sends, and answers a status query from the store
 ├── Receiver.java       The store's webhook endpoint logic, with each check switched on by its {@link Policy}
 ├── Reply.java          What the store's webhook endpoint answers: an HTTP status and a short message
 ├── Signatures.java     The signature a payment provider puts on each webhook: an HMAC-SHA256, with a secret shared with the store, over the timestamp and the exact raw body, sent in one header as {@code t=<seconds>,v1=<hex>}
 ├── SimClock.java       A clock in whole seconds that only moves when told, so every timestamp in the demo is the same on every run
-├── WebhookDemo.java    Runs the online store story in five numbered acts and prints exact, repeatable results
+├── WebhookDemo.java    Runs the online store story in six numbered acts and prints exact, repeatable results: each message and its response in separate labelled sections, and the signature worked out step by step
 └── WebhookServer.java  The store's webhook endpoint on a real HTTP server on the loopback address, at POST /webhooks/payments, in front of a {@link Receiver}
 ```
 
@@ -46,15 +47,16 @@ and A-1002 for 1999 cents.
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. An endpoint that trusts whatever is posted | Anyone posts a payment-succeeded event with no signature, and the store marks order A-1001 paid, while the provider has no payment for it. |
-| 2. A signature over the exact bytes | An HMAC-SHA256 of the signed time and raw body accepts the real event and refuses a changed body, a missing signature and another secret, compared in constant time. |
-| 3. A real message sent again | With signatures only, a real refund replayed an hour later pays 8400 cents for a 4200-cent order; a signed time window and a record of event ids stop it. |
-| 4. Twice, out of order, and a new secret | A retried event changes the order once; a refund before its payment is answered 409 and applied on retry; old and new secrets both work during a changeover. |
-| 5. The bill | A re-serialized body fails the signature, so raw bytes must be kept; critical events are confirmed with the provider's API; the secret is kept and rotated; handlers stay idempotent. |
+| 1. An endpoint that trusts whatever is posted | Anyone posts a payment-succeeded event for A-1001 with no signature; the store answers 200 and marks it paid, while the provider's records say no payment. |
+| 2. How the provider signs a message | The provider signs t, a dot and the raw body with HMAC-SHA256 and the shared secret: the key is padded to 64 bytes and mixed with 36 and 5c, two SHA-256 hashes give v1, and the header is t=1800000000,v1=dc14c6ef... |
+| 3. The store checks the signature | The store recomputes v1 from the bytes it received and compares in constant time: the real event 200, a body changed to A-1002 401, no header 400, another secret 401; the same over the local HTTP server. |
+| 4. A real message sent again | With signatures only, a real refund sent again an hour later pays 8400 cents for a 4200-cent order; with a 300-second window and a record of event ids, copies are ignored or refused, and editing t breaks the signature. |
+| 5. Twice, out of order, and a new secret | Five arrivals: a retried payment changes nothing, a refund before its payment gets 409 and is applied on the retry; during a secret change the store accepts both secrets, and after it only the new one. |
+| 6. The bill | The same event written again by a framework is 88 bytes instead of 79, so its v1 differs and it is refused with 401; the raw body passes; the provider's API confirms A-1001 before shipping. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `DemoRunsTest`, `ReceiverTest`, `ServerTest`, `SignaturesTest`. The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run.
+18 tests in `DemoRunsTest`, `HmacStepsTest`, `ReceiverTest`, `ServerTest`, `SignaturesTest`. The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run.
 
 ## What the simulation got right, and what it left out
 

@@ -1,53 +1,131 @@
 ONE. Where validation belongs.
-  the checkout page refuses a quantity of -3 before sending: true
-  the same request sent without the page, to a shop that trusts the page: total -269.70  <- A NEGATIVE TOTAL IS A REFUND
-  a hidden price field changed to 0.01: total 0.02 instead of 179.80  <- THE CUSTOMER SET THE PRICE
-  the checkout that validates on the server: accepted false (quantity: digits only)
-  and the hidden price: accepted false (price: not a field of this form)
-  an honest order: accepted true, total 179.80 from the catalogue
+  THE REQUEST, SENT WITHOUT THE CHECKOUT PAGE:
+    fields       sku=SHO-1042 quantity=-3
+    the page     would refuse it (quantity min 1): true
+  BEFORE THE FIX (a shop that trusts the page):
+    price        89.90 from the catalogue
+    total        89.90 x -3 = -269.70  <- A REFUND
+  THE REQUEST, WITH THE HIDDEN PRICE FIELD CHANGED:
+    fields       sku=SHO-1042 quantity=2 price=0.01
+  BEFORE THE FIX:
+    price        0.01 from the form
+    total        0.01 x 2 = 0.02 instead of 179.80
+  AFTER THE FIX (the checkout validates on the server):
+    quantity -3  refused (quantity: digits only)
+    price 0.01   refused (price: not a field of this form)
+    honest       accepted, 89.90 x 2 = 179.80 from the catalogue
+  HOW THE SERVER READS quantity "-3":
+    length       2 of at most 3 characters: ok
+    digits       '-' is not a digit: refused
+  HOW THE SERVER READS quantity "2":
+    length       1 of at most 3 characters: ok
+    digits       only 0 to 9: ok
+    range        2 is from 1 to 99: ok
+    value        Quantity[value=2]
 TWO. Say what is allowed, and parse into types.
-  quantity "7": accepted as 7
-  quantity "0": refused (from 1 to 99)
-  quantity "1e2": refused (digits only)
-  quantity " 5": refused (digits only)
-  sku "SHO-1042": accepted as SHO-1042
-  sku "sho-1042": refused (three capital letters, a dash and four digits)
-  sku "SHO-1042;": refused (longer than 8 characters)
-  email "Ben@Shop.EXAMPLE": accepted as Ben@shop.example
-  email "ben@@shop.example": refused (not a valid address)
-  email "ben@localhost": refused (not a valid address)
-  country "DE": accepted as DE
-  country "ZZ": refused (a two-letter country code such as IN or DE)
-  country "de": refused (a two-letter country code such as IN or DE)
-  amount "19.50": accepted as 19.50
-  amount "19.505": refused (digits with at most two decimals)
-  amount "-5": refused (digits with at most two decimals)
-  amount "NaN": refused (digits with at most two decimals)
-  a form with four bad fields reports all four at once: 4
-  each value that passes is a type that cannot hold anything else, so later code never checks it again
+  QUANTITY (digits only, from 1 to 99):
+    "7"                 -> Quantity[value=7]
+    "0"                 refused: from 1 to 99
+    "1e2"               refused: digits only
+    " 5"                refused: digits only
+  SKU, THE PRODUCT CODE (such as SHO-1042):
+    "SHO-1042"          -> Sku[value=SHO-1042]
+    "sho-1042"          refused: 3 capital letters, a dash, 4 digits
+    "SHO-1042;"         refused: longer than 8 characters
+  EMAIL (a store's narrow rule, at most 254 characters):
+    "Ben@Shop.EXAMPLE"  -> Email[value=Ben@shop.example]
+    "ben@@shop.example" refused: not a valid address
+    "ben@localhost"     refused: not a valid address
+  COUNTRY (the ISO codes the JDK ships):
+    "DE"                -> CountryCode[value=DE]
+    "ZZ"                refused: a known two-letter code, such as DE
+    "de"                refused: a known two-letter code, such as DE
+  AMOUNT (exact, at most two decimals):
+    "19.50"             -> Money[amount=19.50]
+    "19.505"            refused: digits with at most two decimals
+    "-5"                refused: digits with at most two decimals
+    "NaN"               refused: digits with at most two decimals
+  THE INPUT, A FORM WITH FOUR BAD FIELDS:
+    country=Mars email=x quantity=lots sku=shoes
+  THE RESULT, 4 PROBLEMS REPORTED AT ONCE:
+    sku: 3 capital letters, a dash, 4 digits
+    quantity: longer than 3 characters
+    email: not a valid address
+    country: longer than 2 characters
 THREE. Canonicalise before validating.
-  ana is registered; a registry that compares raw text also accepts the full-width ａｎａ: true  <- TWO ACCOUNTS FOR ONE NAME
-  and ANA in capitals: true
-  the canonical registry takes ana: true
-  the canonical registry folds the full-width spelling to ana: refused (already taken)
-  an invisible zero-width space inside a name: refused (no control or invisible characters)
-  a line break inside a name: refused (no control or invisible characters)
-  Cyrillic а in place of a: refused (3 to 20 letters, digits, dots, dashes or underscores); login names are kept to plain letters
-  José typed two ways looks the same; as raw text equal: false, after NFC: true
-  a display name "Shоp Suppоrt" with Cyrillic o: refused (reserved for the shop's staff); "José Martín": accepted
+  THE INPUT, THREE SPELLINGS OF ONE NAME:
+    plain        U+0061 U+006E U+0061
+    full-width   U+FF41 U+FF4E U+FF41
+    capitals     U+0041 U+004E U+0041
+  BEFORE THE FIX (a registry that compares raw text):
+    plain        new account: true
+    full-width   new account: true  <- ONE MORE ACCOUNT
+    capitals     new account: true  <- ONE MORE ACCOUNT
+  HOW THE CANONICAL FORM IS MADE (full-width):
+    as typed     U+FF41 U+FF4E U+FF41
+    NFKC         ana  U+0061 U+006E U+0061
+    strip        ana
+    lower-case   ana
+  AFTER THE FIX (a registry that compares canonical names):
+    plain        new account: ana
+    full-width   refused: already taken
+    capitals     refused: already taken
+  THE INPUT, HIDDEN AND LOOK-ALIKE LETTERS:
+    an[U+200B]a        a zero-width space inside
+    ana[U+000A]admin   a line break inside
+    [U+0430]na         a Cyrillic letter in place of a
+  THE RESULT:
+    refused: no control or invisible characters
+    refused: no control or invisible characters
+    refused: 3 to 20 letters, digits, dots, dashes or underscores
+  ONE NAME, TWO ENCODINGS (José):
+    one letter   U+004A U+006F U+0073 U+00E9
+    e + accent   U+004A U+006F U+0073 U+0065 U+0301
+    equal?       as raw text false, after NFC true
+  DISPLAY NAMES (any script, but no look-alike of the staff):
+    the input    Shоp Suppоrt  (o is Cyrillic U+043E)
+    skeleton     shop support
+    the result   refused: reserved for the shop's staff
+    the input    José Martín
+    skeleton     josé martín
+    the result   accepted
 FOUR. Limits are validation too.
-  a request body of 1000000 bytes: refused (larger than 16384 bytes) after reading 16385 of them
-  a cart of 10000 lines: refused (more than 50 lines)
-  an e-mail address of 10000 characters: refused (longer than 254 characters)
-  the pattern (a+)+$ on 10 a's and a !: matched false after 2036 steps
-  the pattern (a+)+$ on 15 a's and a !: matched false after 65519 steps
-  the pattern (a+)+$ on 20 a's and a !: matched false after 2097130 steps
-  each extra character roughly doubles the work  <- A FEW DOZEN CHARACTERS CAN STOP A SERVER (ReDoS)
-  the same rule written without nesting, a+$, checked in one pass: 21 steps for 20 a's and a !
-  so: no nested repetition in patterns that read input, and a length limit before any pattern runs
+  THE INPUT, THREE OVERSIZED VALUES:
+    body         1000000 bytes
+    cart         10000 lines
+    e-mail       10003 characters
+  THE RESULT, REFUSED BEFORE THE WORK:
+    body         read 16385, refused: larger than 16384 bytes
+    cart         refused (more than 50 lines)
+    e-mail       refused: longer than 254 characters
+  HOW (a+)+$ READS aaa! (every split of the a's fails at the !):
+    (aaa)!  (aa)(a)!  (a)(aa)!  (a)(a)(a)!
+    4 splits = 2^(3-1), 11 steps in all
+  BEFORE THE FIX, (a+)+$ ON n a's AND A !:
+    10 a's       2036 steps, matched false
+    15 a's       65519 steps, matched false  (x 32.2)
+    20 a's       2097130 steps, matched false  (x 32.0)
+    5 more a's: about 2^5 = 32 times the work  <- ReDoS
+  AFTER THE FIX, a+$ IN ONE PASS:
+    20 a's       21 steps, matched false
+    and a length limit before any pattern runs
 FIVE. The bill: what validation does not do.
-  a review "<b>great</b>" is valid text, and still markup: valid is not the same as safe to put in a page, so encode it on output (see cross-site-scripting)
-  a surname O'Brien is valid and contains a quote, so the database layer must bind values as parameters, never paste them into query text
-  a refused e-mail address with a line break and markup: "email: not a valid address", raw input repeated: false
-  a wholesale order of 150: refused (from 1 to 99); a limit stricter than the business turns customers away, so each rule is a written business decision
-  validation narrows what reaches the code; encoding, parameters and access checks still do their own jobs
+  THE INPUT, TWO DISPLAY NAMES:
+    <b>great</b>
+    O'Brien
+  THE RESULT:
+    <b>great</b>   accepted, still markup: encode it on output
+    O'Brien        accepted, has a quote: bind it as a parameter
+  THE INPUT, A BAD E-MAIL ADDRESS:
+    ben\r\n<b>x</b>@shop.example
+  THE RESULT, THE ERROR MESSAGE:
+    message      email: not a valid address
+    repeats it?  false
+  THE INPUT, A WHOLESALE ORDER:
+    quantity     150
+  THE RESULT:
+    quantity     refused: from 1 to 99  <- A CUSTOMER TURNED AWAY
+  SO:
+    each limit is a written business decision
+    validation narrows what reaches the code;
+    encoding, parameters and access checks still do their jobs

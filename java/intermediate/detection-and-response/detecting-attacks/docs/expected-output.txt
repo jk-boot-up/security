@@ -1,37 +1,113 @@
-== 1. One Monday of logs ==
-772 events: 768 logins, 4 role grants; 113 of them belong to 4 real attacks (A: spraying, B: brute force, C: impossible travel, D: privilege change)
-
-== 2. A first version of each rule ==
-rule                         alerts  true false  attacks noticed
-brute-force(3)                    3     1     2  [B]
-spraying(8)                       1     1     0  [A]
-impossible-travel                14     3    11  [A, B, C]
-privilege-change                  2     1     1  [D]
-success-after-failures            9     2     7  [A, B]
-
-== 3. Tuning one threshold ==
-rule                         alerts  true false  attacks noticed
-brute-force(3)                    3     1     2  [B]
-brute-force(5)                    3     1     2  [B]
-brute-force(10)                   1     1     0  [B]
-brute-force(25)                   1     1     0  [B]
-brute-force(40)                   0     0     0  []
-
-== 4. The tuned set, and what it tells the analyst ==
-rule                         alerts  true false  attacks noticed
-brute-force(10)                   1     1     0  [B]
-spraying(8)                       1     1     0  [A]
-impossible-travel+vpn-list        4     3     1  [A, B, C]
-privilege-change                  2     1     1  [D]
-success-after-failures+history      1     1     0  [B]
-together: 9 alerts for the day, 7 true, 2 false; attacks noticed: [A, B, C, D] of [A, B, C, D]
-the alerts, in time order:
-  03:00 privilege-change       admin granted to u060 by ops1, no ticket   <- FALSE POSITIVE
-  08:20 impossible-travel+vpn-list Madrid to Frankfurt, 1446 km in 20 minutes   <- FALSE POSITIVE
-  10:02 spraying(8)            8 different accounts failed from 203.0.113.50 within 20 minutes
-  10:11 impossible-travel+vpn-list London to Singapore, 10848 km in 56 minutes
-  10:40 privilege-change       admin granted to u117 by u117 (not an approver), no ticket
-  12:01 brute-force(10)        10 failed logins for u042 within 5 minutes
-  12:04 impossible-travel+vpn-list London to Singapore, 10848 km in 221 minutes
-  12:04 success-after-failures+history login succeeded from 198.51.100.7 after 30 failures from the same address
-  15:25 impossible-travel+vpn-list Madrid to Sydney, 17685 km in 25 minutes
+ONE. One Monday of logs.
+  THE INPUT (one Monday at an online bank, 200 accounts):
+    events        772
+    logins        768, of them 145 failed
+    role grants   4, all of the admin role
+  FOUR LINES OF THE LOG (time, type, account, address, place):
+    07:58:18  login  u042  10.2.0.43     London     success
+    09:10:00  login  u010  10.0.0.11     Paris      failure
+    11:00:00  grant  u050  admin  by ops1  ticket CHG-1001
+    12:00:00  login  u042  198.51.100.7  Singapore  failure
+  THE HIDDEN ATTACKS (the truth; no rule ever reads it):
+    A  spraying           80 events  10:00-10:21  203.0.113.50
+    B  brute force        31 events  12:00-12:04  198.51.100.7
+    C  impossible travel   1 event   15:25        192.0.2.88
+    D  privilege change    1 event   10:40        by u117
+    113 of the 772 events belong to an attack
+  THE LOOK-ALIKES (normal, but they resemble an attack):
+    typing mistakes      1 or 2 failures, then a success
+    forgotten passwords  u010, u011: 6 failures each at 09:10
+    VPN users            u020 to u024: New York, then Frankfurt
+    phone address        u033: Madrid, then Frankfurt at 08:20
+    a real traveller     u030: Paris 08:00, New York 17:00
+    break-glass grant    u060 made admin at 03:00, no ticket
+TWO. Two attacks, worked out.
+  THE INPUT (attack A, every failure from 203.0.113.50):
+    79 failures on 40 accounts, 10:00:00 to 10:21:15
+  PER ACCOUNT (what the brute-force rule counts):
+    most failures, 1 account, 5 minutes  2
+    2 is under 10  <- BRUTE FORCE STAYS QUIET
+  PER ADDRESS (what the spraying rule counts):
+    u101 10:00:00, u102 10:00:25, ... u108 10:02:55
+    different accounts in 20 minutes  8 at 10:02:55
+    8 reaches 8  <- SPRAYING FIRES
+  THE INPUT (attack C, u088's two successful logins):
+    15:00:00  Madrid    10.3.0.89
+    15:25:00  Sydney    192.0.2.88
+  THE SPEED (worked out):
+    distance  17685 km, Madrid to Sydney
+    time      25 minutes, 15:00 to 15:25
+    speed     17685 x 60 / 25 = 42444 km/h
+    42444 is over 900  <- IMPOSSIBLE TRAVEL FIRES
+  THE NEAR MISS (u030, a real trip, Paris to New York):
+    distance  5837 km, Paris to New York
+    time      540 minutes, 08:00 to 17:00
+    speed     5837 x 60 / 540 = 649 km/h
+    649 is under 900  <- NO ALERT
+THREE. A first version of each rule.
+  THE RULES (first version; each is a guess about an attacker):
+    brute-force(3)         3 failures, 1 account, 5 minutes
+    spraying(8)            8 accounts fail from 1 address, 20 min
+    impossible-travel      over 900 km/h, 500+ km
+    privilege-change       admin by a non-approver or no ticket
+    success-after-failures success after 1 failure, new address
+  THE RESULT (each alert scored against the hidden attacks):
+    rule                           alerts  true false  attacks
+    brute-force(3)                      3     1     2  B
+    spraying(8)                         1     1     0  A
+    impossible-travel                  14     3    11  A,B,C
+    privilege-change                    2     1     1  D
+    success-after-failures              9     2     7  A,B
+    together                           29     8    21  A,B,C,D
+  WHY 21 ARE FALSE (the look-alike behind each false alert):
+    impossible-travel       10  VPN users
+    success-after-failures   5  typing mistakes
+    brute-force(3)           2  forgotten passwords
+    success-after-failures   2  forgotten passwords
+    impossible-travel        1  phone address
+    privilege-change         1  break-glass grant
+FOUR. Tuning one threshold.
+  THE NORMAL DAY (most failures, 1 account, 5 minutes):
+    u010, u011              6  forgotten passwords
+    u028, u093, u095, u187  2  typing mistakes
+  THE ATTACK (attack B, on u042 from 198.51.100.7):
+    u042                   30  then a success at 12:04:10
+  THE SAFE RANGE (worked out):
+    above the normal day   more than 6, so at least 7
+    not above the attack   at most 30
+    so the threshold is    7 to 30; chosen: 10
+  THE SWEEP (the brute-force rule at each threshold):
+    threshold  alerts  true  false  attack B
+            3       3     1      2  noticed
+            5       3     1      2  noticed
+           10       1     1      0  noticed
+           25       1     1      0  noticed
+           40       0     0      0  MISSED
+FIVE. The tuned set, and what it tells the analyst.
+  THE CHANGES (the three rules that get a number or context):
+    brute-force            10 failures, 1 account, 5 minutes
+    impossible-travel      over 900 km/h, 500+ km, VPN skipped
+    success-after-failures success after 5 failures, unusual address
+  THE RESULT (each alert scored against the hidden attacks):
+    rule                           alerts  true false  attacks
+    brute-force(10)                     1     1     0  B
+    spraying(8)                         1     1     0  A
+    impossible-travel+vpn-list          4     3     1  A,B,C
+    privilege-change                    2     1     1  D
+    success-after-failures+history      1     1     0  B
+    together                            9     7     2  A,B,C,D
+  THE ALERTS, IN TIME ORDER (what the analyst reads):
+    03:00  privilege-change        u060          <- FALSE
+    08:20  impossible-travel       u033          <- FALSE
+    10:02  spraying                203.0.113.50  A
+    10:11  impossible-travel       u117          A
+    10:40  privilege-change        u117          D
+    12:01  brute-force             u042          B
+    12:04  impossible-travel       u042          B
+    12:04  success-after-failures  u042          B
+    15:25  impossible-travel       u088          C
+  THE FALSE ONES (worth a look, not an attack):
+    u060  break-glass grant
+      admin granted to u060 by ops1, no ticket
+    u033  phone address
+      Madrid to Frankfurt, 1446 km in 20 minutes

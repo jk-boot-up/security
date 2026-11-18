@@ -8,23 +8,33 @@ Actuator is a window into the running store, so the settings that decide who can
 
 ### 1. Expose everything
 
-The store starts with `include=*`, values shown, health details on, and the heap dump and shutdown switches turned on. The list at `/actuator` offers env, heapdump, mappings and shutdown, and the customers' port and the operations port are the same port. `/actuator/env` shows the payment key and the database password. `/actuator/mappings` lists `/internal/refunds`. The health page shows its components. The heap dump downloads with status 200 and contains the payment key. A post to the loggers endpoint changes a level with no login. The checker scores the store 0 of 8, and a post to `/actuator/shutdown` returns 200 and the store stops answering.
+The shipped profile has six settings from a tutorial: management.endpoints.web.exposure.include=*, show-values=ALWAYS for env and configprops, health show-details=always, and unrestricted access for shutdown and heapdump. Customers and operations share one port.
+A stranger with no login sends seven requests. GET /actuator lists 14 endpoints, among them env, heapdump and shutdown. GET /actuator/env/shop.payment.api-key answers "value":"pay-live-4f9a1c77-demo-only", the live key, and shop.db.password answers "value":"pg-demo-passw0rd". GET /actuator/mappings lists /internal/refunds/{id}, a route no page links to. GET /actuator/health names its components: diskSpace, livenessState, ping, readinessState and ssl. GET /actuator/heapdump answers 200, and the payment key is in the dump. POST to the loggers endpoint answers 204, and the level is now DEBUG.
+The checker's eight checks all fail: 0 of 8. Last, POST /actuator/shutdown answers 200 and the store stops answering.
 
 ### 2. What Spring Boot already does
 
-With no settings at all the list offers `health` only, `/actuator/env` is 404 and health shows a status, not components. With `include=*` and nothing else the payment key is shown as `******`, but the property names and the route map are still open, and `/actuator/heapdump` and `POST /actuator/shutdown` answer 404 until their access is set. With one more line, heapdump access unrestricted, the key is masked in the environment page and yet the dump contains it: masking hides values, not memory.
+With no actuator settings, GET /actuator offers health only, GET /actuator/env answers 404, and health shows a status with no components: {"groups":["liveness","readiness"],"status":"UP"}.
+With include=* and nothing else, Spring Boot masks values: the payment key is "value":"******". But GET /actuator/mappings still lists /internal/refunds/{id}, a map for the next step. heapdump and shutdown answer 404 until someone sets their access.
+One more line, management.endpoint.heapdump.access=unrestricted: the env page still shows ******, yet the heap dump answers 200 and the key is in it. Masking hides values, not memory.
 
 ### 3. Hardened: another port, a short list, rules
 
-The hardened store puts operations on a different port from the customers. `GET /products` works on the customers' port, and `/actuator/health` there is refused whether or not the caller has a login. On the operations port health answers 200 with status UP and no components, and env, heapdump, mappings, beans and shutdown are refused even for an operator. The checker scores the store 8 of 8.
+The hardened settings: management.server.port=0 and management.server.address=127.0.0.1, an operations port of its own; exposure.include=health,info,loggers; health show-details=when-authorized for the role OPS; loggers access=read-only. Customers and operations no longer share a port.
+The rules in StoreSecurity, first match wins: health for everyone, the other exposed endpoints for the role OPS, /products and /orders/** for everyone, anything else denied.
+On the customers' port, /products answers 200 and /actuator/health answers 401, and 403 even with the operator's login. On the operations port, health answers 200 with a status only. env, heapdump, mappings and shutdown answer 403 to the operator: they are not on the list, so no rule allows them. The checker scores 8 of 8.
 
 ### 4. Who may read, and who may change
 
-`GET /actuator/loggers/ROOT` answers 401 with no login, 403 for a customer and 200 for an operator. Health shows its components to the operator and not to the customer. The operator posts DEBUG to the loggers endpoint and gets 405, and the level is still OFF, because `management.endpoint.loggers.access=read-only` removes the write operation even for the role that may read.
+GET /actuator/loggers/ROOT: no login gets 401, the customer ana gets 403, the operator ops gets 200 and {"configuredLevel":"OFF","effectiveLevel":"OFF"}.
+GET /actuator/health: ana sees no components, a status only; ops sees diskSpace, livenessState, ping, readinessState and ssl.
+The operator posts {"configuredLevel":"DEBUG"} to the loggers endpoint: 405, and the level is still OFF, because access is read-only.
 
 ### 5. The bill
 
-A developer adds `include=*` to the hardened store to debug something. The checker scores 7 of 8: the route map is now readable by an operator. A stranger asking for `/actuator/env` still gets 401, because the port, the list, the rules and the access levels are four separate settings and one of them failed while the others held. The same checks belong in CI on every change, because a dependency can add endpoints and a property can switch them on. A passing score means these 8 checks pass, not that the store is secure.
+A developer adds management.endpoints.web.exposure.include=* to the hardened store to debug something. The checker scores 7 of 8: route map hidden fails, GET /actuator/mappings as ops answers 200.
+The login rules still held: GET /actuator/env without a login answers 401. That is why the port, the list, the rules and the access levels are four settings and four layers.
+A dependency can add endpoints and a property can expose them, so the checks run in CI, on every change. Passing means these 8 checks pass, not that the store is safe.
 
 ## The verdict
 

@@ -40,6 +40,18 @@ record Jwt(JsonNode claims) {
         return claims.path("kubernetes.io").path("pod").path("name").asString("");
     }
 
+    /** The names of the claims, in the order the token lists them. */
+    java.util.List<String> claimNames() {
+        return claims.propertyNames().stream().toList();
+    }
+
+    /** The audiences, joined, or an empty string when the token names none. */
+    String audiences() {
+        java.util.List<String> all = new java.util.ArrayList<>();
+        claims.path("aud").forEach(a -> all.add(a.asString()));
+        return String.join(", ", all);
+    }
+
     String subject() {
         return claims.path("sub").asString("");
     }

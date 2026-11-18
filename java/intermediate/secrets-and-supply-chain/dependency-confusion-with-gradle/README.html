@@ -24,9 +24,12 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Dependency Confusion with Gradle</h1>
 <pre><code>src/main/java/com/jk/explore/security/depconfusion/
 ├── Build.java                    One real Gradle build of a small consumer project, in a folder of its own, using this project's Gradle wrapper
+├── Checksums.java                A teaching class: what dependency verification compares
 ├── DependencyConfusionDemo.java  Real Gradle builds against a private and a public repository: who answers for a name, what a filter and a checksum refuse, and what they do not
+├── GroupFilter.java              A teaching class: which groups a repository content filter covers
 ├── Lab.java                      The two repositories of the lesson and the folders of the builds that use them
-└── Repo.java                     A Maven repository on a loopback port that remembers every path it was asked for
+├── Repo.java                     A Maven repository on a loopback port that remembers every path it was asked for
+└── VersionSteps.java             A teaching class: how Gradle picks a version for a range like {@code [1.4,)}
 </code></pre>
 <p><strong>A Gradle build that lists a private and a public repository will take the highest version of an internal name from whichever one has it, and the first copy of an exact version in declaration order; repository content filters tell each repository which groups it may answer for, so an internal name is never even asked for in the public repository, and dependency verification checks the sha256 of every artifact against a file in the repository; but a filter is only as good as its list of groups, and checksums written from a build that was already compromised record the attacker's package.</strong></p>
 <p>The plain <a href="../dependency-confusion">dependency-confusion</a> project simulates resolvers in Java. This one runs <strong>real Gradle 9 builds</strong> (this project's own wrapper) against two real Maven repositories, a private one and a public one, that the demo serves on loopback ports and that remember every request. No Docker and no network are needed; the tests are tagged <code>integration</code> because each build takes a few seconds: <code>./gradlew integrationTest</code>.</p>
@@ -55,30 +58,30 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <tbody>
 <tr>
 <td>1. A build that works</td>
-<td>The internal libraries come from the private repository and the public library from the public one.</td>
+<td>settings.gradle lists the private repository first and the public one second; build.gradle asks for org.acme:json-lib:2.0.1, com.shop:pricing:[1.4,) and com.shop:audit:3.1.0. Gradle resolves audit 3.1.0 and pricing 1.4.2 from private and json-lib 2.0.1 from public.</td>
 </tr>
 <tr>
-<td>2. Somebody registers the company's name in the public repository</td>
-<td>A version range takes the highest version of any repository, and an exact version comes from the first repository that has it.</td>
+<td>2. Somebody registers the store's name in the public repository</td>
+<td>The attacker publishes com.shop:pricing:99.0.0 to public. For [1.4,), private lists 1.4.2 and public lists 99.0.0; both are at or above 1.4, and 99 &gt; 1, so Gradle takes the attacker's 99.0.0. With public declared first, the attacker's copy of the pinned audit 3.1.0 is the first one found.</td>
 </tr>
 <tr>
 <td>3. The repository says which names it may answer for</td>
-<td>Content filters keep the internal group out of the public repository, and the public repository receives no request for it.</td>
+<td>private includes com.shop and its subgroups, public excludes them: the build resolves pricing 1.4.2 and audit 3.1.0 from private and the public repository's log shows 0 requests for com/shop. The unpublished com.shop:newlib:1.0 is refused with 0 public requests; without the filters, the public repository receives GET /com/shop/newlib/1.0/newlib-1.0.pom.</td>
 </tr>
 <tr>
 <td>4. Checksums that the build checks</td>
-<td>Dependency verification records the sha256 of what was resolved and refuses an unlisted version and the same version with other bytes.</td>
+<td>--write-verification-metadata sha256 writes gradle/verification-metadata.xml once; the SHA-256 it lists for pricing-1.4.2.jar is the one computed from private's jar. The attacker's 99.0.0 is not listed, and a replaced 1.4.2 has a different SHA-256: both builds are refused.</td>
 </tr>
 <tr>
 <td>5. The bill</td>
-<td>A filter is only as good as its list, checksums can be written from a compromised build, and plugins have their own repositories.</td>
+<td>includeGroup 'com.shop' does not cover com.shop.tools, so the attacker's com.shop.tools:signer:9.0 comes from public; includeGroupAndSubgroups does, and signer 1.0 comes from private. Checksums written after the attacker published trust pricing 99.0.0. Plugin repositories need the same filters, and real repositories use https.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>11 tests in <code>DemoRunsTest</code>, <code>DependencyConfusionTest</code>. The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network.</p>
+<p>18 tests in <code>BuildResultTest</code>, <code>DemoRunsTest</code>, <code>DependencyConfusionTest</code>, <code>TeachingStepsTest</code>. The tests start their own repositories and run real Gradle builds (./gradlew integrationTest); they need no Docker and no network.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>The repositories are small HTTP servers started by the demo on loopback ports, with jars that carry a file saying who published them. Gradle is the real Gradle; ports and temporary folders are never printed. The demo takes about a minute.</p>
 <h2>Technologies and versions</h2>

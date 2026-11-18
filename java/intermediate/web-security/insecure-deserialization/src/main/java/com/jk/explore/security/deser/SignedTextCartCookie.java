@@ -67,6 +67,11 @@ public final class SignedTextCartCookie implements CartCookie {
         return cart;
     }
 
+    /** The signature the server expects for a body, so the demo can show it next to the one a changed cookie carries. */
+    String signatureOf(String body) {
+        return sign(body);
+    }
+
     private String sign(String body) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

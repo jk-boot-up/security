@@ -119,4 +119,30 @@ class TlsLogTest {
         assertArrayEquals(a, b);
         assertTrue(a[39] != 0 || a[38] != 0 || a[37] != 0);
     }
+
+    @Test
+    void theKeyIvAndNonceWorkedOutOpenTheRecordByHand() throws Exception {
+        Connection.Established one = Connection.ecdhe("session-one", TlsLogDemo.LOGIN, TlsLogDemo.LOGIN_REPLY);
+        byte[] record = one.capture().packets().get(0).bytes();
+        byte[] secret = one.secrets().client();
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.DECRYPT_MODE, new javax.crypto.spec.SecretKeySpec(Records.keyBytes(secret), "AES"),
+                new javax.crypto.spec.GCMParameterSpec(128, Records.nonce(secret, 0)));
+        c.updateAAD(record, 0, 5);
+        byte[] inner = c.doFinal(record, 5, record.length - 5);
+        assertEquals(TlsLogDemo.LOGIN.get(0), new String(inner, 0, inner.length - 1, java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(0x17, inner[inner.length - 1]);
+        assertEquals(java.util.Arrays.toString(Records.iv(secret)), java.util.Arrays.toString(Records.nonce(secret, 0)));
+        byte[] n1 = Records.nonce(secret, 1);
+        assertEquals((byte) (Records.iv(secret)[11] ^ 1), n1[11]);
+    }
+
+    @Test
+    void theRecordLengthIsTextPlusTypePlusTag() {
+        Connection.Established one = Connection.ecdhe("session-one", TlsLogDemo.LOGIN, TlsLogDemo.LOGIN_REPLY);
+        byte[] record = one.capture().packets().get(0).bytes();
+        int length = (record[3] & 0xff) << 8 | (record[4] & 0xff);
+        assertEquals(TlsLogDemo.LOGIN.get(0).length() + 1 + 16, length);
+        assertEquals(5 + length, record.length);
+    }
 }

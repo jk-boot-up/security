@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Quantitative risk management for a bank: a register with three-point estimates, a Monte Carlo simulation of 50,000 years, the heat map compared with expected loss, the best set of controls within a budget, residual risk against an appetite, and what the model cannot know.
+> Quantitative risk management for a bank, in Java: a risk register written as three-point ranges, one simulated year worked out by hand, a Monte Carlo simulation of 50,000 years, the heat map ranking against the money ranking, the tail of bad years, the best set of controls within a budget by net benefit, residual risk against a stated appetite, and what the model cannot know.

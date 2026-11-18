@@ -22,12 +22,21 @@ final class SessionIds {
     static String newId() {
         byte[] bytes = new byte[BITS / 8];
         RANDOM.nextBytes(bytes);
+        return encode(bytes);
+    }
+
+    /** Writes bytes as base64url without padding: every 6 bits become one of 64 characters, so 16 bytes become 22 characters. */
+    static String encode(byte[] bytes) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    /** The base64url alphabet: the character for each 6-bit value, 0 to 63. */
+    static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
     static byte[] hash(String id) {
         try {
-            return MessageDigest.getInstance("SHA-256").digest(id.getBytes(StandardCharsets.UTF_8));
+            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+            return sha256.digest(id.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is part of every Java runtime", e);
         }

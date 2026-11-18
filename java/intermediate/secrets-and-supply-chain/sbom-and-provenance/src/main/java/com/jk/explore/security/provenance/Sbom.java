@@ -51,7 +51,8 @@ final class Sbom {
             return false;
         }
         String content = Json.text(list.get(0), "content");
-        return content != null && Digests.same(Digests.unhex(content), Digests.sha256(artifact));
+        return content != null
+                && Digests.same(Digests.unhex(content), Digests.sha256(artifact));
     }
 
     /** The package URLs listed in the SBOM, in order. */

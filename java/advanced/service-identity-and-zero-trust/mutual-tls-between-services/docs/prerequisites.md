@@ -3,7 +3,7 @@
 ## Required
 
 - Java basics
-- step and step-ca on the PATH (brew install step step-ca)
+- A network once: the demo downloads the pinned step and step-ca releases into build/tools
 
 ## Explicitly not required
 
@@ -13,8 +13,7 @@
 ## What you will need
 
 - A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.
-- step
-- step-ca
+- nothing: the demo downloads step 0.31.0 and step-ca 0.30.2 and checks their SHA-256
 - About an hour for the session guide.
 
 ## Tech stack and versions

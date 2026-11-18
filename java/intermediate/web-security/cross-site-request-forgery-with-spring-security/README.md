@@ -8,6 +8,7 @@ src/main/java/com/jk/explore/security/csrfspring/
 ├── Browser.java                     A customer's browser as far as this lesson needs one: it keeps cookies per site and attaches them to every request to that site, whichever page caused the request
 ├── CsrfSpringDemo.java              Runs the bank story in five numbered acts against real Spring Boot servers on the loopback interface
 ├── SpaCsrfTokenRequestHandler.java  For a single-page app that reads the token from a cookie and sends it back in a header
+├── TokenMask.java                   Spring Security's masking of the CSRF token (XorCsrfTokenRequestAttributeHandler), redone by hand to show its steps
 └── WebSecurity.java                 Two filter chains
 ```
 
@@ -42,11 +43,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. CSRF protection switched off | With http.csrf disabled, a forged post with Ana's cookie moves 500 to Mallory. |
-| 2. Spring Security's default token | A forged post and a token from another session both get 403; the sign-in form, logout and every page need tokens, and the token is renewed and masked. |
-| 3. A single-page app | The token lives in a cookie the page's script reads and sends in a header; a forged post gets 403, and the price is that the cookie cannot be HttpOnly. |
-| 4. What the default does not cover | An exempt webhook needs its own signature, GET is never checked, and one extra exemption lets a forged transfer through. |
-| 5. The bill | The session cookie has no SameSite attribute by default, an API chain with header credentials ignores cookies, and all 3 state-changing routes refuse a post with no token. |
+| 1. CSRF protection switched off | With http.csrf(c -> c.disable()), Ana signs in and gets a JSESSIONID cookie; a hidden form on evil.example posts a transfer, the browser adds the cookie, and the bank sends 500 to Mallory. |
+| 2. Spring Security's default token | With the default, the sign-in form, every transfer and logout need a token from the session: the old token, no token and Mallory's token get 403; Ana's own form works; the token is masked differently on every page, and a token masked by hand is accepted. |
+| 3. A single-page app | CookieCsrfTokenRepository.withHttpOnlyFalse() puts the token in a readable XSRF-TOKEN cookie; the X-XSRF-TOKEN header must equal it: no header and Mallory's value get 403, the bank's own script's copy works. |
+| 4. What the default does not cover | The exempt webhook refuses a forged post without a signature (401); a GET route moves 100 from a link, because GET is never checked; the POST route refuses the link with 405; one extra exemption lets a forged post move 500. |
+| 5. The bill | The session cookie is HttpOnly but has no SameSite by default; the API chain ignores cookies and wants an Authorization header (401 from evil.example, 200 from the app); every web route refuses a token-less post; same-site=lax adds SameSite=Lax. |
 
 ## Test
 
@@ -54,7 +55,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `CsrfSpringTest`, `DemoRunsTest`. Each test starts a real server on a free loopback port and stops it. Nothing is printed that changes between runs.
+13 tests in `CsrfSpringTest`, `DemoRunsTest`. Each test starts a real server on a free loopback port and stops it. Nothing is printed that changes between runs.
 
 ## What the simulation got right, and what it left out
 

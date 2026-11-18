@@ -49,11 +49,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Where secrets leak | A scanner finds 3 secrets in 3 committed files; a child process reads a key from the environment; a key deleted in a later image layer is still in layer two. |
-| 2. Secrets injected at run time | A secret file readable by others is refused; an owner-only file is read once at startup; the value prints as [redacted] and the startup copy is wiped. |
-| 3. A secrets service that hands out leased logins | Each application gets its own database login for 900 seconds; a wrong credential is refused; renewals stop at 3600 seconds; ended leases are removed; every request is audited. |
-| 4. Rotation without downtime, and the blast radius of a leak | Both key versions work during a changeover and only the new one after; a leaked leased login works for at most 300 more seconds and is revoked at once, while a static password works for years. |
-| 5. The bill | The secrets service becomes the target; the first credential remains; applications must handle new logins; a scanner is one check. |
+| 1. Where secrets leak | A scanner finds 3 secrets in 3 committed files, by setting name and by entropy (the token: 4.60 bits per character, a class name: 3.54, threshold 4.0); a child process reads a key from the environment; a key deleted in layer 3 of an image is still in layer 2. |
+| 2. Secrets injected at run time | A mounted secret file with permissions rw-r--r-- (group and others can read) is refused; rw------- (owner only) is read once, 24 characters; a log line shows [redacted]; the startup copy is wiped. |
+| 3. A secrets service that hands out leased logins | shop-api and reports each get their own database login until t=900; a wrong credential is refused; renewals give min(now + 900, 0 + 3600): 1500, 2300, 3000, 3600, 3600; the unrenewed reports login is removed at t=900 and the shop's at t=3600; the audit trail has 10 entries. |
+| 4. Rotation without downtime, and the blast radius of a leak | The provider accepts [v1], then [v1, v2], then [v2]: there is never a moment with no working key. A leased login copied at t=600 works 900 - 600 = 300 s more, 3600 - 600 = 3000 s if renewed, and not at all once revoked; a static password still works three years later. |
+| 5. The bill | The secrets service holds every secret; the first credential remains; applications must take new logins without a restart; a scanner finds only its patterns. |
 
 ## Test
 
@@ -61,7 +61,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `DemoRunsTest`, `LeaksTest`, `SecretTest`, `ServiceTest`. A simulated clock makes leases exact; generated passwords are random and never printed, so the demo shows only facts that do not depend on them. A test checks that no demo secret value ever appears in the output.
+19 tests in `DemoRunsTest`, `LeaksTest`, `SecretTest`, `ServiceTest`. A simulated clock makes leases exact; generated passwords are random and never printed, so the demo shows only facts that do not depend on them. A test checks that no demo secret value ever appears in the output.
 
 ## What the simulation got right, and what it left out
 

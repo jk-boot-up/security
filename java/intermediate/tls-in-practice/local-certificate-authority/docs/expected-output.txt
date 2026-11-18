@@ -1,39 +1,131 @@
 ONE. Running a certificate authority for the store's own services.
-  the root: O=Example Shop,CN=Shop Internal Root CA, may certify 1 level of authority below it, kept offline
-  the issuing authority: path length 0 (it may not create authorities), names limited to shop.internal
-  issued for web-team: www.shop.internal, serial 1000, serverAuth, digital signature only: true, not an authority: true, 90 days
-  clients validate it against the root: accepted
-  a request with no subject alternative name: refused: a certificate needs at least one subject alternative name
-  a request for 400 days: refused: asked for 400 days, the server profile allows at most 90 days
-  a request for pay.example: refused: pay.example is outside shop.internal
-  the same name signed with the policy skipped, as a buggy or stolen issuer would: clients say refused (INVALID_NAME)  <- THE NAME CONSTRAINT HOLDS
+  THE ROOT (signs its own certificate, then goes offline):
+    subject      Shop Internal Root CA, serial 1
+    valid        2026-01-05 09:00 to 2045-12-31 09:00
+    may certify  1 level of authority below it
+  THE ISSUING AUTHORITY (signed by the root):
+    subject      Shop Issuing CA, serial 2
+    valid        2026-01-05 09:00 to 2031-01-04 09:00
+    path length  0: it may not create authorities
+    names        only under shop.internal
+  THE REQUEST (web-team):
+    www.shop.internal, 90 days, server profile
+  THE CERTIFICATE:
+    serial       1000, issued by Shop Issuing CA
+    names        www.shop.internal
+    valid        2026-01-05 09:00 to 2026-04-05 09:00 (90 days)
+    purpose      serverAuth, digital signature only: true
+    authority    no: it may not sign certificates
+  THE CHAIN CHECK BY HAND (what a client does, on 2026-01-06 09:00):
+    1. Shop Internal Root CA is the client's trusted root: true
+    2. Shop Issuing CA is signed by Shop Internal Root CA: true
+    3. Shop Issuing CA is valid on that date: true
+    4. www.shop.internal is inside shop.internal: true
+    5. www.shop.internal is not an authority (path length 0): true
+    6. www.shop.internal is signed by Shop Issuing CA: true
+    7. www.shop.internal is valid on that date: true
+  THE RESULT:
+    by hand:             accepted
+    the JDK's validator: accepted
+  THE REQUESTS THE POLICY REFUSES:
+    web-team, no subject alternative name
+      -> refused: needs at least one subject alternative name
+    web-team, www.shop.internal for 400 days
+      -> refused: 400 days is over the server profile's 90 days
+    payments-team, pay.example
+      -> refused: pay.example is outside shop.internal
+  THE POLICY SKIPPED (a buggy or stolen issuer):
+    pay.example signed anyway, serial 1001
+  THE CLIENT'S CHECK OF IT:
+    4. pay.example is inside shop.internal: false
+  THE RESULT:
+    by hand:             refused (INVALID_NAME)
+    the JDK's validator: refused (INVALID_NAME)
+    <- THE NAME CONSTRAINT HOLDS
 TWO. Issuing from a signing request.
-  payments-team signs a request for payments.shop.internal with its own key; the request carries only the public key
-  the signature proves the sender holds the private key: true
-  issued serial 1002; its public key is the one in the request: true; the authority never saw the private key
-  a request carrying payments-team's public key but signed by another key: refused: the request is not signed by the key it carries
-  web-team asking for payments.shop.internal: refused: web-team may not ask for payments.shop.internal
-  web-team asking for www.shop.internal and payments.shop.internal at once: refused: web-team may not ask for payments.shop.internal
-  orders-team gets a client certificate for calling other services: clientAuth, orders.shop.internal, accepted
+  THE REQUEST (payments-team signs it with its own private key):
+    names        payments.shop.internal
+    public key   EC, 256-bit curve, inside the request
+    private key  stays with payments-team: not in the request
+  THE AUTHORITY'S CHECKS, IN ORDER:
+    1. the signature verifies with the request's key: true
+    2. at least one name: true
+    3. payments.shop.internal is inside shop.internal: true
+    4. payments-team may ask for it: true
+    5. 90 days is within the server profile's 90 days: true
+  THE CERTIFICATE:
+    serial 1002; its public key is the request's: true
+  THE FORGED REQUEST (payments-team's key, another key signs):
+    -> refused: not signed by the key it carries
+  THE WRONG TEAM (web-team asks):
+    payments.shop.internal
+      -> refused: may not ask for payments.shop.internal
+    www.shop.internal and payments.shop.internal at once
+      -> refused: may not ask for payments.shop.internal
+  THE CLIENT CERTIFICATE (orders-team calls other services):
+    serial 1003, orders.shop.internal, clientAuth, 30 days
+    the chain check: accepted
 THREE. Revocation: taking a certificate back before it expires.
-  payments.shop.internal's key is reported stolen on day 10; the issuing authority lists serial 1002 in a revocation list valid until day 17, and the root's own list covers the issuing authority
-  day 11, payments.shop.internal, with revocation checked: refused (REVOKED)
-  day 11, www.shop.internal, with revocation checked: accepted
-  day 11, payments.shop.internal, by a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE
-  day 20, www.shop.internal, with only the day-10 list, now past its next update: refused (UNDETERMINED_REVOCATION_STATUS)  <- NO CURRENT LIST, SO NO: IT FAILS CLOSED
-  day 20, with a fresh list: accepted
-  revocation only works if the authority publishes on time and every client fetches and checks
+  THE REPORT (day 10): payments.shop.internal's key is stolen
+  THE ISSUING CA'S REVOCATION LIST:
+    this update  2026-01-15 09:00 (day 10)
+    next update  2026-01-22 09:00 (day 17)
+    revoked      serial 1002, key compromise
+  THE ROOT'S REVOCATION LIST (covers the issuing CA):
+    this update  2026-01-05 09:00 (day 0)
+    next update  2027-01-05 09:00 (day 365)
+    revoked      none
+  THE CHECKS ON DAY 11:
+    payments.shop.internal, the client checks the lists
+      -> refused (REVOKED)
+    www.shop.internal, the client checks the lists
+      -> accepted
+    payments.shop.internal, a client that never checks
+      -> accepted  <- A REVOKED CERTIFICATE STILL WORKS
+  THE CHECKS ON DAY 20 (the day-10 list ran out on day 17):
+    www.shop.internal, only the day-10 list
+      -> refused (UNDETERMINED_REVOCATION_STATUS)
+      <- NO CURRENT LIST, SO NO: IT FAILS CLOSED
+    www.shop.internal, a fresh list from day 20
+      -> accepted
 FOUR. Short-lived certificates instead of revocation.
-  cart.shop.internal gets 24-hour certificates and renews at two thirds of the lifetime, with a new key each time
-  over 72 hours, checked every hour: 4 renewals, 0 failed checks
-  the renewal job stops; 25 hours after the last renewal the certificate is refused (EXPIRED)
-  a stolen 24-hour key works for at most 24 hours with no list at all; a stolen 90-day key works for up to 90 days unless every client checks a list
-  the inventory on day 65:
-    www.shop.internal: RENEW_NOW, 25 days left
-    orders.shop.internal: RENEW_NOW, 25 days left
-    cart.shop.internal: EXPIRED, 0 hours left
+  THE FIRST CERTIFICATE (cart.shop.internal, day 30):
+    serial 1004, valid 2026-02-04 09:00 to 2026-02-05 09:00
+  HOW THE RENEWAL TIME IS WORKED OUT:
+    lifetime     24 hours, from notBefore to notAfter
+    two thirds   24 x 2 / 3 = 16 hours
+    renew at     2026-02-04 09:00 + 16 hours = 2026-02-05 01:00
+  THE 72 HOURS, CHECKED EVERY HOUR:
+    renewed at hours 16, 32, 48, 64: 4 renewals
+    5 certificates, 5 different keys; failed checks: 0
+  THE RENEWAL JOB STOPS:
+    the last certificate, serial 1008, ends 2026-02-08 01:00
+    25 hours after it began: refused (EXPIRED)
+  THE INVENTORY ON DAY 65 (renew after two thirds of a life):
+    www.shop.internal      RENEW_NOW  25 days left
+    orders.shop.internal   RENEW_NOW  25 days left
+    cart.shop.internal     EXPIRED    0 hours left
+  A STOLEN KEY WORKS FOR:
+    a 24-hour certificate: at most 24 hours, with no list at all
+    a 90-day certificate: up to 90 days, unless every client checks
 FIVE. The bill.
-  the root key signed 3 times in all: the issuing authority, itself and its revocation lists; keep it offline, ideally in hardware
-  if the issuing authority's key is stolen, the offline root revokes it: www.shop.internal is then refused (REVOKED), and so is every certificate below it
-  the audit log holds 18 decisions, 6 of them refusals; an authority is a high-value target, so every decision is recorded
-  every service needs a request, a renewal job and a deployment step: in practice this is automated with ACME, as the -with-step-ca version shows
+  THE ROOT KEY'S SIGNATURES (each one a ceremony, offline):
+    1. the root's own certificate
+    2. the issuing authority's certificate
+    3. the root's revocation list, day 0
+    4. the root's revocation list, day 40, issuing CA revoked
+  THE ROOT'S LIST OF DAY 40 (the issuing CA's key is stolen):
+    revoked      serial 2 (Shop Issuing CA), CA compromise
+  THE CHECK ON DAY 41:
+    www.shop.internal -> refused (REVOKED)
+    and so is every certificate below the issuing CA
+  THE AUDIT LOG (18 decisions, 6 of them refusals):
+    refused web-team: needs at least one subject alternative name
+    refused web-team: 400 days is over the server profile's 90 days
+    refused payments-team: pay.example is outside shop.internal
+    refused payments-team: not signed by the key it carries
+    refused web-team: may not ask for payments.shop.internal
+    refused web-team: may not ask for payments.shop.internal
+  STILL TO AUTOMATE, PER SERVICE:
+    a request, a renewal job and a deployment step: ACME does it,
+    as the -with-step-ca version shows

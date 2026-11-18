@@ -46,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Choosing a level | A brochure site is L1, the store L2 and the bank L3, each with printed reasons; of 14 requirements, L1 applies 8, L2 applies 12 and L3 applies all 14. |
-| 2. Requirements written down as data | Fourteen requirements in a tab-separated file that reads back the same, each with its chapter, level and verification: 6 by automated test, 4 by configuration check, 4 by a person. |
-| 3. Checks that ask the running store | Ten checks ask the running store questions and nine pass; staff sign-in without a second factor fails, and a build that stores passwords as plain SHA-256 fails the password check. |
-| 4. Coverage and gaps | At L2 the store has 8 met, 1 failed, 3 manual and 2 not applicable; a release with the debug flag on makes SR-05 and SR-06 newly fail and is refused; with staff MFA, nothing fails and 3 remain for people. |
-| 5. The bill | At the bank's L3, 4 requirements need a person; a standard is not a threat model; SR-14 was mapped against the older edition 4.0.3 and must be reviewed; a green report means only that these checks pass. |
+| 1. Choosing a level | A brochure site (LOW data, no accounts) is L1, the online store (MEDIUM data, accounts) L2, and the online bank (HIGH data, accounts, money, regulated) L3, each with its reasons. Of 14 requirements L1 asks for 8, L2 for 12 (L1 + SR-09 SR-10 SR-12 SR-14) and L3 for 14 (L2 + SR-11 SR-13). |
+| 2. Requirements written down as data | The team's 14 requirements, each with an id, a level, how it is verified and its chapter, are written to security-requirements.tsv (15 lines: a header and 14 rows) and read back the same: true. Verified by automated tests 6, configuration checks 4, people 4. |
+| 3. Checks that ask the running store | Ten checks ask the store questions; 9 of 10 pass, and staff-mfa fails. The password check reads the stored value scheme$rounds$salt$hash and needs pbkdf2-sha256 with rounds >= 600,000: the store passes, a build with plain SHA-256 fails, and its unsalted hash is the same 64 hex digits on every store. |
+| 4. Coverage and gaps | The store at L2: met 8, failed 1 (SR-09), not applicable 2 (SR-11 SR-13), manual 3 (SR-08 SR-10 SR-14), shown by chapter. A release with the debug flag on fails SR-05 SR-06 SR-09: newly failing SR-05 SR-06, so the release gate refuses it. With staff signing in with a second factor, failing 0 and SR-08 SR-10 SR-14 are left to people. |
+| 5. The bill | The same store judged at L2 applies 12 (met 9, manual 3) and at L3 applies 14 (met 10, manual 4: SR-08 SR-10 SR-11 SR-14), and no test replaces those reviews. SR-14 is mapped to edition 4.0.3, older than 5.0. A passing report does not say which threats the system faces, nor that it is secure. |
 
 ## Test
 
@@ -58,11 +58,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-18 tests in `ChecksAndAssessmentTest`, `DemoRunsTest`, `LevelAndRequirementsTest`. The level model, the requirements file, the checks and the coverage report are deterministic Java. The only random values, a password salt and session ids, are never printed, so the golden output is the same on every run and needs only a JDK.
+22 tests in `ChecksAndAssessmentTest`, `DemoRunsTest`, `LevelAndRequirementsTest`, `WorkedValuesTest`. The level model, the requirements file, the checks and the coverage report are deterministic Java. The only random values, a password salt and session ids, are never printed, so the golden output is the same on every run and needs only a JDK.
 
 ## What the simulation got right, and what it left out
 
-The store is a small application in the same process, so every check is exact. The decision model for the level is a simplification of the standard's guidance, and the fourteen requirements are a sample, paraphrased in the team's words, not the standard's text. The password check computes a real PBKDF2 hash, but prints only pass or fail.
+The store is a small application in the same process, so every check is exact. The decision model for the level is a simplification of the standard's guidance, and the fourteen requirements are a sample, paraphrased in the team's words, not the standard's text. The password check computes a real PBKDF2 hash, but prints only its scheme and rounds, never the salt or the hash.
 
 ## Technologies and versions
 

@@ -38,10 +38,10 @@ Validation rules are scattered, repeated and unordered, so they drift and cost m
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 53 lines, identical on every run |
+| Tests | 16, all passing |
+| Demo output | 119 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:54, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:38, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

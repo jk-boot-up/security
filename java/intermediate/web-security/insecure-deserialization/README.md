@@ -46,10 +46,10 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A cart in a cookie | The cart is serialized into a cookie and read back: two lines, 9200 cents. |
-| 2. The cookie decides what the server builds | A forged price is believed, and a cookie holding a TempCleaner deletes a file while it is being read, before the server sees it is not a cart. |
-| 3. An allow-list filter names the classes a cart is made of | The filter refuses the TempCleaner before it is built and the marker file survives, but a cart with a forged price is still accepted. |
-| 4. Data only: names and quantities, signed | The cookie holds text and an HMAC; a serialized object, a changed quantity and unsigned text are all refused, and prices come from the server. |
+| 1. A cart in a cookie | The cart of two kettles and a pan is serialized into a cookie that starts with rO0; reading it back builds a Cart, an ArrayList, an Object array and two lines: 9200 cents. |
+| 2. The cookie decides what the server builds | A forged price of 1 cent is believed (2 cents in total), and a cookie holding a TempCleaner deletes the marker file while it is read, before the server sees it is not a cart. |
+| 3. An allow-list filter names the classes of a cart | The filter answers ALLOWED for the cart's four classes and REJECTED for TempCleaner before it is built, so the marker file survives; a forged price uses only allowed classes and is still accepted. |
+| 4. Data only: product codes and quantities, signed | The cookie holds v1;KTL-001x2;PAN-002x1 in Base64 and an HMAC-SHA-256 signature; prices come from the server; a quantity changed to x9 gives a different HMAC and is refused, as are a serialized object and unsigned text. |
 
 ## Test
 
@@ -57,7 +57,7 @@ The demo tells the story in 4 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-10 tests in `DemoRunsTest`, `DeserializationTest`. The temporary marker file's name is random and never printed, so the demo prints the same text on every run.
+12 tests in `DemoRunsTest`, `DeserializationTest`. The temporary marker file's name is random and never printed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

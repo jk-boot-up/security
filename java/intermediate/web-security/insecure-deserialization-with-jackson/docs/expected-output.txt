@@ -1,28 +1,99 @@
-== 1. A cart in a cookie ==
-cart round trip                       -> 2 lines, total 9200 cents
-
-== 2. The cookie decides which class is built ==
-an Object field                       -> refused (the default validator denies class names for an Object)
-forged price                          -> 1 lines, total 2 cents
-cookie holds a TempCleaner            -> accepted as a note; marker file exists afterwards: false
-global default typing, TempCleaner    -> accepted as a note; marker file exists afterwards: false
-
-== 3. A list of kinds, or a list of classes ==
-names: cart round trip                -> 2 lines, total 9200 cents
-names: cookie holds a TempCleaner     -> refused (unknown type id); marker file exists afterwards: true
-validator: cart round trip            -> 2 lines, total 9200 cents
-validator: cookie holds a TempCleaner -> refused (class not allowed); marker file exists afterwards: true
-forged price                          -> 1 lines, total 2 cents  <- STILL ACCEPTED
-
-== 4. Data only: names and quantities, priced by the shop ==
-order round trip                      -> 2 items, total 9200 cents
-forged price                          -> refused (unknown property price)
-a class name                          -> refused (unknown property @class)
-quantity -5                           -> refused (quantity must be 1 to 99)
-unknown product                       -> refused (unknown product)
-
-== 5. Limits on the stream ==
-default limits, 5000 levels deep      -> refused (nesting deeper than 500)
-tightened, 11 levels deep             -> refused (nesting deeper than 10)
-tightened, a 65 character product     -> refused (text longer than 64)
-tightened, an 11 digit quantity       -> refused (number longer than 10)
+ONE. A cart in a cookie works for honest customers.
+  THE CART (code, quantity, cents each, a note):
+    KTL-001  x2  2500
+    PAN-002  x1  4200
+    a Gift note: "Happy birthday"
+  THE COOKIE'S JSON (written by Jackson):
+    {"lines":[{"sku":"KTL-001","qty":2,"price":2500},{
+      "sku":"PAN-002","qty":1,"price":4200}],"gift":{
+      "@class":
+      "com.jk.explore.security.jacksondeser.Note$Gift",
+      "message":"Happy birthday"}}
+  THE COOKIE (that JSON in Base64):
+    eyJsaW5lcyI6W3sic2t1Ijoi...  (244 characters)
+    {"line  -> Base64 eyJsaW5l  (JSON starts eyJ)
+  THE RESULT:
+    2 lines, total 9200 cents
+    2 x 2500 + 1 x 4200 = 9200
+TWO. The cookie decides which class is built.
+  THE FORGED CART'S JSON (the customer wrote the price):
+    {"lines":[{"sku":"KTL-001","qty":2,"price":1}],
+      "gift":{"@class":
+      "com.jk.explore.security.jacksondeser.Note$Gift",
+      "message":"hi"}}
+  THE RESULT:
+    1 line, total 2 cents  <- A FORGED PRICE
+    2 x 1 = 2
+  THE FORGED NOTE'S JSON (a class name, not a note):
+    {"lines":[],"gift":{"@class":
+      "com.jk.explore.security.jacksondeser.TempCleaner",
+      "path":"<marker file>"}}
+  WHAT JACKSON DOES, IN ORDER:
+    1. reads @class and loads TempCleaner
+    2. it is a Note, so the default validator allows it
+    3. sets path, and setPath deletes the file
+  THE MARKER FILE BEFORE READING:
+    exists: true
+  THE RESULT:
+      -> accepted as a note
+      -> marker file exists afterwards: false  <- IT RAN
+  OTHER TYPES FOR THE NOTE -> THE RESULT:
+    Object, Jackson 3's defaults
+      -> refused (Object is too general a base type)
+    Object, default typing on, any class allowed
+      -> accepted as a note
+      -> marker file exists afterwards: false  <- IT RAN
+THREE. A list of kinds, or a list of classes.
+  THE LIST OF KINDS (short names kept in the code):
+    gift -> Note.Gift, coupon -> Note.Coupon
+  THE HONEST NOTE'S JSON:
+    "gift":{"type":"gift","message":"Happy birthday"}
+    -> 2 lines, total 9200 cents
+  THE FORGED NOTE'S JSON (a class name as the kind):
+    "gift":{"type":
+      "com.jk.explore.security.jacksondeser.TempCleaner",
+      "path":"<marker file>"}
+      -> refused (unknown type id)
+      -> marker file exists afterwards: true
+  THE LIST OF CLASSES (a validator; class names stay):
+    Note.Gift, Note.Coupon
+  THE INPUTS -> THE RESULTS:
+    the honest cart, @class Note$Gift
+      -> 2 lines, total 9200 cents
+    the forged note, @class TempCleaner
+      -> refused (class not allowed)
+      -> marker file exists afterwards: true
+    the forged price, price 1, @class Note$Gift
+      -> 1 line, total 2 cents  <- STILL ACCEPTED
+  a list of types stops unknown classes, not lies
+FOUR. Data only: codes and quantities, priced by the shop.
+  THE REQUEST'S JSON (no prices, no class names):
+    {"items":[{"sku":"KTL-001","qty":2},{
+      "sku":"PAN-002","qty":1}]}
+  THE RESULT (each price from the shop's catalogue):
+    KTL-001  x2  x 2500 = 5000
+    PAN-002  x1  x 4200 = 4200
+    2 items, total 9200 cents
+  THE FORGED REQUESTS -> THE RESULTS:
+    {"items":[{"sku":"KTL-001","qty":2,"price":1}]}
+      -> refused (unknown property price)
+    {"@class":"TempCleaner","items":[]}
+      -> refused (unknown property @class)
+    {"items":[{"sku":"KTL-001","qty":-5}]}
+      -> refused (quantity must be 1 to 99)
+    {"items":[{"sku":"XXX-999","qty":1}]}
+      -> refused (unknown product)
+FIVE. Limits on the stream.
+  THE LIMITS (Jackson 3's default -> tightened):
+    nesting depth           500  -> 10
+    text length     100,000,000  -> 64
+    number length         1,000  -> 10
+  THE INPUTS -> THE RESULTS:
+    [[[[ ... ]]]] 5000 levels deep, default limits
+      -> refused (nesting deeper than 500)
+    [[[[ ... ]]]] 11 levels deep, tightened
+      -> refused (nesting deeper than 10)
+    a 65 character product code, tightened
+      -> refused (text longer than 64)
+    the quantity 12345678901 (11 digits), tightened
+      -> refused (number longer than 10)

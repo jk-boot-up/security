@@ -25,6 +25,7 @@ Webhook endpoints are public, and teams often act on any well-formed message, ve
 | The endpoint's checks | `Receiver` |
 | The local HTTP endpoint | `WebhookServer` |
 | The simulated provider | `Provider` |
+| The HMAC worked out by hand, for teaching | `HmacSteps` |
 | Entry point | `WebhookDemo` |
 
 ## Requirements
@@ -41,10 +42,10 @@ Webhook endpoints are public, and teams often act on any well-formed message, ve
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 16, all passing |
-| Demo output | 37 lines, identical on every run |
-| Acts | 5 |
-| Video | 08:06, 1920×1080, narrated in the amy-slow voice |
+| Tests | 18, all passing |
+| Demo output | 118 lines, identical on every run |
+| Acts | 6 |
+| Video | 18:30, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

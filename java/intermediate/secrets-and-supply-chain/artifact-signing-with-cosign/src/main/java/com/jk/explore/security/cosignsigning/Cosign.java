@@ -16,21 +16,31 @@ final class Cosign {
     /** What cosign said: whether it succeeded, and its output (verification prints the claims it found as JSON). */
     record Result(boolean ok, String output) {
 
-        /** A short reason in the terms of the lesson. */
-        String reason() {
+        /** "accepted" or "refused". */
+        String word() {
+            return ok ? "accepted" : "refused";
+        }
+
+        /** Why cosign refused, in the terms of the lesson; empty when it succeeded. */
+        String why() {
             if (ok) {
-                return "accepted";
+                return "";
             }
             if (output.contains("missing or incorrect annotation")) {
-                return "refused (the signed claims do not say what the gate requires)";
+                return "claims do not match the gate";
             }
             if (output.contains("do not match threshold")) {
-                return "refused (no signature that this key made)";
+                return "not signed by this key";
             }
             if (output.contains("no signatures found") || output.contains("no attestations found") || output.contains("no matching attestations")) {
-                return "refused (no signature for this digest)";
+                return "no signature for this digest";
             }
-            return "refused (" + output.lines().filter(l -> l.startsWith("Error:")).findFirst().orElse("failed").replace("Error: ", "") + ")";
+            return output.lines().filter(l -> l.startsWith("Error:")).findFirst().orElse("failed").replace("Error: ", "");
+        }
+
+        /** The word, and the reason when refused. */
+        String reason() {
+            return ok ? word() : word() + " (" + why() + ")";
         }
     }
 
@@ -64,7 +74,9 @@ final class Cosign {
 
     /** Verifies with a public key, the transparency log left out because the lab is local, and the given annotations required. */
     Result verify(String keyName, String digestRef, Map<String, String> required) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>(List.of("cosign", "verify", "--key", publicKey(keyName).toString(), "--insecure-ignore-tlog=true"));
+        List<String> command = new ArrayList<>(List.of("cosign", "verify",
+                "--key", publicKey(keyName).toString(),
+                "--insecure-ignore-tlog=true"));
         required.forEach((k, v) -> command.addAll(List.of("-a", k + "=" + v)));
         command.add(digestRef);
         return run(folder, null, command);
@@ -90,6 +102,14 @@ final class Cosign {
         Map<String, Object> statement = JSON.readValue(payload, new TypeReference<Map<String, Object>>() {
         });
         return (Map<String, Object>) statement.get("predicate");
+    }
+
+    /** The payloads that a successful {@code cosign verify} prints: the JSON array line of its output. */
+    static List<SignedPayload> payloadsOf(String output) {
+        String line = output.lines().filter(l -> l.startsWith("[")).findFirst().orElseThrow();
+        List<Map<String, Object>> all = JSON.readValue(line, new TypeReference<List<Map<String, Object>>>() {
+        });
+        return all.stream().map(SignedPayload::of).toList();
     }
 
     private static Result run(Path dir, String passphrase, List<String> command) throws IOException, InterruptedException {

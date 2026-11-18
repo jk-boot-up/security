@@ -27,31 +27,30 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 that the publisher monitors, so that changed files, edited statements, forged keys, secret signatures and backdated signatures are all refused or found.</p>
 <h2>The 5 acts</h2>
 <h3>1. A deployment that runs whatever arrives</h3>
-<p>The release team builds shop-app-2.4.0.jar, 2440 bytes with SHA-256 4577e6b10a2f145d. The deployment downloads it from a mirror where one byte was changed, so its
-SHA-256 is 6d6cca4f654956e0. The trusting deployment step deploys it without checking: an altered jar is running. A digest published next to the file does not help,
-because whoever can change the file can change the digest beside it.</p>
+<p>The input is the jar the release team built: shop-app-2.4.0.jar, 2440 bytes, byte 700 is '/' (0x2f), and its SHA-256 starts 4577e6b10a2f145d.
+The mirror flips one bit: byte 700 becomes '.' (0x2e), and the SHA-256 becomes 6d6cca4f654956e0, with every hex digit different.
+The result: the trusting deployment step accepts it and deploys shop-app-2.4.0.jar without checking it, so an altered jar is running. A digest published next to the file does not help, because whoever can change the file can change the digest beside it.</p>
 <h3>2. A signed release, checked before it runs</h3>
-<p>The release statement names the artifact, its version, its channel, the SHA-256 of its exact bytes and the signing day. It is signed with the key stable-2026a, giving a
-64-byte Ed25519 signature that is the same on every run. The deployment pins that key's public key and checks before it deploys. The real jar is accepted. The jar with one
-byte changed is refused because it does not match the signed digest. The statement edited to version 2.4.1, with the signature kept, is refused. A signature from another key
-that calls itself stable-2026a is refused, a key the deployment does not know is refused, and no signature at all is refused.</p>
+<p>The input is the release statement, 151 bytes of text in one exact form: release-statement/v1, name=shop-app, version=2.4.0, channel=stable, the full 64-hex-digit SHA-256 of the jar, and signed-day=120.
+The result of signing: an Ed25519 signature of 64 bytes, starting 6caf4ae3bad1f0aa, by the key stable-2026a, whose 32-byte public key starts 797d4b479b52e839. Signing again gives the same signature, because Ed25519 is deterministic.
+The deployment pins that public key and checks in order: 1 the statement parses in its exact form, 2 the key id is pinned, 3 the Ed25519 signature verifies, 4 the key and the statement are for the stable channel, 5 it was signed while the key was trusted, 6 the SHA-256 of the jar equals the signed one.
+The results: the real jar is accepted; the jar with one byte changed is refused at check 6; the statement edited to 2.4.1 with the signature kept, and a forged key that calls itself stable-2026a, are refused at check 3 (bad signature); an unknown key, attacker-1, is refused at check 2; no signature is refused at once.</p>
 <h3>3. Signing keys: per channel, rotated, revoked</h3>
-<p>A beta build signed with beta-2026a and offered to the stable deployment is refused: that key signs for beta, not stable. On day 100 stable-2026b is added, and both stable
-keys are trusted while the build moves over, so releases signed on day 110 with either key are accepted. On day 130 stable-2026a is revoked. A release it signed on day 120,
-before the revocation, is still accepted, and one it signed on day 140 is refused. But the signer writes the day: a thief with the old key signs a different jar on day 150,
-dates it day 120, and it is accepted. A backdated signature passes, because nothing independent records when it was really made.</p>
+<p>A beta build signed with beta-2026a and offered to the stable deployment is refused: beta-2026a signs beta, not stable.
+The rotation: stable-2026a is trusted from day 0 and revoked on day 130; stable-2026b is added on day 100. Both are trusted for 130 - 100 = 30 days, day 100 to 129.
+Signed on day 110 with either key: accepted. Signed on day 120 with stable-2026a: accepted. Signed on day 140 with stable-2026a: refused, signed day 140, revoked day 130.
+Before: a thief with stable-2026a signs a different jar (SHA-256 14669a56d76a94fc) on day 150 and writes signed-day=120. After: accepted, because the signer writes the day, and nothing independent records when it really signed.</p>
 <h3>4. A public log that every signature must be in</h3>
-<p>The store logs its releases, 2.3.0 on day 90 and 2.4.0 on day 120, in an append-only log whose tree head (size 2, root c1e815c249fdd097) is signed by the log. The proof that
-2.4.0 is in the log is one hash, and it checks against the signed head. The deployment now requires a log entry and accepts the real release as entry 1. The thief's backdated
-jar is refused when it is not in the log, and refused when it is, because the log recorded it on day 150, after the revocation: the log's day counts, not the signer's.
-The store's monitor reads the log and reports entry 2 as a version 2.4.0 signed with stable-2026a that is not a release the store made. A log operator who hides that entry
-from the monitor must show two views, both signed, both of size 3, with different roots. Each still extends the earlier head of size 2, but two signed heads of the same
-size with different roots cannot both be true, so comparing heads proves the fork.</p>
+<p>The input: the log holds entry 0, 2.3.0 by stable-2026a logged day 90, and entry 1, 2.4.0 logged day 120; each entry is the key id, the statement and the signature.
+How the root is made, as RFC 9162 defines it: leaf 0 = sha256(00 || entry 0) = 05e76fd5f6c4ca1a, leaf 1 = sha256(00 || entry 1) = cf27ce9d14a8e52d, and root = sha256(01 || leaf 0 || leaf 1) = c1e815c249fdd097. The log signs a head: size 2 and that root.
+The proof that entry 1 is in the log is one hash, leaf 0: sha256(01 || proof || leaf 1) gives c1e815c249fdd097 again, which equals the signed root.
+The deployment now requires a log entry: the real 2.4.0 is accepted as entry 1; the thief's jar is refused when it is not in the log, and refused when it is, because it was logged on day 150 and the key was revoked on day 130. The store's monitor reports entry 2: 2.4.0 by stable-2026a with SHA-256 14669a56d76a94fc, a release it never made.
+A log that hides entry 2 from the monitor must show two views of size 3: to the monitor the beta build, root f230f49e340792fc; to the customer the thief's jar, root 92f28850530761dd. Each is sha256(01 || old root || leaf 2), so each is consistent with the head of size 2, but two signed roots for one size prove the fork.</p>
 <h3>5. The bill</h3>
-<p>The gate refuses an unsigned jar, but it protects only the paths that pass through it: a jar copied straight onto a server never meets the gate. The signing key is the crown
-jewel: in the demo it comes from a fixed seed, and in practice it stays in a hardware module, with each signing approved and logged. Rotation is a project, because every
-deployment must trust the new key before the old one is revoked, here with an overlap of 30 days. Keyless signing replaces long-lived keys with short-lived certificates tied
-to an identity and recorded in a public log, which is the subject of the -with-cosign version.</p>
+<p>The gate refuses an unsigned jar with the reason no signature, but a jar copied by hand onto a server never meets the gate, so the other paths must be locked.
+The signing key is the crown jewel: here it is made from a fixed demo seed; in practice it stays in a hardware module, and each use is approved.
+Rotation is a project: every deployment must trust the new key before the old one is revoked, here with an overlap of 30 days.
+Keyless signing replaces long-lived keys with short-lived certificates tied to an identity and recorded in a public log, which is the subject of the -with-cosign version.</p>
 <h2>The verdict</h2>
 <p>Sign every release statement over the artifact's digest and verify it at the point of use, with keys pinned per channel. Keep signing keys in hardware, rotate them with an
 overlap, and revoke by an independent time. Require signatures to be in a transparency log, and monitor it for releases you did not make.</p>

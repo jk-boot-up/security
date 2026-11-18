@@ -35,4 +35,22 @@ final class Identities {
                 .map(uri -> uri.substring(PREFIX.length()))
                 .findFirst();
     }
+
+    /** Each subject alternative name as "URI value", "DNS value" or "IP value", in the order of the certificate. */
+    static List<String> names(X509Certificate certificate) {
+        try {
+            Collection<List<?>> names = certificate.getSubjectAlternativeNames();
+            if (names == null) {
+                return List.of();
+            }
+            return names.stream().map(n -> switch ((Integer) n.get(0)) {
+                case 2 -> "DNS " + n.get(1);
+                case 6 -> "URI " + n.get(1);
+                case 7 -> "IP " + n.get(1);
+                default -> "type " + n.get(0) + " " + n.get(1);
+            }).toList();
+        } catch (CertificateParsingException e) {
+            return List.of();
+        }
+    }
 }

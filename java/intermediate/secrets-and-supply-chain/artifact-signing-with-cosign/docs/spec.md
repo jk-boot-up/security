@@ -36,10 +36,10 @@ Teams deploy by tag from a registry that several parties can write to, and have 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 9, all passing |
-| Demo output | 39 lines, identical on every run |
+| Tests | 13, all passing |
+| Demo output | 79 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:14, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:00, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -10,6 +10,7 @@ src/main/java/com/jk/explore/security/sessionredis/
 ├── OffsetClock.java            The system clock plus an offset the demo can move forward, so eight hours take no time to wait for
 ├── RedisLab.java               A throwaway Redis in a Docker container, bound to the loopback address on a free port, protected by a password and removed on close
 ├── Running.java                One bank server on a free loopback port, with its sessions in the given Redis
+├── SessionKeys.java            How Spring Session names a session in Redis and in the cookie, worked out by hand so the demo can show it and the tests can check it without Redis
 └── SessionRedisDemo.java       Runs the bank story in five numbered acts against real Spring Boot servers and a real Redis in Docker, all on the loopback interface
 ```
 
@@ -44,11 +45,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The session lives in Redis | Redis needs a password, the cookie carries the Redis key's id, and a stolen copy of the keys turned into cookies opens live sessions. |
-| 2. A new id at every sign-in | With the id kept, a planted id becomes ana's and the stranger reads her account; with Spring Security's default the ids differ and the stranger's copy is refused. |
-| 3. How long a session lives | Spring Session enforces the idle timeout and Redis keeps the dead record five more minutes; there is no absolute timeout, so a small filter of our own ends a busy session at 8 hours. |
-| 4. Signing out, everywhere, and the limit | Sign-out ends the session on the server, sign-out everywhere ends 3 sessions, a password change ends the others and renews this one, and a limit of 3 ends the oldest. |
-| 5. The bill | Two servers need one shared store, a Redis that stops answering makes the bank refuse, and with the request cache on, 20 strangers create 20 session records. |
+| 1. The session lives in Redis | Redis refuses a client with no password; the bank's cookie has 0 problems; Redis holds the session under its id as itself, the cookie is only the id in Base64, so a stolen copy of the keys opens live sessions. |
+| 2. A new id at every sign-in | A stranger plants a welcome-page cookie in Ana's browser; with fixation protection off the stranger reads her account; with Spring Security's default, changeSessionId, the planted cookie is refused and is no longer a live record. |
+| 3. How long a session lives | An idle timeout of 2 seconds for the demo: idle 1 second is allowed, 2.5 is refused, and Redis keeps the dead data up to 2 + 300 seconds; Spring Session has no absolute timeout, so our filter refuses a busy session at 8:01. |
+| 4. Signing out, everywhere, and the limit | Sign-out removes the record from Redis so a copy of the cookie gets 401; the index finds Ana's 3 sessions to sign out everywhere; a password change ends the 2 others; with a limit of 3 a fourth sign-in ends the oldest. |
+| 5. The bill | Two servers with separate stores refuse each other's sessions and one Redis fixes it; a Redis that stops answering makes the bank refuse with 500; with the default request cache 20 strangers make 20 records, and 0 when it is off. |
 
 ## Test
 
@@ -56,11 +57,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `SessionRedisTest`. The tests start a real Redis in Docker and real bank servers and remove the container afterwards. Run them with ./gradlew integrationTest; nothing printed changes between runs.
+24 tests in `AbsoluteTimeoutFilterTest`, `DemoRunsTest`, `SessionKeysTest`, `SessionRedisTest`. `./gradlew test` runs the tests that need no tools: the absolute-timeout filter and how sessions are named in Redis and in the cookie, including Base64 worked out by hand. The tests that start a real Redis in Docker and real bank servers run with ./gradlew integrationTest; nothing printed changes between runs.
 
 ## What the simulation got right, and what it left out
 
-The bank servers are real Spring Boot applications, and Redis is a real container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The device stand-in reads the Set-Cookie header and sends the cookie back, which is what a browser does over https. Only statuses, booleans and counts are printed, never ids or ports.
+The bank servers are real Spring Boot applications, and Redis is a real container bound to 127.0.0.1 on a free port, protected by a password and removed at the end. The device stand-in reads the Set-Cookie header and sends the cookie back, which is what a browser does over https. Ids and ports are random, so they are never printed: Redis keys show the id as <id>, and the Base64 steps use a fixed example id.
 
 ## Technologies and versions
 
@@ -75,6 +76,7 @@ Every version below is pinned in the project's build files and was the latest st
 | org.springframework.boot:spring-boot-starter-session-data-redis | 4.1.1, set by spring-boot-dependencies | library the code uses |
 | org.junit.jupiter:junit-jupiter | 6.1.3, set by junit-bom | JUnit 5: the tests (tests only) |
 | org.junit.platform:junit-platform-launcher | 6.1.3, set by junit-bom | JUnit platform launcher, which Gradle needs to run the tests (tests only) |
+| org.springframework:spring-test | set by the build | MockMvc, which sends requests through the real filter chain without a network port (tests only) |
 | videokit | repository tool (`tools/videokit`) | the narrated video and animation: Piper `en_US-amy-medium`, speed 0.8, longer pauses (the amy-slow voice) |
 
 ## Learning Material

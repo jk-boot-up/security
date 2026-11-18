@@ -12,6 +12,7 @@ import java.util.random.RandomGeneratorFactory;
 public final class Simulation {
 
     static final int MAX_EVENTS = 25;
+    static final String ALGORITHM = "L64X128MixRandom";
 
     private final List<Risk> risks;
     private final int trials;
@@ -26,7 +27,7 @@ public final class Simulation {
         this.eventsU = new double[risks.size()][trials];
         this.lossU = new double[risks.size()][trials][MAX_EVENTS];
         for (int r = 0; r < risks.size(); r++) {
-            RandomGenerator rng = RandomGeneratorFactory.of("L64X128MixRandom").create(seed + 7919L * r);
+            RandomGenerator rng = RandomGeneratorFactory.of(ALGORITHM).create(seed + 7919L * r);
             for (int t = 0; t < trials; t++) {
                 frequencyU[r][t] = rng.nextDouble();
                 eventsU[r][t] = rng.nextDouble();
@@ -56,9 +57,26 @@ public final class Simulation {
         return trials;
     }
 
+    public Risk risk(int riskIndex) {
+        return risks.get(riskIndex);
+    }
+
+    /** The kept draws of one simulated year: for how often, for how many events, and for the loss of event j. */
+    double frequencyDraw(int riskIndex, int year) {
+        return frequencyU[riskIndex][year];
+    }
+
+    double eventsDraw(int riskIndex, int year) {
+        return eventsU[riskIndex][year];
+    }
+
+    double lossDraw(int riskIndex, int year, int event) {
+        return lossU[riskIndex][year][event];
+    }
+
     /** The number of events of a Poisson year with the given mean, found from one uniform draw by walking up the distribution function. */
     static int poisson(double lambda, double u) {
-        double p = Math.exp(-lambda);
+        double p = StrictMath.exp(-lambda);
         double cumulative = p;
         int k = 0;
         while (u > cumulative && k < MAX_EVENTS) {

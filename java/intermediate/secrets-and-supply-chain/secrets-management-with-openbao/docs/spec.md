@@ -37,10 +37,10 @@ Teams keep long-lived shared secrets in code and configuration, and have no way 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 41 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 91 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -8,27 +8,33 @@ Design a container for the day its process is taken over: non-root, no capabilit
 
 ### 1. What 'docker run' with no options gives an attacker
 
-The default container runs as root, has 14 capabilities including NET_RAW, a writable root file system and no limits. A hijacked process can read the secrets in its environment, change the application's files, drop and run a tool, sniff the pod network, and exhaust memory or processes.
-The default seccomp profile blocks the dangerous system calls, and no host directories, sockets or namespaces are shared, so the kernel and the host are not directly in reach. Kubernetes classifies it as Baseline.
+The input is what `docker run shop-app:latest` gives when nobody adds a flag: the user is root, the container has Docker's 14 default capabilities (NET_RAW among them), the root file system is writable, set-user-id programs may raise privileges, the default seccomp profile is on, nothing of the host is shared, there are no memory or process limits, and the secrets are environment variables.
+The result, by what each attack reaches: inside the container all 4 are possible (read the secrets, change the app, drop and run a tool, be root); in the kernel only sniffing with NET_RAW (the seccomp profile blocks the dangerous calls, and there is no SYS_ADMIN); nothing on the host; and both resource attacks. 4 + 1 + 0 + 2 = 7 of 13.
+The level is worked out check by check: all six Baseline checks pass, and the three Restricted checks (not root, no privilege escalation, drops ALL capabilities) fail, so the level is Baseline.
 
 ### 2. The configuration from the tutorial
 
-The command that appears in many "how to run" pages is privileged, mounts the Docker socket and /etc, shares the host's network and process namespaces, and removes the seccomp filter. All thirteen attacks are possible, including starting a privileged container through the socket, which is root on the host.
-The checker lists six reasons the container is not even Baseline.
+The input is the command many "how to run" pages show: `--privileged`, `--security-opt seccomp=unconfined`, `--network host`, `--pid host`, `-v /var/run/docker.sock:/var/run/docker.sock` and `-v /etc:/etc`. The settings it gives: root, every capability, no seccomp filter, the host's network and processes and two host mounts.
+The result: every attack in every group, 4 + 3 + 4 + 2 = 13 of 13. Six Baseline checks fail (privileged, host network, host PID namespace, host path volumes, seccomp unconfined, a capability beyond the default set: ALL), so the level is Privileged.
+The Docker socket is the worst of them: whoever can write to it can ask the Docker daemon, which runs as root, to start a privileged container with the host's / mounted, which is a root shell on the host.
 
 ### 3. One setting at a time
 
-Starting from the tutorial configuration: removing privileged and the host namespaces and mounts cuts the attacks from 13 to 9; the default seccomp profile blocks the dangerous system calls (8); dropping all capabilities blocks raw sockets and mounting (6) and reaches Baseline. A non-root user alone changes nothing,
-because set-user-id programs can still raise privileges; with no_new_privs the become-root attack is blocked (5) and the container reaches Restricted. A read-only root file system with a noexec temporary directory blocks tampering and dropping a tool (3), and memory and process limits block the last two (1).
+The input of each step is the container of the step before, with one setting more. The result is the count, the level, and the attacks that step blocked, worked out as the difference of the two lists.
+No host access blocks docker-socket, host-files, host-network and see-host-processes (13 to 9). The default seccomp profile blocks dangerous-syscalls (8). Dropping all capabilities blocks sniff-network and mount-host (6) and passes Baseline.
+A user that is not root blocks nothing on its own, because set-user-id programs in the image can still raise privileges. No new privileges sets no_new_privs and blocks become-root (5); with it, all three Restricted checks pass. A read-only root with a noexec /tmp blocks tamper-with-app and drop-and-run (3), and limits block exhaust-memory and fork-bomb (1).
 
 ### 4. The hardened container
 
-The hardened container runs as user 10001, drops all capabilities, has a read-only root with a noexec tmpfs, forbids new privileges, has a 512 MB memory limit and a 200-process limit, takes its secrets from files, and uses an image pinned by digest. The same settings are printed as a docker run command and as a Kubernetes
-securityContext, so what was checked is what is deployed. The level is Restricted. Of the thirteen attacks only one is left: a hijacked application can read the secrets it was given, because it needs them.
+The input is the hardened container: user 10001, all capabilities dropped, a read-only root with a noexec, nosuid tmpfs on /tmp, no new privileges, 512 MB of memory and 200 processes at most, secrets as files, and an image pinned by its digest.
+The same settings are written twice from one object, as a `docker run` command and as a Kubernetes `securityContext`, so what was checked is what is deployed.
+The result, check by check: all six Baseline checks and all three Restricted checks pass, so the level is Restricted. One attack is still possible, read-secrets: the application must read its secrets, so a hijacked application can read them too. Hardening limits the damage; it does not fix the flaw.
 
 ### 5. Settings that look harmless
 
-Adding NET_RAW back keeps the level at Baseline (NET_RAW is in the default set, but Restricted wants every capability dropped) and still blocks sniffing, because the process is not root. Running as root with CAP_SYS_ADMIN, which looks like a small change, makes the level Privileged: mounting becomes possible, and root inside the container comes back.
+The input is the hardened container with one small change. The result is the new count and level, the attacks that came back, and the checks that now fail.
+Adding NET_RAW, which is in Docker's default set, opens no attack: sniff-network stays blocked because the process is not root. But the Restricted check "drops ALL capabilities" fails, so the level falls to Baseline.
+Running as root with SYS_ADMIN looks like one more small change. It opens become-root and mount-host (3 of 13), and fails three checks: only default capabilities (Baseline), not root and drops ALL capabilities (Restricted), so the level is Privileged.
 
 ## The verdict
 

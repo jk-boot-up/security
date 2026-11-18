@@ -87,11 +87,26 @@ public final class Repo implements AutoCloseable {
         return xml.append("</versions></versioning></metadata>").toString().getBytes(StandardCharsets.UTF_8);
     }
 
+    /** The versions this repository lists for group:artifact in its maven-metadata.xml. */
+    List<String> versions(String group, String artifact) {
+        return List.copyOf(versions.getOrDefault("/" + group.replace('.', '/') + "/" + artifact, new TreeSet<>()));
+    }
+
+    /** The bytes of the jar of group:artifact:version, as this repository serves them. */
+    byte[] jarBytes(String group, String artifact, String version) {
+        return files.get("/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar");
+    }
+
     /** The paths asked for so far, in order. */
     List<String> requests() {
         synchronized (requests) {
             return new ArrayList<>(requests);
         }
+    }
+
+    /** The distinct paths asked for under a group path, sorted. */
+    List<String> pathsUnder(String groupPath) {
+        return requests().stream().filter(p -> p.startsWith("/" + groupPath + "/")).distinct().sorted().toList();
     }
 
     long requestsUnder(String groupPath) {

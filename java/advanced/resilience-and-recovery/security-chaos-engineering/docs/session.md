@@ -14,11 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Steady state | 7 min |
-| 0:17 | Act 2: Authorization and fraud | 7 min |
-| 0:24 | Act 3: Audit, limit and revocation | 7 min |
-| 0:31 | Act 4: Does anybody hear it? | 7 min |
-| 0:38 | Act 5: The scoreboard | 7 min |
+| 0:10 | Act 1: The service, the faults and the steady state | 5 min |
+| 0:15 | Act 2: Authorization: down, slow, reset | 5 min |
+| 0:20 | Act 3: The fraud score: a hang and a trickle | 5 min |
+| 0:25 | Act 4: The audit trail: the sink down, then a slow close | 5 min |
+| 0:30 | Act 5: The rate limit and the revocation check | 5 min |
+| 0:35 | Act 6: Does anybody hear it? | 5 min |
+| 0:40 | Act 7: The scoreboard, and what is left | 5 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

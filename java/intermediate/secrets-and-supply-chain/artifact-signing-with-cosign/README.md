@@ -4,7 +4,8 @@
 src/main/java/com/jk/explore/security/cosignsigning/
 ├── Cosign.java             The cosign command, run as a program, with a key pair per signer kept in the lab's folder
 ├── CosignSigningDemo.java  Runs the store's release-signing story in five numbered acts with the real cosign command and a real container registry on the loopback interface
-└── Lab.java                A container registry on a free loopback port, a folder for key pairs, and the real images of the lesson
+├── Lab.java                A container registry on a free loopback port, a folder for key pairs, and the real images of the lesson
+└── SignedPayload.java      What cosign really signs for an image: a small JSON document (the "simple signing" format) that names the image's manifest digest, the repository it was signed for, and any claims added with {@code -a key=value}
 ```
 
 **A container image tag can be moved to a different image, so a gate must resolve the tag to a digest and verify a signature that a pinned key made over exactly that digest, with the signed claims it requires and, where it matters, a signed statement of how the image was built; a signature carries no time and no revocation without a log, the gate protects only the paths that pass through it, and the key is the crown jewel.**
@@ -38,11 +39,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A deployment that runs whatever a tag points at | A different image is pushed under the same tag, and a deployment that pulls by tag gets it. |
-| 2. A signed release, checked before it runs | The release key signs the digest, the gate verifies it with the pinned public key, and a moved tag or an unknown key is refused. |
-| 3. Signed claims, and keys that rotate | Claims such as channel=stable are signed with the image; a beta build is refused by the stable gate; a retired key still signs for any gate that trusts it. |
-| 4. Signed statements about how the image was built | A provenance attestation names the builder; the gate verifies it and applies its own rule, so a laptop build signed by the same key verifies and still fails. |
-| 5. The bill | The gate refuses an unsigned image, but a pull straight from the registry never meets it; the key needs a passphrase and a plan, and keyless signing needs public services. |
+| 1. A deployment that runs whatever a tag points at | The release is pushed as shop/app:2.4.0 and the tag points at digest A; someone with push rights pushes another image under the same tag, digest B; a pull by tag now gets the other image, and only a pull by digest A still gets the release. |
+| 2. A signed release, checked before it runs | cosign signs a payload that names digest A, not the tag; the signature is stored as one more tag in the same registry; a gate that pins the release key accepts digest A, refuses the moved tag (digest B, no signature), refuses digest B signed by the attacker's own key, and accepts again when the tag is put back. |
+| 3. Signed claims, and keys that rotate | Digest A is signed again with channel=stable and version=2.4.0; a stable gate accepts it, a beta gate refuses it, and a beta build (digest C) is refused by the stable gate; a gate that trusts both keys accepts during rotation, the next key takes over, but a thief who signs digest D with the retired old key is accepted by a gate that still trusts old: a signature carries no date. |
+| 4. Signed statements about how the image was built | The CI system attests provenance for digest A (builder https://ci.shop.example, a source commit); a laptop build, digest E, is attested by the same key with builder https://laptop.local; both signatures verify, but the gate's own rule, builder = CI, accepts only digest A; an attestation signed by the attacker, or borrowed for another digest, is refused. |
+| 5. The bill | The gate refuses an unsigned image, but a direct pull still gets it; the signing key is the crown jewel, and a wrong passphrase cannot sign; rotation is a project with no date on old signatures; keyless signing needs the public Fulcio and Rekor services; cosign 3 is moving offline signing behind a signing config. |
 
 ## Test
 
@@ -50,7 +51,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-9 tests in `CosignSigningTest`, `DemoRunsTest`. The tests start one registry for the whole class and remove it (./gradlew integrationTest). They need Docker and the cosign command.
+13 tests in `CosignResultTest`, `CosignSigningTest`, `DemoRunsTest`. The tests start one registry for the whole class and remove it (./gradlew integrationTest). They need Docker and the cosign command.
 
 ## What the simulation got right, and what it left out
 

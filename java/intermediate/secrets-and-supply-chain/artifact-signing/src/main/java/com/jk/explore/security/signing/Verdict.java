@@ -11,8 +11,13 @@ record Verdict(boolean accepted, String reason) {
         return new Verdict(false, reason);
     }
 
+    /** "accepted" or "refused". */
+    String word() {
+        return accepted ? "accepted" : "refused";
+    }
+
     @Override
     public String toString() {
-        return (accepted ? "accepted" : "refused") + " (" + reason + ")";
+        return word() + " (" + reason + ")";
     }
 }

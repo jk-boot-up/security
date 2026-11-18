@@ -1,38 +1,87 @@
---- base64 is an encoding, not encryption
-card-key as the API returns it: key=ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=
-decoded by anyone, with no key: demo-card-vault-key-001
-auditor, who may only list secrets, reads the value: yes
-nobody, with no rule on secrets, reads the value: no
---- in etcd, before encryption
-the value etcd holds contains the key as plain text: yes
-it contains the base64 form: no
-every secret in etcd is encrypted: no
---- encryption at rest
-API server restarted with an aescbc EncryptionConfiguration
-card-key, written before: still plain text in etcd: yes
-card-key-2, written after: encrypted in etcd: yes, plain text in etcd: no
-kubectl still returns card-key-2 as before: yes
-every secret in etcd is encrypted: no
-after rewriting every secret: card-key encrypted: yes, plain text: no
-every secret in etcd is encrypted: yes
-the card key anywhere in etcd: no
-the encryption key is a file on the control-plane node: yes
-auditor still reads the value: yes
---- an external secret and a short-lived token, OpenBao
-OpenBao in the cluster, with the database password stored in it: yes
-Kubernetes Secrets in the cluster that hold the database password: none
-payments-app logs in with its ServiceAccount token: HTTP 200
-lifetime of the OpenBao token it gets: 10 seconds
-it reads the database password: HTTP 200, the right value: yes
-other-app (another ServiceAccount) logs in: HTTP 403
-payments-app reads again 12 seconds later, same token: HTTP 403
-the database password anywhere in etcd: no
---- a bound ServiceAccount token
-requested for 10 minutes: lifetime 600 seconds, audience openbao: yes, tied to the pod report-job: yes
-the old token Secret: has an expiry: no, tied to a pod: no
-both accepted by the API server while report-job runs: yes
-after report-job is deleted (the API server caches the pod for a few seconds): the bound token is accepted: no, the old one: yes
---- the bill
-base64 hides nothing; etcd encryption protects a disk or a backup of etcd, not a person with the right to read secrets
-the key of the encryption sits on the control plane here; a KMS provider keeps it outside
-a development-mode OpenBao is in memory with a known root token; a real one needs storage, unsealing and an audit log
+ONE. Base64 is an encoding, not encryption.
+  THE SECRET (kubectl create secret generic):
+    name   payments/card-key
+    key    demo-card-vault-key-001
+  WHAT THE API RETURNS (data.key):
+    ZGVtby1jYXJkLXZhdWx0LWtleS0wMDE=
+  HOW BASE64 IS UNDONE (first 4 characters, no key):
+    characters  Z, G, V, t
+    place in    25 6 21 45 (A=0 ... Z=25, a=26 ... z=51)
+    6 bits      011001 000110 010101 101101
+    8 bits      01100100 01100101 01101101
+    bytes       100 101 109 = "dem"
+    all of it   demo-card-vault-key-001
+  WHO CAN READ IT:
+    auditor (may only list secrets)  reads the value: yes
+    nobody (no rule on secrets)      reads the value: no
+TWO. Raw etcd, before encryption.
+  THE READ (etcdctl, inside the etcd pod):
+    get /registry/secrets/payments/card-key
+  WHAT ETCD HOLDS:
+    starts with      k8s.....v1..Secret..  (. = not a letter)
+    the card key     as plain text: yes
+    its base64 form  no
+  THE 7 BYTES IN FRONT OF THE CARD KEY (hex):
+    0a 03     field 1, length 3
+    6b 65 79  "key", the name in data
+    12 17     field 2, length 0x17 = 23
+    then      demo-card-vault-key-001 (23 characters)
+  EVERY SECRET IN ETCD:
+    encrypted   0 of 2
+THREE. Encryption at rest.
+  THE ENCRYPTION CONFIGURATION (the API server restarted):
+    resources   secrets
+    provider 1  aescbc, key1: 32 random bytes, not printed
+    provider 2  identity: reads what was stored plain
+  BEFORE THE REWRITE:
+    card-key (written before)  plain text: yes
+    card-key-2 (written after)  encrypted: yes, plain text: no
+    kubectl returns card-key-2 as before: yes
+    secrets encrypted  1 of 3
+  WHAT ETCD HOLDS FOR card-key-2:
+    starts with  k8s:enc:aescbc:v1:key1:
+    k8s:enc   encrypted by the API server
+    aescbc    the provider: AES in CBC mode
+    v1        the provider's format version
+    key1      the key's name in the configuration
+    then      bytes that look random; "Secret" in them: no
+  AFTER THE REWRITE (kubectl replace of every secret):
+    card-key  encrypted: yes, plain text: no
+    secrets encrypted  3 of 3
+    the card key anywhere in etcd: no
+  WHAT IT DOES NOT CHANGE:
+    the key is a file on the control-plane node: yes
+    the auditor still reads the value: yes
+FOUR. OpenBao and a 10 second token.
+  THE ROLE IN OPENBAO (auth/kubernetes/role/payments):
+    who       ServiceAccount payments/payments-app
+    audience  openbao
+    policy    payments-read: read secret/data/payments/db
+    token     10 seconds
+  WHERE THE DATABASE PASSWORD IS:
+    in OpenBao: yes, in a Kubernetes Secret: no, in etcd: no
+  THE LOGIN (payments-app sends its pod's token):
+    sub       system:serviceaccount:payments:payments-app
+    aud       openbao
+  THE RESPONSE:
+    HTTP 200, a token for 10 seconds
+    policies  default, payments-read
+  READING THE PASSWORD WITH THAT TOKEN:
+    at once     HTTP 200, the right value: yes
+    12 s later  12 > 10, expired: HTTP 403
+  ANOTHER POD LOGS IN (other-app):
+    sub       system:serviceaccount:payments:other-app
+    HTTP 403: not the role's ServiceAccount
+FIVE. A bound ServiceAccount token.
+  THE BOUND TOKEN (kubectl create token, 10 minutes):
+    claims    aud exp iat iss jti kubernetes.io nbf sub
+    lifetime  exp - iat = 600 seconds
+    audience  openbao
+    pod       report-job
+  THE OLD TOKEN (a Secret of type service-account-token):
+    claims    6, among them exp: no, aud: no
+    lifetime  no exp: it never expires
+    pod       none
+  THE API SERVER'S ANSWER (a TokenReview of each):
+    while report-job runs  bound: yes, old: yes
+    after it is deleted    bound: no, old: yes

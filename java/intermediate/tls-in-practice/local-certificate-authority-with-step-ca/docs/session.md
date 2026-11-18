@@ -15,8 +15,8 @@ By the end of the session you can:
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A certificate authority that runs | 7 min |
-| 0:17 | Act 2: A certificate for a service, with a token | 7 min |
-| 0:24 | Act 3: A certificate for a service, with ACME | 7 min |
+| 0:17 | Act 2: A certificate with a token | 7 min |
+| 0:24 | Act 3: A certificate with ACME | 7 min |
 | 0:31 | Act 4: Renewing before it ends | 7 min |
 | 0:38 | Act 5: Revocation, and the bill | 7 min |
 | 0:45 | Exercises | 15 min |

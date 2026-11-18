@@ -5,9 +5,11 @@ src/main/java/com/jk/explore/security/hostscan/
 ├── Docker.java        The docker command, as a program
 ├── Finding.java       One thing the scan found: how bad it is, which rule, where, and why it matters
 ├── Host.java          A running container from one of the images, removed on close
-├── HostScanDemo.java  
+├── HostScanDemo.java  Builds the two images, starts containers from them and prints the story in five numbered acts
 ├── Images.java        The two images of the lesson, built from Dockerfiles written here: a typical one with the usual mistakes, and one that was hardened in its recipe
-└── Scanner.java       Reads a running container the way an auditor reads a host: one script run as root inside it, and rules over what it printed
+├── Listeners.java     Reads the kernel's socket tables, /proc/net/tcp and /proc/net/tcp6
+├── Scanner.java       Reads a running container the way an auditor reads a host: one script run as root inside it, and rules over what it printed
+└── Snapshot.java      What the scanning script printed, split at its #section lines, with the views a person reads first
 ```
 
 **A script run as root inside a real container reads its file modes, accounts, sshd_config, listening ports and kernel settings; a typical image has 19 findings, a machine can fix the 7 permission ones, but a fix inside a running container is gone in the next one, so the decisions belong in the image's recipe, which gives a hardened image with 0 findings; a container cannot change the kernel it shares, and how it is started is a separate matter.**
@@ -41,11 +43,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What the scan finds in a typical image | A real container, one script run as root inside it, and 19 findings from critical to low. |
-| 2. The fixes a machine can make, and where they live | Seven permission fixes applied in the running container are in its writable layer, and a new container from the same image has all 19 findings again. |
-| 3. The decisions a person makes, in the recipe | A hardened Dockerfile with the decisions made, started with safe kernel settings, scans with 0 findings and runs as app. |
-| 4. Running it again | Loosening a file in a running hardened container is found as drift, and a new container from the image has none. |
-| 5. The bill | A container shares the host's kernel, the allow-lists are the shop's own, and how it is started is another scan. |
+| 1. What the scan finds in a typical image | One script run as root inside shop-host:typical reads UID 0 for root and toor, an empty password for test, a set-user-id /tmp/.hidden-shell, world-write 777 and 666, modes 644 on the shadow file, host key and config, 775 on cron, four sshd settings at yes, accept_redirects 1 and tcp_syncookies 0, and three listeners on :: (0x0017 = 23, 0x0947 = 2375, 0x18EB = 6379). The report: 7 critical + 8 high + 2 medium + 2 low = 19; 7 auto, 12 = 3 accounts + 4 sshd + 2 kernel + 3 ports for a person. |
+| 2. The fixes a machine can make, and where they live | Seven fix commands (chmod u-s, g-w, 640, 600, o-w) run as root in the running container: 19 - 7 = 12 findings, none a permission. docker diff lists the seven changed files in the container's own layer, plus 8 parent folders. A new container from the same image has 19 findings again. |
+| 3. The decisions a person makes, in the recipe | The hardened recipe removes toor and test, gives app the shell /sbin/nologin, sets modes 600 and 750, sets the four sshd settings to no, listens on 8080 only, runs as USER app and is started with accept_redirects=0 and tcp_syncookies=1. Read the same way: UID 0 only root, no empty password, no set-user-id, nothing world-writable, 640, 600, 600, 750, four sshd no, sysctl 0 and 1, :: port 8080. 0 findings; the process is root in the typical image and app in the hardened one. |
+| 4. Running it again | A running hardened container has 0 findings; after chmod 666 /opt/app/config.properties inside it, the same scan finds loose-permissions and world-writable-file, both HIGH: 0666 & ~0600 = 0066, rw- for the group and others. A new container from the image has 0 findings. |
+| 5. The bill | Inside the container kernel.randomize_va_space reads 2, the host's value, and writing 0 is refused: read-only file system. A container shares the host's kernel; the scan ran as root; the allow-lists are the shop's; how a container is started is the next project. |
 
 ## Test
 
@@ -53,7 +55,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-14 tests in `ContainerScanTest`, `DemoRunsTest`, `ScannerTest`. The rule tests run on text and need no container. The scan tests build the two images and start containers, and remove them (./gradlew integrationTest). They need Docker.
+18 tests in `ContainerScanTest`, `DemoRunsTest`, `ReadingTest`, `ScannerTest`. The rule tests run on text and need no container. The scan tests build the two images and start containers, and remove them (./gradlew integrationTest). They need Docker.
 
 ## What the simulation got right, and what it left out
 

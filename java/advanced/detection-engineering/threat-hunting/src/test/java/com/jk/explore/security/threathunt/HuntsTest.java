@@ -96,4 +96,38 @@ class HuntsTest {
         assertTrue(Generator.week(5, false).dns().size() < a.dns().size());
         assertEquals(a.procs().size() - 2, Generator.week(5, false).procs().size());
     }
+
+    @Test
+    void theGapsAreWorkedOutAsAMeanAndAStandardDeviation() {
+        Hunts.Gaps even = Hunts.gaps(List.of(0L, 300L, 600L, 900L));
+        assertEquals(4, even.calls());
+        assertEquals(300.0, even.mean());
+        assertEquals(0.0, even.variation());
+        Hunts.Gaps uneven = Hunts.gaps(List.of(0L, 100L, 400L));
+        assertEquals(200.0, uneven.mean());
+        assertEquals(100.0, uneven.sd());
+        assertEquals(0.5, uneven.variation());
+    }
+
+    @Test
+    void aBaselineHoldsTheAddressesAndHoursOfTheFirstFourDays() {
+        List<Login> l = List.of(new Login("u", "10.0.0.1", 9 * 3600), new Login("u", "10.0.0.2", 86400 + 14 * 3600), new Login("u", "9.9.9.9", 4 * 86400 + 3 * 3600));
+        Hunts.Baseline b = Hunts.baselines(new Week(List.of(), List.of(), l)).get("u");
+        assertEquals(Set.of("10.0.0.1", "10.0.0.2"), b.ips());
+        assertEquals(List.of(9, 14), List.copyOf(b.hours()));
+    }
+
+    @Test
+    void aHostsLimitIsItsMedianPlusDeviationsTimesTheMad() {
+        Hunts.Volume v = Hunts.volumeOf(new long[] {10, 12, 8, 10, 11, 9, 500}, 6);
+        assertEquals(10.0, v.median());
+        assertEquals(1.0, v.mad());
+        assertEquals(16.0, v.limit());
+    }
+
+    @Test
+    void theDemoFindsEveryAttackTheLogsCanShow() {
+        String out = ThreatHuntingDemo.run();
+        assertTrue(out.contains("THE ATTACKS FOUND: 4 of the 4 that the logs show (5 events)"));
+    }
 }

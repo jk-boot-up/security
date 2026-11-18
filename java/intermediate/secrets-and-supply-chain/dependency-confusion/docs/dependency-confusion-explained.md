@@ -8,27 +8,33 @@ A build must decide by name which repository may supply a package, fail closed w
 
 ### 1. A build that works
 
-json-lib 2.0.1 comes from the public registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from the private repository. A lockfile records the three versions with their SHA-256 digests. Everything is as intended, and nothing yet shows the danger.
+The input: the dependencies (a name and the versions allowed, written [from, below)), and what each repository holds: company-private has shop-pricing 1.4.2 and shop-audit 3.1.0, public-registry has json-lib 2.0.1.
+The result: json-lib 2.0.1 from public-registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from company-private. The lockfile records the three versions and digests.
+How a digest is made: three lines, "shop-pricing@1.4.2", "internal pricing rules" and an empty line for the missing install script, joined by newlines, are 42 bytes of UTF-8; their SHA-256 is 64 hex digits, and one changed byte changes all of them.
 
-### 2. Somebody registers the online store's package name in the public registry
+### 2. Somebody registers the store's name in the public registry
 
-The attacker registers shop-pricing 99.0.0 (and shop-newlib 1.0.0, a name the online store has not published yet) in the public registry, each with an install script. A build that asks every repository and takes the highest version in range, for a requirement written as "at least 1.0", installs
-the attacker's package: "INSTALL SCRIPT RAN" on the build machine, which holds the CI secrets, signing keys and deployment credentials.
+The input: the attacker, who knows only the names, publishes shop-pricing 99.0.0 and shop-newlib 1.0.0 to public-registry, each with an install script ("send CI secrets to attacker.example", only text here).
+How the highest version is chosen for shop-pricing >= 1.0.0: company-private has 1.4.2 and public-registry has 99.0.0; both are in range. Versions compare number by number from the left: major 99 > 1, so 99.0.0 is higher.
+The result: shop-pricing 99.0.0 from public-registry is installed and its install script runs on the build machine, which holds the CI secrets, signing keys and deployment credentials. shop-audit is safe here only because it is pinned to 3.1.0 and the attacker has not published that number.
 
 ### 3. Repository order helps only until a name is missing
 
-Asking the repositories in order and taking the first that has the package fixes the version race: shop-pricing 1.4.2 comes from the private repository. But shop-newlib, an internal library that is not in the private repository yet, falls through to the public registry and the attacker's script runs.
-And in a configuration with the public registry first, the attacker copies the exact version number the online store pinned (shop-audit 3.1.0), and the pin does not help: the attacker's copy comes first.
+The setup: the repositories are asked in order, and the first one that has the name answers (Maven and Gradle by default). With company-private first, shop-pricing 1.4.2 comes from company-private.
+A new internal library, shop-newlib, is not in company-private yet: company-private has no shop-newlib, public-registry has the attacker's 1.0.0, so the name falls through and the script runs.
+With public-registry first (a common misconfiguration), the store pins shop-audit [3.1.0, 3.1.1), and the attacker publishes the same number, 3.1.0: the first repository has it, so the pin does not help.
 
 ### 4. Names decide where a package may come from
 
-Each repository declares which names it may supply: names that start with shop- come only from the private repository, everything else only from the public one. The build installs the right versions from the right places. The unpublished internal library is refused with a clear message
-("an internal name; the private repository has no ..."): the build fails closed, and the attacker's package is never even looked at.
+The input, the rule: a name that starts with shop- is internal. json-lib is public, so public-registry only; shop-pricing, shop-audit and shop-newlib are internal, so company-private only. (Gradle calls this exclusive content; npm uses scopes; repository managers use routing rules.)
+The result for the dependencies as before: json-lib 2.0.1 from public-registry, shop-pricing 1.4.2 and shop-audit 3.1.0 from company-private.
+The result with the unpublished shop-newlib: refused, "shop-newlib is an internal name; the private repository has no >= 0.0.0". The build fails closed; the public registry is never asked for a shop- name.
 
 ### 5. Locked digests, and watching the names
 
-A resolver that wraps another and compares every result with the lockfile refuses the attacker's shop-pricing 99.0.0 (the lock says 1.4.2 with a given digest) even when the underlying tool would have picked it. If someone tampers with the private repository so that shop-pricing 1.4.2
-has different contents, the digest no longer matches and the build stops. Last, a name watch asks the public registry for each internal name and reports shop-newlib and shop-pricing: somebody has registered them, and the security team should know the same day.
+How the lockfile check is made, for shop-pricing: the lockfile says 1.4.2 and a digest. The public-registry package is 99.0.0: the version differs. A changed package in company-private is 1.4.2 with other bytes: the digest differs.
+The result with the highest-version rule and the lockfile: json-lib and shop-audit are installed, shop-pricing 99.0.0 from public-registry is refused. With names deciding but a changed 1.4.2 in company-private: shop-pricing 1.4.2 is refused too.
+The name watch asks the public registry for each internal name (shop-audit, shop-newlib, shop-pricing) and finds shop-newlib and shop-pricing: somebody has registered them, and the security team should know the same day.
 
 ## The verdict
 

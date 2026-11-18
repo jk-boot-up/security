@@ -43,10 +43,10 @@ Teams verify downloads with a checksum from the same place as the file, keep one
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 40 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 103 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:35, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:43, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

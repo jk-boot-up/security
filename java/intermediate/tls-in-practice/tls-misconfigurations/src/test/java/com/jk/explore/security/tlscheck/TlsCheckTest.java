@@ -69,6 +69,28 @@ class TlsCheckTest {
     }
 
     @Test
+    void suiteNamesSplitIntoTheirParts() {
+        assertEquals(new SuiteName("ECDHE", "RSA", "AES_128", "GCM", "SHA256"), SuiteName.parse("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"));
+        assertEquals(new SuiteName("RSA", "RSA", "RC4_128", "stream", "SHA"), SuiteName.parse("TLS_RSA_WITH_RC4_128_SHA"));
+        assertEquals(new SuiteName("RSA", "RSA", "3DES_EDE", "CBC", "SHA"), SuiteName.parse("TLS_RSA_WITH_3DES_EDE_CBC_SHA"));
+        assertEquals(new SuiteName("ECDHE", "ECDSA", "CHACHA20", "POLY1305", "SHA256"), SuiteName.parse("TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"));
+        // the key exchange part is exactly what the forward secrecy rule looks at
+        for (String suite : Profiles.legacy().cipherSuites()) {
+            String kx = SuiteName.parse(suite).keyExchange();
+            assertEquals(!kx.equals("ECDHE") && !kx.equals("DHE"), CipherSuites.lacksForwardSecrecy(suite), suite);
+        }
+    }
+
+    @Test
+    void theScoreAloneGivesTheseBands() {
+        assertEquals('A', Checker.byScore(90));
+        assertEquals('B', Checker.byScore(89));
+        assertEquals('C', Checker.byScore(60));
+        assertEquals('D', Checker.byScore(59));
+        assertEquals('F', Checker.byScore(39));
+    }
+
+    @Test
     void ciphersGiveTheRightFindings() {
         ServerProfile g = Profiles.good();
         Report r = checker.check(with(g, g.protocols(), List.of("TLS_RSA_WITH_RC4_128_SHA", "TLS_RSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",

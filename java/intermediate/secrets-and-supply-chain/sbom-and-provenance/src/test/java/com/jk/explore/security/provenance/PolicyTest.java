@@ -56,4 +56,22 @@ class PolicyTest {
     void aStatementForAnotherArtifactNameIsRefused() {
         assertFalse(POLICY.check(RELEASE.provenance(), "other.jar", RELEASE.artifact()).allowed());
     }
+
+    @Test
+    void aRefusalNamesTheCheckThatFailed() {
+        assertEquals(1, POLICY.check(null, "shop.jar", RELEASE.artifact()).failedCheck());
+        Builder.Build staging = new Builder("staging", ProvenanceDemo.CI.keyId(), ProvenanceDemo.CI.key()).build(ProvenanceDemo.main(), "shop.jar", "b5");
+        Verdict verdict = POLICY.check(staging.provenance(), "shop.jar", staging.artifact());
+        assertEquals("builder", Policy.CHECKS.get(verdict.failedCheck() - 1));
+        assertEquals(0, POLICY.check(RELEASE.provenance(), "shop.jar", RELEASE.artifact()).failedCheck());
+    }
+
+    @Test
+    void theSignatureDoesNotCoverTheSameBytesUnderAnotherPayloadType() throws Exception {
+        Object envelope = Json.read(RELEASE.provenance());
+        byte[] payload = java.util.Base64.getDecoder().decode(Json.text(envelope, "payload"));
+        byte[] sig = java.util.Base64.getDecoder().decode(Json.text(((java.util.List<?>) Json.at(envelope, "signatures")).get(0), "sig"));
+        assertTrue(Ed25519.verify(ProvenanceDemo.CI.key().getPublic(), Dsse.pae(Dsse.PAYLOAD_TYPE, payload), sig));
+        assertFalse(Ed25519.verify(ProvenanceDemo.CI.key().getPublic(), Dsse.pae("application/json", payload), sig));
+    }
 }

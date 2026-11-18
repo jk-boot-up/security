@@ -5,20 +5,20 @@ src/main/java/com/jk/explore/security/siembasics/
 ├── Correlator.java      Rules that look across sources and across time
 ├── Event.java           The one shape that every source is turned into: when (in UTC), who, from where, what, and whether it worked
 ├── Parsers.java         Turns the lines of each source into events
-├── SiemBasicsDemo.java  
+├── SiemBasicsDemo.java  A long log line cut at spaces or after commas, each piece at most width characters where it can be
 └── Sources.java         One day of log lines from three sources in three formats, always the same: a web application (JSON), a database audit log (key=value, local time) and a host (syslog)
 ```
 
-**One day of a bank's logs comes from three sources in three formats, a web application (623 lines of JSON), a database audit log (322 lines of key=value in local time) and a host (506 lines of syslog); 20 lines that do not fit are kept as dead letters; a query written for the web fields finds 121 failed logins and one query on the common fields finds 178 from 2 sources; the database's +0530 clock, read as if it were UTC, moves an event by 330 minutes and a rule misses the bulk export (1 alert against 0); a rule of 10 failed logins within 10 minutes finds 0 alerts one source at a time and 1 alert on the joined events (alice, 15 events), 0 for ordinary mistyped passwords, and the 2 alerts become 1 case.**
+**One day of a bank's logs comes from three sources in three formats, a web application (623 lines of JSON), a database audit log (322 lines of key=value in local time) and a host (506 lines of syslog); 20 lines that do not fit are kept as dead letters; a query written for the web fields finds 121 failed logins and one query on the common fields finds 178 from 2 sources; the database's +0530 clock, read as if it were UTC, moves an event by 330 minutes and a rule misses the bulk export (1 alert against 0); a rule of 10 failed logins within 10 minutes finds 0 alerts one source at a time and 1 alert on the joined events (8 web and 6 host failures, then a success: 15 events), 0 for ordinary mistyped passwords, and the 2 alerts become 1 case.**
 
 A SIEM does three things before it can say anything useful: it **collects** lines from many sources, it **normalizes** them into one shape and one clock, and it **correlates** them across sources and time. This project does all three in Java for one day at a bank, from three sources in three formats: a web application (JSON), a database audit log (key=value, in local time with an offset) and a host (syslog, with no year and no time zone). An attack is hidden across them. It needs only the JDK: `./gradlew test`, then `./gradlew run`.
 
-What it shows:
-- **Collecting.** 623 + 322 + 506 lines; the **20** lines of the database log that do not fit are kept as **dead letters**, not dropped.
-- **Normalizing.** A query written for the web's field names finds **121** failed logins; one query on the common fields finds **178**, from 2 sources.
-- **The clock.** The database writes `+0530`; read as UTC it moves an event by **330 minutes**, and a correlation rule misses the bulk export (**1** alert against **0**).
-- **Correlating.** A rule of 10 failed logins in 10 minutes raises **0** alerts one source at a time and **1** on the joined events; ordinary mistyped passwords raise **0**.
-- **Cases.** The 2 alerts about the same user are **1** case.
+The demo prints five acts:
+- **Three formats, one shape.** One line of each source about alice becomes one event with the same fields: time in UTC, source, host, user, address, action, outcome, rows. Over the day, 623 + 322 + 506 lines; the **20** database lines that do not fit are kept as **dead letters**, not dropped.
+- **One query.** A query written for the web's field names finds **121** failed logins; one query on the common fields finds **178**, from 2 sources (121 web, 57 host).
+- **The clock.** The database writes `14:55:00 +0530`; honoured, that is 09:25:00 UTC, five minutes after alice's web login, and the rule "login, then a bulk read within 15 minutes" alerts. Read as UTC it moves the event by **330 minutes** and the rule raises **0** alerts.
+- **Correlating.** A rule of 10 failed logins in 10 minutes, then a success: the web alone has 8, the host alone 6, so **0** alerts one source at a time; joined, 14 failures and the success raise **1** alert with 15 events. Ordinary mistyped passwords raise **0**.
+- **Cases.** The 2 alerts about alice are **1** case.
 
 **Maps to:** NIST CSF 2.0 DE.CM and DE.AE · NIST SP 800-92 (log management) · MITRE ATT&CK T1110 (brute force), T1078 (valid accounts), T1213 (data from information repositories) · ECS and OCSF as common schemas.
 
@@ -40,11 +40,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Collecting three sources | 623 JSON lines, 322 database lines and 506 syslog lines; the 20 that do not fit are kept as dead letters. |
-| 2. Normalizing into one shape | A query for the web's fields finds 121 failed logins; one query on the common fields finds 178 from 2 sources. |
-| 3. The clock | The database's +0530 clock, read as UTC, moves an event by 330 minutes and a correlation rule misses the attack. |
-| 4. Correlating across sources | A rule of 10 failures in 10 minutes raises 0 alerts one source at a time and 1 on the joined events. |
-| 5. From alerts to cases | The 2 alerts about alice are 1 case. |
+| 1. Three formats, one shape | One web line (JSON), one database line (key=value, local time) and one syslog line about alice become three events with the same eight fields, in UTC. Over the day: 623, 322 and 506 lines; 20 database lines do not fit and are kept as dead letters. |
+| 2. One query on the common fields | A query on the web application's own fields (type = login and ok = false) finds 121 failed logins. One query on the common fields (action = login and outcome = failure) finds 178: 121 from the web and 57 from the hosts. |
+| 3. The clock decides an alert | The database writes 14:55:00 +0530. Honoured, that is 14:55:00 - 05:30 = 09:25:00 UTC, five minutes after alice's web login at 09:20:00, so the rule "a web login, then a bulk read within 15 minutes" raises 1 alert. Read as UTC, the read lands at 14:55:00, 335 minutes after the login: 0 alerts. The nightly report job's 600000-row read at 02:00:00 has no login before it: 0 alerts. |
+| 4. Correlating across sources | From 203.0.113.5, alice gets 8 failed web logins and 6 failed ssh logins between 09:12:00 and 09:14:20, then a web success at 09:20:00. The rule (10 failures within 10 minutes, then a success) sees 8 on the web alone and 6 on the host alone: 0 alerts. On the joined events it counts 14 failures and the success: 1 alert with 15 events. Ordinary mistyped passwords raise 0. |
+| 5. From alerts to cases | Two alerts about alice, a burst of failures then a success (15 events) and a login then a bulk read (2 events), become one case: 2 alerts, 17 events, one story. |
 
 ## Test
 
@@ -52,7 +52,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-10 tests in `DemoRunsTest`, `SiemTest`. The parsers, the rules and the generator are tested with the JDK only. The demo is compared with its golden output.
+12 tests in `DemoRunsTest`, `SiemTest`, `WrapTest`. The parsers, the rules and the generator are tested with the JDK only. The demo is compared with its golden output by `./gradlew test`.
 
 ## What the simulation got right, and what it left out
 
@@ -132,4 +132,4 @@ A small team with one application can read its log directly. A SIEM pays when se
 
 ## Where this sits
 
-This is a project of the [detection-engineering](..) module, after [detection-as-code](../detection-as-code) and [threat-hunting](../threat-hunting). The rules there assume the common shape that this project builds.
+This is a project of the [detection-engineering](..) module, after [detection-as-code](../detection-as-code) and before [threat-hunting](../threat-hunting). The rules of detection-as-code assume the common shape that this project builds, and the hunts of threat-hunting search it.

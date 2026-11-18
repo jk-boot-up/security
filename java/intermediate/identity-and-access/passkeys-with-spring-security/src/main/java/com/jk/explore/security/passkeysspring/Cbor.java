@@ -54,4 +54,39 @@ final class Cbor {
             out.write(value & 0xff);
         }
     }
+
+    /** Reads a CBOR map of small integer keys to small integers or byte strings, as in a COSE key, into its keys and values in order. */
+    static java.util.List<Object[]> readMap(byte[] bytes) {
+        java.util.List<Object[]> out = new java.util.ArrayList<>();
+        int[] at = {0};
+        int head = bytes[at[0]++] & 0xff;
+        if (head >> 5 != 5) {
+            throw new IllegalArgumentException("not a CBOR map");
+        }
+        for (int i = 0; i < (head & 0x1f); i++) {
+            out.add(new Object[] {read(bytes, at), read(bytes, at)});
+        }
+        return out;
+    }
+
+    private static Object read(byte[] bytes, int[] at) {
+        int head = bytes[at[0]++] & 0xff;
+        int type = head >> 5;
+        int value = head & 0x1f;
+        if (value == 24) {
+            value = bytes[at[0]++] & 0xff;
+        } else if (value > 24) {
+            throw new IllegalArgumentException("only short CBOR items are read here");
+        }
+        return switch (type) {
+            case 0 -> value;
+            case 1 -> -1 - value;
+            case 2 -> {
+                byte[] b = java.util.Arrays.copyOfRange(bytes, at[0], at[0] + value);
+                at[0] += value;
+                yield b;
+            }
+            default -> throw new IllegalArgumentException("only integers and byte strings are read here");
+        };
+    }
 }

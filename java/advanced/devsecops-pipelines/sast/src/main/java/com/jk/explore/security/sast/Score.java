@@ -24,6 +24,20 @@ public record Score(List<Marker> found, List<Marker> missed, List<Marker> flagge
         return String.format("%d of %d flaws found, %d of %d safe lines flagged", found.size(), vulnerable(), flaggedSafe.size(), safeTotal);
     }
 
+    /** Recall: the share of the flaws that were found, worked out. */
+    public String recall() {
+        return ratio(found.size(), vulnerable());
+    }
+
+    /** Precision: the share of the flagged lines that are real flaws, worked out. */
+    public String precision() {
+        return ratio(found.size(), found.size() + flaggedSafe.size());
+    }
+
+    static String ratio(int a, int b) {
+        return a + "/" + b + " = " + (b == 0 ? "-" : Math.round(100.0 * a / b) + "%");
+    }
+
     static String names(List<Marker> ms) {
         return ms.isEmpty() ? "none" : String.join(", ", ms.stream().map(Marker::id).toList());
     }

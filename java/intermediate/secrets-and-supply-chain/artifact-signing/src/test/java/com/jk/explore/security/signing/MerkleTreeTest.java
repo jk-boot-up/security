@@ -29,6 +29,17 @@ class MerkleTreeTest {
                 Digests.hex(MerkleTree.root(two, 2)));
     }
 
+    /** The demo works out the root of three leaves as sha256(01 || old root of two || leaf 2), and the proof from 2 to 3 is leaf 2. */
+    @Test
+    void aThirdLeafHangsOffTheOldRootOfTwo() {
+        List<byte[]> three = leaves(3);
+        byte[] leaf2 = MerkleTree.leafHash(three.get(2));
+        assertEquals(Digests.hex(MerkleTree.nodeHash(MerkleTree.root(three, 2), leaf2)), Digests.hex(MerkleTree.root(three, 3)));
+        List<byte[]> proof = MerkleTree.consistencyProof(three, 2, 3);
+        assertEquals(1, proof.size());
+        assertEquals(Digests.hex(leaf2), Digests.hex(proof.getFirst()));
+    }
+
     @Test
     void theTreeSplitsAtTheLargestPowerOfTwoBelowItsSize() {
         assertEquals(1, MerkleTree.split(2));

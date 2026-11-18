@@ -48,11 +48,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A cart in a cookie | A cart with a note typed by class name round-trips: 2 lines, total 9200 cents. |
-| 2. The cookie decides which class is built | Jackson 3 refuses class names for an Object base type, but a cookie can name a TempCleaner for a Note and the marker file is gone, and global default typing builds anything. |
-| 3. A list of kinds, or a list of classes | Short names from a list and a validator that lists classes both refuse the gadget and leave the marker file; the forged price is still accepted. |
-| 4. Data only, priced by the shop | A request of codes and quantities, with unknown properties refused: a forged price, a class name, a negative quantity and an unknown product are all refused. |
-| 5. Limits on the stream | Nesting beyond 500 is refused by default and beyond 10 when tightened; text over 64 characters and numbers over 10 digits are refused. |
+| 1. A cart in a cookie | The cart's JSON holds two lines with their prices and a note that names its class, Note$Gift; the cookie is that JSON in Base64, starting eyJ; it reads back as 2 x 2500 + 1 x 4200 = 9200 cents. |
+| 2. The cookie decides which class is built | A forged price of 1 cent is believed; a note naming TempCleaner is built and deletes the marker file; Jackson 3 refuses an Object base type by default, but global default typing with a permissive validator builds the gadget again. |
+| 3. A list of kinds, or a list of classes | Short names from a list (gift, coupon) make TempCleaner an unknown type id; a validator that lists Note.Gift and Note.Coupon refuses it as a class not allowed; the marker file survives both, and the forged price is still accepted. |
+| 4. Data only, priced by the shop | The request holds only codes and quantities; the shop prices it from its catalogue (2 x 2500 + 1 x 4200 = 9200); a forged price and a class name are unknown properties, and a quantity of -5 and an unknown product are refused. |
+| 5. Limits on the stream | Jackson 3 allows 500 levels of nesting by default; the request mapper tightens nesting to 10, text to 64 characters and numbers to 10 digits, and each is refused with a fixed reason. |
 
 ## Test
 

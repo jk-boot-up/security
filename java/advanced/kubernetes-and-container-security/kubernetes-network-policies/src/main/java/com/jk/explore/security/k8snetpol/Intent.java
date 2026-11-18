@@ -15,6 +15,11 @@ public record Intent(Set<String> allowed) {
     /** What a measurement showed against the design. */
     public record Diff(int reachable, int total, List<String> unwanted, List<String> missing) {
 
+        /** The reachable pairs that the design lists: reachable = wanted + unwanted. */
+        public int wanted() {
+            return reachable - unwanted.size();
+        }
+
         public boolean matches() {
             return unwanted.isEmpty() && missing.isEmpty();
         }

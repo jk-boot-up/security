@@ -17,7 +17,7 @@ By the end of the session you can:
 | 0:10 | Act 1: What the customer sees when the database is down | 8 min |
 | 0:18 | Act 2: What the log keeps | 8 min |
 | 0:26 | Act 3: A generic answer, and the details where only the team looks | 8 min |
-| 0:34 | Act 4: Redaction, wrappers and forged lines | 8 min |
+| 0:34 | Act 4: Redaction: what it finds and what it misses | 8 min |
 | 0:42 | Exercises | 18 min |
 
 ## Walkthrough

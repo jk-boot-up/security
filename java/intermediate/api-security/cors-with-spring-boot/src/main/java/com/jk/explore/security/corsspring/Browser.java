@@ -41,7 +41,7 @@ final class Browser {
      */
     FetchResult fetch(String pageOrigin, String method, String path, String contentType, boolean withCredentials) throws IOException, InterruptedException {
         int before = processed.list().size();
-        boolean simple = SIMPLE_METHODS.contains(method) && (contentType == null || SIMPLE_TYPES.contains(contentType));
+        boolean simple = isSimple(method, contentType);
         boolean sameOrigin = pageOrigin.equals(bankUrl);
         if (!simple && !sameOrigin) {
             Reply p = preflight(pageOrigin, method, path, contentType != null);
@@ -84,6 +84,11 @@ final class Browser {
             b.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("ana:" + BankSecurity.PASSWORD).getBytes(StandardCharsets.UTF_8)));
         }
         return send(b.method(method, method.equals("GET") ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString("{}")).build());
+    }
+
+    /** A simple request is sent without asking first: GET, HEAD or POST, with no body or a form or plain-text body. */
+    static boolean isSimple(String method, String contentType) {
+        return SIMPLE_METHODS.contains(method) && (contentType == null || SIMPLE_TYPES.contains(contentType));
     }
 
     /** The browser's check on a response: Access-Control-Allow-Origin must name the page (or be {@code *} without credentials). */

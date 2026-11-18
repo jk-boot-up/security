@@ -2,6 +2,7 @@ package com.jk.explore.security.logging;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 /** Finds the shapes of secrets in text that was already written, and covers them. A safety net: it knows only the shapes it was given. */
 public final class Masker {
@@ -34,14 +35,17 @@ public final class Masker {
         StringBuilder out = new StringBuilder();
         while (m.find()) {
             String digits = m.group().replaceAll("[ -]", "");
-            m.appendReplacement(out, Matcher.quoteReplacement(luhn(digits) ? "[CARD ****" + digits.substring(digits.length() - 4) + "]" : m.group()));
+            String cover = luhn(digits)
+                    ? "[CARD ****" + digits.substring(digits.length() - 4) + "]" : m.group();
+            m.appendReplacement(out, Matcher.quoteReplacement(cover));
         }
         m.appendTail(out);
         return out.toString();
     }
 
-    static boolean luhn(String digits) {
-        int sum = 0;
+    /** What each digit adds to the Luhn sum: from the right, every second digit is doubled, and 9 is taken off a result over 9. */
+    static int[] luhnSteps(String digits) {
+        int[] steps = new int[digits.length()];
         boolean second = false;
         for (int i = digits.length() - 1; i >= 0; i--) {
             int d = digits.charAt(i) - '0';
@@ -51,9 +55,13 @@ public final class Masker {
                     d -= 9;
                 }
             }
-            sum += d;
+            steps[i] = d;
             second = !second;
         }
-        return sum % 10 == 0;
+        return steps;
+    }
+
+    static boolean luhn(String digits) {
+        return IntStream.of(luhnSteps(digits)).sum() % 10 == 0;
     }
 }

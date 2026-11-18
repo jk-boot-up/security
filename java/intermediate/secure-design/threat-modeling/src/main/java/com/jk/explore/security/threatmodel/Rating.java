@@ -8,7 +8,7 @@ import java.util.Map;
  */
 record Rating(int likelihood, int impact) {
 
-    private static final Map<String, Integer> LIKELIHOOD_BY_ZONE = Map.of(
+    static final Map<String, Integer> LIKELIHOOD_BY_ZONE = Map.of(
             BankModel.DEVICE, 5, BankModel.DMZ, 4, BankModel.PARTNER, 3, BankModel.INTERNAL, 2);
     private static final Map<String, Integer> IMPACT_BY_ELEMENT = Map.of(
             "S1", 5, "P3", 5, "P2", 4, "E1", 4, "E2", 4, "S2", 3, "P1", 3);
@@ -23,9 +23,17 @@ record Rating(int likelihood, int impact) {
             return new Rating(LIKELIHOOD_BY_ZONE.get(e.zone()), IMPACT_BY_ELEMENT.getOrDefault(e.id(), 3));
         }
         Flow f = model.flows().stream().filter(x -> x.id().equals(threat.target())).findFirst().orElseThrow();
+        return new Rating(likelihoodOf(weakerZone(model, f)), f.money() ? 5 : 3);
+    }
+
+    /** The less trusted end of a flow, where an attacker would start. */
+    static String weakerZone(Model model, Flow f) {
         String from = model.zoneOf(f.from());
         String to = model.zoneOf(f.to());
-        String weaker = model.trust(from) <= model.trust(to) ? from : to;
-        return new Rating(LIKELIHOOD_BY_ZONE.get(weaker), f.money() ? 5 : 3);
+        return model.trust(from) <= model.trust(to) ? from : to;
+    }
+
+    static int likelihoodOf(String zone) {
+        return LIKELIHOOD_BY_ZONE.get(zone);
     }
 }

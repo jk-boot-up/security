@@ -9,39 +9,42 @@ application for a short time from a secrets service that can rotate and revoke t
 
 ### 1. Where secrets leak
 
-The scanner reads the three files the team committed and finds three secrets: a database password and a payment key named in a
-properties file, and a random-looking value in a script. The production file names where its secrets come from and holds none. A key in an
-environment variable is read by any program the store starts, and by crash reports and debug pages that print the environment. And an image
-built with the key, which a later layer deletes, hides it from the running container, but anyone with the image file reads it from layer two.
+The input is the three files the team committed: config/application.properties, config/production.properties and scripts/refund.sh.
+The scanner finds three secrets: db.password and payment.api-key, by the name of the setting, and a random-looking token in the script.
+It skips ${DB_PASSWORD} and file:/run/secrets/payment-key, because a placeholder only says where a secret comes from.
+How "random-looking" is worked out: entropy is the sum, over each character, of p x log2(1/p), where p is the character's share.
+The 32-character token has 21 characters once, 4 twice and 1 three times: 3.28 + 1.00 + 0.32 = 4.60 bits, at least 4.0, so it is flagged.
+The class name ProductCatalogueController gives 0.90 + 1.14 + 1.08 + 0.42 = 3.54, under 4.0, so it is not.
+A key in the environment variable SHOP_PAYMENT_KEY is read by printenv, a program the store starts, and by any crash report that prints the environment.
+An image is built in three layers: the jar, the key, and a whiteout that hides the key. The running container sees only app/shop.jar, but layer 2 still holds the key.
 
 ### 2. Secrets injected at run time
 
-Secrets are injected when the store starts, as files in a mounted folder, the way container platforms do. A secret file with permissions
-rw-r--r-- is refused at startup, because others can read it. The same file with rw------- is read once: twenty-four characters, nothing in
-the code or the image. Written into a log line, the secret shows as [redacted], because the Secret type never prints its value. Once the
-connection pool has its copy, the startup copy is wiped, and using it fails.
+Before the fix, the mounted file run/secrets/db-password has permissions rw-r--r--: owner rw-, group r--, others r--. Group and others can read it, so the store refuses it at startup.
+After the fix, the same file has rw-------: owner rw-, group ---, others ---. It is read once at startup: 24 characters, not in the code or the image.
+The code writes "connecting with password " + password into a log line; the log shows connecting with password [redacted], because the Secret type never prints its value.
+Once the connection pool has its copy, the startup copy is wiped, and using it fails.
 
 ### 3. A secrets service that hands out leased logins
 
-Instead of one shared password, a secrets service hands out logins. The shop API proves who it is and gets a database login of its own,
-v-shop-api-1, for 900 seconds. The reports job gets a different login; no two applications share one. A wrong application credential is
-refused. At t=600 the shop's login works, and renewing extends it to t=1500. The reports lease, never renewed, ends at t=900 and its login is
-removed from the database. Renewals stop at the maximum of 3600 seconds after issue, and at t=3600 the database refuses the shop's login, so
-the shop asks for a new one. The audit trail records every request: ten entries.
+The requests: at t=0, shop-api with its credential gets v-shop-api-1 until t=900, reports gets v-reports-2 until t=900, and shop-api with a wrong credential is refused.
+At t=600 v-shop-api-1 works. A renewal's new end is min(now + time to live, issued + maximum): at t=600, min(600 + 900, 0 + 3600) = 1500.
+At t=900 the reports lease ends, never renewed: its login is removed, and v-reports-2 no longer works.
+The shop renews at t=1400, 2100, 2800 and 3500: 2300, 3000, then min(3700, 3600) = 3600 twice, because a lease never runs past its maximum.
+At t=3600 v-shop-api-1 no longer works, so the shop asks for a new lease. The audit trail records all 10 requests.
 
 ### 4. Rotation without downtime, and the blast radius of a leak
 
-The payment provider issues key v2 while v1 is still in use, and during the changeover it accepts both. Every server of the store switches to
-v2, then v1 is revoked: v1 is refused and v2 works, with no moment in which neither did. Then the blast radius of a leak. A leased login copied
-at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it, and once the leak is noticed, revoking the lease ends it at once.
-A static database password copied at the same moment still works three years later, until someone remembers to change it.
+The rotation in three steps: with v1 in use the provider accepts [v1]; it issues v2 and accepts [v1, v2], so both work during the changeover; once every server is on v2, v1 is revoked and only [v2] is accepted.
+The blast radius of a leak: a thief copies a leased login at t=600. It ends at t=900, so it works 900 - 600 = 300 s more; if the thief can renew it, at most until t=3600, 3600 - 600 = 3000 s more.
+Once the leak is noticed, revoking the lease ends it at once: the login works right after: false.
+A static database password copied at the same time still works three years later, until someone changes it.
 
 ### 5. The bill
 
-The secrets service holds every secret, so it needs its own access control, audit and backups. The application still needs a first credential
-to prove who it is; platform identity, in the advanced track, removes it. Leases and rotation need applications that can reconnect with a new
-login without a restart. A scanner finds only what it has patterns for, so it is one check, not a guarantee, and history must be scanned too.
-The -with-openbao version runs the same leases against a real secrets server.
+The secrets service holds every secret, so it must be guarded, audited and backed up. The application still needs a first credential to prove who it is; platform identity, in the advanced track, removes it.
+Leases and rotation need applications that can take a new login without a restart. A scanner finds only what it has patterns for, so the history of a repository and every image must be scanned too.
+The -with-openbao version runs the same leases on a real secrets server.
 
 ## The verdict
 

@@ -14,16 +14,16 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Eight rules in Java | 7 min |
-| 0:17 | Act 2: Testing the rules | 7 min |
+| 0:10 | Act 1: Eight rules in Java, on the store's manifests | 7 min |
+| 0:17 | Act 2: Testing the rules with their own samples | 7 min |
 | 0:24 | Act 3: Three scanners on the same files | 7 min |
-| 0:31 | Act 4: Exceptions | 7 min |
-| 0:38 | Act 5: A baseline, and the bill | 7 min |
+| 0:31 | Act 4: Exceptions: a waiver with an owner and an end | 7 min |
+| 0:38 | Act 5: A baseline in the build | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run act three and find the one rule that no scanner has. In act four change the day and watch the finding return.
+In act one match each x of the matrix to a setting, or to a setting that is missing. In act three find the one rule that no scanner has. In act four change the day and watch the finding return.
 
 ## Exercises
 

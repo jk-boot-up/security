@@ -14,11 +14,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** The opa binary run as a server with one Rego file, asked for a decision over its REST API. */
 final class Opa implements Decider, AutoCloseable {
+
+    /** The version the golden output was made with; another version could evaluate or count the tests differently. */
+    static final String VERSION = "1.21.3";
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -29,6 +33,14 @@ final class Opa implements Decider, AutoCloseable {
     private Opa(Process process, URI base) {
         this.process = process;
         this.base = base;
+    }
+
+    /** Stops with a clear message when the opa on the path is not the pinned version. */
+    static void requirePinnedVersion() throws IOException, InterruptedException {
+        String out = Sh.run(List.of("opa", "version")).output();
+        if (!out.contains("Version: " + VERSION + "\n")) {
+            throw new IllegalStateException("this demo needs opa " + VERSION + " (see docs/prerequisites.md), found: " + out.lines().findFirst().orElse("none"));
+        }
     }
 
     /** Runs the Rego tests that sit beside the policy and returns {passed, total}. */
@@ -77,8 +89,24 @@ final class Opa implements Decider, AutoCloseable {
         return new Decision(result.path("allow").asBoolean(), reasons);
     }
 
+    /** Every rule's value for one input, as OPA works it out (an undefined rule is missing from the answer). */
+    JsonNode explain(Map<String, Object> input) throws IOException, InterruptedException {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("/v1/data/bank/zerotrust"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(Map.of("input", input)))).build();
+        return JSON.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body()).path("result");
+    }
+
+    /** Stops the server and waits until it is gone, so that the next request finds no decision (an outage, not a race). */
     @Override
     public void close() {
         process.destroy();
+        try {
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                process.destroyForcibly().waitFor();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

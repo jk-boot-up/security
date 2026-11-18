@@ -14,17 +14,19 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Downloading an invoice | 5 min |
-| 0:15 | Act 2: A name with dot-dot leaves the folder | 5 min |
-| 0:20 | Act 3: A text check on the path is not a path check | 5 min |
-| 0:25 | Act 4: Names, paths and links, all checked | 5 min |
-| 0:30 | Act 5: Uploads | 5 min |
-| 0:35 | Act 6: Where to send the customer next | 5 min |
-| 0:40 | Exercises | 20 min |
+| 0:10 | Act 1: An honest name downloads one invoice | 5 min |
+| 0:15 | Act 2: A name with .. climbs out of the folder | 5 min |
+| 0:20 | Act 3: A text check is not a path check | 5 min |
+| 0:25 | Act 4: The fixed version checks in four layers | 5 min |
+| 0:30 | Act 5: Spring's static handler follows a link | 5 min |
+| 0:35 | Act 6: The naive upload trusts the customer's name | 5 min |
+| 0:40 | Act 7: The fixed upload decides for itself | 5 min |
+| 0:45 | Act 8: Return links stay on our own site | 5 min |
+| 0:50 | Exercises | 10 min |
 
 ## Walkthrough
 
-Run act three and ask what startsWith compares. In act four ask why Spring's handler served the link. In act five ask which of the five uploads checks would still be needed if the limit property were missing.
+Run act three and ask what startsWith compares. In act five ask why Spring's handler served the link. In act seven ask which of the five uploads checks would still be needed if the limit property were missing.
 
 ## Exercises
 

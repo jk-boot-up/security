@@ -24,17 +24,32 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Service Mesh and Automatic mTLS, Explained</h1>
 <h2>The idea in one sentence</h2>
 <p>The mesh names the caller and hides the call; a policy decides, and someone still owns the ServiceAccounts.</p>
-<h2>The 5 acts</h2>
+<h2>The 6 acts</h2>
 <h3>1. Before and after the proxies</h3>
-<p>A packet capture beside the node sees the call from web to payments. Before injection the account number is in the capture. After, the capture holds only traffic to the proxy port, and the proxy counters show web as the caller seen by payments and payments as the server seen by web.</p>
-<h3>2. Identities from ServiceAccounts</h3>
-<p>The identity service signs each proxy's certificate after checking the pod's ServiceAccount token. The name is the ServiceAccount, the namespace and the trust domain, so a ServiceAccount of the same name in another namespace is another identity.</p>
-<h3>3. Mutual TLS is not a decision</h3>
-<p>Linkerd's default inbound policy lets every caller in. Mutual TLS encrypts and identifies, but nothing says who may call. The batch job with no proxy reaches all 4 services and the node gets HTTP 200.</p>
+<p>The input: web calls GET http://payments.bank:8080/echo?msg=ACCT-4417-transfer-9000 while tcpdump runs on the node.
+Before the proxies (0 of 5 pods have one): HTTP 200, the capture holds the request line GET /echo?msg=ACCT-4417-transfer-9000, the account is readable (yes).
+After injection (4 of 5 pods; legacy/batch left out): HTTP 200, no request line on the wire (none), the account is not readable (no), and packets went to port 4143, the proxy's inbound port.
+The result: payments' proxy counted the request under the client certificate web.bank.serviceaccount.identity.linkerd.cluster.local, and web's proxy under the server certificate payments.bank...: both ends proved who they are.</p>
+<h3>2. An identity from each ServiceAccount</h3>
+<p>The input: the pod spec of payments: namespace bank, serviceAccountName payments.
+How the name is made: payments (the ServiceAccount) . bank (the namespace) . serviceaccount.identity (fixed) . linkerd (Linkerd's namespace) . cluster.local (the trust domain).
+The result: linkerd identity prints the subject of each proxy's certificate; web, payments, ledger and statements each hold the name the rule gives, 4 of 4. The identity service signs a certificate only after checking the pod's ServiceAccount token.</p>
+<h3>3. Mutual TLS alone does not decide</h3>
+<p>The input: every caller (web, payments, ledger, statements and legacy/batch) calls every bank service: 5 x 4 - 4 = 16 pairs. The design allows 2: web -&gt; payments and payments -&gt; ledger.
+The result: 16 of 16 answered, 14 not in the design, 0 missing. legacy/batch, with no proxy, reached 4 of 4. Ledger's proxy let in a connection with no identity (yes), and the node itself, with no proxy and no identity, gets HTTP 200. Linkerd's default inbound policy, all-unauthenticated, lets every caller in: mutual TLS encrypts and names, but decides nothing.</p>
 <h3>4. A policy names who may call</h3>
-<p>Each service gets a Server for its port and an AuthorizationPolicy naming the identity allowed. Statements, web calling the ledger directly, the pod with no proxy and the node are refused with 403; the ledger's proxy counts the refusals by caller.</p>
+<p>The input: Policies.forService writes a Server (port 8080 of the pod) for web, statements, payments and ledger, and for payments and ledger a MeshTLSAuthentication naming one identity and an AuthorizationPolicy that requires it. A Server alone refuses every caller.
+The result: 2 of 16 answered, 0 not in the design, 0 missing; the measurement equals the design (yes). Calls to ledger one by one: statements HTTP 403, web 403, legacy/batch 403, payments 200. Ledger's proxy counted the refusals by the caller's identity: no identity 2, statements.bank 2, web.bank 2 (once in the sixteen calls, once in the call one by one).</p>
 <h3>5. What the mesh does not protect</h3>
-<p>The injection string passes through intact. A capture inside the payments pod shows the account number between the proxy and the app. A call to a pod with no proxy is readable. A pod that runs as the payments ServiceAccount gets payments' access. A certificate lives until it expires; here it was issued for 5 minutes, renewed with the same name and no restart.</p>
+<p>Root on the node: the node's own call to ledger gets HTTP 403, but a capture entered into the payments pod's network namespace reads the request between the proxy and the app (yes).
+A pod outside the mesh: web calls legacy/batch, HTTP 200, and the account number is readable on the wire (yes).
+An allowed caller: web sends ' OR '1'='1 to payments, HTTP 200, and the string arrives intact (yes): the mesh judges the caller, never the request.
+Who may take an identity: a new pod in bank that runs as the payments ServiceAccount calls ledger: HTTP 200. A ServiceAccount also called payments in namespace shadow gets HTTP 403, its identity is payments.shadow, not payments.bank. The web ServiceAccount may not create pods in bank (no); a developer with the namespace's edit role may (yes).</p>
+<h3>6. Certificate lifetime and renewal</h3>
+<p>The input: linkerd install --identity-issuance-lifetime=5m0s; Linkerd's own default is 24h0m0s, read from the CLI's help.
+How the lifetime is read: the certificate states Not Before and Not After. Linkerd backdates the start and extends the end by 20 seconds each, so a clock a little wrong still works: 340 s - 2 x 20 s = 300 s = 5 minutes.
+The trust anchor that signs the issuer is valid for 365 days.
+The result after the renewal (checked every 15 s): a newer certificate (yes), the same name (yes), the pod restarted (no), payments calls ledger HTTP 200. A certificate is trusted until it expires: its lifetime is how long a stolen one is useful.</p>
 <h2>The verdict</h2>
 <p>Use a mesh when many services need identities and encryption without code changes, write a policy for every service, keep pods and ServiceAccount creation under control, and treat the node and the application as outside what the mesh protects.</p>
 <h2>How to recognise this in code you did not write</h2>

@@ -1,32 +1,89 @@
 ONE. A review that changes the page.
-  Ana's review is the text <b>Great boots</b>, pasted into the page as it is
-  bold elements on the page: 1, and the shop wrote none  <- THE REVIEW BECAME PART OF THE PAGE
-  the browser cannot tell the shop's markup from the customer's, so a script in a review would run as the shop's own
-  that script could read the page, act as the signed-in customer, and send what it finds elsewhere
+  THE REVIEW (typed by Ana):
+    <b>Great boots</b>
+  THE PAGE AS BUILT (the review pasted in as it is):
+    <div class="review" data-fit="true to size">
+      <p><b>Great boots</b></p>
+      <span>Ana</span></div>
+  THE RESULT (the elements a browser finds):
+    plain text    html body h1 div p span
+    Ana's review  html body h1 div p b span
+    1 b element the shop never wrote  <- THE PAGE CHANGED
+  THE REVIEW (typed by Eve):
+    <script>steal(document.cookie)</script>
+  THE RESULT:
+    script elements: 1  <- IT RUNS AS THE SHOP'S OWN CODE
+    it could act as the signed-in customer
 TWO. Encoding for the place the text goes.
-  between tags: &lt;b&gt;Great boots&lt;/b&gt;
-  in a quoted attribute: Fits 5&quot; boots
-  in a URL parameter: size%205%20%26%20up
-  in a script string: It\u0027s \u0022great\u0022
-  the encoded page: bold elements 0, and Ben's fit note reads back whole: Fits 5" boots
-  every value shows as the text the customer typed, and none of it is read as markup
+  BEFORE ENCODING (the place, and the customer's text):
+    between tags      <b>Great boots</b>
+    quoted attribute  Fits 5" boots
+    URL parameter     size 5 & up
+    script string     It's "great"
+  AFTER ENCODING:
+    between tags      &lt;b&gt;Great boots&lt;/b&gt;
+    quoted attribute  Fits 5&quot; boots
+    URL parameter     size%205%20%26%20up
+    script string     It\u0027s \u0022great\u0022
+  HOW EACH CHARACTER IS ENCODED:
+    char   HTML    URL  script
+    <      &lt;    %3C  \u003c
+    >      &gt;    %3E  \u003e
+    &      &amp;   %26  \u0026
+    "      &quot;  %22  \u0022
+    '      &#39;   %27  \u0027
+    space  space   %20  space
+    " is character 34 = 2 x 16 + 2, so 22 in hex
+  THE ENCODED PAGE (Ben's review):
+    <div class="review" data-fit="Fits 5&quot; boots">
+      <p>Warm &amp; dry, price &lt; 20 &amp; &gt; 10</p>
+      <span>Ben</span>
+      <a href="/reviews?author=Ben">more</a></div>
+  THE RESULT (what the browser reads back):
+    fit note     Fits 5" boots
+    review text  Warm & dry, price < 20 & > 10
+    Ana's review, encoded: b elements 0
 THREE. Why filtering input is not the fix.
-  an honest review: Warm & dry, price < 20 & > 10
-  after a filter that deletes < and >: Warm & dry, price  20 &  10  <- THE CUSTOMER'S WORDS ARE CHANGED
-  encoded instead, the page shows it exactly: true
-  the filter keeps the quote in Ben's fit note, so the attribute ends early and reads: Fits 5  <- THE FILTER DID NOT KNOW THE CONTEXT
-  a filter guesses at every place text will go; an encoder is chosen for the one place it does go
-FOUR. A strict Content-Security-Policy, with a fresh nonce for every page.
-  the product page answers 200 with a policy: true
-  the policy names a nonce, and the shop's own script carries it: true
-  the nonce is 24 characters of random text, and the next page has a different one: true
-  the shop's script may run: true
-  a script that slipped in without the nonce may run: false  <- A SECOND LINE OF DEFENCE
-  the same script with no policy at all: true
-  a policy with 'unsafe-inline' and no nonce: true, so it protects nothing
-  the session cookie is HttpOnly, so a script cannot read it: true
-FIVE. The bill.
-  this one page writes untrusted text into 4 kinds of place, and each needs its own encoder; one forgotten place is enough
-  the policy needs care: every inline script must carry the nonce, and every new source must be added on purpose
-  the nonce must be new for every response, or a page from yesterday hands an attacker today's key
-  in practice, a template engine that encodes by default does the first part: see the tools version of this project
+  BEFORE THE FILTER (Ben's review, Eve's fit note):
+    Warm & dry, price < 20 & > 10
+    x" onclick="steal()
+  AFTER A FILTER THAT DELETES < AND >:
+    Warm & dry, price  20 &  10  <- HONEST WORDS CHANGED
+    x" onclick="steal()  <- THE ATTACK IS UNTOUCHED
+  THE PAGE AS BUILT (the filtered fit note pasted in):
+    <div class="review" data-fit="x" onclick="steal()">
+  THE RESULT (the attributes a browser finds on the div):
+    class=review  data-fit=x  onclick=steal()
+    <- A SCRIPT RUNS WHEN THE REVIEW IS CLICKED
+  ENCODED INSTEAD (the div's data-fit attribute):
+    data-fit="x&quot; onclick=&quot;steal()"
+  THE RESULT:
+    class=review  data-fit=x" onclick="steal()
+    Ben's words read back exactly: true
+  a filter guesses; an encoder is chosen for the place
+FOUR. A strict Content-Security-Policy, with a fresh nonce.
+  THE REQUEST (to the shop, served for real on this machine):
+    GET /product
+  THE RESPONSE (its nonce is shown as <nonce>):
+    status 200, and the header Content-Security-Policy:
+      default-src 'self'
+      script-src 'nonce-<nonce>' 'strict-dynamic'
+      object-src 'none'
+      base-uri 'none'
+      frame-ancestors 'none'
+    Set-Cookie: session=demo-24; Path=/;
+      HttpOnly; Secure; SameSite=Lax
+    <script nonce="<nonce>">var firstReviewer = "Ana";</script>
+  HOW THE NONCE IS MADE:
+    16 random bytes = 128 bits, written in Base64
+    Base64 turns every 3 bytes into 4 characters
+    16 bytes -> 6 groups (the last one short) -> 24 characters
+    example, bytes 00 01 02 ... 0f -> AAECAwQFBgcICQoLDA0ODw==
+    this page's nonce: 24 characters; the next page's differs: true
+    the script's nonce is the policy's nonce: true
+  WHICH SCRIPTS MAY RUN (what a browser decides):
+    the shop's script, with the nonce     yes
+    Eve's script, without a nonce         no  <- BLOCKED
+    the same script, with no policy       yes
+    'unsafe-inline' and no nonce          yes  <- PROTECTS NOTHING
+    the cookie is HttpOnly, so no script can read it: true

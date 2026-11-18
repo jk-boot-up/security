@@ -1,31 +1,102 @@
 ONE. The example tests pass.
-  the order line parser passes 6 of its 6 example tests
-  SHO-1042,2,8990 gives a total of 17980 cents, and SHO-1042,two,8990 is refused as invalid
-  but a line with only a product code, "SHO-1042": ArrayIndexOutOfBoundsException in OrderLine.parseCareless  <- AN INPUT NOBODY WROTE A TEST FOR
-  a parser may refuse input; anything else it throws is a bug
+  THE EXAMPLE TESTS, 6 OF 6 PASS:
+    "SHO-1042,2,8990"     total 17980 cents
+    "BAG-0007,1,4500"     total 4500 cents
+    "SHO-1042,99,1"       total 99 cents
+    "SHO-1042,two,8990"   refused (not a number)
+    "sho-1042,2,8990"     refused (bad product code)
+    ""                    refused (bad product code)
+  HOW THE TOTAL IS MADE ("SHO-1042,2,8990"):
+    fields    SHO-1042 | 2 | 8990  (code | quantity | cents)
+    total     2 x 8990 = 17980 cents
+  THE INPUT NOBODY WROTE A TEST FOR:
+    "SHO-1042"
+  THE RESULT:
+    crash     ArrayIndexOutOfBoundsException (line 24)  <- A BUG
+  THE RULE:
+    a parser may refuse input; anything else it throws is a bug
 TWO. The real Jazzer.
-  Jazzer 0.30 is started as a program on a fuzz target of three lines, with the two example inputs as seeds, random seed 7 and 300000 runs
-  it adds branch counters to the parser's bytecode by itself and reports 3 distinct findings:
-    ArrayIndexOutOfBoundsException in OrderLine.parseCareless (line 24)
-    ArrayIndexOutOfBoundsException in OrderLine.parseCareless (line 25)
-    IllegalArgumentException in Money.<init> (line 8)
-  each is a bug the example tests missed, found without anyone guessing the input; the reports name the line, and the input is saved in a file
+  THE RUN:
+    tool      Jazzer 0.30, started as a program of its own
+    target    OrderLineCareless, three lines
+    seeds     "SHO-1042,2,8990", "BAG-0007,1,4500"
+    runs      300000, random seed 7, inputs up to 4096 bytes
+    coverage  counters Jazzer adds to the bytecode by itself
+  THE FINDINGS, 3 DISTINCT:
+    ArrayIndexOutOfBoundsException
+      in OrderLine.parseCareless (line 24)
+    ArrayIndexOutOfBoundsException
+      in OrderLine.parseCareless (line 25)
+    IllegalArgumentException
+      in Money.<init> (line 8)
+  WHICH LINE IS WHICH (two lines written by hand):
+    "SHO-1042"    1 field,  line 24 reads fields[1]
+    "SHO-1042,2"  2 fields, line 25 reads fields[2]
+  HOW A FINDING IS NAMED:
+    kind      the "== Java Exception" line of the report
+    place     the first frame in the store's code
+    repeats   one DEDUP_TOKEN for each distinct stack
+    input     saved in a crash- file
 THREE. Guided by coverage, and by what you give it.
-  no seed inputs, 300000 runs: coverage points reached 7, findings 0  <- IT CANNOT GUESS A PRODUCT CODE
-  the two example lines as seeds: coverage points reached 19, findings 3
-  the cart parser, 1000000 runs, seeds without a gift note: findings 0
-  with one more seed that has a note field: [StringIndexOutOfBoundsException in CartParser.giftMessage (line 150)]
-  the seeds are the examples the team already has; the fuzzer mutates them, keeps what reaches new branches, and spends its runs near the interesting parts
+  NO SEED INPUTS, 300000 RUNS:
+    coverage  7 points
+    findings  0  <- IT CANNOT GUESS A PRODUCT CODE
+  HOW LIKELY A RANDOM PRODUCT CODE IS (8 ASCII CHARACTERS):
+    letters   3 capitals, 26 of 128 each: (26/128)^3
+    dash      1 of 128
+    digits    4 digits, 10 of 128 each: (10/128)^4
+    together  128^8 / (26^3 x 10^4) = 1 in 409977207
+  THE TWO EXAMPLE LINES AS SEEDS, 300000 RUNS:
+    coverage  19 points
+    findings  3
+  THE CART PARSER, SEEDS WITHOUT A NOTE, 1000000 RUNS:
+    seeds     "[]", "[{"sku":"SHO-1042","qty":2}]"
+    findings  0
+  WITH ONE MORE SEED THAT HAS A NOTE FIELD:
+    seed      "[{"sku":"SHO-1042","qty":2,"note":"hello"}]"
+    finding   StringIndexOutOfBoundsException
+              in CartParser.giftMessage (line 150)
 FOUR. From crash to fix.
-  ArrayIndexOutOfBoundsException in OrderLine.parseCareless: the saved input is a random-looking line, made smallest: "AAA-0000"; the fixed parser says refused (a line has three fields)
-  ArrayIndexOutOfBoundsException in OrderLine.parseCareless: the saved input is a random-looking line, made smallest: "AAA-0000,0"; the fixed parser says refused (a line has three fields)
-  IllegalArgumentException in Money.<init>: the saved input is a random-looking line, made smallest: "AAA-0000,4000,4000000"; the fixed parser says refused (quantity is 1 to 99)
-  each smallest input is now a regression test: it runs on every build, in milliseconds
-  the fixed order parser under the same fuzzer: 0 findings in 300000 runs; the fixed cart parser: 0 in 1000000
+  HOW THE MINIMIZER WORKS ("SHO-1042,28990"):
+    "SHO-1042,28990"  ArrayIndexOutOfBoundsException (line 25)
+    "SHO-1042,90"     shorter, same crash
+    "SHO-1042,0"      shorter, same crash
+    "AHO-1042,0"      plainer, same crash
+    "AAO-1042,0"      plainer, same crash
+    "AAA-1042,0"      plainer, same crash
+    "AAA-0042,0"      plainer, same crash
+    "AAA-0002,0"      plainer, same crash
+    "AAA-0000,0"      plainer, same crash
+  BEFORE THE FIX (each saved input, made smallest):
+    "AAA-0000"               ArrayIndexOutOfBoundsException (line 24)
+    "AAA-0000,0"             ArrayIndexOutOfBoundsException (line 25)
+    "AAA-0000,4000,4000000"  IllegalArgumentException (line 8)
+  HOW THE OVERFLOW IS MADE (4000 x 4000000):
+    exact        4000 x 4000000 = 16000000000
+    low 32 bits  16000000000 - 3 x 4294967296 = 3115098112
+    as an int    3115098112 - 4294967296 = -1179869184
+    Money        a total cannot be negative  <- THE CRASH
+  AFTER THE FIX (the same inputs, fixed parser):
+    "AAA-0000"               refused (a line has three fields)
+    "AAA-0000,0"             refused (a line has three fields)
+    "AAA-0000,4000,4000000"  refused (quantity is 1 to 99)
+    each one is a regression test, run on every build in ms
+  THE FIXED PARSERS UNDER THE SAME FUZZER:
+    order lines  0 findings in 300000 runs
+    carts        0 findings in 1000000 runs
 FIVE. What fuzzing finds besides crashes, and what it does not.
-  a search box that hands what the customer typed to the regular expression engine: [Regular Expression Injection in Parsers.searchCareless (line 43)]
-  the same box looking for the text as text: 0 findings  <- A SANITIZER REPORTS A KIND OF VULNERABILITY, NOT ONLY A CRASH
-  a cart with a quantity of -5, [{"sku":"SHO-1042","qty":-5}]: parsed  <- NO CRASH, SO NO REPORT
-  whether -5 is allowed is a business rule; a fuzzer finds crashes, security issues its sanitizers know, and broken properties you wrote down, not wrong decisions
-  the cart's nesting crash: Jazzer's inputs stop at 4096 bytes by default, and the stack gave way at a depth of more than that; written by hand: StackOverflowError, and the fixed parser says refused (nested deeper than 32)
-  every parser needs its own fuzz target, a few lines each; in a build, a fixed budget of runs on every change, and the saved inputs as regression tests; longer runs at night, keeping the corpus
+  THE SEARCH BOX, CARELESS (the words become a pattern):
+    finding   Regular Expression Injection
+              in Parsers.searchCareless (line 43)
+    "("       PatternSyntaxException
+  THE SEARCH BOX, FIXED (the words are only text):
+    findings  0  <- A SANITIZER FINDS A VULNERABILITY
+    "("       found: false
+  THE INPUT, A CART WITH A QUANTITY OF -5:
+    "[{"sku":"SHO-1042","qty":-5}]"
+  THE RESULT, FIXED PARSER:
+    parsed  <- NO CRASH, SO NO REPORT
+  THE NESTING CRASH, WRITTEN BY HAND:
+    limit     Jazzer's inputs stop at 4096 bytes by default
+    careless  100000 x "[": StackOverflowError
+    fixed     refused (nested deeper than 32)

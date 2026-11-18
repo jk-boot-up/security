@@ -1,38 +1,134 @@
 ONE. What a bill of materials answers, and what it does not.
-  the release shop-1.4.0.jar is built from 3 files and depends on 3 libraries
-  the CycloneDX 1.6 SBOM lists, each with a SHA-256: pkg:maven/com.acme/acme-http@3.0.2, pkg:maven/com.acme/acme-json@2.4.1, pkg:maven/com.acme/acme-log@1.9.0
-  this SBOM is the one for this jar: true
-  a library jar changed after the SBOM was written is found: [pkg:maven/com.acme/acme-json@2.4.1]
-  which repository, branch and commit the jar was built from: the SBOM does not say
-  who built it, and on which machine: the SBOM does not say  <- THAT IS WHAT PROVENANCE IS FOR
+  THE RELEASE (what the build used):
+    jar        shop-1.4.0.jar, 3 files, 3 libraries
+    files      META-INF/MANIFEST.MF
+               com/shop/Store.class
+               com/shop/Checkout.class
+    libraries  com.acme acme-http 3.0.2
+               com.acme acme-json 2.4.1
+               com.acme acme-log 1.9.0
+  THE SBOM (CycloneDX 1.6, what it records):
+    application  shop 1.4.0, sha256 38a6dd0dd912fc89...
+    component    pkg:maven/com.acme/acme-http@3.0.2
+                 sha256 833a8097c9567109...
+    component    pkg:maven/com.acme/acme-json@2.4.1
+                 sha256 2843abbaa80d801d...
+    component    pkg:maven/com.acme/acme-log@1.9.0
+                 sha256 4b95306b0583eec0...
+  HOW ONE ENTRY IS MADE (acme-json):
+    purl     pkg:maven / com.acme / acme-json @ 2.4.1
+    bytes    "jar of acme-json@2.4.1" (22 bytes)
+    sha256   2843abbaa80d801db0d77334f1851ec8...
+  CHECKING THE SBOM:
+    application hash = jar?  yes, the SBOM is for this jar
+    acme-json in the SBOM    sha256 2843abbaa80d801d...
+    acme-json on disk now    sha256 d82288d74b4b8218...
+    changed after the SBOM   acme-json@2.4.1
+  WHAT THE SBOM DOES NOT SAY:
+    repository, branch, commit  not in it
+    who built it, on what       not in it  <- PROVENANCE
 TWO. Provenance: who built it, from what.
-  an in-toto statement, predicate https://slsa.dev/provenance/v1
-  subject: shop-1.4.0.jar, sha256 38a6dd0dd912fc89...
-  build type: https://build.shop.example/gradle-jar/v1
-  source: https://git.shop.example/shop/store, refs/heads/main, commit 4f1c2a9e8b7d...
-  builder: https://build.shop.example/runner/v1
-  signed in a DSSE envelope over the encoding: DSSEv1 28 application/vnd.in-toto+json 768 {...}
-  the Ed25519 signature verifies with the builder's key shop-ci-2026: true
-  the same signed bytes offered as another payload type: refused (the payload is not an in-toto statement)
+  THE STATEMENT (in-toto, written by the builder):
+    _type          https://in-toto.io/Statement/v1
+    subject        shop-1.4.0.jar
+                   sha256 38a6dd0dd912fc89...
+    predicateType  https://slsa.dev/provenance/v1
+    buildType      https://build.shop.example/gradle-jar/v1
+    repository     https://git.shop.example/shop/store
+    ref            refs/heads/main
+    gitCommit      4f1c2a9e8b7d...
+    builder.id     https://build.shop.example/runner/v1
+    invocationId   build-1042
+  HOW THE SIGNED BYTES ARE MADE (DSSE PAE):
+    rule    DSSEv1 len(type) type len(body) body
+    type    application/vnd.in-toto+json = 28 bytes
+    body    the statement = 768 bytes
+    signed  DSSEv1 28 application/vnd.in-toto+json 768 {...
+  THE ENVELOPE (published next to the jar):
+    payloadType  application/vnd.in-toto+json
+    payload      base64 of the 768 bytes, 1024 chars
+    keyid        shop-ci-2026
+    sig          Ed25519, 64 bytes: 4bcda4522f65c0c7...
+  VERIFYING THE ENVELOPE:
+    Ed25519      key shop-ci-2026, over the signed bytes: true
+  THE SAME BYTES, OFFERED AS ANOTHER TYPE:
+    payloadType   application/json
+    signed bytes  DSSEv1 16 application/json 768 {...
+    Ed25519       over those bytes: false
+    the gate      refused: the payload is not an in-toto statement
 THREE. Checking before deploying.
-  the release from the trusted builder, built from main: deployed
-  a build of a fork: refused (built from another repository)
-  a build of an unreviewed branch: refused (built from another branch)
-  a build signed on a developer's laptop: refused (no signature from a trusted builder)
-  the trusted key, but a statement naming the staging runner: refused (built by a builder that is not trusted)
-  the fork's statement edited after signing to say main's repository: refused (the signature does not match the statement)
-  the fork's jar offered with the real release's provenance: refused (the statement is about another artifact)
-  a jar with no provenance at all: refused (no provenance)
+  THE GATE'S POLICY (what it trusts):
+    key         shop-ci-2026 (an Ed25519 public key)
+    builder     https://build.shop.example/runner/v1
+    repository  https://git.shop.example/shop/store
+    ref         refs/heads/main
+  THE CHECKS, IN ORDER:
+    1 provenance  2 signature  3 statement  4 subject
+    5 builder  6 repository  7 branch
+  EIGHT RELEASES OFFERED (the input):
+    A  the release from the trusted builder, from main
+    B  a build of a fork
+    C  a build of an unreviewed branch
+    D  a build signed on a developer's laptop
+    E  the trusted key, naming the staging runner
+    F  the fork's statement, edited to say main's repo
+    G  the fork's jar with the release's provenance
+    H  a jar with no provenance at all
+  THE GATE'S ANSWERS (the result):
+    A  deployed      all 7 checks pass
+    B  refused at 6  built from another repository
+    C  refused at 7  built from another branch
+    D  refused at 2  no signature from a trusted builder
+    E  refused at 5  built by a builder that is not trusted
+    F  refused at 2  the signature does not match the statement
+    G  refused at 4  the statement is about another artifact
+    H  refused at 1  no provenance
+  HOW TWO REFUSALS ARE MADE:
+    F  the signed statement 772 bytes, names the fork
+       the edited statement 768 bytes, names main's repo
+       Ed25519 over the edited bytes: false
+    G  the subject  sha256 38a6dd0dd912fc89...
+       the jar      sha256 6d76d2c9bc23cc20...
 FOUR. SLSA build levels, and builds that can be repeated.
-  a developer's laptop build: level 0, held back because it writes no provenance
-  a laptop build that signs its own provenance: level 1, held back because the provenance is signed with a key the developer holds, so the developer could forge it
-  the store's hosted CI runner: level 2, held back because build steps run where the signing key can be reached, so a malicious build could sign anything
-  a hardened build platform with isolated, short-lived builds: level 3
-  two careless builds of the same commit (own clock, file-system order) give the same jar: false
-  two reproducible builds (commit time, sorted entries) give the same jar: true, sha256 38a6dd0dd912fc89...
-  so anyone can rebuild the commit and check it against the provenance subject: true
+  FOUR PIPELINES (what each one does):
+    pipeline           provenance  signed by   key isolated
+    laptop             no          -           no
+    laptop, signed     yes         developer   no
+    hosted CI          yes         platform    no
+    hardened platform  yes         platform    yes
+  THEIR SLSA BUILD LEVELS:
+    laptop             level 0  no provenance
+    laptop, signed     level 1  the developer holds the key
+    hosted CI          level 2  build steps can reach the key
+    hardened platform  level 3
+  TWO CARELESS BUILDS OF ONE COMMIT (the input):
+    build 1   clock 2026-10-01 09:03:12
+              order Store, MANIFEST.MF, Checkout
+    build 2   clock 2026-10-02 14:40:51
+              order Checkout, Store, MANIFEST.MF
+  THEIR JARS (the result):
+    build 1   sha256 2f40929e19141de8...
+    build 2   sha256 abed690ac267ede2...
+    same jar  no
+  TWO REPRODUCIBLE BUILDS (the input):
+    both      time 2026-10-01 09:00:00, the commit time
+              order sorted by name: MANIFEST.MF, Checkout, Store
+  THEIR JARS (the result):
+    build 1   sha256 38a6dd0dd912fc89...
+    build 2   sha256 38a6dd0dd912fc89...
+    same jar  yes
+    the gate  the rebuild, with the provenance: deployed
 FIVE. The bill.
-  a deploy script that never checks runs the fork's build: deployed  <- PROVENANCE ONLY HELPS WHEN IT IS CHECKED
-  with the builder's key stolen, a fork's jar with a statement claiming main: deployed  <- PROTECT THE KEY AND THE BUILDER
-  the SBOM written for 1.4.0, checked against the 1.4.1 jar: describes it false  <- WRITE THE SBOM AT EVERY BUILD
-  and a correct SBOM is only useful if something scans it against new advisories: see the -with-syft-and-grype version
+  NO GATE AT DEPLOY (a script that never checks):
+    the fork's build  deployed  <- CHECK PROVENANCE BEFORE IT RUNS
+  A STOLEN BUILDER KEY (a forged statement):
+    subject      the fork's jar, sha256 6d76d2c9bc23cc20...
+    repository   https://git.shop.example/shop/store (a lie)
+    signed with  shop-ci-2026
+    the gate     deployed  <- PROTECT THE KEY AND THE BUILDER
+  A STALE SBOM (written for 1.4.0):
+    SBOM records  shop 1.4.0, sha256 38a6dd0dd912fc89...
+    1.4.1 jar     sha256 f3710cc65bf5ecd1...
+    describes it  no  <- WRITE THE SBOM AT EVERY BUILD
+  AND A CORRECT SBOM STILL NEEDS SCANNING:
+    against new advisories: the -with-syft-and-grype version

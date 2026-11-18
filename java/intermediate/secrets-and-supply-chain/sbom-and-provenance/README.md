@@ -15,7 +15,7 @@ src/main/java/com/jk/explore/security/provenance/
 ├── ProvenanceDemo.java  Runs the online store's release story in five numbered acts and prints exact, repeatable results
 ├── Sbom.java            A CycloneDX 1.6 bill of materials in JSON
 ├── Source.java          The source a build starts from: where it lives, which branch, which commit, and the files at that commit
-└── Verdict.java         The deployment gate's answer, with the reason
+└── Verdict.java         The deployment gate's answer: deployed, or refused at one numbered check, with the reason
 ```
 
 **A bill of materials says what a release contains; signed provenance says which builder made it from which repository, branch and commit; a deployment should check both, and only a reproducible build lets anyone confirm them.**
@@ -57,11 +57,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. What a bill of materials answers, and what it does not | The CycloneDX SBOM lists three libraries with purls and SHA-256 hashes, matches the jar, and finds a changed library, but says nothing about who built the jar or from what. |
-| 2. Provenance: who built it, from what | An in-toto statement with a SLSA Provenance v1 predicate names the jar by digest, the repository, branch and commit, and the builder, signed in a DSSE envelope whose signature also covers the payload type. |
-| 3. Checking before deploying | The gate deploys the real release and refuses a fork, an unreviewed branch, a laptop-signed build, the staging runner, an edited statement, a swapped jar and a jar with no provenance. |
-| 4. SLSA build levels, and builds that can be repeated | A laptop build is level 0, self-signed provenance level 1, the hosted CI runner level 2, and an isolated platform level 3; careless builds differ, reproducible builds match and can be checked against the provenance. |
-| 5. The bill | A script that never checks deploys a fork; a stolen builder key makes a forged statement pass; an SBOM for 1.4.0 does not describe 1.4.1. |
+| 1. What a bill of materials answers, and what it does not | The CycloneDX SBOM lists the jar's hash and three libraries, each with a package URL and a SHA-256; it matches the jar and finds acme-json changed after the build, but says nothing about who built the jar or from what. |
+| 2. Provenance: who built it, from what | An in-toto statement with a SLSA Provenance v1 predicate names the jar by digest, the repository, branch and commit, and the builder; DSSE signs the encoding DSSEv1 28 application/vnd.in-toto+json 768 followed by the statement, so the same bytes under another type do not verify. |
+| 3. Checking before deploying | The gate trusts one key, one builder, one repository and the main branch, and runs seven checks in order; it deploys the real release and refuses a fork (check 6), a branch (7), a laptop key (2), the staging runner (5), an edited statement (2), a swapped jar (4) and no provenance (1). |
+| 4. SLSA build levels, and builds that can be repeated | A laptop build is level 0, self-signed provenance level 1, the hosted CI runner level 2 and a hardened platform level 3; two careless builds of one commit give different jars, two reproducible builds give the same jar, 38a6dd0dd912fc89..., which the gate accepts against the provenance. |
+| 5. The bill | A script that never checks deploys the fork's build; with the builder's key stolen, a forged statement for the fork's jar claiming main is deployed; the SBOM written for 1.4.0 does not describe the 1.4.1 jar. |
 
 ## Test
 
@@ -69,7 +69,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-19 tests in `DemoRunsTest`, `DsseAndJsonTest`, `Ed25519Test`, `PolicyTest`, `SbomAndBuildTest`. The DSSE encoding is checked against the example in the DSSE specification, Ed25519 against RFC 8032 test 1, and every gate refusal is checked with its reason; reproducible builds are checked to ignore file order and clock.
+21 tests in `DemoRunsTest`, `DsseAndJsonTest`, `Ed25519Test`, `PolicyTest`, `SbomAndBuildTest`. The DSSE encoding is checked against the example in the DSSE specification, Ed25519 against RFC 8032 test 1, and every gate refusal is checked with its reason; reproducible builds are checked to ignore file order and clock.
 
 ## What the simulation got right, and what it left out
 

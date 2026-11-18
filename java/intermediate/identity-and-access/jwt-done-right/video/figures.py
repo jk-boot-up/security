@@ -1,0 +1,334 @@
+"""Pictures for the JWT done right video, drawn by the `figure` slide kind.
+
+Every value shown is read from docs/expected-output.txt, which the demo prints and
+the tests check, so a picture can never disagree with the code.
+"""
+
+import re
+from pathlib import Path
+
+from videokit.slides import draw
+from videokit.slides.theme import (AMBER, CYAN, GREEN, LINE, MONO_B, MUTED, PANEL, ROSE,
+                                   SANS, SANS_B, TEXT, W, font)
+
+OUT = (Path(__file__).resolve().parent.parent / "docs" / "expected-output.txt").read_text()
+BG_CELL = (22, 32, 54)
+INK = (15, 23, 42)
+
+
+def act(name):
+    """The lines of one act of the output ("TWO"), without the act's own heading, two spaces removed."""
+    body = re.search(r"^%s\. .*\n((?:  .*\n?)*)" % name, OUT, re.M).group(1)
+    return [ln[2:] for ln in body.splitlines()]
+
+
+def sections(name, head):
+    """Every section of an act whose header starts with `head`, as lists of lines (two spaces removed)."""
+    found, cur = [], None
+    for ln in act(name):
+        if not ln.startswith("  "):
+            cur = None
+            if ln.startswith(head):
+                cur = []
+                found.append(cur)
+        elif cur is not None:
+            cur.append(ln[2:])
+    return found
+
+
+def section(name, head, k=0):
+    return sections(name, head)[k]
+
+
+def heading(name, head):
+    return next(ln for ln in act(name) if ln.startswith(head))
+
+
+def numbered(lines):
+    """'1. text' lines as a list of texts."""
+    return [re.sub(r"^\d+\.\s+", "", ln.strip()) for ln in lines]
+
+
+def header(d, x, y, text, colour, w=None, size=26):
+    f = font(SANS_B, size)
+    w = w or int(f.getlength(text)) + 44
+    d.rounded_rectangle([x, y, x + w, y + 44], radius=22, fill=colour)
+    d.text((x + w // 2, y + 22), text, font=f, fill=INK, anchor="mm")
+    return x + w
+
+
+def label(d, x, y, text, colour=MUTED, size=30, bold=False, anchor="la"):
+    d.text((x, y), text, font=font(SANS_B if bold else SANS, size), fill=colour, anchor=anchor)
+
+
+def mono(d, x, y, text, colour=TEXT, size=26, anchor="la"):
+    d.text((x, y), text, font=font(MONO_B, size), fill=colour, anchor=anchor)
+
+
+def fit_mono(d, x, y, text, colour, size, max_w, anchor="la"):
+    f = font(MONO_B, size)
+    while f.getlength(text) > max_w and f.size > 14:
+        f = font(MONO_B, f.size - 1)
+    d.text((x, y), text, font=f, fill=colour, anchor=anchor)
+
+
+def caption(d, text, colour=AMBER, y=930):
+    label(d, W // 2, y, text, colour, 32, True, "ma")
+
+
+def cell(d, x, y, w, h, text, colour, size=26, fill=BG_CELL, text_colour=None):
+    d.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=fill, outline=colour, width=3)
+    fit_mono(d, x + w // 2, y + h // 2, text, text_colour or colour, size, w - 16, "mm")
+
+
+def panel(d, x, y, w, h, colour=LINE, width=2):
+    d.rounded_rectangle([x, y, x + w, y + h], radius=16, fill=PANEL, outline=colour, width=width)
+
+
+def result_colour(text):
+    return GREEN if text.startswith("accepted") else ROSE
+
+
+def token_parts():
+    """The three base64url parts of ana's token, joined from the wrapped lines."""
+    tok = section("ONE", "THE TOKEN")
+    parts, cur = [], None
+    for ln in tok:
+        if ln.startswith("PART"):
+            cur = []
+            parts.append(cur)
+        else:
+            cur.append(ln.strip())
+    return ["".join(p) for p in parts]
+
+
+# ------------------------------------------------------------------ figures
+
+def token_anatomy(img, d, cfg):
+    """Ana's real token, its three parts coloured, and what each part decodes to."""
+    parts = token_parts()
+    colours = (AMBER, CYAN, ROSE)
+    header(d, 60, 190, heading("ONE", "THE TOKEN").rstrip(":"), TEXT)
+    # the token as one stream, wrapped, each part in its colour, with the dots in white
+    f = font(MONO_B, 24)
+    cw = f.getlength("M")
+    per = int(1780 // cw)
+    runs = []
+    for i, (p, c) in enumerate(zip(parts, colours)):
+        runs += [(ch, c) for ch in p]
+        if i < 2:
+            runs.append((".", TEXT))
+    panel(d, 60, 250, 1800, 30 + 34 * ((len(runs) + per - 1) // per), LINE)
+    for k, (ch, c) in enumerate(runs):
+        d.text((80 + (k % per) * cw, 265 + (k // per) * 34), ch, font=f, fill=c)
+    hdr = section("ONE", "THE HEADER")[0].strip()
+    claims = [ln.strip().split("  ")[0] for ln in section("ONE", "THE CLAIMS")]
+    sig = section("ONE", "STEP 3")[0].strip()
+    y = 520
+    boxes = [("1. THE HEADER", AMBER, [m + ("," if i < 2 else "") for i, m in enumerate(hdr.strip("{}").split(","))]),
+             ("2. THE CLAIMS", CYAN, claims),
+             ("3. THE SIGNATURE", ROSE, [sig.split(", ")[0], sig.split(", ")[1][:22], sig.split(", ")[1][22:]])]
+    for i, (title, c, lines) in enumerate(boxes):
+        x = 60 + i * 610
+        header(d, x, y, title, c)
+        panel(d, x, y + 56, 580, 300, c, 3)
+        for j, ln in enumerate(lines):
+            fit_mono(d, x + 20, y + 76 + j * 38, ln, TEXT, 24, 540)
+    caption(d, "Parts 1 and 2 are readable by anyone; part 3 proves who wrote them.", AMBER, 920)
+
+
+def base64_steps(img, d, cfg):
+    """How the token is made: base64url bit by bit for {"a, then the sizes through signing."""
+    step1 = section("ONE", "STEP 1")
+    text = step1[0].split("=")[0].strip()
+    hexes = step1[0].split("bytes")[1].split()
+    groups = step1[1].split("bits")[1].split()
+    chars = step1[2].split("characters")[1].split()
+    header(d, 60, 190, "BEFORE: 3 BYTES OF THE HEADER", AMBER)
+    for i, h in enumerate(hexes):
+        x = 60 + i * 300
+        cell(d, x, 250, 280, 60, "%s  0x%s" % (text[i], h), AMBER, 26)
+        mono(d, x + 140, 335, format(int(h, 16), "08b"), TEXT, 28, "mm")
+    label(d, 990, 280, "24 bits, cut into 4 groups of 6", MUTED, 26, False, "lm")
+    draw.arrow(d, 480, 370, 480, 420, MUTED, 4)
+    header(d, 60, 430, "AFTER: 4 CHARACTERS", GREEN)
+    for i, (g, c) in enumerate(zip(groups, chars)):
+        x = 60 + i * 225
+        cell(d, x, 490, 205, 60, g, CYAN, 26)
+        mono(d, x + 102, 580, "%d -> %s" % (int(g, 2), c), GREEN, 30, "mm")
+    label(d, 990, 520, "each 6-bit number picks one of 64 characters", MUTED, 26, False, "lm")
+    # the pipeline with the real sizes
+    sizes = step1[3].strip()
+    m = re.match(r"header (\d+) bytes -> (\d+) characters, claims (\d+) bytes -> (\d+)", sizes)
+    hb, hc, cb, cc = m.groups()
+    sin = section("ONE", "STEP 2")[0].split()[0]
+    sig = section("ONE", "STEP 3")
+    sb = sig[0].split()[0]
+    sc = sig[1].split("->")[1].split()[0]
+    total = re.search(r"\((\d+) characters", heading("ONE", "THE TOKEN")).group(1)
+    y = 660
+    stages = [("header + claims", "%s + %s bytes" % (hb, cb), AMBER),
+              ("base64url", "%s + %s chars" % (hc, cc), CYAN),
+              ("signing input", "%s bytes" % sin, CYAN),
+              ("Ed25519, private key", "%s bytes -> %s chars" % (sb, sc), ROSE),
+              ("the token", "%s characters" % total, GREEN)]
+    for i, (name, val, c) in enumerate(stages):
+        x = 60 + i * 370
+        cell(d, x, y, 320, 70, name, c, 24)
+        mono(d, x + 160, y + 110, val, TEXT, 24, "mm")
+        if i < len(stages) - 1:
+            draw.arrow_right(d, x + 326, y + 35, x + 364, MUTED, 4)
+    caption(d, "Every token starts with eyJ: the header always starts with {\".", AMBER, 900)
+
+
+def forged_token(img, d, cfg):
+    """The edited claims with ana's signature kept, and what each reader makes of it."""
+    edit = section("TWO", "THE EDIT")[0].strip()
+    sent = section("TWO", "THE TOKEN SENT")
+    header(d, 60, 190, "THE EDIT", AMBER)
+    mono(d, 260, 212, edit, TEXT, 28, "lm")
+    header(d, 60, 270, "THE TOKEN SENT", CYAN)
+    for i, ln in enumerate(sent):
+        name, rest = re.match(r"(part \d, the \w+)\s+(.*)", ln.strip()).groups()
+        changed = "unchanged" not in rest
+        x = 60 + i * 610
+        c = ROSE if changed else MUTED
+        panel(d, x, 330, 580, 130, c, 3)
+        label(d, x + 20, 350, name, c, 26, True)
+        fit_mono(d, x + 20, 400, rest, TEXT, 24, 540)
+    naive = section("TWO", "A READER")
+    valid = section("TWO", "THE VALIDATOR")
+    header(d, 60, 510, "A READER THAT ONLY DECODES", ROSE)
+    panel(d, 60, 570, 880, 220, ROSE, 3)
+    label(d, 85, 595, "splits at the dots, decodes part 2,", MUTED, 26)
+    label(d, 85, 635, "reads sub, never checks part 3", MUTED, 26)
+    fit_mono(d, 85, 700, naive[0].replace("->", "").strip(), ROSE, 28, 830)
+    header(d, 980, 510, "THE VALIDATOR", GREEN)
+    panel(d, 980, 570, 880, 220, GREEN, 3)
+    label(d, 1005, 595, "verifies part 3 over parts 1 and 2 first", MUTED, 26)
+    fit_mono(d, 1005, 650, valid[0].strip(), TEXT, 24, 830)
+    fit_mono(d, 1005, 710, valid[1].replace("->", "").strip(), GREEN, 28, 830)
+    caption(d, "The signature was made over ana's claims, so it cannot match mallory's.", AMBER, 880)
+
+
+def header_check(img, d, cfg):
+    """The API's fixed settings, the four headers sent, and the result of each."""
+    setting = section("THREE", "THE API'S SETTINGS")[0].strip()
+    alg, typ = re.match(r"algorithm (\S+), type (\S+)", setting).groups()
+    header(d, 60, 190, "THE API'S SETTINGS (in Policy)", CYAN)
+    cell(d, 60, 250, 300, 64, "alg " + alg, CYAN, 28)
+    cell(d, 380, 250, 300, 64, "typ " + typ, CYAN, 28)
+    rfc = section("THREE", "CHECKED AGAINST")
+    header(d, 760, 190, "CHECKED AGAINST RFC 8037", GREEN)
+    for j, ln in enumerate(rfc):
+        fit_mono(d, 760, 255 + j * 36, ln.strip(), GREEN if ln.strip().endswith("true") else ROSE, 24, 1100)
+    sent = numbered(section("THREE", "THE HEADERS SENT"))
+    res = numbered(section("THREE", "THE RESULTS"))
+    header(d, 60, 400, "THE HEADERS SENT", AMBER)
+    header(d, 1180, 400, "THE RESULTS", GREEN)
+    label(d, 120, 470, "alg", MUTED, 24, True, "mm")
+    label(d, 300, 470, "typ", MUTED, 24, True, "mm")
+    for i, (s, r) in enumerate(zip(sent, res)):
+        a, t, why = s.split(None, 2)
+        y = 495 + i * 95
+        cell(d, 60, y, 140, 64, a, GREEN if a == alg else ROSE, 26)
+        cell(d, 220, y, 160, 64, t, GREEN if t == typ else ROSE, 26)
+        fit_mono(d, 400, y + 32, why, MUTED, 22, 700, "lm")
+        draw.arrow_right(d, 1110, y + 32, 1170, MUTED, 4)
+        fit_mono(d, 1180, y + 32, r, result_colour(r), 26, 700, "lm")
+    caption(d, "Green matches the API's own settings; the token cannot change them.", AMBER, 900)
+
+
+def clock_line(img, d, cfg):
+    """The token's times on a line, the three moments tried, and the four changed claims."""
+    times = section("FOUR", "THE TIMES")
+    iat, nbf, exp = [int(v) for v in re.findall(r"\d{10}", times[0])]
+    limit = int(times[1].split("=")[1])
+    moments = [int(re.search(r"now (\d+)", ln).group(1)) for ln in section("FOUR", "THE MOMENTS")]
+    res = numbered(section("FOUR", "THE RESULTS", 0))
+    header(d, 60, 190, "THE TIMES IN ana's TOKEN (seconds after iat)", CYAN)
+    x0, x1 = 120, 1800
+    span = (limit + 30) - iat
+    xs = lambda t: x0 + (t - iat) * (x1 - x0) / span
+    y = 360
+    d.rectangle([xs(iat), y - 8, xs(exp), y + 8], fill=GREEN)
+    d.rectangle([xs(exp), y - 8, xs(limit), y + 8], fill=AMBER)
+    d.rectangle([xs(limit), y - 8, x1, y + 8], fill=ROSE)
+    for t, name, anchor in ((iat, "iat = nbf = 0", "la"), (exp, "exp = %d" % (exp - iat), "ra"),
+                            (limit, "exp + 30 = %d" % (limit - iat), "la")):
+        d.line([xs(t), y - 30, xs(t), y + 30], fill=TEXT, width=3)
+        label(d, xs(t) + (8 if anchor == "la" else -8), y - 70, name, TEXT, 24, True, anchor)
+    label(d, (xs(exp) + xs(limit)) / 2, y + 22, "skew", AMBER, 24, True, "ma")
+    for i, (t, r) in enumerate(zip(moments, res)):
+        c = result_colour(r)
+        d.polygon([(xs(t), y + 60), (xs(t) - 14, y + 84), (xs(t) + 14, y + 84)], fill=c)
+        label(d, xs(t) + (-20 if i == 1 else 20 if i == 2 else 0), y + 90, str(i + 1), c, 24, True, "ma")
+        mono(d, 60 + i * 600, y + 150, "%d. now %d: %s" % (i + 1, t - iat, r), c, 24)
+    changed = numbered(section("FOUR", "ONE CLAIM CHANGED"))
+    res2 = numbered(section("FOUR", "THE RESULTS", 1))
+    header(d, 60, 590, "ONE CLAIM CHANGED PER TOKEN", AMBER)
+    header(d, 1060, 590, "THE RESULTS", GREEN)
+    for i, (c_, r) in enumerate(zip(changed, res2)):
+        yy = 650 + i * 60
+        fit_mono(d, 60, yy + 25, c_, AMBER, 24, 900, "lm")
+        draw.arrow_right(d, 980, yy + 25, 1040, MUTED, 3)
+        fit_mono(d, 1060, yy + 25, r, ROSE, 24, 800, "lm")
+    caption(d, "Inside the green and amber band, and for this API only: else refused.", AMBER, 920)
+
+
+def key_rotation(img, d, cfg):
+    """The key set before and after the old key retires, the tokens sent, and the results."""
+    keys = [ln.split()[0] for ln in section("FIVE", "THE KEY SET THE API")]
+    after = section("FIVE", "THE KEY SET AFTER")[0].strip().split(", ")
+    sent = numbered(section("FIVE", "THE TOKENS SENT", 0)) + numbered(section("FIVE", "THE TOKENS SENT", 1))
+    res = numbered(section("FIVE", "THE RESULTS", 0)) + numbered(section("FIVE", "THE RESULTS", 1))
+    header(d, 60, 190, "THE KEY SET, DURING THE CHANGEOVER", CYAN)
+    for i, k in enumerate(keys):
+        cell(d, 60 + i * 300, 250, 280, 60, k, CYAN, 26)
+    header(d, 1000, 190, "AFTER THE OLD KEY RETIRES", CYAN)
+    for i, k in enumerate(keys):
+        on = k in after
+        cell(d, 1000 + i * 300, 250, 280, 60, k if on else k + " (gone)", CYAN if on else MUTED, 26)
+    header(d, 60, 360, "THE TOKENS SENT (kid / key that signed)", AMBER)
+    header(d, 1180, 360, "THE RESULTS", GREEN)
+    for i, (s, r) in enumerate(zip(sent, res)):
+        y = 420 + i * 92
+        if i == 2:
+            d.line([60, y - 12, 1860, y - 12], fill=LINE, width=2)
+        m = re.match(r"kid (\S+)\s+signed with (.+)", s)
+        kid, signer = m.groups()
+        known = kid in (keys if i < 2 else after)
+        cell(d, 60, y, 280, 64, kid, GREEN if known else ROSE, 24)
+        fit_mono(d, 360, y + 32, "signed with " + signer, MUTED, 24, 720, "lm")
+        draw.arrow_right(d, 1100, y + 32, 1170, MUTED, 4)
+        fit_mono(d, 1180, y + 32, r, result_colour(r), 24, 680, "lm")
+    caption(d, "A token only picks among the API's keys; nothing is ever fetched.", AMBER, 900)
+
+
+def revocation_timeline(img, d, cfg):
+    """Ana's access token and refresh token over time, and what each check says after revocation."""
+    stop = int(re.search(r"= (\d+)$", section("SIX", "WHAT ana HOLDS")[0]).group(1))
+    event = section("SIX", "THE EVENT")[0].strip()
+    revoke = int(re.search(r"at (\d+)", event).group(1))
+    res = [re.match(r"at (\d+) the (\w+) token:\s+(.*)", ln.strip()).groups() for ln in section("SIX", "THE RESULTS")]
+    x0, x1 = 360, 1800
+    end = stop + 60
+    xs = lambda t: x0 + t * (x1 - x0) / end
+    header(d, 60, 190, "WHAT ana HOLDS, OVER TIME (seconds after issue)", CYAN)
+    rows = [("access token", 330, stop, GREEN), ("refresh token", 470, revoke, GREEN)]
+    for name, y, until, c in rows:
+        label(d, 60, y, name, TEXT, 28, True, "lm")
+        d.rounded_rectangle([xs(0), y - 22, xs(until), y + 22], radius=10, fill=c)
+        d.rounded_rectangle([xs(until), y - 22, xs(end), y + 22], radius=10, fill=(60, 30, 40))
+    for t in sorted({0, revoke, stop} | {int(r[0]) for r in res}):
+        d.line([xs(t), 280, xs(t), 530], fill=LINE, width=2)
+        mono(d, xs(t), 560, str(t), TEXT, 24, "ma")
+    label(d, xs(revoke), 600, "the bank revokes", AMBER, 24, True, "ma")
+    label(d, xs(stop), 600, "exp + skew", AMBER, 24, True, "ma")
+    header(d, 60, 680, "THE RESULTS", GREEN)
+    for i, (t, which, r) in enumerate(res):
+        y = 750 + i * 48
+        bad = "<-" in r
+        mono(d, 60, y, "at %s, the %s token:" % (t, which), TEXT, 26)
+        mono(d, 560, y, r.split("  <-")[0] + ("   <- STILL WORKS" if bad else ""), ROSE if bad else GREEN, 26)
+    caption(d, "Only what the server looks up can be taken back; keep access tokens short.", AMBER, 930)

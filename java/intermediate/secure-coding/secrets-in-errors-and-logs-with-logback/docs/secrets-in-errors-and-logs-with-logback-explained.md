@@ -8,23 +8,32 @@ Whatever reaches a log line stays there, so the safest secret is one that never 
 
 ### 1. What the log keeps
 
-Three events written with a plain layout: a map of the request with the card number and the cvv, and a token; an exception from the driver whose message holds the database URL with its password; and a customer name with a line break. The file holds the card, the cvv, the token and the password, and the forged line: 4 lines from 3 events. The log is a second database that nobody protects.
+The input is three log calls: a map of the request with the card and the CVV, plus the token; an error with the driver's SQLException, whose message holds the database URL and password; and a customer name with a line break inside it.
+The result, through the plain layout %level %msg%plainEx%n: 4 lines from 3 events. A canary search finds every fake secret in the file: the card number, cvv=737, the session token and s3cr3t-db-password. Line 4, "INFO login succeeded user=admin ip=10.0.0.1", was written by the customer.
 
 ### 2. Covering the shapes of secrets in the layout
 
-The same three events through %mask and %maskedEx: the card becomes [CARD ****1111], the cvv and the token [REDACTED], the database password in the exception is covered and the exception is written as class and message only. A 16-digit order number that fails the Luhn check is left alone. The line break in the forged name became the two characters \n: one event is one line.
+The input is the same three log calls. The result, through the layout %level %mask%maskedEx%n: 3 lines; the card is [CARD ****1111], the CVV, the token and the database password are [REDACTED], and the forged name stays on line 3 with its line break written as \n. The canary search finds nothing.
+Before and after masking: in "charge 4111 1111 1111 1111 for order 4111111111111112" only the card is covered; password=, api_key and Bearer values are covered by name and shape.
+How the Luhn check is made: from the right every second digit is doubled (9 taken off a result over 9) and all are added. 4111111111111111 gives 30, which ends in 0: a card. 4111111111111112 gives 31: not a card.
 
 ### 3. Make the secret unprintable
 
-A CheckoutRequest made of a Card and a Secret prints as CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042] under a plain layout, with no masking. The value is read where it is used, by name, and a search for reveal( finds every place that does. An exception from a library carries whatever the library put in its message, so it is logged by class, with a reference, or through %maskedEx.
+The input is what the code holds: name "Ana", new Card("4111111111111111"), new Secret("737") and order 1042.
+How each one prints: a Card's toString is ****1111 (the last 4 of 16 digits), a Secret's toString is [REDACTED], and reveal() gives 737, only where the value is used.
+The result, through the plain layout %level %msg%n with no masking: CheckoutRequest[name=Ana, card=****1111, cvv=[REDACTED], order=1042], and the token as [REDACTED]. A library's exception carries whatever the library put in its message, so it is logged by class, SQLException, with the reference ref-0001.
 
 ### 4. Structured logs
 
-JSON events from logstash-logback-encoder: fields are data, a line break in a value is escaped, so the forged name stays one event of one line. A record is written as its fields, not as its toString: PlainCard leaks number and holder, while a Card with @JsonValue is written as ****1111. The masking decorator covers /cvv and /card/number by path and the shapes of secrets in any string, including the exception message.
+The input is the forged name and a charge with order and amount fields, written as JSON events by logstash-logback-encoder. The result: one line per event; the line break in the name is escaped as \n inside the message string, and the fields are data.
+A record is written as its fields, not as its toString: PlainCard gives "number":"4111111111111111" and "holder":"Ana", and the cvv 737. A Card with @JsonValue is written as "****1111".
+After the masking decorator (paths /cvv and /card/number, and a value masker for shapes): the number and the cvv are "[REDACTED]", and the password in the exception's message is [REDACTED].
 
-### 5. The bill
+### 5. What a mask cannot see
 
-A customer says: my pin is 4921 and the code is hunter2, ssn 078-05-1120. A mask cannot cover what it has never seen. So the order of defence is: do not log it, make it unprintable, then cover the shapes you know, and test the last one with the secrets you really have. A log file is data: who can read it, how long it is kept, who can delete a person from it and where it is copied are decisions. Debug logging in production is a second logging policy.
+The input is a sentence a customer typed: "customer says: my pin is 4921 and the code is hunter2, ssn 078-05-1120". The result after masking is the same sentence: none of its secrets has a name or shape the mask was given.
+What the mask knows, each secret in a sentence: card number, cvv, session token and db password are covered; pin, code word and SSN are missed.
+So the order of defence is: 1 do not log it, 2 make it unprintable (Secret, Card), 3 mask the shapes you know (%mask, the decorator), 4 test with fake secrets of your own.
 
 ## The verdict
 

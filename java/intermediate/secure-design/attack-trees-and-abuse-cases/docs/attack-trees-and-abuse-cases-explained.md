@@ -8,27 +8,34 @@ An attack tree prices every way to a goal so that you can cut the cheapest path 
 
 ### 1. The tree
 
-The root is "move money out of Ana's account". Logging in as her can be done by phishing her password and one-time code, reusing a leaked password, a SIM swap, or stealing her session with an injected script. The transfer call can be abused by changing the account number or forging a request from another site.
-An employee can be bribed. The software can be exploited through an unpatched library and a move to the database. Each leaf carries a cost and a chance.
+The input is the tree. The root, an OR gate, is the goal: move money out of Ana's account. Its first branch, log in as Ana, is an OR of four AND gates: phish her password and one-time code (A1a, 300 EUR, 90%; A1b, 50 EUR, 20%), reuse a leaked password (A2a, 100 EUR, 80%; A2b, 0 EUR, 15%), a SIM swap (A3a, 1,500 EUR, 30%; A3b, 100 EUR, 15%) and steal her session with a script (A4a, 2,000 EUR, 10%; A4b, 0 EUR, 50%).
+The other branches: abuse the transfer call (B1, change the account number, 50 EUR, 90%; or forge a request from another site, B2a and B2b), bribe an employee (C, 20,000 EUR, 20%), and break in through the software (D1, an unpatched library, 5,000 EUR, 15%, and D2, move to the database, 1,000 EUR, 60%).
+The rules: at an OR gate any child will do, so the cheapest child wins and the chance is 1 - (1 - p1)(1 - p2)...; at an AND gate every child is needed, so the costs add and the chances multiply.
 
 ### 2. What the tree says about the attacker
 
-Costs add along AND gates and the cheapest child wins at OR gates, so the cheapest path to the goal is the single step B1 at 50 euros. The chance that at least one path succeeds is 97%. Branch by branch: logging in as Ana costs 100 euros and works 35% of the time, abusing the transfer call costs 50 and works 95%,
-the insider costs 20,000 and works 20%, and the software break-in costs 6,000 and works 9%.
+The input is the tree of act one. An AND gate worked out: phish her password and one-time code costs 300 + 50 = 350 EUR and works with 0.9 x 0.2 = 18%.
+An OR gate worked out: log in as Ana has four AND gates, at 350 EUR and 18%, 100 EUR and 12%, 1,600 EUR and 5%, 2,000 EUR and 5%. Its cost is min(350, 100, 1,600, 2,000) = 100 EUR and its chance 1 - (1-0.18)(1-0.12)(1-0.045)(1-0.05) = 35%.
+The result: the root is an OR of four branches: log in as Ana 100 EUR and 35%, abuse the transfer call 50 EUR and 95%, bribe an employee 20,000 EUR and 20%, break in through the software 6,000 EUR and 9%. The cheapest way in costs 50 EUR via B1, changing the account number, and some way works with 97%.
 
 ### 3. Each defence on its own
 
-Applying each of eight defences to the baseline tree, one at a time: only the ownership check changes the cheapest path, because only it closes B1. Passkeys at 40,000 euros close three login branches and leave the cheapest way in untouched. A decision based on "which defence is the strongest" would have bought the wrong one first.
+The input: eight defences with a price: OWN (the account must belong to the user, 2,000 EUR), CSRF (form tokens and SameSite cookies, 3,000 EUR), BREACH (5,000 EUR), OTP (15,000 EUR), PASSKEY (40,000 EUR), CSP (10,000 EUR), PATCH (8,000 EUR) and DUAL (12,000 EUR). Each changes the cost or chance of the steps it names, or removes them.
+Each alone, on the tree: OWN gives 100 EUR via A2a and A2b at 75%; every other defence leaves the cheapest way at 50 EUR via B1.
+Worked out on the transfer branch: before, the cheapest is 50 EUR via B1 at 95%. OWN removes B1; what is left is the forged request, 100 + 0 = 100 EUR, at 48%.
+The result: the best one alone is OWN, and the attacker then pays 100 EUR; PASSKEY alone costs 40,000 EUR and the attacker still pays 50 EUR via B1.
 
-### 4. A plan: always cut the cheapest path, then look again
+### 4. A plan: cut the cheapest path, then look again
 
-Greedy planning: choose the defence that raises the cheapest path most (ties by lower chance of success, then price), apply it, recompute. The ownership check moves the cheapest path to 100 euros, tied between the leaked-password and CSRF paths. Closing CSRF leaves it at 100 (leaked passwords) but cuts the chance
-to 52%. Passkeys then close the leaked password and phishing paths and the cheapest becomes a script injection at 2,000. A strict content security policy triples that to 6,000, where the software break-in becomes the cheapest path, above the target. The abuse cases still failing fall from 8 to 2 along the way (the insider and the unpatched library).
+The input: the target, a cheapest attack of at least 5,000 EUR, and the rule: at each step pick the defence that most raises the cheapest path, then look again.
+The steps: with nothing, 50 EUR via B1 at 97%, 8 of 8 abuse cases failing. OWN (2,000 EUR spent): 100 EUR via A2a and A2b, 75%, 7 failing. CSRF (5,000 EUR): 100 EUR, 52%, 6 failing. PASSKEY (45,000 EUR): 2,000 EUR via A4a and A4b, 31%, 3 failing. CSP (55,000 EUR): 6,000 EUR via A4a and A4b, 28%, 2 failing.
+The result: 55,000 EUR on 4 of the 8 defences; the cheapest way goes from 50 EUR to 6,000 EUR and the chance from 97% to 28%.
 
 ### 5. Abuse cases as tests
 
-Each abuse case is written as a story ("as Mallory I transfer from Ana's account by changing the account number") and as a check that passes only when the abuse is refused. On the weak bank all eight fail, which is the point: the tests describe the defences that do not exist yet. After the planned defences, six turn green and two stay red:
-the insider approving their own transfer and the library flaw that was fixed last month. Those are the next items for the backlog, with their cost from the tree. Thirteen of the tree's fourteen steps have a test; the fourteenth (moving from the web server to the database) is a judgement that no test checks.
+The input: one abuse case, AC5, the test of leaf B1: As Mallory I change the account number to Ana's. It passes when the bank refuses it, which it does when ownership is on.
+Before the plan, nothing is on, and all eight abuse cases fail. After the plan, with csp, csrf, ownership and passkey on, AC1 to AC6 pass; AC7 (an insider approves their own transfer) and AC8 (last month's library flaw) still fail.
+The result: 13 of the 14 steps have a test; D2, moving from the web server to the database, has none and stays a judgement; the 2 failing cases are the risks the plan accepts, in writing.
 
 ## The verdict
 

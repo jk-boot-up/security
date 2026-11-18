@@ -22,6 +22,7 @@ Teams trust the ORM and build queries as strings, and run the application as a d
 | Vulnerable searches | `UnsafeSearch` |
 | Fixed searches | `SafeSearch`, `SortColumn` |
 | The database | `PostgresLab` |
+| The SQL Hibernate sent | `SqlLog` |
 | Entry point | `SqlHibernateDemo` |
 
 ## Requirements
@@ -39,10 +40,10 @@ Teams trust the ORM and build queries as strings, and run the application as a d
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 20 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 99 lines, identical on every run |
 | Acts | 4 |
-| Video | 06:13, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:14, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -3,6 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/searchdetect/
 ├── Alert.java                 What a rule reports: which rule, about whom, when, and the events that made it fire
+├── Buckets.java               Redoes by hand what a {@code date_histogram} with a {@code fixed_interval} does: each event falls in the bucket that starts at its time rounded down to a whole interval since 1970
 ├── City.java                  A place with coordinates, for distance calculations
 ├── Detections.java            The detections as OpenSearch queries: filters, a terms aggregation for the subject, a date histogram for the window, and a pipeline aggregation that keeps only the buckets over the threshold
 ├── Event.java                 One line of the audit log
@@ -11,9 +12,10 @@ src/main/java/com/jk/explore/security/searchdetect/
 ├── Lab.java                   A real OpenSearch 3.9 (with its alerting plugin) in a container on a free loopback port, with the security plugin off because this is a lab, removed on close
 ├── Monitors.java              The same detections as monitors of OpenSearch's alerting plugin: a schedule, the query, and a trigger that decides which buckets are alerts
 ├── OpenSearch.java            OpenSearch's HTTP API: indices, bulk loading, searches, and the alerting plugin's monitors
-├── OpenSearchDetectDemo.java  A sliding five-minute window, as the plain project has, for comparison with fixed buckets
+├── OpenSearchDetectDemo.java  Runs the plain project's detections as OpenSearch queries and alerting monitors, in five numbered acts, each with its input and its result in separate, labelled sections
+├── QueryParts.java            Reads a detection query back as the four parts every rule has: a filter (which events), a group by (whose events), a bucket (which stretch of time) and a threshold (how many are worth an alert)
 ├── Rule.java                  A detection rule: reads the whole log, in time order, and returns alerts
-└── Scenario.java              One synthetic Monday for a company with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
+└── Scenario.java              One synthetic Monday for an online bank with 200 accounts: ordinary logins with a few typos, five VPN users, a traveller, two people who forgot their password after a holiday, ticketed admin grants and one break-glass grant, and four real attacks
 ```
 
 **A real OpenSearch 3.9 holds one Monday of 772 events and answers the plain project's detections as filter, group, time bucket and threshold: brute force (1 true alert at a threshold of 10), spraying (1), success after failures (2) and privilege change (2, one false), as monitors of the alerting plugin that are run once for repeatable results; impossible travel compares a login with the person's previous one, which a query cannot say, so the events are read back and a few lines of code decide; together the day gives 10 alerts, 8 true, and all four attacks are noticed, but a mapping decides what a rule can say, fixed time buckets miss an attack that crosses their edge, and a monitor changed in a console leaves no trace in the code.**
@@ -35,7 +37,7 @@ A night guard with a clipboard of questions: how many times has someone failed a
 
 ## The scenario
 
-An online store's audit log for one Monday: 772 events, four attacks. The demo writes the guard's clipboard as queries, tunes it, saves it as monitors, and finds the question that the clipboard cannot hold.
+An online bank's audit log for one Monday: 772 events, four attacks. The demo writes the guard's clipboard as queries, tunes it, saves it as monitors, and finds the question that the clipboard cannot hold.
 
 ## Run
 
@@ -47,11 +49,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. One Monday of logs, in OpenSearch | 772 events loaded with the bulk API under a mapping of keywords and a date. |
-| 2. A first version of each rule, as a query | A filter, a group by the subject, a bucket of time and a threshold: three alerts for brute force at 3, of which one is true. |
-| 3. Tuning one threshold | At 10 the false alerts go away; at 40 the attack is lost. |
-| 4. The tuned set as monitors of the alerting plugin | Four monitors and one rule in code give 10 alerts, 8 true, and notice all four attacks; impossible travel needs the previous login, which a query cannot say. |
-| 5. The bill | A mapping decides what a rule can say, fixed buckets split an attack at their edge, and a console change leaves no trace in the code. |
+| 1. One Monday of logs, in OpenSearch | The plain project's 772 events go in with the bulk API under a mapping read back as boolean success, date time and keywords for the rest; one event comes back as a document, and OpenSearch counts 768 logins, 4 role grants and 113 events with an attack label that no rule reads. |
+| 2. A first version of each rule, as a query | brute-force(3) is a filter (type = login and success = false), a group by user, a 5m bucket and min_doc_count 3, and returns u042 at 12:00 with 30 failures (attack B) and u010 and u011 at 09:10 with 6 (false); the four first queries give 29 alerts, 5 true and 24 false, because success-after-failures(1) cannot say "then" and raises 23. |
+| 3. Tuning one threshold | Every account's 5-minute buckets (102) show the largest normal one at 6 failures (u010 at 09:10) and the attack's at 30 (u042 at 12:00), so min_doc_count from 7 to 30 is safe and 10 is chosen; the sweep agrees: 3 and 5 give 2 false alerts, 10 and 25 none, and 40 misses attack B. |
+| 4. The tuned set as monitors of the alerting plugin | brute-force(10) is saved as a bucket_level_monitor on a 1 MINUTES schedule with the trigger params._count >= 10; run once with dryrun, the four monitors and the impossible-travel code give 10 alerts, 8 true and 2 false, and all four attacks are noticed. |
+| 5. The bill | Grouping by user without a mapping is refused with status 400 (text fields are not optimised for it), and user.keyword gives 200; 30 failures from 13:28:00 to 13:31:52 fall 15 and 15 into two fixed buckets, so a rule of at least 20 gives 0 alerts, while a sliding window fires at 13:30:32; a monitor notices up to a minute and a bucket late, and a console edit leaves no trace. |
 
 ## Test
 
@@ -59,7 +61,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-19 tests in `DemoRunsTest`, `OpenSearchTest`, `QueryShapeTest`. The scenario and the shapes of the queries are tested with no server. The rest start one OpenSearch for the whole class and remove it (./gradlew integrationTest). They need Docker.
+22 tests in `DemoRunsTest`, `OpenSearchTest`, `QueryShapeTest`. The scenario, the shapes and four parts of the queries, and the fixed buckets worked out by hand are tested with no server. The rest start one OpenSearch for the whole class and remove it (./gradlew integrationTest). They need Docker.
 
 ## What the simulation got right, and what it left out
 
@@ -129,7 +131,7 @@ Each part of the query is a decision.
 
 ## When this is too much
 
-A shop with one server and a few hundred events a day can read its log. A search engine and alerting pay off when events come from many places, when several rules watch them, and when the rules must be tuned over time.
+A small bank with one server and a few hundred events a day can read its log. A search engine and alerting pay off when events come from many places, when several rules watch them, and when the rules must be tuned over time.
 
 ## Where you have already met this
 

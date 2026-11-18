@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs Python, Trivy and Docker. */
+/** The demo must print exactly the golden output. Needs Python (for Checkov) and Docker (for the pinned Trivy and KICS images). */
 @Tag("integration")
 class DemoRunsTest {
 

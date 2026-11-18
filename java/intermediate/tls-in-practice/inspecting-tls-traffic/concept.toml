@@ -72,93 +72,199 @@ test_note = "Keys come from a labelled generator and the RSA key is never printe
 
 [[act]]
 title = "What the wire shows"
-summary = "An observer sees the hello values and two encrypted records of 70 and 52 bytes; the plaintext, including the word password, is nowhere, and without keys nothing can be decrypted."
+summary = "A login is sent over a TLS 1.3 style connection. The capture shows the two hello randoms in the clear and two records of 70 and 52 bytes; the header 17 03 03 00 41 says application data, version 3.3, length 65 = 48 text + 1 inner type + 16 tag. With no key, the word password is nowhere and nothing opens."
 detail = """
-The client sends a login request and the server answers. A capture holds the client and server random values (sent in the clear), the key shares, and two records of 70 and 52 bytes, each beginning with the record header 17 03 03: "application data", because TLS 1.3 hides the real content type inside the encrypted part.
-Searching the bytes for "password" finds nothing, and the decryptor with no keys returns nothing. Lengths and timing are still visible, which is a limit of TLS.
+The input is one login to an online store: the client sends "POST /login HTTP/1.1 | user=ana&password=hunter2" and the server answers "HTTP/1.1 200 OK | session=7f3a".
+The capture holds the client random (3bd68db307915645...) and the server random (363791a138986206...) in the clear, then a 70-byte record from the client and a 52-byte record from the server.
+The record header, worked out: 17 is type 23, application data; 03 03 is version 3.3, the same in every TLS 1.3 record; 00 41 is a length of 65 = 48 bytes of text + 1 inner content type + 16 bytes of GCM tag; 5 header bytes + 65 = 70.
+The result with no key: the word "password" is not in the bytes, and nothing decrypts.
+"""
+figure = "record_bytes"
+figure_title = "The seventy bytes of one record"
+figure_speech = """
+First demo: what the wire shows. [[slnc 400]] This is the client's record, seventy bytes, exactly as a recording holds it. [[slnc 500]] Only the first five bytes are readable: the header. [[slnc 300]] One seven, in hex, is type twenty three: application data. [[slnc 300]] Zero three, zero three is version three point three, which every T L S one point three record says. [[slnc 300]] Zero zero, four one is the length: sixty five bytes. [[slnc 600]]
+Those sixty five bytes are the forty eight bytes of the login, plus one byte for the real content type, hidden inside, plus a sixteen byte tag that detects any change. [[slnc 300]] Five plus sixty five is seventy. [[slnc 600]]
+The login, the password and even the real type are all encrypted. [[slnc 300]] With no key, nothing opens.
 """
 speech = """
-First demo: what the wire shows. [[slnc 400]] The observer sees the hello values, and two encrypted records. [[slnc 300]] Their sizes are visible. [[slnc 300]] Their contents are not. [[slnc 600]]
-Searching for the word password finds nothing, and without keys, nothing can be decrypted.
+Here is the real output. [[slnc 400]] The input: the login the client sends, and the server's answer. [[slnc 400]] The capture: the two random values from the hellos, in the clear. [[slnc 300]] Then two records, of seventy and fifty two bytes, both starting with one seven, zero three, zero three.
+[[page]]
+The record header, worked out: application data, version three point three, and a length of sixty five. [[slnc 300]] Forty eight bytes of text, one byte of type, and a sixteen byte tag. [[slnc 400]] The result: the word password is not in the bytes, and nothing decrypts.
 """
 rows = { wire = "active ok" }
 console = [
-    ["client -> server: 70 bytes, starts 1703030041 (application data)", "muted"],
-    ["server -> client: 52 bytes, starts 170303002f (application data)", "muted"],
-    ["contains the word \"password\"? false", "ok"],
-    ["decrypted without any key -> []", "ok"],
+    ["THE CONNECTION (an online store's login, TLS 1.3 style):", "code"],
+    ["  client sends  POST /login HTTP/1.1 | user=ana&password=hunter2", "muted"],
+    ["  server sends  HTTP/1.1 200 OK | session=7f3a", "muted"],
+    ["THE CAPTURE (what anyone on the network records):", "code"],
+    ["  client random     3bd68db307915645... (in the clear)", "muted"],
+    ["  server random     363791a138986206... (in the clear)", "muted"],
+    ["  client -> server  70 bytes, 17 03 03 00 41 ...", "muted"],
+    ["  server -> client  52 bytes, 17 03 03 00 2f ...", "muted"],
+    ["---", ""],
+    ["THE RECORD HEADER, WORKED OUT (client -> server):", "code"],
+    ["  17       type 23: application data", "muted"],
+    ["  03 03    version 3.3, the same in every TLS 1.3 record", "muted"],
+    ["  00 41    length 65 = 48 text + 1 inner type + 16 tag", "muted"],
+    ["  total    5 header + 65 = 70 bytes", "muted"],
+    ["THE RESULT (with no key):", "code"],
+    ["  contains \"password\"?  false", "muted"],
+    ["  decrypted             []", "muted"],
 ]
 
 [[act]]
 title = "Writing a key log"
-summary = "The key log variable is ignored when unset, honoured in development and refused in production; each connection gets a client line and a server line named by the client random."
+summary = "SSLKEYLOGFILE makes a client write two lines per connection, CLIENT_TRAFFIC_SECRET_0 and SERVER_TRAFFIC_SECRET_0, each with the 32-byte client random and the 32-byte secret of one direction. The shop's client honours it in development and refuses to start with it in production."
 detail = """
-A client that supports key logging reads SSLKEYLOGFILE. Here it returns nothing when the variable is not set, the path in development, and refuses to start in production. The file has one line per direction: a label, the client random in hex, and the traffic secret in hex. The client random
-names the connection, and the secret is what the record keys are derived from.
+The input is the client's environment. Without SSLKEYLOGFILE there is no key log; with SSLKEYLOGFILE=/tmp/keys.log and APP_ENV=dev the client writes to /tmp/keys.log; with APP_ENV=production it refuses to start.
+The result is two lines in the NSS key log format: a label, the client random and the secret. The line part by part: the label CLIENT_TRAFFIC_SECRET_0 names the client-to-server direction, the client random 3bd68db30791... (32 bytes) is the same as the capture's, and it is how a tool matches the line to a connection, and the secret 7c6da57caa88... (32 bytes) opens that one direction.
+"""
+figure = "keylog_line"
+figure_title = "One key log line, part by part"
+figure_speech = """
+Second demo: writing a key log. [[slnc 400]] At the top, one real line of the file. [[slnc 300]] It has three parts. [[slnc 500]] In amber, the label: client traffic secret zero, the direction from the client to the server. [[slnc 300]] In cyan, the client random: thirty two bytes, the same value the capture shows in the clear. [[slnc 300]] That is how a tool finds the line for a connection. [[slnc 300]] In green, the secret: thirty two bytes that open that one direction. [[slnc 700]]
+At the bottom, when a client may write the file. [[slnc 300]] With no setting, there is no key log. [[slnc 300]] In development, it writes to the path given. [[slnc 300]] In production, the shop's client refuses to start.
 """
 speech = """
-Second demo: writing a key log. [[slnc 400]] The variable is ignored when it is not set, and honoured in development. [[slnc 300]] In production, the client refuses to start. [[slnc 600]]
-The file holds one line for each direction: a label, the connection's random value, and a secret.
+The input: three environments. [[slnc 300]] Not set, no key log. [[slnc 300]] Development, a file. [[slnc 300]] Production, the client refuses to start. [[slnc 400]] The result: two lines for this connection, one for each direction.
+[[page]]
+The line, part by part. [[slnc 300]] The label, the client random, which is the same as the capture's, and a thirty two byte secret for one direction.
 """
 rows = { log = "active amber" }
 console = [
-    ["SSLKEYLOGFILE not set -> Optional.empty", "muted"],
-    ["SSLKEYLOGFILE=/tmp/keys.log in development -> Optional[/tmp/keys.log]", "amber"],
-    ["SSLKEYLOGFILE=/tmp/keys.log in production -> refused: SSLKEYLOGFILE is set in production; refusing to start", "ok"],
-    ["CLIENT_TRAFFIC_SECRET_0 3bd68db30791... 7c6da57caa88...", "muted"],
+    ["THE SETTINGS (the client's environment):", "code"],
+    ["  SSLKEYLOGFILE not set           no key log", "muted"],
+    ["  SSLKEYLOGFILE, APP_ENV=dev      /tmp/keys.log", "muted"],
+    ["  SSLKEYLOGFILE, APP_ENV=production", "muted"],
+    ["    refused: SSLKEYLOGFILE is set in production; refusing to start", "muted"],
+    ["THE KEY LOG (two lines for this connection):", "code"],
+    ["  CLIENT_TRAFFIC_SECRET_0 3bd68db30791... 7c6da57caa88...", "muted"],
+    ["  SERVER_TRAFFIC_SECRET_0 3bd68db30791... ea2a4ed1b2fa...", "muted"],
+    ["---", ""],
+    ["THE LINE, PART BY PART:", "code"],
+    ["  label          CLIENT_TRAFFIC_SECRET_0", "muted"],
+    ["  client random  3bd68db30791... (32 bytes)", "muted"],
+    ["                 the capture's: 3bd68db30791... same", "muted"],
+    ["  secret         7c6da57caa88... (32 bytes, one direction)", "muted"],
 ]
 
 [[act]]
 title = "Reading the capture with the key log"
-summary = "With the log the capture reads POST /login with user=ana&password=hunter2, and the reply with the session."
+summary = "The capture's client random finds both lines of the log. The secret gives the AES key by HKDF-Expand-Label(secret, \"key\", 16) and the IV by Expand-Label(secret, \"iv\", 12); each record's nonce is the IV XOR its number. AES-128-GCM then opens both records, and the password appears."
 detail = """
-The decryptor finds the lines for this capture's client random, derives the record keys and nonces from the secrets, and opens the records in order. The login request appears with its password, and the reply with the session cookie value.
-This is exactly what a developer needs for debugging, and exactly what an attacker gets by finding the file.
+The input is the capture and the key log. The capture's client random 3bd68db30791... is looked up in the log, and both lines are found: CLIENT_TRAFFIC_SECRET_0 7c6da57caa88... and SERVER_TRAFFIC_SECRET_0 ea2a4ed1b2fa....
+From secret to key, worked out for the client direction: the key is HKDF-Expand-Label(secret, "key", 16) = cfeb456056d9d85d..., the IV is HKDF-Expand-Label(secret, "iv", 12) = 6d3d06a138e98f67..., and the nonce of each record is the IV XOR the record number, so record 0 ends db a7 and record 1 would end db a6. AES-128-GCM opens the record and checks the header with it.
+The result: both records open, with the login, the password and the session.
+"""
+figure = "secret_to_key"
+figure_title = "From the logged secret to the text"
+figure_speech = """
+Third demo: reading the capture with the key log. [[slnc 400]] At the top, the lookup. [[slnc 300]] The client random from the capture finds the line, and the line gives the secret. [[slnc 600]]
+In the middle, how the secret becomes a key, worked out. [[slnc 300]] H K D F expand label, with the word key, gives sixteen bytes: the A E S key. [[slnc 300]] With the letters I V, it gives twelve bytes: the initial value. [[slnc 300]] Each record's nonce is that value, X O R the record number. [[slnc 300]] So record zero ends in hex a seven, and record one ends in hex a six. [[slnc 600]]
+At the bottom, A E S one twenty eight G C M opens the record, and checks the header too. [[slnc 300]] The login and the password appear.
 """
 speech = """
-Third demo: reading the capture with the key log. [[slnc 400]] The decryptor finds the lines for this connection, derives the record keys, and opens the records. [[slnc 600]]
-The login request appears, with the password. [[slnc 300]] That is what a developer needs for debugging, and what an attacker gets by finding the file.
+The lookup: the capture's client random finds both lines, client and server. [[slnc 300]] So both secrets are in hand.
+[[page]]
+From secret to key: the key, the I V, and a nonce for each record number. [[slnc 400]] The result: both records open. [[slnc 300]] The login, with the password, and the server's session.
 """
 rows = { read = "active wrong" }
 console = [
-    ["client: POST /login HTTP/1.1 | user=ana&password=hunter2", "bad"],
-    ["server: HTTP/1.1 200 OK | session=7f3a", "bad"],
+    ["THE LOOKUP (the capture's client random in the log):", "code"],
+    ["  client random            3bd68db30791...", "muted"],
+    ["  CLIENT_TRAFFIC_SECRET_0  7c6da57caa88... found", "muted"],
+    ["  SERVER_TRAFFIC_SECRET_0  ea2a4ed1b2fa... found", "muted"],
+    ["---", ""],
+    ["FROM SECRET TO KEY, WORKED OUT (client direction):", "code"],
+    ["  key    Expand-Label(secret, \"key\", 16)  cfeb456056d9d85d...", "muted"],
+    ["  iv     Expand-Label(secret, \"iv\", 12)   6d3d06a138e98f67...", "muted"],
+    ["  nonce  iv XOR record number: record 0 ends db a7", "muted"],
+    ["                               record 1 ends db a6", "muted"],
+    ["  AES-128-GCM opens the record, the header is checked too", "muted"],
+    ["THE RESULT (the records, opened):", "code"],
+    ["  client: POST /login HTTP/1.1 | user=ana&password=hunter2", "muted"],
+    ["  server: HTTP/1.1 200 OK | session=7f3a", "muted"],
 ]
 
 [[act]]
 title = "A key log opens its own connections and no others"
-summary = "Session one's log reads nothing of session two; session two reads with its own lines; with only the client line of session one, only the client's records open."
+summary = "A second customer's connection has its own client random (1ccd6b949daf...), so session one's log opens nothing in it; with its own two lines added, both of its records open; and session one with only its CLIENT line opens the client's record and not the server's."
 detail = """
-Each connection has its own random values and key shares, so its secrets are unrelated to every other connection's. Session one's log decrypts nothing in session two's capture. Adding session two's lines opens it. Giving the decryptor only the client line of session one
-opens the client's request and not the server's reply, because the two directions have separate secrets.
+The input is a second connection, another customer asking for GET /orders, with client random 1ccd6b949daf... where session one has 3bd68db30791....
+Try 1, session two with session one's key log: no line has its client random, so nothing opens. Try 2, with its own two lines added: client "GET /orders HTTP/1.1" and server "HTTP/1.1 200 OK | 3 orders" open. Try 3, session one with only its CLIENT line: the client's login opens, the server's record stays closed.
+The result: a key log line opens one direction of one connection, no more.
+"""
+figure = "log_scope"
+figure_title = "Three tries with a key log"
+figure_speech = """
+Fourth demo: what a key log opens. [[slnc 400]] A second customer connects, with a different client random. [[slnc 600]] First try: session two, with session one's key log. [[slnc 300]] No line names its client random, so nothing opens. [[slnc 500]] Second try: add session two's own two lines. [[slnc 300]] Both of its records open. [[slnc 500]] Third try: session one, with only its client line. [[slnc 300]] The client's login opens, but the server's record stays closed. [[slnc 600]]
+So one line opens one direction of one connection, and nothing more.
 """
 speech = """
-Fourth demo: a key log opens its own connections and no others. [[slnc 400]] Each connection has its own secrets. [[slnc 300]] The first log opens nothing of the second connection. [[slnc 600]]
-And each direction has its own secret, so a client line alone opens only the request.
+The second connection has its own client random. [[slnc 300]] With session one's log, nothing opens. [[slnc 300]] With its own lines added, both records open. [[slnc 300]] With only the client line of session one, only the client's record opens.
 """
 rows = { scope = "active ok" }
 console = [
-    ["session two with session one's key log -> []", "ok"],
-    ["session two with its own lines -> [client: GET /orders HTTP/1.1, server: HTTP/1.1 200 OK | 3 orders]", "amber"],
-    ["only the client line of session one -> [client: POST /login ...]", "amber"],
+    ["THE SECOND CONNECTION (another customer):", "code"],
+    ["  client random  1ccd6b949daf... (session one: 3bd68db30791...)", "muted"],
+    ["TRY 1: session two, with session one's key log", "code"],
+    ["  [] (nothing opens)", "muted"],
+    ["TRY 2: session two, with its own two lines added", "code"],
+    ["  client: GET /orders HTTP/1.1", "muted"],
+    ["  server: HTTP/1.1 200 OK | 3 orders", "muted"],
+    ["TRY 3: session one, with only its CLIENT line", "code"],
+    ["  client: POST /login HTTP/1.1 | user=ana&password=hunter2", "muted"],
+    ["THE RESULT:", "code"],
+    ["  a line opens one direction of one connection, no more", "muted"],
 ]
 
 [[act]]
 title = "Why the server's own key is a different matter"
-summary = "A server key that leaks a year later decrypts a recorded static-RSA connection completely and an ephemeral one not at all."
+summary = "A recording made last year with static RSA key exchange carries the client's secret encrypted to the server key (256 bytes); when that key leaks, both records open. An ECDHE recording carries only two 32-byte public values; the same leaked key opens nothing. That is forward secrecy."
 detail = """
-With static RSA key exchange, the client encrypts the secret it chose under the server's long-term public key. An attacker who recorded the connection last year and steals the server's private key today decrypts the premaster secret, derives the same keys, and reads the login.
-With ephemeral key exchange (X25519) the long-term key only signs the handshake: the traffic secrets came from values that were thrown away, so the stolen key opens nothing. That is forward secrecy, and the reason static RSA is gone from TLS 1.3 and a finding in the previous project.
+The input is two recordings from last year. With static RSA key exchange the client's secret crossed the wire encrypted to the server's long-term key, 256 bytes. With ECDHE only two public values of 32 bytes crossed (8d0e655ac863... and 2af6fb559353...); the shared secret was never sent. Today the server's long-term RSA private key leaks.
+The result: the static RSA recording opens, login and password included; the ECDHE recording opens nothing.
+Why, worked out: with static RSA the key decrypts the 256 bytes and gets the secret; with ECDHE the secret needs a private value of the handshake, thrown away when it ended.
+"""
+figure = "forward_secrecy"
+figure_title = "One leaked key, two recordings"
+figure_speech = """
+Fifth demo: the server's own key. [[slnc 400]] Two recordings from last year, and today the server's long term private key leaks. [[slnc 600]]
+On the left, static R S A. [[slnc 300]] The client chose the secret and sent it encrypted to the server's key: two hundred and fifty six bytes on the wire. [[slnc 300]] The leaked key decrypts them, and from the secret everything follows. [[slnc 300]] The login and the password open. [[slnc 700]]
+On the right, E C D H E. [[slnc 300]] Only two public values crossed the wire, thirty two bytes each. [[slnc 300]] The shared secret needs a private value of that handshake, and it was thrown away when the handshake ended. [[slnc 300]] The leaked key opens nothing. [[slnc 500]] That is forward secrecy.
 """
 speech = """
-Fifth demo: why the server's own key is a different matter. [[slnc 400]] With static r s a, the client encrypts its secret under the server's long-term key. [[slnc 300]] An attacker who recorded last year's connection and steals the key today reads the login. [[slnc 600]]
-With an ephemeral exchange, the long-term key only signed the handshake. [[slnc 300]] The stolen key opens nothing. That is forward secrecy.
+The recordings. [[slnc 300]] Static R S A sent the client's secret encrypted to the server key: two hundred and fifty six bytes. [[slnc 300]] E C D H E sent two public values, and never the secret. [[slnc 300]] Then the leak: the server's long term key.
+[[page]]
+The result: the static R S A recording opens, password and all. [[slnc 300]] The E C D H E recording opens nothing. [[slnc 400]] Why: the key decrypts the static R S A secret, but the E C D H E secret needed a private value that no longer exists.
 """
 rows = { fs = "active ok" }
 console = [
-    ["recorded last year, static RSA key exchange; the server key leaks today -> [client: POST /login ..., server: HTTP/1.1 200 OK ...]", "bad"],
-    ["recorded last year, ephemeral key exchange; the same key leaks today -> []", "ok"],
+    ["THE RECORDINGS (made last year):", "code"],
+    ["  static RSA  the client's secret, encrypted to the server key:", "muted"],
+    ["              256 bytes on the wire", "muted"],
+    ["  ECDHE       two public values of 32 and 32 bytes:", "muted"],
+    ["              8d0e655ac863... and 2af6fb559353...", "muted"],
+    ["              the shared secret is never sent", "muted"],
+    ["THE LEAK (today): the server's long-term RSA private key", "code"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  static RSA, opened with the leaked key:", "muted"],
+    ["    client: POST /login HTTP/1.1 | user=ana&password=hunter2", "muted"],
+    ["    server: HTTP/1.1 200 OK | session=7f3a", "muted"],
+    ["  ECDHE, opened with the same key:", "muted"],
+    ["    [] (nothing opens)", "muted"],
+    ["WHY, WORKED OUT:", "code"],
+    ["  static RSA  the key decrypts the 256 bytes: the secret", "muted"],
+    ["  ECDHE       the secret needs a private value of the", "muted"],
+    ["              handshake, thrown away when it ended", "muted"],
 ]
+
+[highlight]
+console_green = ["THE RESULT", "TRY 2"]
+console_rose = ["THE CAPTURE", "THE LEAK", "TRY 1"]
+console_amber = ["THE RECORD HEADER", "THE LINE", "FROM SECRET", "WHY", "TRY 3"]
+console_cyan = ["THE CONNECTION", "THE SETTINGS", "THE KEY LOG", "THE LOOKUP", "THE SECOND", "THE RECORDINGS"]
 
 [animation]
 subtitle = "A captured login, a key log, and a stolen server key."
@@ -424,15 +530,15 @@ residual = "Static RSA suites that remain enabled for old clients"
 
 [poster]
 headline = [["INSPECTING TLS", "text"], ["WITH A KEY LOG", "accent"]]
-taglines = [["A key log opens exactly the connections it lists, and a leaked server key opens nothing th", "gold"]]
-before = { code = "client -> server: 70 bytes, starts 1703030041 (appli", note = "What the wire shows", tag = "BEFORE" }
-after = { code = "CLIENT_TRAFFIC_SECRET_0", note = "Why the server's own key is a different ", tag = "AFTER" }
+taglines = [["A key log opens what it lists, and nothing more", "gold"]]
+before = { code = "17 03 03 00 41 ... (70 bytes)", note = "What the wire shows", tag = "BEFORE" }
+after = { code = "client: POST /login HTTP/1.1", note = "Read with the key log", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "Inspecting TLS Traffic with a Key Log"
-narration = "Hello, and welcome. [[slnc 400]] This video explains how T L S traffic is inspected with a key log, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A recording of encrypted traffic is unreadable without keys. [[slnc 300]] A key log is a file that holds the secrets of each connection, so a developer can read what their own app sent. [[slnc 300]] It opens exactly the connections it lists, which makes it a debugging tool that must never run in production. [[slnc 300]] And forward secrecy is why a stolen server key cannot open old recordings. [[slnc 600]] Think of a spare key, cut for one locker at a time. [[slnc 600]] Our example is an online shop's sign-in."
+narration = "Hello, and welcome. [[slnc 400]] This video explains how T L S traffic is inspected with a key log, in Java. [[slnc 300]] T L S is transport layer security, the protocol behind the padlock in the browser. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A recording of encrypted traffic is unreadable without keys. [[slnc 300]] A key log is a file that holds the secrets of each connection, so a developer can read what their own app sent. [[slnc 300]] It opens exactly the connections it lists, which makes it a debugging tool that must never run in production. [[slnc 300]] And forward secrecy is why a stolen server key cannot open old recordings. [[slnc 600]] Think of a spare key, cut for one locker at a time. [[slnc 600]] Our example is an online shop's sign-in."
 
 [[scene]]
 key = "02-scenario"
@@ -440,6 +546,28 @@ kind = "bullets"
 title = "The Scenario"
 body = ["A customer signs in to a shop", "over an encrypted connection,", "and a developer records the traffic.", "", "Three people look at the recording:", "  an observer with no keys", "  a developer with the key log", "  an attacker who later steals the server key"]
 narration = "Here is the scenario. [[slnc 400]] A customer signs in to an online shop over an encrypted connection, and a developer records the traffic. [[slnc 500]] The demo builds the connections itself, with repeatable keys, so every byte can be shown. [[slnc 500]] Then three people look at the same recording: an observer with no keys, a developer with the key log, and an attacker who steals the server's long-term key a year later."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Capture: a recording of the bytes on the network", "Record: one encrypted unit of TLS data", "Client random: 32 bytes sent in the clear", "Traffic secret: the secret of one direction", "Key log: a file of traffic secrets", "Forward secrecy: a stolen key opens no old session"]
+narration = """Before the demos, the words. [[slnc 500]] A capture is a recording of the bytes that crossed the network. [[slnc 500]] A record is one encrypted unit of T L S data. [[slnc 500]] The client random is thirty two bytes the client sends in the clear when the connection starts. [[slnc 500]] A traffic secret is the secret of one direction of one connection. [[slnc 500]] A key log is a file of those secrets. [[slnc 500]] And forward secrecy means a key stolen later cannot open a session recorded earlier."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-three-holders"
+kind = "figure"
+title = "One recording, three people"
+body = "three_holders"
+narration = """Let's see the core idea on one real example. [[slnc 400]] At the top, the recording of one login: two records, seventy and fifty two bytes. [[slnc 300]] Inside is the password, but the bytes do not show it. [[slnc 600]]
+Below, four ways to look at it. [[slnc 300]] An observer with no key reads nothing. [[slnc 300]] A developer with the key log reads the login and the answer. [[slnc 500]] Then an attacker steals the server's long term key. [[slnc 300]] With an old static R S A connection, the login opens. [[slnc 300]] With an E C D H E connection, nothing opens. [[slnc 600]]
+So the key log is a secret file that opens what it lists, and forward secrecy protects old recordings from a stolen server key."""
 
 [[scene]]
 key = "03-acts"
@@ -453,13 +581,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["A key log is a plaintext secret", "Debugging in production is tempting, and wrong", "Forward secrecy needs ephemeral key exchange", "Reading others' traffic is a privacy matter", "One key log line per connection and direction"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A key log is a secret, written in plain text, that opens every connection it lists. [[slnc 500]] Turning it on in production, just to debug, is tempting, and wrong. [[slnc 500]] Forward secrecy needs an ephemeral key exchange, so old static R S A must be switched off. [[slnc 500]] Reading other people's traffic, even your customers', is a privacy matter. [[slnc 300]] And a key log must hold a line for every connection and direction you want to read."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Hkdf, Secrets, Records: the key schedule and records", "Connection, Capture, Packet: connections and the recording", "KeyLog: writes and reads key log lines", "Decryptor: opens a recording with what it holds", "TlsLogDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Hkdf, Secrets, and Records are the T L S one point three style key schedule, and the encrypted records. [[slnc 500]] Connection, Capture, and Packet make the connections, and the recording an observer would see. [[slnc 500]] KeyLog writes and reads key log lines, in the format browsers use. [[slnc 500]] Decryptor tries to open a recording, with nothing, with a key log, or with the server's key. [[slnc 300]] And TlsLogDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -476,8 +597,134 @@ body = ["Key logs only for your own traffic, in development", "Delete them after
 narration = "So, how do you use it? [[slnc 400]] Use key logs only for your own traffic, in development, and delete them after use. [[slnc 500]] Make the setting fail loudly, and refuse to start, in production. [[slnc 500]] And offer only ephemeral key exchange, T L S one point three, or E C D H E in T L S one point two, so that a key stolen in the future does not unlock today's recordings."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a second record to each", "direction and check that reordering is caught."]
-narration = "That's inspecting T L S traffic with a key log. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A T L S recording is unreadable without keys, a key log opens exactly the connections it lists and must stay out of production, and forward secrecy means a stolen server key cannot open recorded ephemeral sessions. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second record in each direction, and check that the sequence numbers catch records that are reordered. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+narration = "That's inspecting T L S traffic with a key log. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Any T L S recording is unreadable without keys, a key log opens exactly the connections it lists and must stay out of production, and forward secrecy means a stolen server key cannot open recorded ephemeral sessions. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a second record in each direction, and check that the sequence numbers catch records that are reordered. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Everything a tool like Wireshark does is written out here in plain Java, so nothing is a black box. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "KeyLog"
+what = "writes and reads key log lines, and guards the setting"
+[[class.part]]
+title = "one line per direction"
+code = """
+String random = Hex.of(c.clientRandom());
+return "CLIENT_TRAFFIC_SECRET_0 " + random + " " + Hex.of(s.client()) + "\\n"
+        + "SERVER_TRAFFIC_SECRET_0 " + random + " " + Hex.of(s.server()) + "\\n";
+"""
+speech = """A key log line is a label, the client random, and the secret, in hex. [[slnc 300]] The client random is how a tool finds the line for a connection."""
+[[class.part]]
+title = "refused in production"
+code = """
+String env = environment.getOrDefault("APP_ENV", "");
+if ("production".equalsIgnoreCase(env)) {
+    throw new IllegalStateException(
+            "SSLKEYLOGFILE is set in production; refusing to start");
+"""
+speech = """The shop's client reads the variable, but in production it refuses to start. [[slnc 300]] A key log there would be a copy of every customer's session secrets."""
+
+[[class]]
+name = "Secrets"
+what = "the TLS 1.3 key schedule, down to the traffic secrets"
+[[class.part]]
+title = "from the shared secret to one secret per direction"
+code = """
+byte[] handshake = Hkdf.extract(
+        Hkdf.deriveSecret(early, "derived", emptyHash), sharedSecret);
+byte[] master = Hkdf.extract(
+        Hkdf.deriveSecret(handshake, "derived", emptyHash), Hkdf.ZEROS);
+byte[] client = Hkdf.deriveSecret(master, "c ap traffic", transcriptHash);
+byte[] server = Hkdf.deriveSecret(master, "s ap traffic", transcriptHash);
+"""
+speech = """The shared secret is mixed into the handshake secret, then the master secret. [[slnc 300]] From the master secret come two traffic secrets, one for each direction. [[slnc 300]] These are exactly what a key log holds."""
+
+[[class]]
+name = "Records"
+what = "seals and opens one record with AES-128-GCM"
+[[class.part]]
+title = "key, IV and nonce from the secret"
+code = """
+return Hkdf.expandLabel(secret, "key", new byte[0], 16);
+...
+return Hkdf.expandLabel(secret, "iv", new byte[0], 12);
+...
+iv[11 - i] ^= (byte) (seq >> (8 * i));
+"""
+speech = """The key and the I V are expanded from the traffic secret. [[slnc 300]] The nonce is the I V with the record number X O R ed into its last bytes. [[slnc 300]] A test opens a record by hand with these values."""
+
+[[class]]
+name = "Decryptor"
+what = "opens a capture with what the analyst holds"
+[[class.part]]
+title = "a leaked server key, against each kind of connection"
+code = """
+if (c.ecdhe()) {
+    return List.of();
+...
+byte[] premaster = cipher.doFinal(c.clientKeyShare());
+"""
+speech = """With the server's long term key, an E C D H E connection gives nothing: that key only signed the handshake. [[slnc 300]] A static R S A connection gives up its secret, because the key decrypts it straight from the capture."""
+
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: the protocol behind HTTPS"
+say = "T L S is transport layer security: the protocol that encrypts a connection and proves the server's identity."
+[[acronym]]
+short = "HTTP, HTTPS"
+long = "Hypertext Transfer Protocol; HTTP over TLS"
+say = "H T T P is the hypertext transfer protocol of the web. H T T P S is H T T P inside T L S."
+[[acronym]]
+short = "SSLKEYLOGFILE"
+long = "the variable that makes a client write a key log"
+say = "S S L key log file is the environment variable that tells a client where to write its key log."
+[[acronym]]
+short = "APP_ENV"
+long = "the application's environment: dev or production"
+say = "App env is the variable that says where the application runs: development or production."
+[[acronym]]
+short = "HKDF"
+long = "HMAC-based Key Derivation Function"
+say = "H K D F is the hash based key derivation function: it stretches one secret into keys with labels."
+[[acronym]]
+short = "HMAC, SHA"
+long = "Hash-based Message Authentication Code; Secure Hash Algorithm"
+say = "H M A C is a hash based message authentication code. S H A is the secure hash algorithm."
+[[acronym]]
+short = "AES, GCM"
+long = "Advanced Encryption Standard; Galois/Counter Mode"
+say = "A E S is the advanced encryption standard, and G C M is Galois counter mode, which encrypts and detects changes in one step."
+[[acronym]]
+short = "IV, XOR"
+long = "Initialization Vector; exclusive or"
+say = "An I V is an initialization vector, the starting value of each nonce. X O R is exclusive or, which flips the bits where two values differ."
+[[acronym]]
+short = "RSA"
+long = "Rivest-Shamir-Adleman: a public-key algorithm"
+say = "R S A, after Rivest, Shamir and Adleman, is a public key algorithm. Used as a key exchange, it gives no forward secrecy."
+[[acronym]]
+short = "ECDHE, X25519"
+long = "Elliptic Curve Diffie-Hellman Ephemeral; the curve it uses here"
+say = "E C D H E is elliptic curve Diffie Hellman ephemeral: a fresh key for every connection. X twenty five five nineteen is the curve used here."
+[[acronym]]
+short = "SSL"
+long = "Secure Sockets Layer: TLS's old name, kept in SSLKEYLOGFILE"
+say = "S S L is secure sockets layer, the old name of T L S, still used in the variable's name."
+[[acronym]]
+short = "CWE"
+long = "Common Weakness Enumeration: a numbered list of weaknesses"
+say = "C W E is the common weakness enumeration, a numbered list of software weaknesses."
+[[acronym]]
+short = "NSS"
+long = "Network Security Services: the library whose log format this is"
+say = "N S S is network security services, the library that defined the key log format."

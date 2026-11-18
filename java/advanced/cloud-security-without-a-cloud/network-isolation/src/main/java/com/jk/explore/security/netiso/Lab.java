@@ -14,7 +14,8 @@ import java.util.UUID;
  */
 public final class Lab implements AutoCloseable {
 
-    static final String IMAGE = "alpine:3.24.3";
+    /** Pinned by digest (the multi-platform index of alpine 3.24.3), so a re-pushed tag cannot change what is measured. */
+    static final String IMAGE = "alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a";
 
     private final String suffix = UUID.randomUUID().toString().substring(0, 6);
     private final List<String> networks = new ArrayList<>();
@@ -69,7 +70,8 @@ public final class Lab implements AutoCloseable {
 
     /** Whether {@code from} can open a connection to {@code host}:{@code port}, within a second. */
     public boolean connects(String from, String host, int port) throws IOException, InterruptedException {
-        return Sh.run("exec", containers.get(from), "nc", "-z", "-w", "1", host, String.valueOf(port)).ok();
+        String[] probe = {"exec", containers.get(from), "nc", "-z", "-w", "1", host, String.valueOf(port)};
+        return Sh.run(probe).ok();
     }
 
     /** The services that {@code from} reaches by name, on their own ports. */
@@ -140,26 +142,26 @@ public final class Lab implements AutoCloseable {
         return containers.keySet();
     }
 
-    /** Builds the layout that an intent asks for: one network for each allowed pair, internal, and every service on the networks of its pairs. */
+    /** Builds the layout that an intent asks for: one internal network for each allowed pair, every service on the networks of its pairs, and the front published on an edge network. */
     public void build(Intent intent, boolean publishWeb) throws IOException, InterruptedException {
-        Map<String, List<String>> networksOf = new LinkedHashMap<>();
-        int n = 0;
-        for (String pair : intent.pairs()) {
-            String net = "link" + (++n);
-            network(net, true);
-            for (String member : pair.split("-")) {
-                networksOf.computeIfAbsent(member, k -> new ArrayList<>()).add(net);
-            }
-        }
-        if (publishWeb) {
-            network("edge", false);
+        apply(Layout.of(intent, publishWeb), publishWeb ? java.util.Set.of("web") : java.util.Set.of());
+    }
+
+    /**
+     * Builds a layout for real: its networks, then each service of the shop started on its first network and joined to the rest. A published service starts on a network with a
+     * way out, because Docker cannot publish a port from an internal network.
+     */
+    public void apply(Layout layout, java.util.Set<String> published) throws IOException, InterruptedException {
+        for (String net : layout.networks().keySet()) {
+            network(net, layout.internal().contains(net));
         }
         for (Service s : Service.shop()) {
-            List<String> nets = networksOf.get(s.name());
-            boolean front = publishWeb && s.name().equals("web");
-            // a published port needs a network that is not internal: the front starts on the edge network and joins its links
-            start(s, front ? "edge" : nets.get(0), front);
-            for (String more : front ? nets : nets.subList(1, nets.size())) {
+            List<String> nets = new ArrayList<>(layout.networksOf(s.name()));
+            boolean publish = published.contains(s.name());
+            String first = publish ? nets.stream().filter(n -> !layout.internal().contains(n)).findFirst().orElseThrow() : nets.get(0);
+            start(s, first, publish);
+            nets.remove(first);
+            for (String more : nets) {
                 join(s.name(), more);
             }
         }

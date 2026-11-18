@@ -42,10 +42,10 @@ Learners log for debugging, and only discover during an incident that the log ca
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 119 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:08, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

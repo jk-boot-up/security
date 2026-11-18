@@ -1,22 +1,137 @@
---- a flat network
-no policy: 20 of 20 pairs reachable, 17 unwanted, 0 missing
---- default deny, then one allow for each line of the design
-deny all ingress in three namespaces: 0 of 20 pairs reachable, 0 unwanted, 3 missing
-the design's allows added: 3 of 20 pairs reachable, 0 unwanted, 0 missing
-the measurement equals the design: yes
---- three mistakes the API server accepts
-allow from the whole shop namespace: 4 of 20 pairs reachable, 1 unwanted, 0 missing: shop/jobs -> pay/api
-a typo in the app label of an allow: 2 of 20 pairs reachable, 0 unwanted, 1 missing: shop/web -> pay/api
-a deny written for one app, the jobs pod forgotten: 7 of 20 pairs reachable, 4 unwanted, 0 missing: shop/web -> shop/jobs, pay/api -> shop/jobs, pay/db -> shop/jobs, ops/admin -> shop/jobs
---- egress, and the name lookup that stops with it
-api to a server outside the cluster, no egress policy: answered
-deny egress in pay, allow api to db: 3 of 20 pairs reachable, 0 unwanted, 0 missing
-api to the server outside: timed out
-api to db by its service name: timed out
-api to db by its service name, DNS allowed: answered
---- the label is the credential
-the jobs pod relabelled app=web: 4 of 20 pairs reachable, 1 unwanted, 0 missing: shop/jobs -> pay/api
---- the bill
-a policy is accepted by any cluster and enforced only by its network plugin: measure, do not assume
-a policy that selects nothing is valid and does nothing
-whoever can set a pod's labels can choose its policies
+ONE. A flat network: no policy at all.
+  THE PODS (a policy selects a pod by its label):
+    shop/web     app=web    the store front
+    shop/jobs    app=jobs   the nightly batch jobs
+    pay/api      app=api    the payments api
+    pay/db       app=db     the payments database
+    ops/admin    app=admin  the operators' console
+  THE DESIGN (3 pairs may talk):
+    shop/web -> pay/api
+    pay/api -> pay/db
+    ops/admin -> pay/db
+  THE POLICIES:
+    none
+  THE MEASUREMENT (curl, row to column; o answered):
+    from\to   web    jobs   api    db     admin
+    web       -      o      o      o      o
+    jobs      o      -      o      o      o
+    api       o      o      -      o      o
+    db        o      o      o      -      o
+    admin     o      o      o      o      -
+  HOW MANY PAIRS (n pods make n x (n - 1)):
+    5 pods   5 x 4 = 20 pairs
+  AGAINST THE DESIGN:
+    reachable   20 of 20 = 3 wanted + 17 unwanted
+    unwanted    17, every o that is not in the design
+    missing     0
+TWO. Default deny, then one allow for each line of the design.
+  STEP 1, THE POLICIES (a default deny in each namespace):
+    deny-all-ingress         all pods of shop: nothing in
+    deny-all-ingress         all pods of pay: nothing in
+    deny-all-ingress         all pods of ops: nothing in
+  STEP 1, THE MEASUREMENT:
+    reachable   0 of 20 = 0 wanted + 0 unwanted
+    unwanted    0
+    missing 3   shop/web -> pay/api
+                pay/api -> pay/db
+                ops/admin -> pay/db
+  STEP 2, THE POLICIES ADDED (one for each line of the design):
+    allow-api-from-shop-web  pay app=api <- shop app=web
+    allow-db-from-pay-api    pay app=db <- pay app=api
+    allow-db-from-ops-admin  pay app=db <- ops app=admin
+  STEP 2, THE MEASUREMENT (o answered):
+    from\to   web    jobs   api    db     admin
+    web       -      .      o      .      .
+    jobs      .      -      .      .      .
+    api       .      .      -      o      .
+    db        .      .      .      -      .
+    admin     .      .      .      o      -
+  AGAINST THE DESIGN:
+    reachable   3 of 20 = 3 wanted + 0 unwanted
+    unwanted    0
+    missing     0
+    equals the design: yes
+  ONE ALLOW, LINE BY LINE (allow-api-from-shop-web):
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: allow-api-from-shop-web
+      namespace: pay
+    spec:
+      podSelector:
+        matchLabels: {app: api}
+      policyTypes: [Ingress]
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels: {kubernetes.io/metadata.name: shop}
+              podSelector:
+                matchLabels: {app: web}
+          ports: [{port: 8080}]
+THREE. Three mistakes that the API server accepts.
+  MISTAKE 1, THE POLICY (replaces allow-api-from-shop-web in pay):
+    allow-api-from-shop      pay app=api <- shop any pod
+    selects    api
+    accepted   yes, the API server says created
+  MISTAKE 1, THE MEASUREMENT:
+    reachable   4 of 20 = 3 wanted + 1 unwanted
+    unwanted 1  shop/jobs -> pay/api
+    missing     0
+  MISTAKE 2, THE POLICY (replaces allow-api-from-shop-web in pay):
+    allow-apii-from-shop-web pay app=apii <- shop app=web
+    selects    no pod (app=apii in pay)
+    accepted   yes, the API server says created
+  MISTAKE 2, THE MEASUREMENT:
+    reachable   2 of 20 = 2 wanted + 0 unwanted
+    unwanted    0
+    missing 1   shop/web -> pay/api
+  MISTAKE 3, THE POLICY (replaces deny-all-ingress in shop):
+    deny-ingress-web         shop app=web only: nothing in
+    selects    web
+    leaves     jobs, now with no policy at all
+    accepted   yes, the API server says created
+  MISTAKE 3, THE MEASUREMENT:
+    reachable   7 of 20 = 3 wanted + 4 unwanted
+    unwanted 4  shop/web -> shop/jobs
+                pay/api -> shop/jobs
+                pay/db -> shop/jobs
+                ops/admin -> shop/jobs
+    missing     0
+FOUR. Egress, and the name lookup that stops with it.
+  BEFORE (the design's policies, nothing on egress):
+    api -> outside server    answered
+    api -> db by name        answered
+  THE POLICIES ADDED (on what leaves pay):
+    deny-all-egress          all pods of pay: nothing out
+    allow-api-to-db          pay app=api -> pay app=db
+  AFTER:
+    reachable   3 of 20 = 3 wanted + 0 unwanted
+    api -> outside server    timed out
+    api -> db by address     answered
+    api -> db by name        timed out
+  WHY THE NAME FAILS (a name is looked up first):
+    db.pay.svc.cluster.local  asked of kube-dns, port 53
+    kube-dns  2 pods in kube-system, k8s-app=kube-dns
+    no egress allow names them, so the question is dropped
+  THE POLICY ADDED:
+    allow-dns                all pods of pay -> kube-dns, port 53
+  AFTER ALLOWING DNS:
+    api -> db by name        answered
+    api -> outside server    timed out
+FIVE. The label is the credential.
+  BEFORE (the design's policies):
+    shop/jobs  app=jobs
+    reachable   3 of 20 = 3 wanted + 0 unwanted
+    unwanted    0
+    missing     0
+  THE CHANGE (by anyone who may edit pods in shop):
+    kubectl -n shop label pod jobs app=web --overwrite
+  AFTER:
+    shop/jobs  app=web
+    reachable   4 of 20 = 3 wanted + 1 unwanted
+    unwanted 1  shop/jobs -> pay/api
+    missing     0
+  WHY (allow-api-from-shop-web asks two questions):
+    namespace is shop?       jobs: yes
+    label app=web?           jobs: yes
+    both yes, so jobs gets the store front's access

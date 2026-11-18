@@ -5,6 +5,7 @@ src/main/java/com/jk/explore/security/ransomres/
 ├── BackupJob.java                 The nightly (here hourly) job: copy a data directory to a bucket under a prefix for the run, with a manifest of SHA-256 sums
 ├── Bucket.java                    The few S3 calls the demo uses over and over, and how an answer is turned into "ok" or an error code
 ├── Entropy.java                   Shannon entropy in bits per byte: about 4 to 5 for a text ledger, close to 8 for encrypted or compressed data
+├── EntropySteps.java              The entropy of one block worked out term by term, as the guard computes it: H = the sum, over every byte value that occurs, of -p x log2(p), where p = count / length
 ├── Guard.java                     The check a backup job makes before it copies anything: is the canary file untouched, and does the data still look like a ledger?
 ├── Ledger.java                    A bank's ledger as text: the same bytes for the same number, on every run
 ├── Policies.java                  The access policies of the people and programs around the backups (S3 policy documents)
@@ -45,16 +46,17 @@ A bank keeps hourly backups of its ledger in an object store. Ransomware reaches
 ./gradlew run
 ```
 
-The demo tells the story in 6 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. A plain bucket | With the backup credentials an attacker overwrites 24 of 24 backups and deletes 24 of 24. |
-| 2. Versioning only | Versions survive an overwrite, but a permanent delete by version id removes all 48. |
-| 3. Object lock in COMPLIANCE mode | Deleting a locked version is refused 24 of 24 times, even for root; retention cannot be shortened. |
+| 1. A plain bucket | With the backup credentials an attacker overwrites 24 of 24 backups and deletes 24 of 24: nothing is left to restore. |
+| 2. Versioning only | Versions survive an overwrite, but a permanent delete of all 48 versions by id leaves 0 of 24 backups. |
+| 3. Object lock in COMPLIANCE mode | Deleting a locked version by id is refused 24 of 24 times, even for root; the retention cannot be shortened, and 24 of 24 backups restore. |
 | 4. Isolation and an air-gapped copy | A writer that can only add objects is refused 7 of 7 other actions; a second store answers InvalidAccessKeyId to the first store's root. |
-| 5. Ransomware and the poisoned backup | The 10:00 backup of encrypted files passes its SHA-256 manifest 10 of 10; the guard refuses it and run 09:00 restores 9 of 9 files. |
-| 6. The restore exercise | 24 backups restore into a fresh directory in 91.6 minutes from the first store and 168.4 from the air-gapped copy. |
+| 5. The guard: a canary file and entropy | Ledger text scores 3.93 bits per byte, the same block encrypted 7.95; with a canary file and a 7.5 limit the guard refuses every encrypted directory. |
+| 6. Ransomware and the poisoned backup | The 10:00 backup of encrypted files matches its own SHA-256 manifest 10 of 10; the guard refuses it, and run 09:00 restores 9 of 9 files with 3000 transactions lost. |
+| 7. The restore exercise | 24 backups restore into a fresh directory with 120 counted steps: 91.6 minutes from the first store and 168.4 from the air-gapped copy, against a 240 minute target. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `ResilienceUnitTest`. The ledger, the entropy and canary guard, the ransomware simulation on a temporary directory, the policies and the recovery arithmetic are tested without tools. The demo starts two RustFS containers (./gradlew integrationTest).
+15 tests in `DemoRunsTest`, `ResilienceUnitTest`. The ledger, the entropy worked out term by term (EntropySteps gives exactly the guard's value), the entropy and canary guard, the ransomware simulation on a temporary directory, the policies and the recovery arithmetic are tested without tools. The demo starts two RustFS containers (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

@@ -40,7 +40,9 @@ public final class Store {
     public String read(int id, Envelope.Rules rules, int keyId, boolean repair) throws GeneralSecurityException {
         byte[] blob = records.get(id);
         byte[] plain = envelope.open(blob, rules);
-        if (repair && (Envelope.versionOf(blob) != rules.writeVersion() || Envelope.keyOf(blob) != keyId)) {
+        boolean old = Envelope.versionOf(blob) != rules.writeVersion()
+                || Envelope.keyOf(blob) != keyId;
+        if (repair && old) {
             records.put(id, envelope.seal(plain, rules.writeVersion(), keyId));
         }
         return new String(plain, StandardCharsets.UTF_8);

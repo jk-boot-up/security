@@ -39,7 +39,8 @@ public final class Metrics {
             if (!port.equals(labels.get("target_port"))) {
                 continue;
             }
-            String key = "true".equals(labels.get("tls")) && labels.containsKey(idLabel) ? labels.get(idLabel) : NO_IDENTITY;
+            String key = "true".equals(labels.get("tls")) && labels.containsKey(idLabel)
+                    ? labels.get(idLabel) : NO_IDENTITY;
             sums.merge(key, Long.parseLong(m.group(3)), Long::sum);
         }
         return sums;

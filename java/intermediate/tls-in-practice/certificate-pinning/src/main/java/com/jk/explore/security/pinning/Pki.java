@@ -24,13 +24,27 @@ public final class Pki {
 
     private static long serial = 1;
 
+    /** Where new keys come from; {@link #seed} makes the demo's keys, and so its pins, the same on every run. */
+    private static java.security.SecureRandom random = new java.security.SecureRandom();
+
     private Pki() {
+    }
+
+    /** A repeatable source of keys, for a demo whose output must not change; never for real keys. */
+    public static void seed(long seed) {
+        try {
+            random = java.security.SecureRandom.getInstance("SHA1PRNG");
+            random.setSeed(seed);
+            serial = 1;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public static KeyPair newKey() {
         try {
             KeyPairGenerator g = KeyPairGenerator.getInstance("EC");
-            g.initialize(new ECGenParameterSpec("secp256r1"));
+            g.initialize(new ECGenParameterSpec("secp256r1"), random);
             return g.generateKeyPair();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);

@@ -10,7 +10,7 @@ short_title = "Mesh mTLS"
 package = "meshmtls"
 main_class = "ServiceMeshMtlsDemo"
 tagline = "Let a mesh give a bank's pods identities from their ServiceAccounts and encrypt every call, measure it on a real Linkerd cluster, and see what the mesh does not protect"
-bold = "On a real kind cluster with Linkerd (edge-26.10.1), a call from web to payments shows the account number on the wire before the proxies (yes) and not after (no), and each proxy counts the other end by certificate: payments sees web.bank.serviceaccount.identity.linkerd.cluster.local, web sees payments, so both ends proved who they are; all 4 workloads hold a certificate named from their ServiceAccount; with mutual TLS alone 16 of 16 caller and service pairs answer (14 unwanted, 4 of 4 from a pod outside the mesh, and the node itself gets HTTP 200); a Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs (2 of 16, 0 unwanted, 0 missing) and refuse the others with HTTP 403, including the pod outside the mesh and the node; the mesh still lets an allowed web send an injection string through intact, shows the account number to root on the node between the proxy and the app, leaves a call to a pod outside the mesh readable, and gives a new pod that runs as the payments ServiceAccount payments' access (HTTP 200) while a ServiceAccount of the same name in another namespace gets 403; a certificate issued for 5 minutes (Linkerd's default is 24 hours) is renewed with the same name and no restart, and the trust anchor is valid for 365 days."
+bold = "On a real kind cluster (node image pinned by digest) with Linkerd (edge-26.10.1), a call from web to payments shows the account number on the wire before the proxies (yes) and not after (no), and each proxy counts the other end by certificate: payments sees web.bank.serviceaccount.identity.linkerd.cluster.local, web sees payments, so both ends proved who they are; all 4 workloads hold a certificate named from their ServiceAccount; with mutual TLS alone 16 of 16 caller and service pairs answer (14 unwanted, 4 of 4 from a pod outside the mesh, and the node itself gets HTTP 200); a Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs (2 of 16, 0 unwanted, 0 missing) and refuse the others with HTTP 403, including the pod outside the mesh and the node; the mesh still lets an allowed web send an injection string through intact, shows the account number to root on the node between the proxy and the app, leaves a call to a pod outside the mesh readable, and gives a new pod that runs as the payments ServiceAccount payments' access (HTTP 200) while a ServiceAccount of the same name in another namespace gets 403; a certificate issued for 5 minutes (Linkerd's default is 24 hours) is renewed with the same name and no restart, and the trust anchor is valid for 365 days."
 domain = "a bank"
 domain_note = ""
 youtube_description = "A service mesh with Linkerd on a real kind cluster: automatic mutual TLS, identities taken from ServiceAccounts, an authorization policy that names who may call, and the limits: pods outside the mesh, root on the node, application flaws, ServiceAccount control and certificate lifetime."
@@ -61,96 +61,278 @@ This is a project of the [service-identity-and-zero-trust](..) module, next to [
 twin = """
 Linkerd, kind and the packet capture are real and run on your machine. The bank is made up: small web servers stand in for the services. The demo prints counts, names and yes or no, never pod names, addresses or certificate serials.
 """
-test_note = "The identity names, the policy manifests, the counter parsing, the certificate reading and the pair scoring are tested with no tools. The demo needs Docker, kind and kubectl (./gradlew integrationTest)."
+test_note = "The identity parts, the policy manifests, the counter parsing, the capture reading, the certificate dates, the who-answered table and the pair scoring are tested with no tools. The demo needs Docker, kind and kubectl (./gradlew integrationTest)."
 
 [[act]]
 title = "Before and after the proxies"
-summary = "The account number can be read from the wire before the proxies and not after; each proxy counts the other end by certificate."
+summary = "web calls payments with an account number in the URL. Before the proxies a capture on the node reads the request line (yes); after them it reads nothing (no), only packets to the proxy port 4143, and each proxy counted the other end by its certificate."
 detail = """
-A packet capture beside the node sees the call from web to payments. Before injection the account number is in the capture. After, the capture holds only traffic to the proxy port, and the proxy counters show web as the caller seen by payments and payments as the server seen by web.
+The input: web calls GET http://payments.bank:8080/echo?msg=ACCT-4417-transfer-9000 while tcpdump runs on the node.
+Before the proxies (0 of 5 pods have one): HTTP 200, the capture holds the request line GET /echo?msg=ACCT-4417-transfer-9000, the account is readable (yes).
+After injection (4 of 5 pods; legacy/batch left out): HTTP 200, no request line on the wire (none), the account is not readable (no), and packets went to port 4143, the proxy's inbound port.
+The result: payments' proxy counted the request under the client certificate web.bank.serviceaccount.identity.linkerd.cluster.local, and web's proxy under the server certificate payments.bank...: both ends proved who they are.
+"""
+figure = "mesh_path"
+figure_title = "The same call, before and after the proxies"
+figure_speech = """
+First demo: the same call, before and after the proxies. [[slnc 400]] At the top, the input and the old result. [[slnc 300]] The web pod calls payments, with an account number in the address. [[slnc 300]] A packet capture runs on the node, the way anyone with root there could. [[slnc 300]] With no proxies, it reads the whole request line, account number included. [[slnc 700]]
+At the bottom, the same call after the proxies were injected. [[slnc 300]] The app still sends plain H T T P, but only to its own proxy, inside the pod. [[slnc 300]] Between the pods, the two proxies speak mutual T L S on port forty one forty three. [[slnc 300]] The capture finds no request line at all, and the answer is still two hundred. [[slnc 700]]
+And each proxy saw the other's certificate. [[slnc 300]] Web's proxy saw the payments name, and payments' proxy saw the web name. [[slnc 300]] So both ends proved who they are, with no change to either app.
 """
 speech = """
-First demo: before and after the proxies. [[slnc 400]] The account number is on the wire. [[slnc 600]] Add the proxies, and it is gone, and both ends know who the other is.
+Here is the real output. [[slnc 400]] The call, then before the proxies: zero of five pods have one. [[slnc 300]] Two hundred, the request line is on the wire, and the account is readable. [[slnc 400]] After the proxies, four of five pods; the legacy batch job is left out. [[slnc 300]] Two hundred, no request on the wire, and port forty one forty three was used.
+[[page]]
+What each proxy counted. [[slnc 300]] Payments' proxy counted one request from the web certificate. [[slnc 300]] Web's proxy counted one answer from the payments certificate. [[slnc 300]] Both ends proved who they are: yes.
 """
 rows = { wire = "active ok" }
 console = [
-    ["account number on the wire: yes", "bad"],
-    ["after the proxies: no", "ok"],
-    ["both ends proved who they are: yes", "ok"],
+    ["THE CALL (web calls payments; a capture runs on the node):", "code"],
+    ["  GET http://payments.bank:8080/echo?msg=ACCT-4417-transfer-9000", "muted"],
+    ["BEFORE THE PROXIES (0 of 5 pods have one):", "code"],
+    ["  answer             HTTP 200", "muted"],
+    ["  request on wire    GET /echo?msg=ACCT-4417-transfer-9000", "bad"],
+    ["  account readable   yes", "bad"],
+    ["AFTER THE PROXIES (4 of 5 pods; legacy/batch left out):", "code"],
+    ["  answer             HTTP 200", "muted"],
+    ["  request on wire    none", "ok"],
+    ["  account readable   no", "ok"],
+    ["  port 4143 used     yes (the proxy's inbound port)", "ok"],
+    ["---", ""],
+    ["WHAT PAYMENTS' PROXY COUNTED (the client's certificate):", "code"],
+    ["  web.bank.serviceaccount.identity.linkerd.cluster.local  1", "muted"],
+    ["WHAT WEB'S PROXY COUNTED (the server's certificate):", "code"],
+    ["  payments.bank.serviceaccount.identity.linkerd.cluster.local  1", "muted"],
+    ["THE RESULT:", "code"],
+    ["  both ends proved who they are: yes", "ok"],
 ]
 
 [[act]]
-title = "Identities from ServiceAccounts"
-summary = "All 4 workloads hold a certificate named from their ServiceAccount, namespace and trust domain."
+title = "An identity from each ServiceAccount"
+summary = "The payments pod runs in namespace bank as ServiceAccount payments. Its proxy's certificate names payments.bank.serviceaccount.identity.linkerd.cluster.local: the ServiceAccount, the namespace, a fixed part, Linkerd's namespace and the trust domain, joined by dots. All 4 of 4 bank workloads hold the name the rule gives."
 detail = """
-The identity service signs each proxy's certificate after checking the pod's ServiceAccount token. The name is the ServiceAccount, the namespace and the trust domain, so a ServiceAccount of the same name in another namespace is another identity.
+The input: the pod spec of payments: namespace bank, serviceAccountName payments.
+How the name is made: payments (the ServiceAccount) . bank (the namespace) . serviceaccount.identity (fixed) . linkerd (Linkerd's namespace) . cluster.local (the trust domain).
+The result: linkerd identity prints the subject of each proxy's certificate; web, payments, ledger and statements each hold the name the rule gives, 4 of 4. The identity service signs a certificate only after checking the pod's ServiceAccount token.
+"""
+figure = "certificates"
+figure_title = "The subject of each workload's certificate"
+figure_speech = """
+Second demo: where the names come from. [[slnc 400]] The input is nothing new: each pod already runs as a service account. [[slnc 300]] When the proxy starts, it sends the pod's service account token to Linkerd's identity service, and gets back a certificate. [[slnc 700]]
+Here is the result: the subject of each of the four certificates. [[slnc 300]] In cyan, the first part, the service account: web, payments, ledger, and statements. [[slnc 300]] Then the namespace, bank, and the fixed parts that every name shares. [[slnc 700]]
+All four match the rule. [[slnc 300]] So a name says which account the pod runs as, and in which namespace. [[slnc 300]] A service account called payments in another namespace would get another name.
 """
 speech = """
-Second demo: identities. [[slnc 400]] Each pod's name comes from its ServiceAccount. [[slnc 600]] Four workloads, four certificates.
+The input: the payments pod, its namespace and service account. [[slnc 400]] How the name is made: five parts, joined by dots. [[slnc 300]] The service account, the namespace, a fixed part, Linkerd's own namespace, and the trust domain.
+[[page]]
+The certificates: four subjects, and all four of four are made by that rule.
 """
 rows = { identity = "active ok" }
 console = [
-    ["web.bank.serviceaccount...", "ok"],
-    ["payments.bank.serviceaccount...", "ok"],
-    ["names match the ServiceAccounts: yes", "ok"],
+    ["THE INPUT (the payments pod):", "code"],
+    ["  namespace           bank", "muted"],
+    ["  serviceAccountName  payments", "muted"],
+    ["HOW THE NAME IS MADE (the parts, joined by dots):", "code"],
+    ["  ServiceAccount      payments", "muted"],
+    ["  namespace           bank", "muted"],
+    ["  fixed               serviceaccount.identity", "muted"],
+    ["  Linkerd namespace   linkerd", "muted"],
+    ["  trust domain        cluster.local", "ok"],
+    ["---", ""],
+    ["THE CERTIFICATES (linkerd identity, the subject):", "code"],
+    ["  web.bank.serviceaccount.identity.linkerd.cluster.local", "ok"],
+    ["  payments.bank.serviceaccount.identity.linkerd.cluster.local", "ok"],
+    ["  ledger.bank.serviceaccount.identity.linkerd.cluster.local", "ok"],
+    ["  statements.bank.serviceaccount.identity.linkerd.cluster.local", "ok"],
+    ["  made by the rule above: 4 of 4", "ok"],
 ]
 
 [[act]]
-title = "Mutual TLS is not a decision"
-summary = "With no policy 16 of 16 pairs answer, 14 unwanted, including a pod outside the mesh and the node."
+title = "Mutual TLS alone does not decide"
+summary = "5 callers x 4 bank services - 4 calls to itself = 16 pairs; the design allows 2. With mutual TLS and no policy 16 of 16 answer, 14 not in the design, 4 of 4 from legacy/batch which has no proxy, and the node gets HTTP 200: Linkerd's default policy is all-unauthenticated."
 detail = """
-Linkerd's default inbound policy lets every caller in. Mutual TLS encrypts and identifies, but nothing says who may call. The batch job with no proxy reaches all 4 services and the node gets HTTP 200.
+The input: every caller (web, payments, ledger, statements and legacy/batch) calls every bank service: 5 x 4 - 4 = 16 pairs. The design allows 2: web -> payments and payments -> ledger.
+The result: 16 of 16 answered, 14 not in the design, 0 missing. legacy/batch, with no proxy, reached 4 of 4. Ledger's proxy let in a connection with no identity (yes), and the node itself, with no proxy and no identity, gets HTTP 200. Linkerd's default inbound policy, all-unauthenticated, lets every caller in: mutual TLS encrypts and names, but decides nothing.
+"""
+figure = "matrix_open"
+figure_title = "Who answered, with mutual TLS and no policy"
+figure_speech = """
+Third demo: is mutual T L S a decision? [[slnc 400]] The input: five callers each call the four bank services. [[slnc 300]] Five times four is twenty, minus the four calls a service would make to itself: sixteen pairs. [[slnc 300]] The design wants only two of them: web calls payments, and payments calls the ledger. [[slnc 700]]
+Here is the result, row by row. [[slnc 300]] Green is what the design wants, rose is what it does not. [[slnc 300]] Every cell answers. [[slnc 300]] Even the batch job in the legacy namespace, which has no proxy and no certificate, reaches all four services. [[slnc 700]]
+So the calls are encrypted where both ends have a proxy, and the names are known, but nobody has said who may call. [[slnc 300]] Linkerd's default policy lets everyone in.
 """
 speech = """
-Third demo: mutual TLS alone. [[slnc 400]] Encrypted, and everyone may call everyone. [[slnc 600]] Sixteen of sixteen pairs answer.
+The calls: five callers, four services, minus four calls to itself: sixteen pairs. [[slnc 300]] The design allows two. [[slnc 400]] Who answered: every pair, yes.
+[[page]]
+The result: sixteen of sixteen answered, fourteen not in the design. [[slnc 300]] All four from the batch job with no proxy. [[slnc 300]] The ledger let in a connection with no identity, and the node itself gets two hundred. [[slnc 300]] The default policy is all unauthenticated.
 """
 rows = { open = "active wrong" }
 console = [
-    ["16 of 16 pairs answered", "bad"],
-    ["14 unwanted", "bad"],
-    ["outside the mesh: 4 of 4 answered", "bad"],
+    ["THE CALLS (every caller to every bank service, no policy):", "code"],
+    ["  5 callers x 4 services - 4 calls to itself = 16 pairs", "muted"],
+    ["  the design allows 2: web -> payments, payments -> ledger", "muted"],
+    ["WHO ANSWERED (row calls column):", "code"],
+    ["  caller          web        payments   ledger     statements", "muted"],
+    ["  bank/web        -          yes        yes        yes", "muted"],
+    ["  bank/payments   yes        -          yes        yes", "muted"],
+    ["  bank/ledger     yes        yes        -          yes", "muted"],
+    ["  bank/statements yes        yes        yes        -", "muted"],
+    ["  legacy/batch    yes        yes        yes        yes", "muted"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  answered      16 of 16", "bad"],
+    ["  not designed  14 (answered, not in the design)", "bad"],
+    ["  missing       0 (in the design, refused)", "muted"],
+    ["  from legacy/batch, no proxy   4 of 4", "bad"],
+    ["  ledger let in no identity     yes", "bad"],
+    ["  the node calls ledger         HTTP 200", "bad"],
+    ["  Linkerd's default policy      all-unauthenticated", "bad"],
 ]
 
 [[act]]
 title = "A policy names who may call"
-summary = "A Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs; the rest get HTTP 403."
+summary = "Each bank service gets a Server for its port; payments names web and ledger names payments in an AuthorizationPolicy. Now 2 of 16 answer, 0 not designed, 0 missing: the measurement equals the design. statements, web and legacy/batch get HTTP 403 from ledger; ledger's proxy counted 2 refusals for each."
 detail = """
-Each service gets a Server for its port and an AuthorizationPolicy naming the identity allowed. Statements, web calling the ledger directly, the pod with no proxy and the node are refused with 403; the ledger's proxy counts the refusals by caller.
+The input: Policies.forService writes a Server (port 8080 of the pod) for web, statements, payments and ledger, and for payments and ledger a MeshTLSAuthentication naming one identity and an AuthorizationPolicy that requires it. A Server alone refuses every caller.
+The result: 2 of 16 answered, 0 not in the design, 0 missing; the measurement equals the design (yes). Calls to ledger one by one: statements HTTP 403, web 403, legacy/batch 403, payments 200. Ledger's proxy counted the refusals by the caller's identity: no identity 2, statements.bank 2, web.bank 2 (once in the sixteen calls, once in the call one by one).
+"""
+figure = "matrix_policy"
+figure_title = "Who answered, with a policy that names one caller"
+figure_speech = """
+Fourth demo: a policy. [[slnc 400]] The input: each service gets a Server, which covers its port. [[slnc 300]] A Server alone refuses everyone. [[slnc 300]] Then payments names one identity that may call it, web, and the ledger names payments. [[slnc 700]]
+Here is the result, the same sixteen calls. [[slnc 300]] Only two cells answer, and they are exactly the two pairs of the design. [[slnc 300]] Every other cell is refused, and green now means it matches the design. [[slnc 700]]
+At the bottom, the ledger's proxy counted the refusals by who was calling. [[slnc 300]] Two with no identity, from the batch job, two from statements, and two from web. [[slnc 300]] The proxy knows who was refused, because it checked a certificate.
 """
 speech = """
-Fourth demo: a policy. [[slnc 400]] Name the one identity that may call. [[slnc 600]] Two of sixteen pairs answer, the ones in the design.
+The policy: a Server for each service, and one caller named for payments and for the ledger. [[slnc 400]] Who answered: two pairs.
+[[page]]
+The result: two of sixteen, none not designed, none missing. [[slnc 300]] The measurement equals the design.
+[[page]]
+Calls to the ledger one by one: statements, web and the batch job get four oh three; payments gets two hundred. [[slnc 300]] And the ledger's proxy counted two refusals for each caller.
 """
 rows = { policy = "active ok" }
 console = [
-    ["2 of 16 pairs answered", "ok"],
-    ["statements calls ledger: 403", "ok"],
-    ["payments calls ledger: 200", "ok"],
+    ["THE POLICY (a Server per service, one caller named):", "code"],
+    ["  web         Server, no caller named", "muted"],
+    ["  statements  Server, no caller named", "muted"],
+    ["  payments    Server + AuthorizationPolicy: web", "muted"],
+    ["  ledger      Server + AuthorizationPolicy: payments", "muted"],
+    ["WHO ANSWERED (row calls column):", "code"],
+    ["  caller          web        payments   ledger     statements", "muted"],
+    ["  bank/web        -          yes        no         no", "muted"],
+    ["  bank/payments   no         -          yes        no", "muted"],
+    ["  bank/ledger     no         no         -          no", "muted"],
+    ["  bank/statements no         no         no         -", "muted"],
+    ["  legacy/batch    no         no         no         no", "muted"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  answered      2 of 16", "ok"],
+    ["  not designed  0 (answered, not in the design)", "ok"],
+    ["  missing       0 (in the design, refused)", "muted"],
+    ["  the measurement equals the design: yes", "ok"],
+    ["---", ""],
+    ["CALLS TO LEDGER, ONE BY ONE:", "code"],
+    ["  statements    HTTP 403", "ok"],
+    ["  web           HTTP 403", "ok"],
+    ["  legacy/batch  HTTP 403", "ok"],
+    ["  payments      HTTP 200", "ok"],
+    ["LEDGER'S PROXY COUNTED REFUSALS (by the caller's identity):", "code"],
+    ["  no identity      2", "muted"],
+    ["  statements.bank  2", "muted"],
+    ["  web.bank         2", "muted"],
 ]
 
 [[act]]
 title = "What the mesh does not protect"
-summary = "An allowed caller sends anything, root on the node reads the plaintext, and a new pod can take an identity."
+summary = "The node itself is now refused (403), but root on the node reads the account number inside the payments pod, between proxy and app (yes); a call to legacy/batch, outside the mesh, is readable (yes); web may send ' OR '1'='1 and it arrives intact (yes); a new pod that runs as the payments ServiceAccount reaches ledger (200) while payments in namespace shadow gets 403; and a developer with the edit role may create pods in bank (yes)."
 detail = """
-The injection string passes through intact. A capture inside the payments pod shows the account number between the proxy and the app. A call to a pod with no proxy is readable. A pod that runs as the payments ServiceAccount gets payments' access. A certificate lives until it expires; here it was issued for 5 minutes, renewed with the same name and no restart.
+Root on the node: the node's own call to ledger gets HTTP 403, but a capture entered into the payments pod's network namespace reads the request between the proxy and the app (yes).
+A pod outside the mesh: web calls legacy/batch, HTTP 200, and the account number is readable on the wire (yes).
+An allowed caller: web sends ' OR '1'='1 to payments, HTTP 200, and the string arrives intact (yes): the mesh judges the caller, never the request.
+Who may take an identity: a new pod in bank that runs as the payments ServiceAccount calls ledger: HTTP 200. A ServiceAccount also called payments in namespace shadow gets HTTP 403, its identity is payments.shadow, not payments.bank. The web ServiceAccount may not create pods in bank (no); a developer with the namespace's edit role may (yes).
+"""
+figure = "gaps"
+figure_title = "What the mesh still lets through, measured"
+figure_speech = """
+Fifth demo: what the mesh does not protect. [[slnc 400]] Each row is a measurement, with its result on the right. [[slnc 600]]
+Root on the node enters the payments pod and captures between the proxy and the app. [[slnc 300]] There the call is plain text again, so the account number is readable. [[slnc 500]] The batch job is outside the mesh, so a call to it is readable on the wire. [[slnc 500]] Web is allowed to call payments, so a hostile S Q L string passes straight through: the mesh judges the caller, never the request. [[slnc 700]]
+Then identity. [[slnc 300]] A brand new pod, running as the payments service account, gets payments' access to the ledger. [[slnc 300]] The same account name in another namespace does not, because its name ends in shadow. [[slnc 300]] And a developer with the edit role may create pods in bank. [[slnc 300]] Whoever may create pods may take an identity.
 """
 speech = """
-Fifth demo: the gaps. [[slnc 400]] The mesh judges the caller, not the request. [[slnc 600]] Whoever can create pods can take a name.
+Root on the node: the node itself is now refused, but a capture inside the payments pod reads the account. [[slnc 400]] A pod outside the mesh: readable on the wire. [[slnc 400]] An allowed caller sends a hostile string: two hundred, and it arrives intact.
+[[page]]
+Who may take an identity. [[slnc 300]] A new pod running as payments: two hundred. [[slnc 300]] Payments in namespace shadow: four oh three, its identity is payments dot shadow. [[slnc 400]] Who may create pods in bank: the web service account no, a developer with the edit role yes.
 """
 rows = { bill = "active wrong" }
 console = [
-    ["injection string arrives intact: yes", "bad"],
-    ["impostor pod calls ledger: 200", "bad"],
-    ["same name, other namespace: 403", "ok"],
+    ["ROOT ON THE NODE:", "code"],
+    ["  the node calls ledger              HTTP 403", "ok"],
+    ["  inside payments, proxy to app      yes", "bad"],
+    ["A POD OUTSIDE THE MESH:", "code"],
+    ["  web calls legacy/batch             HTTP 200", "bad"],
+    ["  account readable on the wire       yes", "bad"],
+    ["AN ALLOWED CALLER, A HOSTILE REQUEST:", "code"],
+    ["  web sends ' OR '1'='1 to payments  HTTP 200", "bad"],
+    ["  the string arrives intact          yes", "bad"],
+    ["---", ""],
+    ["WHO MAY TAKE AN IDENTITY (calls to ledger):", "code"],
+    ["  new pod in bank, runs as payments  HTTP 200", "bad"],
+    ["  payments in namespace shadow       HTTP 403", "ok"],
+    ["  its identity is payments.shadow, not payments.bank", "muted"],
+    ["WHO MAY CREATE PODS IN BANK:", "code"],
+    ["  the web ServiceAccount             no", "ok"],
+    ["  a developer with the edit role     yes", "bad"],
 ]
+
+[[act]]
+title = "Certificate lifetime and renewal"
+summary = "This run issues certificates for 5m0s (Linkerd's default is 24h0m0s). Payments' certificate spans Not After - Not Before = 340 s; minus 2 x 20 s clock skew = 300 s = 5 minutes. The trust anchor is valid for 365 days. After the renewal the proxy holds a newer certificate with the same name, the pod did not restart, and payments still calls ledger (HTTP 200)."
+detail = """
+The input: linkerd install --identity-issuance-lifetime=5m0s; Linkerd's own default is 24h0m0s, read from the CLI's help.
+How the lifetime is read: the certificate states Not Before and Not After. Linkerd backdates the start and extends the end by 20 seconds each, so a clock a little wrong still works: 340 s - 2 x 20 s = 300 s = 5 minutes.
+The trust anchor that signs the issuer is valid for 365 days.
+The result after the renewal (checked every 15 s): a newer certificate (yes), the same name (yes), the pod restarted (no), payments calls ledger HTTP 200. A certificate is trusted until it expires: its lifetime is how long a stolen one is useful.
+"""
+figure = "lifetime_bar"
+figure_title = "A workload certificate's dates, and its renewal"
+figure_speech = """
+Sixth demo: how long a certificate lives. [[slnc 400]] The input is one setting: this run asks for five minutes, where Linkerd's default is twenty four hours. [[slnc 700]]
+The bar shows payments' certificate, from Not Before to Not After: three hundred and forty seconds. [[slnc 300]] Linkerd starts it twenty seconds early and ends it twenty seconds late, so a clock that is a little wrong still works. [[slnc 300]] Three hundred and forty, minus two times twenty, is three hundred seconds: five minutes. [[slnc 700]]
+At the bottom, the result once the time ran out. [[slnc 300]] The proxy holds a newer certificate, with the same name. [[slnc 300]] The pod did not restart, and payments still reaches the ledger. [[slnc 300]] There is no revocation here: a stolen certificate works until it expires, so the lifetime is the window an attacker gets.
+"""
+speech = """
+The setting: Linkerd's default lifetime, and five minutes in this run. [[slnc 400]] How the lifetime is read: Not After minus Not Before, three hundred and forty seconds, minus twenty seconds of clock skew twice: three hundred seconds, five minutes. [[slnc 300]] The trust anchor is valid for three hundred and sixty five days. [[slnc 400]] After the renewal: a newer certificate, the same name, no restart, and the call still answers.
+"""
+rows = { lifetime = "active ok" }
+console = [
+    ["THE SETTING (linkerd install):", "code"],
+    ["  Linkerd's default lifetime   24h0m0s", "muted"],
+    ["  this run                     5m0s", "muted"],
+    ["HOW THE LIFETIME IS READ (payments' certificate):", "code"],
+    ["  Not After - Not Before       340 s", "muted"],
+    ["  minus the clock skew, twice  340 - 2 x 20 = 300 s = 5 minutes", "ok"],
+    ["  the trust anchor, valid for  365 days", "muted"],
+    ["AFTER THE RENEWAL (checked every 15 s):", "code"],
+    ["  a newer certificate          yes", "ok"],
+    ["  the same name                yes", "ok"],
+    ["  the pod restarted            no", "ok"],
+    ["  payments calls ledger        HTTP 200", "ok"],
+]
+
+[highlight]
+console_green = ["AFTER THE PROXIES", "AFTER THE RENEWAL", "THE CERTIFICATES"]
+console_rose = ["BEFORE THE PROXIES", "ROOT ON THE NODE", "A POD OUTSIDE", "AN ALLOWED CALLER", "WHO MAY TAKE", "WHO MAY CREATE"]
+console_amber = ["HOW THE NAME", "HOW THE LIFETIME", "THE RESULT", "WHAT PAYMENTS'", "WHAT WEB'S", "LEDGER'S PROXY", "CALLS TO LEDGER"]
+console_cyan = ["THE CALL", "THE INPUT", "WHO ANSWERED", "THE POLICY", "THE SETTING"]
 
 [animation]
 subtitle = "A bank's pods, named and encrypted by a mesh."
 boxes = [
-    ["wire", "Before and after the proxies", "yes, then no"],
-    ["identity", "Identities from ServiceAccounts", "4 of 4"],
-    ["open", "Mutual TLS is not a decision", "16 of 16"],
+    ["wire", "Before and after the proxies", "readable, then not"],
+    ["identity", "An identity from each ServiceAccount", "4 of 4"],
+    ["open", "Mutual TLS alone does not decide", "16 of 16"],
     ["policy", "A policy names who may call", "2 of 16"],
     ["bill", "What the mesh does not protect", "5 gaps"],
+    ["lifetime", "Certificate lifetime and renewal", "5 minutes"],
 ]
 
 [docs.problem]
@@ -224,7 +406,7 @@ nongoals = [
 problem = """
 Teams install a mesh and assume the cluster is safe, without measuring encryption, policy or the gaps.
 """
-roles = [["The cluster and Linkerd", "`Cluster`, `Linkerd`"], ["The bank's workloads", "`Service`, `Lab`"], ["The policy objects", "`Policies`"], ["The design and the scoring", "`Design`"], ["Proxy counters and certificates", "`Metrics`, `CertInfo`"], ["The packet capture", "`Sniffer`"], ["Entry point", "`ServiceMeshMtlsDemo`"]]
+roles = [["The cluster and Linkerd", "`Cluster`, `Linkerd`"], ["The bank's workloads", "`Service`, `Lab`"], ["The policy objects", "`Policies`"], ["The design and the scoring", "`Design`"], ["Proxy counters and certificates", "`Metrics`, `CertInfo`"], ["The packet capture and its reading", "`Sniffer`, `Wire`"], ["Entry point", "`ServiceMeshMtlsDemo`"]]
 requirements = [
     "Pod traffic is captured before and after the proxies.",
     "Each identity is read from the proxy's own certificate.",
@@ -354,7 +536,7 @@ out_of_scope = [
     "Denial of service.",
 ]
 tests = [
-    "`PoliciesTest`, `MetricsTest`, `CertInfoTest` and `DesignTest` check the manifests, the counters, the certificate reading and the scoring with no tools.",
+    "`PoliciesTest`, `MetricsTest`, `CertInfoTest`, `WireTest` and `DesignTest` check the manifests, the counters, the certificate reading and the scoring with no tools.",
     "`DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).",
 ]
 next = """
@@ -403,7 +585,7 @@ residual = "The mesh cannot protect it"
 
 [poster]
 headline = [["SERVICE MESH", "text"], ["mTLS", "accent"]]
-taglines = [["Let a mesh give a bank's pods identities from their ServiceAccounts and encrypt every call", "gold"]]
+taglines = [["Pod identities, encrypted calls, and what a mesh misses", "gold"]]
 before = { code = "account number on the wire: yes, then no", note = "The wire", tag = "BEFORE" }
 after = { code = "2 of 16 pairs answered", note = "Policy", tag = "AFTER" }
 
@@ -411,14 +593,36 @@ after = { code = "2 of 16 pairs answered", note = "Policy", tag = "AFTER" }
 key = "01-poster"
 kind = "poster"
 title = "Service Mesh and Automatic mTLS"
-narration = "Hello, and welcome. [[slnc 400]] This video explains a service mesh, and automatic mutual T L S, with Linkerd. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A service mesh puts a small proxy beside every pod. [[slnc 300]] The proxies get a certificate for each pod from its service account, encrypt every call between them, and check each other's certificates, with no change to the application. [[slnc 600]] Think of every office in a bank getting its own guard, who checks the badge of every visitor. [[slnc 300]] The guard still needs a list of who may come in. [[slnc 600]] Our example is a bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains a service mesh, and automatic mutual T L S, with Linkerd. [[slnc 300]] T L S is transport layer security, the encryption behind H T T P S; mutual means both ends show a certificate. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A service mesh puts a small proxy beside every pod. [[slnc 300]] The proxies get a certificate for each pod from its service account, encrypt every call between them, and check each other's certificates, with no change to the application. [[slnc 600]] Think of every office in a bank getting its own guard, who checks the badge of every visitor. [[slnc 300]] The guard still needs a list of who may come in. [[slnc 600]] Our example is a bank."
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
 body = ["A bank's pods on a real kind cluster:", "web, payments, ledger and statements,", "plus a batch job outside the mesh.", "", "Linkerd adds a proxy to each pod. The demo", "measures who can call whom, before and after."]
-narration = "Here is the scenario. [[slnc 400]] A bank runs four workloads on a real Kubernetes cluster, made with kind: web, payments, ledger, and statements. [[slnc 500]] A batch job runs outside the mesh. [[slnc 500]] Linkerd adds a proxy beside each pod. [[slnc 300]] The demo measures what is on the wire, and who can call whom, before and after, and with and without a policy."
+narration = "Here is the scenario. [[slnc 400]] A bank runs four workloads on a real Kubernetes cluster, made with kind: web, payments, ledger, and statements. [[slnc 500]] A batch job runs in a legacy namespace, outside the mesh. [[slnc 500]] Linkerd adds a proxy beside each pod. [[slnc 300]] The demo measures what is on the wire, and who can call whom, before and after, and with and without a policy."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Pod: one running workload in Kubernetes", "ServiceAccount: the account a pod runs as", "Proxy: a small program beside the app in the pod", "Identity: a name in the proxy's certificate", "Server, AuthorizationPolicy: Linkerd's policy objects", "Trust anchor: the root that signs every certificate"]
+narration = """Before the demos, the words. [[slnc 500]] A pod is one running workload in Kubernetes. [[slnc 500]] A service account is the account a pod runs as; Kubernetes gives the pod a signed token for it. [[slnc 500]] A proxy is a small program the mesh adds beside the app, inside the same pod; all traffic goes through it. [[slnc 500]] An identity is the name in the proxy's certificate. [[slnc 500]] A Server and an authorization policy are Linkerd's objects that say who may call a port. [[slnc 500]] And the trust anchor is the root certificate that every other certificate in the mesh leads back to."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-identity"
+kind = "figure"
+title = "How a pod gets its name"
+body = "identity_parts"
+narration = """Let's see the core idea on one example: where a pod's name comes from. [[slnc 400]] At the top, the input: the payments pod runs in the namespace bank, as the service account payments. [[slnc 300]] That is all the mesh needs. [[slnc 600]]
+In the middle, how the name is made. [[slnc 300]] Five parts, joined by dots. [[slnc 300]] The service account, payments. [[slnc 300]] The namespace, bank. [[slnc 300]] A fixed part, service account dot identity. [[slnc 300]] Linkerd's own namespace. [[slnc 300]] And the trust domain, cluster dot local. [[slnc 700]]
+At the bottom, the result: that is exactly the subject of the certificate payments' proxy holds. [[slnc 300]] The proxy proved the pod's service account with its token, and Linkerd signed the name. [[slnc 300]] So the name is only as good as the control over who may run a pod as that account."""
 
 [[scene]]
 key = "03-acts"
@@ -430,15 +634,15 @@ narration = "unused"
 key = "04-costs"
 kind = "bullets"
 title = "What It Costs"
-body = ["Mutual TLS alone lets everyone call everyone", "Root on the node reads the plaintext", "  between the proxy and the app", "An allowed caller can still send an attack", "Whoever may create pods may take an identity"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Mutual T L S alone lets every workload call every other one. [[slnc 300]] You still need a policy. [[slnc 500]] Root on the node reads the plaintext between the proxy and the app. [[slnc 500]] An allowed caller can still send an injection string, and the mesh passes it on. [[slnc 500]] And whoever may create pods may run as a service account, and take its identity."
+body = ["A proxy in every pod: memory and latency", "Mutual TLS alone lets everyone call everyone", "Root on the node reads the plaintext", "  between the proxy and the app", "An allowed caller can still send an attack", "Whoever may create pods may take an identity"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A proxy in every pod costs memory and some latency, and a control plane to run. [[slnc 500]] Mutual T L S alone lets every workload call every other one. [[slnc 300]] You still need a policy. [[slnc 500]] Root on the node reads the plaintext between the proxy and the app. [[slnc 500]] An allowed caller can still send an injection string, and the mesh passes it on. [[slnc 500]] And whoever may create pods may run as a service account, and take its identity."
 
 [[scene]]
 key = "05-roles"
 kind = "bullets"
 title = "Who Does What"
-body = ["Cluster, Linkerd: a kind cluster with Linkerd", "Service: a workload and its ServiceAccount", "Lab: measures who can call whom", "Policies: Server and AuthorizationPolicy", "Sniffer: a capture with root on the node", "ServiceMeshMtlsDemo: runs the demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Cluster and Linkerd make a real kind cluster, with Linkerd installed. [[slnc 500]] Service is a workload of the bank, with the service account its pod runs as. [[slnc 500]] Lab measures who can call whom, and Design compares it with the plan. [[slnc 500]] Policies writes Linkerd's Server and AuthorizationPolicy objects. [[slnc 300]] Sniffer captures packets the way someone with root on the node would. [[slnc 300]] And ServiceMeshMtlsDemo runs the demos."
+body = ["Cluster, Linkerd: a kind cluster with Linkerd", "Service: a workload and its ServiceAccount", "Lab, Design: measure who can call whom", "Policies: Server and AuthorizationPolicy", "Sniffer, Wire: a capture with root on the node", "Metrics, CertInfo: proxy counters, certificates"]
+narration = "Here is who does what in the code. [[slnc 400]] Cluster and Linkerd make a real kind cluster, with Linkerd installed. [[slnc 500]] Service is a workload of the bank, with the service account its pod runs as. [[slnc 500]] Lab measures who can call whom, and Design compares it with the plan. [[slnc 500]] Policies writes Linkerd's Server and authorization policy objects. [[slnc 300]] Sniffer captures packets the way someone with root on the node would, and Wire reads the capture. [[slnc 300]] Metrics reads the proxies' counters, and CertInfo reads a certificate's dates."
 
 [[scene]]
 key = "06-recognise"
@@ -455,9 +659,172 @@ body = ["Put every workload in the mesh", "Write a policy that names who may cal
 narration = "So, how do you use it? [[slnc 400]] Put every workload in the mesh, so nothing talks in clear. [[slnc 500]] Write a policy that names exactly which identities may call each service. [[slnc 500]] Control who may create pods and service accounts, because that controls identity. [[slnc 500]] Still validate input in the application. [[slnc 300]] And keep certificate lifetimes short."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Set the namespace's default", "inbound policy to deny, and compare."]
 narration = "That's a service mesh with automatic mutual T L S. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] The mesh gives every pod an identity and encrypts every call, but only a policy decides who may call whom. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Set the namespace's default inbound policy to deny, and compare who can still call whom. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The cluster, Linkerd and the capture are real; the classes drive them and read what they report. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Service"
+what = "a workload, its ServiceAccount and its identity"
+
+[[class.part]]
+title = "the identity: five parts joined by dots"
+code = """
+public String identity() {
+    return String.join(".", identityParts());
+...
+return java.util.List.of(serviceAccount, namespace,
+        "serviceaccount.identity", "linkerd", "cluster.local");
+"""
+speech = """The name a proxy gets is the service account, the namespace, and three fixed parts. [[slnc 300]] A test checks it against the subject Linkerd really signs."""
+
+[[class]]
+name = "Lab"
+what = "the bank's pods on the cluster, and the measurements"
+
+[[class.part]]
+title = "inject the proxies"
+code = """
+cluster.must("annotate", "namespace", namespace,
+        "linkerd.io/inject=enabled", "--overwrite");
+cluster.must("-n", namespace, "rollout", "restart", "deploy");
+"""
+speech = """One annotation on the namespace, and a restart. [[slnc 300]] Linkerd adds its proxy to every new pod there. [[slnc 300]] The apps do not change."""
+
+[[class.part]]
+title = "every caller calls every service"
+code = """
+for (Service from : CALLERS) {
+    for (Service to : BANK) {
+        if (!from.equals(to) && cluster.http(from, to.url("/hostname")) == 200) {
+            answered.add(Design.pair(from, to));
+"""
+speech = """Each caller runs curl inside its own pod. [[slnc 300]] The pairs that answer two hundred are the measurement the demo compares with the design."""
+
+[[class]]
+name = "Policies"
+what = "Linkerd's Server and AuthorizationPolicy for one service"
+
+[[class.part]]
+title = "a Server, then the one identity allowed"
+code = """
+kind: Server
+...
+  port: 8080
+...
+kind: MeshTLSAuthentication
+...
+  identities: [%3$s]
+...
+kind: AuthorizationPolicy
+...
+  requiredAuthenticationRefs:
+"""
+speech = """A Server covers port eighty eighty, and alone it refuses every caller. [[slnc 300]] The authorization policy lets in only the identities the mesh authentication lists, and only over mutual T L S."""
+
+[[class]]
+name = "Design"
+what = "the plan, and a measurement scored against it"
+
+[[class.part]]
+title = "unwanted and missing pairs"
+code = """
+boolean open = answered.contains(pair);
+if (open && !allowed.contains(pair)) {
+    unwanted.add(pair);
+} else if (!open && allowed.contains(pair)) {
+    missing.add(pair);
+"""
+speech = """A pair that answers but is not in the design is unwanted. [[slnc 300]] A pair in the design that is refused is missing. [[slnc 300]] With the policy, both lists are empty."""
+
+[[class]]
+name = "Metrics"
+what = "a proxy's counters, summed by the other end's identity"
+
+[[class.part]]
+title = "the identity, or no identity"
+code = """
+String key = "true".equals(labels.get("tls")) && labels.containsKey(idLabel)
+        ? labels.get(idLabel) : NO_IDENTITY;
+sums.merge(key, Long.parseLong(m.group(3)), Long::sum);
+"""
+speech = """Each counter line says whether the connection was T L S, and whose certificate was on the other end. [[slnc 300]] A plain connection is counted as no identity."""
+
+[[class]]
+name = "Wire"
+what = "a packet capture, read the way a person on the node would"
+
+[[class.part]]
+title = "is the request there to read?"
+code = """
+private static final Pattern REQUEST = Pattern.compile("GET (\\\\S+) HTTP/1\\\\.1");
+...
+if (m.group(1).contains(text)) {
+    return m.group();
+"""
+speech = """It looks for a plain H T T P request line that carries the account number. [[slnc 300]] Before the proxies it is there; between two proxies it never is."""
+
+[[class]]
+name = "CertInfo"
+what = "who a certificate names, and for how long"
+
+[[class.part]]
+title = "the lifetime, without the skew"
+code = """
+static final Duration SKEW = Duration.ofSeconds(20);
+...
+return Duration.between(notBefore, notAfter).minus(SKEW.multipliedBy(2));
+"""
+speech = """Linkerd starts a certificate twenty seconds early and ends it twenty seconds late. [[slnc 300]] Taking both away gives the lifetime that was asked for: five minutes."""
+
+[[acronym]]
+short = "TLS, mTLS"
+long = "Transport Layer Security; mutual TLS: both ends show a certificate"
+say = "T L S is transport layer security. Mutual T L S, or m T L S, means both ends show a certificate and check the other's."
+
+[[acronym]]
+short = "HTTP, HTTPS"
+long = "Hypertext Transfer Protocol (S: over TLS): 200 is OK, 403 is Forbidden"
+say = "H T T P is the hypertext transfer protocol, and H T T P S is H T T P over T L S. Code two hundred means O K; four oh three means forbidden."
+
+[[acronym]]
+short = "kind"
+long = "Kubernetes IN Docker: a whole cluster in one container"
+say = "kind stands for Kubernetes in Docker: a real cluster whose node is one container."
+
+[[acronym]]
+short = "SQL"
+long = "Structured Query Language: ' OR '1'='1 is a classic injection string"
+say = "S Q L is structured query language. Quote, or, quote one equals one, is a classic injection string."
+
+[[acronym]]
+short = "CN"
+long = "Common Name: the name in a certificate's subject"
+say = "C N is the common name, the name in a certificate's subject."
+
+[[acronym]]
+short = "CLI"
+long = "Command-Line Interface: the linkerd program"
+say = "C L I is a command line interface: here, the linkerd program."
+
+[[acronym]]
+short = "RBAC"
+long = "Role-Based Access Control: who may create pods"
+say = "R B A C is role based access control. It decides who may create pods, and so who may take an identity."
+
+[[acronym]]
+short = "OK"
+long = "the answer of a request that worked (HTTP 200)"
+say = "O K is the answer of a request that worked."

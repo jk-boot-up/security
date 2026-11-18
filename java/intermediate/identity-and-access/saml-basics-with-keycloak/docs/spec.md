@@ -39,10 +39,10 @@ Teams add SAML single sign-on with a library and never find out which attacks th
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 31 lines, identical on every run |
+| Tests | 25, all passing |
+| Demo output | 89 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:36, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:40, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

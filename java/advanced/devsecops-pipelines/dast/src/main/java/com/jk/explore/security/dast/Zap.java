@@ -6,9 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -25,7 +27,9 @@ final class Zap {
         y.append("  parameters: {failOnError: true, progressToStdout: false}\njobs:\n");
         if (session != null) {
             y.append("  - type: replacer\n    parameters: {deleteAllRules: true}\n");
-            y.append("    rules:\n      - description: session\n        matchType: req_header\n        matchString: Cookie\n        replacementString: session=").append(session).append("\n");
+            y.append("    rules:\n      - description: session\n");
+            y.append("        matchType: req_header\n        matchString: Cookie\n");
+            y.append("        replacementString: session=").append(session).append("\n");
         }
         y.append("  - type: spider\n    parameters: {maxDuration: 1}\n  - type: passiveScan-wait\n");
         if (!activeRules.isEmpty()) {
@@ -47,21 +51,26 @@ final class Zap {
         return parse(Files.readString(work.resolve("report.json")));
     }
 
-    /** The alerts of a ZAP traditional-json report, one for each name, with the paths they were raised on. */
+    /** The alerts of a ZAP traditional-json report, one for each name, with the distinct places they were raised. */
     static List<Alert> parse(String json) {
         Map<String, Alert> byName = new TreeMap<>();
         for (JsonNode site : new JsonMapper().readTree(json).path("site")) {
             for (JsonNode a : site.path("alerts")) {
-                List<String> paths = new ArrayList<>();
+                List<Alert.Hit> hits = new ArrayList<>();
                 for (JsonNode i : a.path("instances")) {
                     String path = URI.create(i.path("uri").asString()).getPath();
-                    paths.add(path == null || path.isEmpty() ? "/" : path);
+                    hits.add(new Alert.Hit(path == null || path.isEmpty() ? "/" : path, i.path("param").asString(), i.path("attack").asString()));
                 }
                 String name = a.path("name").asString();
-                int risk = a.path("riskcode").asInt();
-                byName.merge(name, new Alert(name, risk, paths.stream().distinct().sorted().toList()), (x, y) -> new Alert(name, risk, java.util.stream.Stream.concat(x.paths().stream(), y.paths().stream()).distinct().sorted().toList()));
+                Alert alert = new Alert(name, a.path("riskcode").asInt(), a.path("confidence").asInt(), hits);
+                byName.merge(name, alert, (x, y) -> new Alert(name, x.risk(), x.confidence(), Stream.concat(x.hits().stream(), y.hits().stream()).toList()));
             }
         }
-        return new ArrayList<>(byName.values());
+        List<Alert> alerts = new ArrayList<>();
+        for (Alert a : byName.values()) {
+            alerts.add(new Alert(a.name(), a.risk(), a.confidence(),
+                    a.hits().stream().distinct().sorted(Comparator.comparing(Alert.Hit::path).thenComparing(Alert.Hit::param).thenComparing(Alert.Hit::attack)).toList()));
+        }
+        return alerts;
     }
 }

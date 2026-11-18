@@ -5,12 +5,13 @@ src/main/java/com/jk/explore/security/samlkeycloak/
 ├── KeycloakLab.java       One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank and wallet realms imported from {@code infra/} and removed on close
 ├── Refusals.java          Why the shop refused sign-ins, most recent last
 ├── Running.java           The shop, a Spring Boot application on a loopback port chosen before Keycloak started, trusting the identity provider of one Keycloak realm
-├── SamlKeycloakDemo.java  Runs the shop's single sign-on story in five numbered acts against a real Keycloak in Docker and a real Spring Security SAML 2.0 service provider
+├── SamlKeycloakDemo.java  Runs the shop's single sign-on story in five acts, each split into labelled sections (the input, then the result), against a real Keycloak in Docker and a real Spring Security SAML 2.0 service provider
 ├── SamlTools.java         What an attacker does to a signed SAML response, with the JDK's own XML tools: read it, change a name, take signatures off, put a second assertion beside the signed one, and sign with a key of the attacker's own
 ├── ShopApp.java           The shop, a SAML 2.0 service provider: it sends shoppers to the bank's identity provider and believes only what the bank signs
 ├── ShopController.java    Who is signed in, as the signed statement says
 ├── ShopSecurity.java      SAML 2.0 login: {@code /saml2/authenticate/keycloak} sends the shopper to Keycloak with an authentication request, and {@code /login/saml2/sso/keycloak} receives the response
-└── Shopper.java           A customer's browser as far as this lesson needs one
+├── Shopper.java           A customer's browser as far as this lesson needs one
+└── SignatureByHand.java   A teaching class: what OpenSAML does with each signature, redone with the plain JDK so the demo can print it
 ```
 
 **Spring Security's SAML 2.0 service provider, on OpenSAML, trusts only the key in the identity provider's metadata, reads only assertions that key signed, and checks the request it answers, its audience and its dates; edited, self-signed, wrapped, unsigned and foreign-signed responses are all refused, and the cost is that metadata is read once, so a key rotation at the bank must reach the shop before the bank starts signing with it.**
@@ -44,11 +45,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Signing in through the bank | The shop sends an unsigned authentication request; the bank answers with a response signed as a whole and an assertion signed on its own, for this shop and this request only. |
-| 2. A valid signature is not the same as the bank's signature | An edited name, a response self-signed with a valid key of the attacker's, and a genuine response signed by the wallet are all refused as invalid_signature. |
-| 3. A valid signature on one assertion, and another one read | An unsigned admin assertion beside the bank's signed one, no signature at all, and a DOCTYPE are all refused. |
-| 4. The statement itself is checked | A replayed response, an expired assertion and a response signed for another shop are refused even though their signatures are the bank's. |
-| 5. The bill: keys, metadata and XML | The shop reads the bank's metadata once; when the bank adds a signing key every shopper is refused until the shop reads the metadata again. |
+| 1. Signing in through the bank | The shop sends an unsigned AuthnRequest from its entity id; the bank's realm answers with a response that names ana, answers that request, is for this shop and lasts 2 seconds, signed twice (the Response and the Assertion); both signatures check out by hand with the bank's 2048-bit RSA key from its metadata, and Ana is signed in. |
+| 2. A valid signature is not the same as the bank's signature | An edited name breaks both digests; a response the attacker signs with their own key verifies with that key but not with the bank's; a genuine response from the wallet realm, answering the shop's request, is signed by the wallet; all three are refused with invalid_signature. |
+| 3. Signature wrapping: one assertion checked, another read | An unsigned admin assertion placed before the bank's signed one, or after it, no signature at all, and a response with a DOCTYPE are all refused by Spring Security with OpenSAML (invalid_signature, malformed_response_data). |
+| 4. The statement itself is checked | A genuine response signs Ana in once; the same response replayed from another browser or the same one is refused (invalid_in_response_to), so is one posted 4 seconds after issue when it lasts 2 with 1 second of skew, and one the bank signed for another shop (invalid_assertion). |
+| 5. The bill: keys, metadata and XML | The shop reads the bank's metadata once at start and signs Ana in; the bank adds a new signing key (HTTP 201) and every shopper is refused with invalid_signature until the shop reloads the metadata and signs Ana in again. |
 
 ## Test
 
@@ -56,7 +57,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `DemoRunsTest`, `RealmFilesTest`, `SamlFlowTest`, `SamlToolsTest`. The tests that need Keycloak are tagged integration and share one container and one shop per class (./gradlew integrationTest). The attacker's tools and the realm files are tested without Docker.
+25 tests in `DemoRunsTest`, `RealmFilesTest`, `SamlFlowTest`, `SamlToolsTest`, `SignatureByHandTest`. The tests that need Keycloak are tagged integration and share one container and one shop per class (./gradlew integrationTest). The attacker's tools, the realm files and SignatureByHand (the digest and RSA checks redone by hand agree with the JDK's XML signature validation) are tested without Docker.
 
 ## What the simulation got right, and what it left out
 
@@ -139,4 +140,4 @@ A new application with a choice should use OpenID Connect, which is simpler. SAM
 
 ## Where this sits
 
-This is the tools version of [saml-basics](../saml-basics), in the [identity-and-access](..) module. It follows the same four attacks and adds the key rotation, against a real identity provider.
+This is the tools version of [saml-basics](../saml-basics), in the [identity-and-access](..) module. It follows the same attacks and adds the key rotation, against a real identity provider.

@@ -42,10 +42,10 @@ Learners trust their example tests, so the inputs nobody thought of reach produc
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 41, all passing |
-| Demo output | 34 lines, identical on every run |
+| Tests | 47, all passing |
+| Demo output | 117 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:20, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:46, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

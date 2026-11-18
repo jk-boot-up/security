@@ -4,7 +4,7 @@ Prepared text for YouTube Studio. **Nothing is uploaded until the author has rev
 
 ## Title
 
-Passkeys with Spring Security 7: WebAuthn Registration, Sign-In, User Verification and Clone Detection
+Passkeys with Spring Security 7: WebAuthn Registration, Sign-In, User Verification, Clone Detection
 
 ## Description
 
@@ -16,17 +16,37 @@ Chapters:
 
 ```
 00:00 Introduction
-01:35 The Scenario
-01:58 Act One — Registering a passkey: the bank keeps only a public key
-02:28 Act Two — Signing in: a fresh challenge, signed once
-02:57 Act Three — A look-alike site gets nothing it can use
-03:30 Act Four — User verification, and counters against copies
-04:05 Act Five — The bill: recovery, lost devices and the move away from passwords
-04:37 What It Costs
-05:06 Who Does What
-05:35 Where You Have Seen It
-05:49 How To Use It
-06:12 Thanks for Watching
+00:52 The Scenario
+01:36 The Words
+02:12 What the Letters Stand For
+03:15 What the Letters Stand For (continued)
+04:13 What the Letters Stand For (continued)
+04:46 What the library checks, and what it leaves
+05:46 Registering: the options sent, and the COSE key kept
+06:52 Act One — Registering a passkey: the bank keeps only a public key
+07:14 Act One — Registering a passkey: the bank keeps only a public key
+07:35 How the signature is made, byte by byte
+08:47 Act Two — Signing in: a fresh challenge, signed once
+09:09 Act Two — Signing in: a fresh challenge, signed once
+09:38 The site rule and the signed origin, worked out
+10:37 Act Three — A look-alike site gets nothing it can use
+10:52 Act Three — A look-alike site gets nothing it can use
+11:17 The defaults, and a bank that insists
+12:18 Act Four — User verification, and counters against copies
+12:42 Act Four — User verification, and counters against copies
+13:07 Every way in, and the password beside the passkeys
+14:02 Act Five — The bill: recovery, lost devices and the move away from passwords
+14:21 Act Five — The bill: recovery, lost devices and the move away from passwords
+14:43 What It Costs
+15:17 Where You Have Seen It
+15:49 How To Use It
+16:26 The Java Classes
+16:41 PasskeySecurity — one line for the endpoints
+16:54 PasskeySecurity — the hardened mode
+17:05 HardenedRelyingParty — insist, then compare
+17:21 PasswordSwitchOffFilter — two passkeys, no password
+17:33 SoftwareAuthenticator — flags, COSE key, signature
+17:49 Thanks for Watching
 ```
 
 ## Tags

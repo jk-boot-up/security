@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The code under test | 7 min |
+| 0:10 | Act 1: One flaw, as a taint rule sees it | 7 min |
 | 0:17 | Act 2: Pattern against taint | 7 min |
-| 0:24 | Act 3: Tests for the rules | 7 min |
-| 0:31 | Act 4: Triage | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:24 | Act 3: Every flaw class with the taint rules | 7 min |
+| 0:31 | Act 4: Tests for the rules | 7 min |
+| 0:38 | Act 5: Triage | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

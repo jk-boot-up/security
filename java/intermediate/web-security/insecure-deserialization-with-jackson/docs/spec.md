@@ -39,9 +39,9 @@ Teams let JSON choose the class to build, for convenience, and trust prices and 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 12, all passing |
-| Demo output | 28 lines, identical on every run |
+| Demo output | 99 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:41, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:28, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

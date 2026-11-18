@@ -45,6 +45,9 @@ class SafeAccountsController {
 
     @GetMapping("/accounts")
     List<DirectoryEntry> list(@RequestParam(defaultValue = "20") @Min(1) int size) {
-        return bank.all().stream().limit(Math.min(size, maxPage)).map(a -> new DirectoryEntry(a.getId(), a.getDisplayName())).toList();
+        return bank.all().stream()
+                .limit(Math.min(size, maxPage))
+                .map(a -> new DirectoryEntry(a.getId(), a.getDisplayName()))
+                .toList();
     }
 }

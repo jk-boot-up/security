@@ -16,7 +16,7 @@ By the end of the session you can:
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: The flow, step by step | 7 min |
 | 0:17 | Act 2: PKCE: a code is useless without the verifier | 7 min |
-| 0:24 | Act 3: Exact redirects, state, and codes that work once | 7 min |
+| 0:24 | Act 3: Exact redirect addresses, state, and codes that work once | 7 min |
 | 0:31 | Act 4: Scopes and refresh tokens | 7 min |
 | 0:38 | Act 5: Current practice, and the bill | 7 min |
 | 0:45 | Exercises | 15 min |

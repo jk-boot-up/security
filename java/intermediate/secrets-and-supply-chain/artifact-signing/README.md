@@ -54,11 +54,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A deployment that runs whatever arrives | The release team builds a 2440-byte jar; a mirror changes one byte; the trusting deployment step runs the altered jar. |
-| 2. A signed release, checked before it runs | A statement with the jar's SHA-256 is signed with Ed25519 and checked against a pinned key: the real jar passes; a changed jar, an edited statement, a forged key, an unknown key and no signature are refused. |
-| 3. Signing keys: per channel, rotated, revoked | A beta key cannot sign for stable; two stable keys overlap from day 100; after revocation on day 130 a day 140 signature is refused, but a thief can backdate to day 120. |
-| 4. A public log that every signature must be in | Releases go into an append-only Merkle log with signed heads and proofs; the backdated jar is refused unlogged and refused when logged by the log's day; the monitor reports it; a forked log is caught. |
-| 5. The bill | The gate refuses an unsigned jar but protects only the paths through it; the signing key needs a hardware module; rotation needs an overlap; keyless signing is the modern alternative. |
+| 1. A deployment that runs whatever arrives | The release team builds a 2440-byte jar; a mirror flips one bit of byte 700, so the SHA-256 changes completely; the trusting deployment step runs the altered jar anyway. |
+| 2. A signed release, checked before it runs | A 151-byte statement with the jar's SHA-256 is signed with Ed25519 by stable-2026a; the deployment pins that public key and runs six checks in order: the real jar passes; a changed byte, an edited version, a forged key, an unknown key and no signature are each refused at their own check. |
+| 3. Signing keys: per channel, rotated, revoked | A beta key cannot sign for stable; stable-2026b is added on day 100 and stable-2026a revoked on day 130, an overlap of 130 - 100 = 30 days; signatures on days 110 and 120 pass, one on day 140 is refused, but a thief with the old key signs on day 150, writes day 120, and is accepted. |
+| 4. A public log that every signature must be in | Two releases go into a Merkle log: leaf = sha256(00 || entry), root = sha256(01 || leaf 0 || leaf 1) = c1e815c249fdd097, signed by the log; entry 1's proof is one hash; the gate now refuses the thief's jar unlogged, and logged by the log's day 150; the monitor reports entry 2; a log that hides it must sign two roots of size 3, and is caught. |
+| 5. The bill | The gate refuses an unsigned jar but guards only its own path; the signing key needs a hardware module; rotation needs an overlap of 30 days; keyless signing is the modern alternative. |
 
 ## Test
 
@@ -66,7 +66,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `DemoRunsTest`, `Ed25519Test`, `LogAndGateTest`, `MerkleTreeTest`, `VerifierTest`. Ed25519 is checked against RFC 8032 test 1, the Merkle tree against the values its definition gives for the empty tree and the empty leaf, and every inclusion and consistency proof is checked for logs of up to seventeen entries, with wrong indexes and rewritten histories refused.
+22 tests in `DemoRunsTest`, `Ed25519Test`, `LogAndGateTest`, `MerkleTreeTest`, `VerifierTest`. Ed25519 is checked against RFC 8032 test 1, the Merkle tree against the values its definition gives for the empty tree and the empty leaf, and every inclusion and consistency proof is checked for logs of up to seventeen entries, with wrong indexes and rewritten histories refused.
 
 ## What the simulation got right, and what it left out
 

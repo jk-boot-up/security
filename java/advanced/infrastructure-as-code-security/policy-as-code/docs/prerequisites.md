@@ -3,7 +3,7 @@
 ## Required
 
 - Java basics
-- opa and conftest (brew install opa conftest)
+- opa 1.21.3 and conftest 0.71.1 (the versions the golden output was made with; from their GitHub releases, or brew while it serves these versions)
 
 ## Explicitly not required
 

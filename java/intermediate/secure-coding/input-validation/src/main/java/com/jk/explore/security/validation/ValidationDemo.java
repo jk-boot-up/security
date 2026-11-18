@@ -4,10 +4,14 @@ import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /** Runs the online store story in five numbered acts and prints exact, repeatable results. */
 public class ValidationDemo {
@@ -43,85 +47,150 @@ public class ValidationDemo {
         return String.join("; ", names);
     }
 
+    private static String row(String key, Object value) {
+        return String.format("    %-12s %s", key, value);
+    }
+
+    private static String fields(Map<String, String> fields) {
+        StringBuilder text = new StringBuilder();
+        for (String name : List.of("sku", "quantity", "price")) {
+            if (fields.containsKey(name)) {
+                text.append(text.isEmpty() ? "" : " ").append(name).append('=').append(fields.get(name));
+            }
+        }
+        return text.toString();
+    }
+
     private static void act1Boundary(StringBuilder out) {
         line(out, "ONE. Where validation belongs.");
         Map<String, String> negative = Map.of("sku", "SHO-1042", "quantity", "-3", "email", "ana@shop.example", "country", "IN");
-        line(out, "  the checkout page refuses a quantity of -3 before sending: " + !BrowserForm.wouldSubmit(negative));
-        line(out, "  the same request sent without the page, to a shop that trusts the page: total " + TrustingShop.total(negative)
-                + "  <- A NEGATIVE TOTAL IS A REFUND");
+        line(out, "  THE REQUEST, SENT WITHOUT THE CHECKOUT PAGE:");
+        line(out, row("fields", fields(negative)));
+        line(out, row("the page", "would refuse it (quantity min 1): " + !BrowserForm.wouldSubmit(negative)));
+        line(out, "  BEFORE THE FIX (a shop that trusts the page):");
+        line(out, row("price", TrustingShop.price(negative) + " from the catalogue"));
+        line(out, row("total", TrustingShop.price(negative) + " x " + negative.get("quantity") + " = " + TrustingShop.total(negative)
+                + "  <- A REFUND"));
         Map<String, String> cheap = Map.of("sku", "SHO-1042", "quantity", "2", "price", "0.01", "email", "ana@shop.example", "country", "IN");
-        line(out, "  a hidden price field changed to 0.01: total " + TrustingShop.total(cheap) + " instead of 179.80  <- THE CUSTOMER SET THE PRICE");
-        Checkout.Result refused = Checkout.place(negative);
-        line(out, "  the checkout that validates on the server: accepted " + refused.accepted() + " (" + problems(refused) + ")");
-        Checkout.Result priced = Checkout.place(cheap);
-        line(out, "  and the hidden price: accepted " + priced.accepted() + " (" + problems(priced) + ")");
         Checkout.Result ok = Checkout.place(honest());
-        line(out, "  an honest order: accepted " + ok.accepted() + ", total " + ok.order().total() + " from the catalogue");
+        line(out, "  THE REQUEST, WITH THE HIDDEN PRICE FIELD CHANGED:");
+        line(out, row("fields", fields(cheap)));
+        line(out, "  BEFORE THE FIX:");
+        line(out, row("price", TrustingShop.price(cheap) + " from the form"));
+        line(out, row("total", TrustingShop.price(cheap) + " x " + cheap.get("quantity") + " = " + TrustingShop.total(cheap)
+                + " instead of " + ok.order().total()));
+        line(out, "  AFTER THE FIX (the checkout validates on the server):");
+        line(out, row("quantity -3", "refused (" + problems(Checkout.place(negative)) + ")"));
+        line(out, row("price 0.01", "refused (" + problems(Checkout.place(cheap)) + ")"));
+        BigDecimal price = Catalogue.price(ok.order().sku()).orElseThrow();
+        line(out, row("honest", "accepted, " + price + " x " + ok.order().quantity().value() + " = " + ok.order().total()
+                + " from the catalogue"));
+        for (String raw : List.of("-3", "2")) {
+            line(out, "  HOW THE SERVER READS quantity \"" + raw + "\":");
+            for (Steps.Step step : Steps.quantity(raw)) {
+                line(out, row(step.name(), step.result()));
+            }
+        }
     }
 
     private static void act2AllowLists(StringBuilder out) {
         line(out, "TWO. Say what is allowed, and parse into types.");
-        String[][] cases = {
-            {"quantity", "7"}, {"quantity", "0"}, {"quantity", "1e2"}, {"quantity", " 5"},
-            {"sku", "SHO-1042"}, {"sku", "sho-1042"}, {"sku", "SHO-1042;"},
-            {"email", "Ben@Shop.EXAMPLE"}, {"email", "ben@@shop.example"}, {"email", "ben@localhost"},
-            {"country", "DE"}, {"country", "ZZ"}, {"country", "de"},
-            {"amount", "19.50"}, {"amount", "19.505"}, {"amount", "-5"}, {"amount", "NaN"},
+        String[][] groups = {
+            {"QUANTITY (digits only, from 1 to 99):", "quantity", "7", "0", "1e2", " 5"},
+            {"SKU, THE PRODUCT CODE (such as SHO-1042):", "sku", "SHO-1042", "sho-1042", "SHO-1042;"},
+            {"EMAIL (a store's narrow rule, at most 254 characters):", "email", "Ben@Shop.EXAMPLE", "ben@@shop.example", "ben@localhost"},
+            {"COUNTRY (the ISO codes the JDK ships):", "country", "DE", "ZZ", "de"},
+            {"AMOUNT (exact, at most two decimals):", "amount", "19.50", "19.505", "-5", "NaN"},
         };
-        for (String[] c : cases) {
-            line(out, "  " + c[0] + " \"" + c[1] + "\": " + verdict(c[0], c[1]));
+        for (String[] group : groups) {
+            line(out, "  " + group[0]);
+            for (int i = 2; i < group.length; i++) {
+                line(out, String.format("    %-19s %s", "\"" + group[i] + "\"", verdict(group[1], group[i])));
+            }
         }
-        Checkout.Result all = Checkout.place(Map.of("sku", "shoes", "quantity", "lots", "email", "x", "country", "Mars"));
-        line(out, "  a form with four bad fields reports all four at once: " + all.problems().size());
-        line(out, "  each value that passes is a type that cannot hold anything else, so later code never checks it again");
+        Map<String, String> bad = new TreeMap<>(Map.of("sku", "shoes", "quantity", "lots", "email", "x", "country", "Mars"));
+        line(out, "  THE INPUT, A FORM WITH FOUR BAD FIELDS:");
+        line(out, "    " + String.join(" ", bad.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).toList()));
+        Checkout.Result all = Checkout.place(bad);
+        line(out, "  THE RESULT, " + all.problems().size() + " PROBLEMS REPORTED AT ONCE:");
+        for (Rejected r : all.problems()) {
+            line(out, "    " + r.getMessage());
+        }
     }
 
     private static String verdict(String field, String raw) {
         try {
             Object value = switch (field) {
-                case "quantity" -> Quantity.parse(raw).value();
-                case "sku" -> Sku.parse(raw).value();
-                case "email" -> Email.parse(raw).value();
-                case "country" -> CountryCode.parse(raw).value();
-                default -> Money.parse(raw).amount().toPlainString();
+                case "quantity" -> Quantity.parse(raw);
+                case "sku" -> Sku.parse(raw);
+                case "email" -> Email.parse(raw);
+                case "country" -> CountryCode.parse(raw);
+                default -> Money.parse(raw);
             };
-            return "accepted as " + value;
+            return "-> " + value;
         } catch (Rejected e) {
-            return "refused (" + e.rule() + ")";
+            return "refused: " + e.rule();
         }
     }
 
     private static void act3Canonical(StringBuilder out) {
         line(out, "THREE. Canonicalise before validating.");
+        Map<String, String> spellings = new LinkedHashMap<>();
+        spellings.put("plain", "ana");
+        spellings.put("full-width", "\uFF41\uFF4E\uFF41");
+        spellings.put("capitals", "ANA");
+        line(out, "  THE INPUT, THREE SPELLINGS OF ONE NAME:");
+        spellings.forEach((label, name) -> line(out, row(label, Steps.codePoints(name))));
         Accounts accounts = new Accounts();
-        accounts.registerNaively("ana");
-        line(out, "  ana is registered; a registry that compares raw text also accepts the full-width ａｎａ: "
-                + accounts.registerNaively("ａｎａ") + "  <- TWO ACCOUNTS FOR ONE NAME");
-        line(out, "  and ANA in capitals: " + accounts.registerNaively("ANA"));
-        try {
-            accounts.register("ana");
-            line(out, "  the canonical registry takes ana: true");
-            accounts.register("ａｎａ");
-            line(out, "  and the full-width spelling: true");
-        } catch (Rejected e) {
-            line(out, "  the canonical registry folds the full-width spelling to ana: refused (" + e.rule() + ")");
+        line(out, "  BEFORE THE FIX (a registry that compares raw text):");
+        spellings.forEach((label, name) -> line(out, row(label, "new account: " + accounts.registerNaively(name)
+                + (label.equals("plain") ? "" : "  <- ONE MORE ACCOUNT"))));
+        line(out, "  HOW THE CANONICAL FORM IS MADE (full-width):");
+        for (Steps.Step step : Steps.username(spellings.get("full-width"))) {
+            line(out, row(step.name(), step.result()));
         }
-        line(out, "  an invisible zero-width space inside a name: " + nameVerdict("an​a"));
-        line(out, "  a line break inside a name: " + nameVerdict("ana\nadmin"));
-        line(out, "  Cyrillic а in place of a: " + nameVerdict("аna") + "; login names are kept to plain letters");
-        String precomposed = "José";
-        String decomposed = "José";
-        line(out, "  José typed two ways looks the same; as raw text equal: " + precomposed.equals(decomposed)
-                + ", after NFC: " + Text.nfc(precomposed).equals(Text.nfc(decomposed)));
-        line(out, "  a display name \"Shоp Suppоrt\" with Cyrillic o: " + displayVerdict("Shоp Suppоrt")
-                + "; \"José Martín\": " + displayVerdict("José Martín"));
+        line(out, "  AFTER THE FIX (a registry that compares canonical names):");
+        spellings.forEach((label, name) -> {
+            try {
+                accounts.register(name);
+                line(out, row(label, "new account: " + Username.parse(name).value()));
+            } catch (Rejected e) {
+                line(out, row(label, "refused: " + e.rule()));
+            }
+        });
+        String[][] hidden = {
+            {"an\u200Ba", "a zero-width space inside"},
+            {"ana\nadmin", "a line break inside"},
+            {"\u0430na", "a Cyrillic letter in place of a"},
+        };
+        line(out, "  THE INPUT, HIDDEN AND LOOK-ALIKE LETTERS:");
+        for (String[] h : hidden) {
+            line(out, String.format("    %-18s %s", Steps.visible(h[0]), h[1]));
+        }
+        line(out, "  THE RESULT:");
+        for (String[] h : hidden) {
+            line(out, "    " + nameVerdict(h[0]));
+        }
+        String precomposed = "Jos\u00E9";
+        String decomposed = "Jose\u0301";
+        line(out, "  ONE NAME, TWO ENCODINGS (" + Text.nfc(decomposed) + "):");
+        line(out, row("one letter", Steps.codePoints(precomposed)));
+        line(out, row("e + accent", Steps.codePoints(decomposed)));
+        line(out, row("equal?", "as raw text " + precomposed.equals(decomposed)
+                + ", after NFC " + Text.nfc(precomposed).equals(Text.nfc(decomposed))));
+        line(out, "  DISPLAY NAMES (any script, but no look-alike of the staff):");
+        for (String name : List.of("Sh\u043Ep Supp\u043Ert", "Jos\u00E9 Mart\u00EDn")) {
+            line(out, row("the input", name + (name.contains("\u043E") ? "  (o is Cyrillic U+043E)" : "")));
+            line(out, row("skeleton", DisplayName.skeleton(name)));
+            line(out, row("the result", displayVerdict(name)));
+        }
     }
 
     private static String nameVerdict(String raw) {
         try {
             return "accepted as " + Username.parse(raw).value();
         } catch (Rejected e) {
-            return "refused (" + e.rule() + ")";
+            return "refused: " + e.rule();
         }
     }
 
@@ -130,7 +199,7 @@ public class ValidationDemo {
             DisplayName.parse(raw);
             return "accepted";
         } catch (Rejected e) {
-            return "refused (" + e.rule() + ")";
+            return "refused: " + e.rule();
         }
     }
 
@@ -154,45 +223,77 @@ public class ValidationDemo {
 
     private static void act4Limits(StringBuilder out) throws IOException {
         line(out, "FOUR. Limits are validation too.");
+        line(out, "  THE INPUT, THREE OVERSIZED VALUES:");
+        String email = "a".repeat(9_990) + "@shop.example";
+        line(out, row("body", "1000000 bytes"));
+        line(out, row("cart", "10000 lines"));
+        line(out, row("e-mail", email.length() + " characters"));
+        line(out, "  THE RESULT, REFUSED BEFORE THE WORK:");
         Counting body = new Counting(new ByteArrayInputStream(new byte[1_000_000]));
         try {
             Limits.body(body);
-            line(out, "  a request body of 1000000 bytes: accepted");
+            line(out, row("body", "accepted"));
         } catch (Rejected e) {
-            line(out, "  a request body of 1000000 bytes: refused (" + e.rule() + ") after reading " + body.read + " of them");
+            line(out, row("body", "read " + body.read + ", refused: " + e.rule()));
         }
         try {
             Limits.cart(Collections.nCopies(10_000, "SHO-1042"));
-            line(out, "  a cart of 10000 lines: accepted");
+            line(out, row("cart", "accepted"));
         } catch (Rejected e) {
-            line(out, "  a cart of 10000 lines: refused (" + e.rule() + ")");
+            line(out, row("cart", "refused (" + e.rule() + ")"));
         }
-        line(out, "  an e-mail address of 10000 characters: " + verdict("email", "a".repeat(9_990) + "@shop.example"));
+        line(out, row("e-mail", verdict("email", email)));
         Backtracking engine = new Backtracking();
+        String small = "aaa!";
+        engine.nested(small);
+        List<String> splits = engine.splits();
+        line(out, "  HOW (a+)+$ READS " + small + " (every split of the a's fails at the !):");
+        line(out, "    " + String.join("  ", splits));
+        line(out, "    " + splits.size() + " splits = 2^(" + (small.length() - 1) + "-1), " + engine.steps() + " steps in all");
+        line(out, "  BEFORE THE FIX, (a+)+$ ON n a's AND A !:");
+        long previous = 0;
         for (int n : new int[] {10, 15, 20}) {
             boolean matched = engine.nested("a".repeat(n) + "!");
-            line(out, "  the pattern (a+)+$ on " + n + " a's and a !: matched " + matched + " after " + engine.steps() + " steps");
+            String growth = previous == 0 ? "" : String.format(Locale.ROOT, "  (x %.1f)", engine.steps() / (double) previous);
+            line(out, row(n + " a's", engine.steps() + " steps, matched " + matched + growth));
+            previous = engine.steps();
         }
-        line(out, "  each extra character roughly doubles the work  <- A FEW DOZEN CHARACTERS CAN STOP A SERVER (ReDoS)");
-        engine.linear("a".repeat(20) + "!");
-        line(out, "  the same rule written without nesting, a+$, checked in one pass: " + engine.steps() + " steps for 20 a's and a !");
-        line(out, "  so: no nested repetition in patterns that read input, and a length limit before any pattern runs");
+        line(out, "    5 more a's: about 2^5 = 32 times the work  <- ReDoS");
+        line(out, "  AFTER THE FIX, a+$ IN ONE PASS:");
+        boolean matched = engine.linear("a".repeat(20) + "!");
+        line(out, row("20 a's", engine.steps() + " steps, matched " + matched));
+        line(out, "    and a length limit before any pattern runs");
     }
 
     private static void act5Bill(StringBuilder out) {
         line(out, "FIVE. The bill: what validation does not do.");
-        line(out, "  a review \"<b>great</b>\" is valid text, and still markup: valid is not the same as safe to put in a page,"
-                + " so encode it on output (see cross-site-scripting)");
-        line(out, "  a surname O'Brien is valid and contains a quote, so the database layer must bind values as parameters,"
-                + " never paste them into query text");
-        try {
-            Email.parse("ben\r\n<b>x</b>@shop.example");
-        } catch (Rejected e) {
-            line(out, "  a refused e-mail address with a line break and markup: \"" + e.getMessage() + "\", raw input repeated: "
-                    + e.getMessage().contains("<b>"));
+        List<String> names = List.of("<b>great</b>", "O'Brien");
+        String[] still = {"still markup: encode it on output", "has a quote: bind it as a parameter"};
+        line(out, "  THE INPUT, TWO DISPLAY NAMES:");
+        for (String name : names) {
+            line(out, "    " + name);
         }
-        line(out, "  a wholesale order of 150: " + verdict("quantity", "150")
-                + "; a limit stricter than the business turns customers away, so each rule is a written business decision");
-        line(out, "  validation narrows what reaches the code; encoding, parameters and access checks still do their own jobs");
+        line(out, "  THE RESULT:");
+        for (int i = 0; i < names.size(); i++) {
+            line(out, String.format("    %-14s %s, %s", names.get(i), displayVerdict(names.get(i)), still[i]));
+        }
+        String raw = "ben\r\n<b>x</b>@shop.example";
+        line(out, "  THE INPUT, A BAD E-MAIL ADDRESS:");
+        line(out, "    " + raw.replace("\r", "\\r").replace("\n", "\\n"));
+        try {
+            Email.parse(raw);
+        } catch (Rejected e) {
+            line(out, "  THE RESULT, THE ERROR MESSAGE:");
+            line(out, row("message", e.getMessage()));
+            line(out, row("repeats it?", e.getMessage().contains("<b>")));
+        }
+        line(out, "  THE INPUT, A WHOLESALE ORDER:");
+        line(out, row("quantity", "150"));
+        line(out, "  THE RESULT:");
+        line(out, row("quantity", verdict("quantity", "150") + "  <- A CUSTOMER TURNED AWAY"));
+        line(out, "  SO:");
+        line(out, "    each limit is a written business decision");
+        line(out, "    validation narrows what reaches the code;");
+        line(out, "    encoding, parameters and access checks still do their jobs");
     }
 }

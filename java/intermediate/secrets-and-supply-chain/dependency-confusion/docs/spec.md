@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Teach dependency confusion by registering a public package under a private name and watching five resolvers, then fixing the build with name-based routing, locked digests and a name watch.
+Teach dependency confusion by registering a public package under a private name and watching four resolvers, then fixing the build with name-based routing, locked digests and a name watch.
 
 ## Not in scope
 
@@ -38,10 +38,10 @@ Build tools choose between repositories by rules that were designed for convenie
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 51 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 98 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:51, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:07, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

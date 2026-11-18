@@ -10,10 +10,14 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The opa and conftest command line tools (brew install opa conftest). */
+/** The opa and conftest command line tools, at the pinned versions below (see docs/prerequisites.md). */
 public final class Opa {
 
     static final JsonMapper JSON = JsonMapper.builder().build();
+
+    /** The versions the golden output was made with; another version could decide or count differently. */
+    static final String OPA_VERSION = "1.21.3";
+    static final String CONFTEST_VERSION = "0.71.1";
 
     /** Output and exit code of a command. */
     public record Result(int exit, String out) {
@@ -34,15 +38,31 @@ public final class Opa {
         return new Result(p.exitValue(), out);
     }
 
+    /** Stops with a clear message when opa or conftest is not the pinned version. */
+    public static void requirePinnedVersions() throws IOException, InterruptedException {
+        String opa = run(null, List.of("opa", "version")).out();
+        String conftest = run(null, List.of("conftest", "--version")).out();
+        if (!opa.contains("Version: " + OPA_VERSION + "\n") || !conftest.contains("Conftest: " + CONFTEST_VERSION + "\n")) {
+            throw new IllegalStateException("this demo is pinned to opa " + OPA_VERSION + " and conftest " + CONFTEST_VERSION
+                    + "; found:\n" + opa + conftest);
+        }
+    }
+
+    /** The value of a query (data.steps, ...) with these Rego files loaded, or null when it is undefined. */
+    public static JsonNode eval(List<Path> files, String query, JsonNode input) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>(List.of("opa", "eval", "--stdin-input", "-f", "json"));
+        files.forEach(f -> cmd.addAll(List.of("-d", f.toString())));
+        cmd.add(query);
+        JsonNode results = JSON.readTree(run(input.toString(), cmd).out()).path("result");
+        return results.isArray() && !results.isEmpty() ? results.get(0).get("expressions").get(0).get("value") : null;
+    }
+
     /** The messages of data.&lt;pkg&gt;.deny for an input, sorted. Empty means allowed. */
     public static List<String> deny(Path policy, String pkg, JsonNode input) throws IOException, InterruptedException {
-        Result r = run(input.toString(), List.of("opa", "eval", "-d", policy.toString(), "--stdin-input", "-f", "json", "data." + pkg + ".deny"));
         List<String> out = new ArrayList<>();
-        JsonNode results = JSON.readTree(r.out()).path("result");
-        if (results.isArray() && !results.isEmpty()) {
-            for (JsonNode m : results.get(0).get("expressions").get(0).get("value")) {
-                out.add(m.asString());
-            }
+        JsonNode value = eval(List.of(policy), "data." + pkg + ".deny", input);
+        if (value != null) {
+            value.forEach(m -> out.add(m.asString()));
         }
         out.sort(null);
         return out;

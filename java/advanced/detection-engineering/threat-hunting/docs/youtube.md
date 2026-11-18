@@ -16,17 +16,36 @@ Chapters:
 
 ```
 00:00 Introduction
-02:08 The Scenario
-02:25 Act One — The week
-02:37 Act Two — Hunt 1: a timer in the lookups
-02:50 Act Three — Hunts 2 and 3: pairs and accounts
-03:03 Act Four — Hunt 4 and the scoreboard
-03:15 Act Five — From a hunt to a rule
-03:28 What It Costs
-04:00 Who Does What
-04:20 Where You Have Seen It
-04:39 How To Use It
-04:57 Thanks for Watching
+00:45 The Scenario
+01:20 The Words
+01:58 What the Letters Stand For
+02:28 From a guess to one lead
+03:21 The week: the records, the truth, the look-alikes
+04:21 Act One — The week
+04:39 Act One — The week
+04:54 How even are the gaps? Four pairs, worked out
+05:49 Act Two — Hunt 1: a timer in the lookups
+05:59 Act Two — Hunt 1: a timer in the lookups
+06:27 Act Two — Hunt 1: a timer in the lookups
+06:45 Rare program pairs, and an account's usual hours
+07:47 Act Three — Hunts 2 and 3: pairs and accounts
+07:57 Act Three — Hunts 2 and 3: pairs and accounts
+08:10 Act Three — Hunts 2 and 3: pairs and accounts
+08:26 Each host against its own normal, and the scoreboard
+09:26 Act Four — Hunt 4 and the scoreboard
+09:40 Act Four — Hunt 4 and the scoreboard
+10:00 The beacon hunt as a rule, before and after the allowlist
+10:41 Act Five — From a hunt to a rule
+11:10 What It Costs
+11:45 Where You Have Seen It
+12:13 How To Use It
+12:48 The Java Classes
+12:58 Generator — a beacon with jitter, and a heartbeat without
+13:15 Hunts — how even the gaps are
+13:28 Hunts — regular AND rare
+13:42 Hunts — each host against its own normal
+13:56 ThreatHuntingDemo — the truth, and the judgement
+14:06 Thanks for Watching
 ```
 
 ## Tags

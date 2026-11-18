@@ -69,4 +69,34 @@ class QueryShapeTest {
         long inFirstBucket = burst.stream().filter(e -> e.time().isBefore(Scenario.at(13, 30, 0))).count();
         assertEquals(15, inFirstBucket);
     }
+
+    @Test
+    void aQueryReadsBackAsItsFourParts() {
+        var parts = QueryParts.of(Detections.bruteForce(3));
+        assertEquals(List.of("filter", "group by", "bucket", "threshold"), List.copyOf(parts.keySet()));
+        assertEquals("type = login and success = false", parts.get("filter"));
+        assertEquals("user (terms)", parts.get("group by"));
+        assertEquals("5m (date_histogram)", parts.get("bucket"));
+        assertEquals("min_doc_count 3", parts.get("threshold"));
+        assertEquals("params.u >= 8", QueryParts.of(Detections.spraying(8)).get("threshold"));
+        assertEquals("type = login", QueryParts.of(Detections.successAfterFailures(1)).get("filter"));
+    }
+
+    @Test
+    void fixedBucketsByHandSplitTheBurstAtTheBoundary() {
+        List<Event> burst = new java.util.ArrayList<>();
+        for (int s = 0; s < 30; s++) {
+            burst.add(Event.login(Scenario.at(13, 28, 0).plusSeconds(s * 8L), "u077", "198.51.100.77", City.SINGAPORE, false, "B"));
+        }
+        var counts = Buckets.fixed(burst, java.time.Duration.ofMinutes(5));
+        assertEquals(List.of(Scenario.at(13, 25, 0), Scenario.at(13, 30, 0)), List.copyOf(counts.keySet()));
+        assertEquals(List.of(15L, 15L), List.copyOf(counts.values()));
+        assertEquals(Scenario.at(12, 0, 0), Buckets.start(Scenario.at(12, 4, 59), java.time.Duration.ofMinutes(5)));
+    }
+
+    @Test
+    void theMonitorShowsItsScheduleAndTrigger() {
+        assertEquals("1 MINUTES", Monitors.schedule(Monitors.bruteForce(10)));
+        assertEquals("params._count >= 10", Monitors.condition(Monitors.bruteForce(10)));
+    }
 }

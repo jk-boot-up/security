@@ -178,4 +178,42 @@ class LocalCaTest {
         assertEquals(3, ca.audit().size());
         assertTrue(ca.audit().get(2).startsWith("refused web-team"));
     }
+    @Test
+    void chainCheckByHandGivesTheValidatorsExactVerdict() throws Exception {
+        X509Certificate www = issue("web-team", "www.shop.internal", Profile.SERVER, Duration.ofDays(90));
+        X509Certificate stray = ca.issueWithoutPolicy(Keys.newPair().getPublic(), "pay.example", START);
+        for (X509Certificate leaf : List.of(www, stray)) {
+            for (Instant when : List.of(START.plus(Duration.ofDays(1)), START.plus(Duration.ofDays(91)), START.minus(Duration.ofDays(1)))) {
+                assertEquals(clients.check(chain(leaf), when).toString(), ChainSteps.verdict(ChainSteps.walk(leaf, ca.issuing(), ca.root(), when)));
+            }
+        }
+        assertEquals("refused (INVALID_NAME)", ChainSteps.verdict(ChainSteps.walk(stray, ca.issuing(), ca.root(), START.plus(Duration.ofDays(1)))));
+        assertEquals("shop.internal", ChainSteps.permittedDomain(ca.issuing()));
+    }
+
+    @Test
+    void chainCheckByHandRefusesAChainFromAnotherRoot() throws Exception {
+        CertificateAuthority other = new CertificateAuthority(START, LocalCaDemo.ALLOWED);
+        X509Certificate www = other.issue(Csr.create(Keys.newPair(), List.of("www.shop.internal")), "web-team", Profile.SERVER, Duration.ofDays(90), START);
+        List<ChainSteps.Step> steps = ChainSteps.walk(www, other.issuing(), ca.root(), START.plus(Duration.ofDays(1)));
+        assertFalse(steps.get(1).ok());
+        assertFalse(clients.check(List.of(www, other.issuing()), START.plus(Duration.ofDays(1))).accepted());
+    }
+
+    @Test
+    void everyRenewalIsANewCertificateWithANewKey() throws Exception {
+        ShortLived cart = new ShortLived(ca, "cart-team", "cart.shop.internal");
+        for (int hour = 0; hour < 72; hour++) {
+            cart.tick(START.plus(Duration.ofHours(hour)));
+        }
+        assertEquals(5, cart.history().size());
+        assertEquals(5, cart.history().stream().map(X509Certificate::getPublicKey).distinct().count());
+        assertEquals(START.plus(Duration.ofHours(16)), ShortLived.renewAt(cart.history().get(0)));
+    }
+
+    @Test
+    void rootUsesAreListedInOrder() {
+        ca.rootCrl(START, Duration.ofDays(365), false);
+        assertEquals(List.of("the root's own certificate", "the issuing authority's certificate", "the root's revocation list, day 0"), ca.rootUses());
+    }
 }

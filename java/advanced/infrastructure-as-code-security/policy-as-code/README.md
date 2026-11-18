@@ -5,20 +5,20 @@ src/main/java/com/jk/explore/security/policyascode/
 ├── Admission.java         The shape of a Kubernetes validating webhook: an AdmissionReview comes in, a response with allowed true or false goes out
 ├── Cases.java             The requests the bank's policy is tested with, each with the rules that a careful reviewer says it breaks
 ├── Mutants.java           Switches off one deny rule at a time and asks whether the tests notice
-├── Opa.java               The opa and conftest command line tools (brew install opa conftest)
-└── PolicyAsCodeDemo.java  How many cases the policy in that folder decides as the reviewer expects
+├── Opa.java               The opa and conftest command line tools, at the pinned versions below (see docs/prerequisites.md)
+├── PolicyAsCodeDemo.java  The decisions of the policy in that folder, as rows "name reviewer policy"; returns how many agree
+└── Steps.java             A teaching class: each step of how Rego reads a missing field is written as its own rule, so that opa shows the value of every step
 ```
 
 **A bank's deployment policy in Rego (OPA) denies everything that does not pass its ten rules, and a table of 13 requests agrees with it on 13 of 13; the first draft agreed on only 11, because an empty object and a Deployment without containers were allowed (a missing field made the rule undefined, so nothing was denied); a list of what is forbidden allows a container with no security context and no limits, the policy that asks for what is required denies it; opa test runs 17 tests, and switching off one of the 12 rules at a time shows how good the tests are: 8 of 12 with one test for each rule, 12 of 12 with all; the same file serves an admission review (allowed true or false with the reasons) and Conftest in the build (exit 1), and a new rule is rolled out as a warning (exit 0) before it becomes a denial (exit 1).**
 
-A rule in a wiki is a wish; a rule in code is checked on every change. This project writes a bank's deployment policy in **Rego**, the language of **Open Policy Agent**, and spends most of its effort on the part that is easy to skip: making sure the policy is right. A Java program drives the real `opa` and `conftest` command line tools (`brew install opa conftest`); the tests that use them are tagged `integration`: `./gradlew integrationTest`. The policy is in [`policy/main.rego`](policy/main.rego) with its tests beside it.
+A rule in a wiki is a wish; a rule in code is checked on every change. This project writes a bank's deployment policy in **Rego**, the language of **Open Policy Agent**, and spends most of its effort on the part that is easy to skip: making sure the policy is right. A Java program drives the real `opa` and `conftest` command line tools, pinned to opa 1.21.3 and conftest 0.71.1 (the demo stops with a clear message on another version); the tests that use them are tagged `integration`: `./gradlew integrationTest`. The policy is in [`policy/main.rego`](policy/main.rego) with its tests beside it.
 
 What it shows:
-- **Deny by default.** Ten rules: allowed kinds, the bank's registry, non-root, not privileged, limits, an owner label, no host network, no `latest`, no default namespace, and containers declared. A table of **13 requests**, each with the rules a reviewer expects it to break, and the policy agrees on **13 of 13**.
-- **The holes.** The first draft agreed on only **11 of 13**: an empty object and a Deployment with no containers were allowed, because a missing field makes a rule undefined and an undefined rule denies nothing. A list of what is forbidden does the same to a container with no security context.
-- **Testing the policy.** `opa test` runs **17 tests**. Switching off one rule at a time (12 mutants) and asking whether the tests notice gives **8 of 12** with one test for each rule and **12 of 12** with all of them: the missing four are the cases a happy-path test never reaches.
+- **Deny by default.** Twelve deny rules with ten rule numbers: allowed kinds, the bank's registry, non-root, not privileged, limits, an owner label, no host network, no `latest`, no default namespace, and containers declared. A table of **13 requests**, each with the rules a reviewer expects it to break, and the policy agrees on **13 of 13**.
+- **The holes.** The first draft agreed on only **11 of 13**: an empty object and a Deployment with no containers were allowed, because a missing field makes a rule undefined and an undefined rule denies nothing. The demo shows the value opa gives each step (`object.kind` is undefined, and so is the line that checks it). A list of what is forbidden does the same to a container with no security context.
+- **Testing the policy.** `opa test` runs **17 tests**. Switching off one rule at a time (12 mutants) and asking whether the tests notice gives **2 of 12** with 3 tests, **8 of 12** with one test for each rule (13 tests) and **12 of 12** with all 17: the missing four are the cases a happy-path test never reaches.
 - **In the cluster and in the build.** The same file answers an AdmissionReview (`allowed: false` with the reasons) and Conftest on files (exit 1). A new rule is first a **warning** (exit 0), then a denial (exit 1).
-- **The bill.** A policy is code: reviewed, versioned and tested, and so are its tests.
 
 **Maps to:** NIST CSF 2.0 Govern and Protect (GV.PO policy, PR.PS) · NIST SP 800-53 CM-6, CM-7 · CIS Kubernetes Benchmark · Pod Security Standards · OPA Gatekeeper and Kyverno are the same idea in other engines.
 
@@ -36,15 +36,14 @@ A bank deploys its payment services to Kubernetes and wants nothing to run that 
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 4 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Deny by default | Ten rules, and a table of 13 requests that the policy decides as a reviewer expects. |
-| 2. The holes | The first draft agreed on 11 of 13: a missing field made a rule undefined, so nothing was denied. |
-| 3. Testing the policy and its tests | 17 tests pass; switching off one of 12 rules at a time, one test for each rule notices 8 and all tests notice 12. |
-| 4. In the cluster and in the build | An AdmissionReview gets allowed false with reasons, Conftest exits 1 on files, and a new rule starts as a warning. |
-| 5. The bill | A policy is code; a missing field must mean deny; a rule is rolled out as a warning first. |
+| 1. Deny by default | Twelve deny rules with ten rule numbers; the request "three mistakes" gets three messages, so allow is false; the policy and a reviewer agree on 13 of 13 requests. |
+| 2. The holes: a missing field | The first draft, without the last two rules, allowed an empty object and a Deployment with no containers: 11 of 13. object.kind is undefined, so the rule about allowed kinds is undefined too and makes no message. naive.rego compares runAsNonRoot == false, which is undefined for a missing field, so it allows a container that main.rego denies with R3 and R5. |
+| 3. Testing the policy and its tests | opa test passes 17 of 17 tests. Each of the 12 rules is switched off in turn by renaming deny to deny_off; 3 tests notice 2 of the 12 mutants, 13 tests (one for each rule) notice 8, and all 17 notice 12. |
+| 4. In the cluster and in the build | An AdmissionReview of a Deployment with docker.io/library/nginx:latest gets allowed false with the R2 and R8 reasons; Conftest on three files fails b-cart.yaml (R8) and c-legacy.yaml (R2 R8) and exits 1; a new rule R11 for a read-only root filesystem exits 0 with 1 warning, then 1 with 1 failure. |
 
 ## Test
 
@@ -52,7 +51,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `PolicyTest`. The cases, the mutants and the response are tested with no tools. The rest run opa and conftest (./gradlew integrationTest).
+17 tests in `DemoRunsTest`, `PolicyTest`. The cases, the rule labels, the mutants, the steps and the response are tested with no tools. The rest run opa and conftest at the pinned versions (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

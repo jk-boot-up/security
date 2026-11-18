@@ -2,14 +2,21 @@ package com.jk.explore.security.lokilogs;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * Ships the online bank's security events to a real Loki, asks LogQL questions, compares labels with content, raises an alert, and
+ * shows what is left to the team. Each act prints labelled sections: the input, then the result, with derived values worked out.
+ */
 public class LokiLogsDemo {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    /** Ana's failures and Ben's: the question asked by the metric query and by the alert rule. */
+    static final String FAILURES = "{app=\"bank\"} | json | outcome=\"failure\"";
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -28,18 +35,38 @@ public class LokiLogsDemo {
         return out.toString();
     }
 
-    private static void line(StringBuilder out, String text) {
+    private static void act(StringBuilder out, String text) {
         out.append(text).append('\n');
+    }
+
+    private static void section(StringBuilder out, String title) {
+        out.append("  ").append(title).append(":\n");
+    }
+
+    private static void row(StringBuilder out, String text) {
+        out.append("    ").append(text).append('\n');
+    }
+
+    private static void fact(StringBuilder out, int width, String key, Object value) {
+        row(out, pad(key, width) + value);
+    }
+
+    private static String pad(String text, int width) {
+        return text + " ".repeat(Math.max(2, width - text.length()));
     }
 
     static String field(Loki.Line line, String name) {
         return JSON.readTree(line.text()).get(name).asString();
     }
 
+    static Map<String, String> labelsOf(Event e) {
+        return Map.of("app", "bank", "event_type", e.eventType());
+    }
+
     static void ship(Loki loki, List<Event> events, Instant start) throws Exception {
         for (int i = 0; i < events.size(); i++) {
             Event e = events.get(i);
-            int status = loki.push(Map.of("app", "bank", "event_type", e.eventType()), start.plusMillis(i * 100L), e.line()).status();
+            int status = loki.push(labelsOf(e), start.plusMillis(i * 100L), e.line()).status();
             if (status != 204) {
                 throw new IllegalStateException("Loki answered " + status);
             }
@@ -47,50 +74,115 @@ public class LokiLogsDemo {
     }
 
     private static void act1(StringBuilder out, Lab lab, Loki bank) throws Exception {
-        line(out, "ONE. Shipping the events.");
+        act(out, "ONE. Shipping the events.");
         List<Event> events = Event.morning();
+        section(out, "ONE EVENT AS A JSON LINE (line 6 of " + events.size() + ", the transfer)");
+        for (String piece : Streams.wrap(events.get(5).line(), 58)) {
+            row(out, piece);
+        }
+        section(out, "THE PUSH (each line, with the tenant header bank)");
+        fact(out, 10, "header", "X-Scope-OrgID: bank");
+        fact(out, 10, "labels", "app=bank, event_type=<the event's type>");
         ship(bank, events, Instant.now().minusSeconds(60));
-        line(out, "  the morning's " + events.size() + " events are pushed as JSON lines to a real Loki, each answered with 204, with two labels: app=bank and event_type");
-        line(out, "  label names Loki now knows (service_name it adds itself): " + bank.labels() + "; streams: " + bank.streams("{app=\"bank\"}") + ", one for each of the " + new TreeSet<>(events.stream().map(Event::eventType).toList()).size() + " event types");
+        fact(out, 10, "answers", events.size() + " x 204 (stored, nothing to return)");
+        section(out, "WHAT LOKI HOLDS NOW (a stream per label set)");
+        Map<String, Integer> perType = new LinkedHashMap<>();
+        events.forEach(e -> perType.merge(e.eventType(), 1, Integer::sum));
+        perType.forEach((type, n) -> row(out, pad("{app=\"bank\", event_type=\"" + type + "\"}", 48) + n + " line" + (n == 1 ? "" : "s")));
+        fact(out, 13, "streams", bank.streams("{app=\"bank\"}") + " (worked out: "
+                + Streams.count(events.stream().map(LokiLogsDemo::labelsOf).toList()) + " distinct label sets)");
+        fact(out, 13, "label names", String.join(", ", bank.labels()) + " (Loki adds the last)");
         Loki nobody = new Loki(lab.lokiUrl(), null);
         Loki.Answer refused = nobody.push(Map.of("app", "bank"), Instant.now(), "no tenant");
-        line(out, "  a push with no tenant header: " + refused.status() + " " + refused.body().strip() + "  <- EVERY REQUEST NAMES WHOSE LOGS IT IS ABOUT");
+        section(out, "A PUSH WITH NO TENANT HEADER");
+        fact(out, 10, "answer", refused.status() + " " + refused.body().strip() + "  <- WHOSE LOGS? IT MUST SAY");
     }
 
     private static void act2(StringBuilder out, Loki bank) throws Exception {
-        line(out, "TWO. Asking questions in LogQL.");
-        List<Loki.Line> mentions = bank.lines("{app=\"bank\"} |= \"ANA-1\"");
-        line(out, "  which events mention ANA-1, by a text filter: " + mentions.size());
-        List<Loki.Line> transfer = bank.lines("{app=\"bank\", event_type=\"money-movement\"} | json | action=\"transfer\" | amount >= 500");
-        Loki.Line t = transfer.get(0);
-        line(out, "  who moved 500 or more: " + field(t, "actor") + " from " + field(t, "source_ip") + ", " + field(t, "resource") + ", " + field(t, "outcome") + ", request " + field(t, "request_id"));
-        List<Loki.Line> sameAddress = bank.lines("{app=\"bank\"} | json | source_ip=\"" + field(t, "source_ip") + "\"");
-        List<String> story = new ArrayList<>();
-        sameAddress.forEach(l -> story.add(field(l, "event_type") + " " + field(l, "outcome")));
-        line(out, "  everything from that address, in time order: " + story + "  <- SOMEONE WITH ANA'S PASSWORD, NOT ANA");
-        line(out, "  failures by address, counted by Loki: " + bank.metric("sum by (source_ip) (count_over_time({app=\"bank\"} | json | outcome=\"failure\" [1h]))", "source_ip"));
-        line(out, "  the question that the old logger could not answer is one line of LogQL");
+        act(out, "TWO. Asking questions in LogQL.");
+        String text = "{app=\"bank\"} |= \"ANA-1\"";
+        section(out, "QUERY 1, A TEXT FILTER (which lines mention ANA-1?)");
+        row(out, text);
+        List<Loki.Line> mentions = bank.lines(text);
+        section(out, "ITS ANSWER (" + mentions.size() + " lines)");
+        for (Loki.Line l : mentions) {
+            row(out, pad(field(l, "request_id"), 10) + pad(field(l, "action"), 14) + field(l, "resource"));
+        }
+        String byFields = "{app=\"bank\", event_type=\"money-movement\"} | json | action=\"transfer\" | amount >= 500";
+        section(out, "QUERY 2, BY FIELDS (who moved 500 or more?)");
+        row(out, "{app=\"bank\", event_type=\"money-movement\"}");
+        row(out, "  | json | action=\"transfer\" | amount >= 500");
+        Loki.Line t = bank.lines(byFields).get(0);
+        section(out, "ITS ANSWER");
+        for (String name : List.of("actor", "source_ip", "resource", "outcome", "request_id")) {
+            fact(out, 12, name, field(t, name));
+        }
+        String fromThere = "{app=\"bank\"} | json | source_ip=\"" + field(t, "source_ip") + "\"";
+        section(out, "QUERY 3, EVERYTHING FROM THAT ADDRESS");
+        row(out, fromThere);
+        section(out, "ITS ANSWER (in time order)");
+        for (Loki.Line l : bank.lines(fromThere)) {
+            row(out, pad(field(l, "request_id"), 10) + pad(field(l, "actor"), 6) + pad(field(l, "event_type"), 16) + field(l, "outcome"));
+        }
+        row(out, "2 failures, 1 success, the transfer  <- ANA'S PASSWORD, NOT ANA");
+        section(out, "QUERY 4, A METRIC (failures by address, counted by Loki)");
+        row(out, "sum by (source_ip) (count_over_time(");
+        row(out, "  " + FAILURES + " [1h]))");
+        section(out, "ITS ANSWER");
+        bank.metric("sum by (source_ip) (count_over_time(" + FAILURES + " [1h]))", "source_ip")
+                .forEach((ip, n) -> fact(out, 15, ip, Math.round(n) + " failures"));
     }
 
     private static void act3(StringBuilder out, Loki bank) throws Exception {
-        line(out, "THREE. Labels and content.");
+        act(out, "THREE. Labels and content.");
         Instant now = Instant.now();
-        for (int i = 0; i < 150; i++) {
+        int users = 150;
+        List<Map<String, String>> labelled = new ArrayList<>();
+        List<Map<String, String>> content = new ArrayList<>();
+        for (int i = 0; i < users; i++) {
             Event e = new Event("req-1" + String.format("%03d", i), "login", "user" + i, "login", "session", "203.0.113.5", "success", null);
-            bank.push(Map.of("app", "bank-labelled", "event_type", "login", "actor", "user" + i), now.minusSeconds(30), e.line());
-            bank.push(Map.of("app", "bank-content", "event_type", "login"), now.minusSeconds(30).plusNanos(i), e.line());
+            Map<String, String> asLabel = Map.of("app", "bank-labelled", "event_type", "login", "actor", "user" + i);
+            Map<String, String> inLine = Map.of("app", "bank-content", "event_type", "login");
+            bank.push(asLabel, now.minusSeconds(30), e.line());
+            bank.push(inLine, now.minusSeconds(30).plusNanos(i), e.line());
+            labelled.add(asLabel);
+            content.add(inLine);
         }
-        line(out, "  150 more logins, once with the user as a label and once as part of the line: streams " + bank.streams("{app=\"bank-labelled\"}") + " against " + bank.streams("{app=\"bank-content\"}"));
-        line(out, "  asking for one user: " + bank.lines("{app=\"bank-labelled\", actor=\"user7\"}").size() + " line by the label, " + bank.lines("{app=\"bank-content\"} | json | actor=\"user7\"").size() + " line by the content");
-        line(out, "  every label value makes a stream of its own and an entry in the index, so labels are for the few things you always select by (the application, the kind of event) and the rest stays in the line");
+        section(out, "THE INPUT (" + users + " more logins, sent twice)");
+        fact(out, 10, "labelled", "app=bank-labelled, event_type=login,");
+        fact(out, 10, "", "actor=user0 ... user" + (users - 1));
+        fact(out, 10, "content", "app=bank-content, event_type=login;");
+        fact(out, 10, "", "the actor only inside the JSON line");
+        section(out, "THE STREAMS (worked out, and counted by Loki)");
+        fact(out, 10, "labelled", "1 app x 1 type x " + users + " actors = " + Streams.count(labelled)
+                + "; Loki: " + bank.streams("{app=\"bank-labelled\"}"));
+        fact(out, 10, "content", "1 app x 1 type = " + Streams.count(content) + "; Loki: " + bank.streams("{app=\"bank-content\"}"));
+        String byLabel = "{app=\"bank-labelled\", actor=\"user7\"}";
+        String byContent = "{app=\"bank-content\"} | json | actor=\"user7\"";
+        section(out, "ASKING FOR ONE USER, user7");
+        row(out, byLabel);
+        row(out, "  -> " + bank.lines(byLabel).size() + " line, from 1 of " + users + " streams");
+        row(out, byContent);
+        row(out, "  -> " + bank.lines(byContent).size() + " line, the 1 stream read and filtered");
+        section(out, "THE RULE OF THUMB");
+        row(out, "a label: the few things you always select by");
+        row(out, "the line: everything else (users, addresses, amounts)");
     }
 
     private static void act4(StringBuilder out, Loki bank) throws Exception {
-        line(out, "FOUR. Alerting.");
-        line(out, "  two rules are loaded for the tenant, evaluated every 2 seconds: " + bank.ruleStates());
-        line(out, "  alerts firing now, with ana's two failed logins from 198.51.100.66 in the logs: " + bank.firingAlerts());
+        act(out, "FOUR. Alerting.");
+        String count = "sum by (source_ip) (count_over_time(" + FAILURES + " [5m]))";
+        section(out, "THE RULE PasswordGuessing (checked every 2 seconds)");
+        row(out, "sum by (source_ip) (count_over_time(");
+        row(out, "  " + FAILURES + " [5m])) >= 3");
+        Map<String, String> states = bank.ruleStates();
+        section(out, "BEFORE (ana's 2 failures are in the logs)");
+        states.forEach((name, state) -> fact(out, 22, name, state));
+        bank.metric(count, "source_ip").forEach((ip, n) -> fact(out, 22, ip, Math.round(n) + " >= 3? " + (n >= 3 ? "yes" : "no")));
+        fact(out, 22, "firing", bank.firingAlerts().isEmpty() ? "none" : String.join(", ", bank.firingAlerts()));
         Instant now = Instant.now();
-        for (int i = 0; i < 4; i++) {
+        int tries = 4;
+        for (int i = 0; i < tries; i++) {
             Event e = new Event("req-2" + i, "login", "ben", "login", "session", "203.0.113.9", "failure", null);
             bank.push(Map.of("app", "bank", "event_type", "login"), now.plusMillis(i), e.line());
         }
@@ -99,27 +191,49 @@ public class LokiLogsDemo {
             Thread.sleep(1000);
             firing = bank.firingAlerts();
         }
-        line(out, "  four failed logins from 203.0.113.9 are shipped; a moment later: " + firing);
-        line(out, "  the alert's text: " + bank.summaryOfFirstAlert());
-        line(out, "  the rule with a typo in the field name, outcom: " + bank.ruleStates().get("PasswordGuessingTypo") + "  <- IT RUNS WITHOUT A COMPLAINT AND NEVER FIRES");
-        line(out, "  a rule is code: test it with a known bad event, on a schedule, and expect it to fire");
+        section(out, "THE INPUT (" + tries + " failed logins as ben, from 203.0.113.9)");
+        row(out, "shipped like every other event");
+        section(out, "AFTER (a moment later)");
+        bank.metric(count, "source_ip").forEach((ip, n) -> fact(out, 15, ip, Math.round(n) + " >= 3? " + (n >= 3 ? "yes" : "no")));
+        fact(out, 15, "firing", String.join(", ", firing));
+        row(out, "its text");
+        row(out, "  " + bank.summaryOfFirstAlert());
+        section(out, "THE RULE PasswordGuessingTypo (outcom, not outcome)");
+        String typo = "sum by (source_ip) (count_over_time({app=\"bank\"} | json | outcom=\"failure\" [5m]))";
+        fact(out, 8, "counts", bank.metric(typo, "source_ip").isEmpty() ? "none: no line has a field outcom" : "some");
+        fact(out, 8, "state", bank.ruleStates().get("PasswordGuessingTypo") + "  <- NO ERROR, AND IT NEVER FIRES");
+        row(out, "so test a rule with a known bad event, and expect it to fire");
     }
 
     private static void act5(StringBuilder out, Lab lab, Loki bank) throws Exception {
-        line(out, "FIVE. The bill.");
+        act(out, "FIVE. The bill.");
         Loki shop = new Loki(lab.lokiUrl(), "shop");
-        line(out, "  another tenant, shop, asking for the bank's lines: " + shop.lines("{app=\"bank\"}").size() + " of " + bank.lines("{app=\"bank\"}").size() + "; its labels: " + shop.labels());
+        String all = "{app=\"bank\"}";
+        section(out, "ANOTHER TENANT, shop, ASKS FOR " + all);
+        fact(out, 8, "lines", shop.lines(all).size() + " (the tenant bank sees " + bank.lines(all).size() + ")");
+        fact(out, 8, "labels", shop.labels().isEmpty() ? "none" : String.join(", ", shop.labels()));
         Loki.Answer old = bank.push(Map.of("app", "bank"), Instant.now().minusSeconds(10L * 86400), "{\"event_type\":\"login\"}");
-        line(out, "  an event stamped ten days ago: " + old.status() + " " + old.body().strip().replaceAll("'[^']*'", "'...'").replaceAll("[0-9T:.-]+Z", "...").replaceAll("\\d+ ?[hmsd.]+[0-9hmsd]*", "..."));
-        Loki.Answer delete = bank.deleteLines("{app=\"bank\"}");
-        line(out, "  asking Loki to delete the bank's lines through its API: " + delete.status() + ", the route is not even there until retention and deletion are configured; changing a line after it was sent is not offered either");
+        section(out, "AN EVENT STAMPED TEN DAYS AGO");
+        java.util.regex.Matcher limit = java.util.regex.Pattern.compile("reject_old_samples_max_age: (\\d+)h").matcher(Lab.LOKI_CONFIG);
+        limit.find();
+        int hours = Integer.parseInt(limit.group(1));
+        fact(out, 8, "limit", "reject_old_samples_max_age " + hours + "h = " + hours + " / 24 = " + hours / 24 + " days");
+        fact(out, 8, "event", "10 days old > " + hours / 24 + " days");
+        fact(out, 8, "answer", old.status() + (old.body().contains("too old") ? " timestamp too old  <- REFUSED" : " " + old.body().strip()));
+        Loki.Answer delete = bank.deleteLines(all);
+        section(out, "ASKING LOKI TO DELETE THE BANK'S LINES");
+        fact(out, 8, "answer", delete.status() + ": no such route until deletion is configured");
+        row(out, "and no route at all changes a line once it is stored");
         Grafana grafana = new Grafana(lab.grafanaUrl());
         String uid = grafana.addLoki("bank", "bank");
         String shopUid = grafana.addLoki("shop", "shop");
-        line(out, "  Grafana, with a data source that sends the tenant bank: connection " + grafana.health(uid) + ", the same question gives " + grafana.count(uid, "{app=\"bank\"} | json | outcome=\"failure\"") + " failures against Loki's " + bank.lines("{app=\"bank\"} | json | outcome=\"failure\"").size()
-                + "; through the shop's data source: " + grafana.count(shopUid, "{app=\"bank\"}"));
-        line(out, "  whoever can use a data source sees that tenant's logs, so access to Grafana is access to the logs; Loki's tenants separate the data and do not log anyone in");
-        line(out, "  Loki stores what it is sent and does not prove that it was not changed before it was sent; the hash chain of the plain project is still written by the sender");
-        line(out, "  retention, the size of the index and what the logs may contain (see secrets-in-errors-and-logs) remain the team's to decide");
+        section(out, "GRAFANA, ONE DATA SOURCE PER TENANT HEADER");
+        fact(out, 7, "bank", "connection " + grafana.health(uid) + ", failures " + grafana.count(uid, FAILURES)
+                + " (Loki itself: " + bank.lines(FAILURES).size() + ")");
+        fact(out, 7, "shop", "connection " + grafana.health(shopUid) + ", bank lines " + grafana.count(shopUid, all));
+        section(out, "STILL THE TEAM'S JOB");
+        row(out, "who may use a data source: that is who reads the logs");
+        row(out, "proof a line was not changed before it was sent");
+        row(out, "retention, index size, and no secrets in the lines");
     }
 }

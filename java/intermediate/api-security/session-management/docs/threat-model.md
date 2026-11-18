@@ -57,7 +57,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `SessionIdsTest` checks the length and alphabet of ids, that many are distinct, SHA-256 against FIPS 180-2, and that the store holds no live ids.
+- `SessionIdsTest` checks the length and alphabet of ids, that many are distinct, SHA-256 against FIPS 180-2, that the store holds no live ids, and that base64url worked out by hand (`Base64Steps`) gives the library's exact result.
 - `SessionManagerTest` checks rotation, fixation without it, step-up, both timeouts, re-authentication, sign-out, everywhere, password change, the limit and shared stores.
 - `CookieAndServerTest` checks the cookie's attributes and the real local server's sign-in, sign-out and rotation.
 - `DemoRunsTest` compares the whole demo with the golden output.

@@ -21,6 +21,8 @@ Compliance is shown once a year from memory, while the controls change every day
 | A control | `Control` |
 | A test run or attestation | `Evidence` |
 | The status rules | `Assessor` |
+| The names behind the ids | `Frameworks` |
+| Teaching class: the rules one by one | `StatusSteps` |
 | The catalogue | `catalogue/controls.csv` |
 | The test results | `evidence/` |
 | Entry point | `ControlsAndEvidenceDemo` |
@@ -38,10 +40,10 @@ Compliance is shown once a year from memory, while the controls change every day
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 24 lines, identical on every run |
+| Tests | 16, all passing |
+| Demo output | 104 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:44, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:38, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

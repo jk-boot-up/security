@@ -8,28 +8,31 @@ A threat model draws the system as elements, flows and trust boundaries, asks th
 
 ### 1. The system as a data-flow model
 
-The bank is drawn as a data-flow model: 2 external entities, 3 processes, 2 data stores, 8 flows and 3 trust boundaries. The internet boundary is crossed by F2, the gateway boundary by F3 and F8, and the partner boundary by F6 and F7. The model has no problems.
-An earlier draft, where the app writes card numbers straight into a card vault, has 2 problems: the flow goes from the device zone to the internal zone with no single boundary between them, and the vault has no owner. A picture that skips a boundary hides the threats that live on it.
+The input is the bank as a data-flow model: the customer E1 and the mobile app P1 in the device zone (trust 0), the API gateway P2 in the dmz (trust 1, public), the card processor E2 in the partner zone (trust 1), and the payments service P3, the accounts database S1 and the audit log S2 in the internal zone (trust 2). Three trust boundaries separate device | dmz, dmz | internal and internal | partner. Eight flows connect them; F2 crosses the internet boundary, F3 and F8 the gateway boundary, F6 and F7 the partner boundary.
+The result of the check of the picture: the bank as built has 0 problems. An earlier draft adds S3 card vault (a data store in internal, owner: none) and D1, the card number from P1 to S3: D1 goes from device to internal, skipping a boundary, and S3 has no owner, so 2 problems.
 
 ### 2. STRIDE per element
 
-STRIDE per element turns the model into questions nobody forgets to ask. The rules find 20 candidate threats: S 4, T 5, R 4, I 2, D 1, E 4. Spoofing for every external entity and every process that receives a flow across a boundary; tampering for every flow that crosses a boundary;
-repudiation for every flow that moves money; information disclosure for every store; denial of service for every public-facing process; elevation of privilege for every flow into a more trusted zone. Each category is the opposite of a property: spoofing against authenticity, tampering against integrity, and so on.
+The input is one flow, F2, the payment request with token from the mobile app to the API gateway. The result of the six questions: spoofing, information disclosure and denial of service are asked of entities, processes and stores, not of flows; tampering applies because F2 crosses the internet boundary; repudiation because it moves money; elevation of privilege because it goes from device (trust 0) to dmz (trust 1).
+The same rules on the whole model find 20 candidate threats: S 4 (E1 E2 P2 P3), T 5 (F2 F3 F6 F7 F8), R 4 (F2 F3 F4 F6), I 2 (S1 S2), D 1 (P2) and E 4 (F2 F3 F7 F8). Six examples are printed, one per letter.
 
 ### 3. Rating and deciding
 
-Each threat is rated: likelihood follows the least trusted zone it touches, impact follows what is at stake, and risk is their product. The highest risks are at the internet boundary, 5 times 5, 25. Then people decide: mitigate 17, accept 1, transfer 1, avoid 1.
-The accepted risk, a card processor denying a charge, is covered by signed receipts and the contract, with an owner and a review on day 90. Denial of service on the gateway is transferred to the hosting provider's protection under contract. Disclosure from the audit log is avoided: card numbers and secrets are never written to it. No threat is left undecided.
+How one threat is rated, worked out for T:F2: the likelihood follows the less trusted end of the flow, and the weaker end of F2 is the device zone, so 5 (device 5, dmz 4, partner 3, internal 2); the impact is 5 because F2 moves money (other flows 3); the risk is 5 x 5 = 25.
+The input of the decision is the 20 threats on the risk matrix: likelihood 5 has 1 threat at impact 4 and 3 at impact 5, and so on. The top three, ties in key order, are E:F2, R:F2 and T:F2, all 5 x 5 = 25.
+The result is one decision per threat: mitigate 17 (each names a check), accept 1 (R:F6, signed receipts and the contract cover it, owner payments lead, review on day 90), transfer 1 (D:P2 to the hosting provider, under contract), avoid 1 (I:S2, no card numbers in the audit log), undecided 0.
 
 ### 4. Mitigations as tests
 
-Every mitigation names a check that runs over the model: 8 checks, and every mitigation names one. On the bank as built, none fails. Then a design change adds F9: the payments service sends refunds to the card processor, unencrypted. One check fails now, TLS on every flow that crosses a boundary, naming F9, before the release.
-The rules also find 2 new threats with no decision, tampering and repudiation on F9. The earlier draft fails 3 checks, so it would never have shipped either.
+Before the change, the bank as built: 0 of 8 checks fail and 0 threats are undecided. The change adds F9: the payments service P3 sends refunds to the card processor E2, across the partner boundary, unencrypted.
+After the change: 1 of 8 checks fails, TLS on every boundary-crossing flow, because F9 refund is not encrypted; and the rules find 2 new threats with no decision, T:F9 and R:F9. The test fails before the release.
+All 8 checks on the three versions of the model: as built every one passes; with F9 only TLS fails; the early draft fails three (both ends authenticated, stores encrypted and reached only from inside, every store has an owner), broken by D1 card number not authenticated, S3 not encrypted at rest, D1 reaching the vault from the device zone, and S3 having no owner.
 
 ### 5. The bill, and the habit
 
-The model is 7 elements, 8 flows and 20 threats: small enough to read in one sitting, and to keep up to date. Today is day 120, and the one accepted risk was due for review on day 90: an accepted risk is a decision with an expiry date.
-Review the model when a flow, a store, a boundary or a third party is added, not once a year. Ask the four questions every time: what is being built, what can go wrong, what is being done about it, and was it done well enough. The rules only find candidates; people still judge likelihood, impact and the right control.
+The size of the model: 7 elements, 8 flows, 3 boundaries, 20 threats and 8 checks, small enough to read in one sitting.
+The accepted risk R:F6 was accepted on day 0 with a review on day 90; today is day 120, so the review is 120 - 90 = 30 days overdue: an accepted risk is a decision with an expiry date.
+Open the model again for a new flow, store, boundary or third party, not once a year, and ask the four questions: what is being built (the model), what can go wrong (STRIDE), what is being done about it (the decisions), and was it done well enough (the checks).
 
 ## The verdict
 

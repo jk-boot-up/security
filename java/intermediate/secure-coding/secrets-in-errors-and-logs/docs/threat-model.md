@@ -51,6 +51,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `LeaksTest` checks the naive and fixed checkout and loggers with canary secrets, one-line events, line length, the Secret wrapper, Luhn card detection and the redaction patterns, and states that unnamed secrets are not found.
+- `TeachingStepsTest` checks the Luhn steps, the page reader, the canary search, the rule names and the line wrapping the demo prints.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

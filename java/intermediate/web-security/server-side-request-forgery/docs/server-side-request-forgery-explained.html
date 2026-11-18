@@ -25,22 +25,27 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <h2>The idea in one sentence</h2>
 <p>When a server fetches an address for a customer, it must test the address the connection will really use, connect to exactly that address, and test every redirect again.</p>
 <h2>The 5 acts</h2>
-<h3>1. Importing an image</h3>
-<p>The seller pastes http://images.example/cat.png, the server fetches it and stores PNG-cat. This is the feature working as intended.</p>
+<h3>1. An honest import works</h3>
+<p>The store's server can reach five hosts: images.example at 93.184.216.34 (a public image host), attacker.example at 203.0.113.9, the cloud metadata service at 169.254.169.254, the server itself at 127.0.0.1 (localhost) and an office admin page at 10.0.0.5.
+The seller pastes http://images.example/cat.png. The server looks up images.example, gets 93.184.216.34, and sends GET /cat.png to that address. The response is imported: PNG-cat.
+This is the feature working as intended: the server, not the customer, makes the request.</p>
 <h3>2. The server fetches whatever it is told</h3>
-<p>Without a check, the address of the metadata service returns the demo credentials, localhost returns the server's own environment (DB_PASSWORD=demo-not-real) and
-10.0.0.5 returns the internal admin panel. The seller sees them because the import shows what it fetched. The customer's request never touched those addresses; the server's did.</p>
+<p>The seller now pastes three other addresses. http://169.254.169.254/latest/meta-data/iam/credentials returns AccessKeyId=DEMO-NOT-A-REAL-KEY, the server's cloud key.
+http://localhost/actuator/env returns DB_PASSWORD=demo-not-real, the server's own settings. http://10.0.0.5/admin returns internal admin panel: 3 customers.
+The customer's own computer cannot reach any of them. The server can, and the import shows what it fetched.</p>
 <h3>3. A blocklist of names is easy to walk around</h3>
-<p>The blocklist refuses the metadata address, localhost and anything starting with 10. or 192.168. But 2852039166 is the same address written as one number, 127.1 is
-loopback, ::ffff:a9fe:a9fe is the metadata address in IPv6 clothes, intranet.attacker.example is a name whose DNS answer is 10.0.0.5, and attacker.example redirects to the
-metadata address after the check. The blocklist read the text; the connection used the address.</p>
+<p>The blocklist compares the host, as text, with localhost, 127.0.0.1, 169.254.169.254, 0.0.0.0, 10.* and 192.168.*. It refuses request a, the metadata address as written. The other five get through.
+b, 2852039166, is the whole address as one number: dividing by 16777216, 65536 and 256 gives 169, 254, 169 and 254. c, 127.1, has two parts, so the last number fills the last three parts: 127.0.0.1.
+d, ::ffff:a9fe:a9fe, is an IPv4 address inside IPv6: hex a9 is 169 and fe is 254. e is a name whose DNS answer is 10.0.0.5, and f is a public host that answers 302 and sends the server to 169.254.169.254 after the check.
+Java reads each spelling exactly as the worked steps do. The blocklist read the text; the connection used the address.</p>
 <h3>4. Check the address the connection really uses</h3>
-<p>The safe importer parses the address by hand, refuses other schemes, other ports and user info, resolves the host once, requires every answer to be a public address,
-connects to the address it checked, and runs the same checks again on every redirect. Each spelling of an inside address is refused with the real address named in the log.
-A rebinding name is harmless, because the importer never asks DNS twice: it fetches only the attacker's own picture.</p>
-<h3>5. Why checking and then connecting is not enough</h3>
-<p>A check-then-connect importer resolves rebind.attacker.example, sees a public address and approves. Then the HTTP client resolves it again; the attacker's DNS now answers
-10.0.0.5 and the client fetches the internal admin panel. The check was right, and the connection went elsewhere. The fix is not a better check: it is connecting to the address that was checked.</p>
+<p>The safe importer logs each decision. For request f it allows scheme http on port 80 with no user info, looks up attacker.example once (203.0.113.9), finds it public and connects to it. The 302 redirect to 169.254.169.254 goes through the same checks, and is refused: 169.254.169.254 is link-local.
+Every other request is refused by its real address, however it is spelled: 2852039166 is 169.254.169.254, link-local; 127.1 is 127.0.0.1, loopback; intranet.attacker.example is 10.0.0.5, private. images.example@10.0.0.5 is refused for its user info.
+dual.attacker.example answers two addresses, 93.184.216.34 and 10.0.0.5; one private answer is enough to refuse the name. The honest image still imports.</p>
+<h3>5. A second lookup can give a different answer</h3>
+<p>The attacker's DNS server answers rebind.attacker.example with 203.0.113.9 the first time and 10.0.0.5 after that (DNS rebinding).
+An importer that checks the name and then lets its HTTP client look the name up again sees 203.0.113.9, public, and then connects to 10.0.0.5: it fetches internal admin panel: 3 customers. The check was right; the connection went elsewhere.
+The safe importer looks the name up once, checks 203.0.113.9 and connects to 203.0.113.9. The attacker's own host has no admin page: the server answered 404, and nothing inside was reached.</p>
 <h2>The verdict</h2>
 <p>Prefer uploads, or a fixed list of hosts. If you must fetch arbitrary addresses: resolve once, refuse non-public addresses, connect to the checked address,
 allow only http and https on the usual ports, follow few redirects and check each, limit type and size, and add network egress rules as a second layer.</p>

@@ -4,46 +4,79 @@ import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.PlainHeader;
+import com.nimbusds.jose.crypto.ECDSASigner;
+import com.nimbusds.jose.crypto.ECDSAVerifier;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.jwk.ECKey;
-import com.nimbusds.jose.PlainHeader;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.PlainJWT;
 import com.nimbusds.jwt.SignedJWT;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.text.ParseException;
+import java.security.MessageDigest;
+import java.security.Signature;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 
-/** Runs the bank's token story in five numbered acts with Nimbus JOSE + JWT and a real key-set server on the loopback interface. */
+/**
+ * Runs the bank's token story in six numbered acts with Nimbus JOSE + JWT and a real key-set server on the loopback interface. Each act
+ * prints its input and its result in separate labelled sections. The keys are fixed and the clock is simulated; an ES256 signature
+ * uses a fresh random number, so the signature part is the one value printed as a placeholder.
+ */
 public class NimbusJwtDemo {
 
     static final String ACCOUNTS_READ = "accounts:read";
+    static final String OLD_KID = "bank-2026-01";
+    static final String NEW_KID = "bank-2026-07";
     static final long CACHE_MILLIS = 2_000;
     static final long REFETCH_MILLIS = 1_800;
     static final long WAIT_MILLIS = 2_300;
+    private static final int WIDTH = 66;
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
     }
 
-    /** The whole demo as text, so the tests can compare it with the golden file. Keys and signatures are fresh on every run and are never printed. */
+    /** The whole demo as text, so the tests can compare it with the golden file. */
     public static String run() throws Exception {
         StringBuilder out = new StringBuilder();
-        act1DecodingIsNotVerifying(out);
-        act2TheServerChoosesTheAlgorithm(out);
-        act3EveryClaim(out);
-        act4KeysById(out);
-        act5Bill(out);
+        act1Build(out);
+        act2Parse(out);
+        act3Algorithm(out);
+        act4Claims(out);
+        act5Keys(out);
+        act6Bill(out);
         return out.toString();
     }
 
     private static void line(StringBuilder out, String text) {
         out.append(text).append('\n');
+    }
+
+    /** One line, or several when it is long: the words carry on under the first word after the lead. */
+    private static void wrapped(StringBuilder out, String lead, String text) {
+        String indent = " ".repeat(lead.length());
+        StringBuilder current = new StringBuilder(lead);
+        for (String word : text.split(" ")) {
+            if (current.length() > indent.length() && current.length() + 1 + word.length() > WIDTH + 2) {
+                line(out, current.toString());
+                current = new StringBuilder(indent);
+            }
+            current.append(current.length() > indent.length() ? " " : "").append(word);
+        }
+        line(out, current.toString());
+    }
+
+    /** A long value cut into lines of 56 characters. */
+    private static void chunks(StringBuilder out, String text) {
+        for (int i = 0; i < text.length(); i += 56) {
+            line(out, "      " + text.substring(i, Math.min(text.length(), i + 56)));
+        }
     }
 
     static String verdict(AccessTokenValidator validator, String token) {
@@ -54,14 +87,14 @@ public class NimbusJwtDemo {
         }
     }
 
-    /** A bank with one key, published, and an API that reads the key set from it. */
+    /** A bank with one fixed key, published, and an API that reads the key set from it. */
     private record Setup(SimClock clock, BankIssuer bank, JwksServer jwks, AccessTokenValidator api) implements AutoCloseable {
 
         static Setup start() throws IOException, JOSEException {
             SimClock clock = new SimClock();
             BankIssuer bank = new BankIssuer(clock);
-            bank.createKey("bank-2026-01");
-            bank.signWith("bank-2026-01");
+            bank.addKey(DemoKeys.fromSeed(OLD_KID, "bank-2026-01 demo seed"));
+            bank.signWith(OLD_KID);
             JwksServer jwks = new JwksServer();
             jwks.publish(bank.publicKeys());
             AccessTokenValidator api = new AccessTokenValidator(jwks.url(), 300_000, 30_000, clock, BankIssuer.ACCOUNTS_API, ACCOUNTS_READ);
@@ -74,142 +107,269 @@ public class NimbusJwtDemo {
         }
     }
 
-    private static void act1DecodingIsNotVerifying(StringBuilder out) throws Exception {
-        line(out, "ONE. Three parts, and decoding is not verifying.");
+    private static String json(String part) {
+        return new String(Base64.getUrlDecoder().decode(part), StandardCharsets.UTF_8);
+    }
+
+    private static void act1Build(StringBuilder out) throws Exception {
+        line(out, "ONE. The bank's authorization server signs ana's token with Nimbus.");
         try (Setup s = Setup.start()) {
             String token = s.bank().accessToken("ana", ACCOUNTS_READ);
-            SignedJWT jwt = SignedJWT.parse(token);
-            line(out, "  the bank's authorization server issues ana an access token of " + token.length() + " characters in " + token.split("\\.").length + " parts");
-            line(out, "  header: " + jwt.getHeader().toString());
-            line(out, "  claims: " + jwt.getJWTClaimsSet().toString());
-            line(out, "  the third part is a " + jwt.getSignature().decode().length + "-byte ES256 signature (R and S, 32 bytes each) over the first two");
-            line(out, "  anyone can read the claims: base64url is an encoding, not encryption, so no secret belongs in them");
             String[] parts = token.split("\\.");
-            String edited = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8).replace("\"sub\":\"ana\"", "\"sub\":\"mallory\"");
-            String forged = parts[0] + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(edited.getBytes(StandardCharsets.UTF_8)) + "." + parts[2];
-            line(out, "  the claims edited to sub=mallory, with ana's signature kept: a reader that only parses says " + SignedJWT.parse(forged).getJWTClaimsSet().getSubject() + "  <- PARSING IS NOT VERIFYING");
-            line(out, "  the validator: " + verdict(s.api(), forged));
+            String header = json(parts[0]);
+            String claims = json(parts[1]);
+            line(out, "  THE HEADER (JWSHeader as JSON, " + header.length() + " bytes):");
+            line(out, "    " + header);
+            line(out, "  THE CLAIMS (JWTClaimsSet as JSON, " + claims.length() + " bytes):");
+            for (String member : claims.substring(1, claims.length() - 1).split(",(?=\")")) {
+                line(out, "    " + member);
+            }
+            line(out, "  STEP 1. BASE64URL OF EACH (3 bytes -> 4 characters):");
+            line(out, "    header " + header.length() + " bytes -> " + parts[0].length() + " characters, claims "
+                    + claims.length() + " bytes -> " + parts[1].length());
+            byte[] input = (parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input);
+            line(out, "  STEP 2. ES256 = ECDSA ON CURVE P-256 OVER SHA-256:");
+            line(out, "    signing input: " + input.length + " ASCII bytes (header part . claims part)");
+            line(out, "    SHA-256 of it: " + HexFormat.of().formatHex(digest, 0, 16) + "...");
+            byte[] signature = Base64.getUrlDecoder().decode(parts[2]);
+            line(out, "    signature: R and S, 32 bytes each = " + signature.length + " bytes -> " + parts[2].length() + " characters");
+            line(out, "  THE TOKEN (" + token.length() + " characters = " + parts[0].length() + " + 1 + " + parts[1].length()
+                    + " + 1 + " + parts[2].length() + "):");
+            line(out, "    PART 1, THE HEADER:");
+            chunks(out, parts[0]);
+            line(out, "    PART 2, THE CLAIMS:");
+            chunks(out, parts[1]);
+            line(out, "    PART 3, THE SIGNATURE:");
+            line(out, "      <" + parts[2].length() + " characters, new on every run>");
+            String again = s.bank().accessToken("ana", ACCOUNTS_READ);
+            ECDSAVerifier verifier = new ECDSAVerifier(s.bank().key(OLD_KID).toECPublicKey());
+            line(out, "  THE SAME CLAIMS SIGNED TWICE (ECDSA takes a fresh random number):");
+            line(out, "    the same first two parts: " + again.startsWith(parts[0] + "." + parts[1] + "."));
+            line(out, "    the same signature: " + again.equals(token));
+            line(out, "    both verify with the bank's public key: "
+                    + (SignedJWT.parse(token).verify(verifier) && SignedJWT.parse(again).verify(verifier)));
         }
     }
 
-    private static void act2TheServerChoosesTheAlgorithm(StringBuilder out) throws Exception {
-        line(out, "TWO. The server chooses the algorithm, never the token.");
+    private static void act2Parse(StringBuilder out) throws Exception {
+        line(out, "TWO. Parsing is not verifying.");
         try (Setup s = Setup.start()) {
-            line(out, "  ana's token with the bank's key: " + verdict(s.api(), s.bank().accessToken("ana", ACCOUNTS_READ)));
-            JWTClaimsSet claims = claims(s, "ana", BankIssuer.ISSUER, BankIssuer.ACCOUNTS_API, ACCOUNTS_READ, Duration.ofMinutes(5), Duration.ZERO);
-            line(out, "  the same claims with a header that says none and no signature: " + verdict(s.api(), new PlainJWT(new PlainHeader.Builder().type(BankIssuer.ACCESS_TOKEN).build(), claims).serialize()));
-            byte[] publicKeyBytes = s.bank().key("bank-2026-01").toPublicJWK().toECPublicKey().getEncoded();
-            String hs256 = BankIssuer.sign(claims, new JWSHeader.Builder(JWSAlgorithm.HS256).type(BankIssuer.ACCESS_TOKEN).keyID("bank-2026-01").build(), new MACSigner(publicKeyBytes));
-            line(out, "  a header that says HS256, signed with the bank's public key as the shared secret: " + verdict(s.api(), hs256));
-            line(out, "  a correctly signed token of another type, offered as an access token: "
-                    + verdict(s.api(), BankIssuer.sign(claims, new JOSEObjectType("id+jwt"), "bank-2026-01", s.bank().key("bank-2026-01"))));
-            line(out, "  the algorithm and the type are settings of the API; the header is only checked against them");
+            String token = s.bank().accessToken("ana", ACCOUNTS_READ);
+            String[] parts = token.split("\\.");
+            String edited = json(parts[1]).replace("\"sub\":\"ana\"", "\"sub\":\"mallory\"");
+            String editedPart = Base64.getUrlEncoder().withoutPadding().encodeToString(edited.getBytes(StandardCharsets.UTF_8));
+            String forged = parts[0] + "." + editedPart + "." + parts[2];
+            line(out, "  THE EDIT (only the claims part is replaced):");
+            line(out, "    \"sub\":\"ana\"  ->  \"sub\":\"mallory\"");
+            line(out, "  THE TOKEN SENT:");
+            line(out, "    part 1, the header     " + parts[0].length() + " characters, unchanged");
+            line(out, "    part 2, the claims     " + editedPart.length() + " characters, was " + parts[1].length());
+            line(out, "    part 3, the signature  " + parts[2].length() + " characters, ana's, unchanged");
+            line(out, "  SignedJWT.parse ALONE (reads the claims, checks nothing):");
+            line(out, "    getSubject() -> " + SignedJWT.parse(forged).getJWTClaimsSet().getSubject() + "  <- PARSING IS NOT VERIFYING");
+            line(out, "  THE VALIDATOR (DefaultJWTProcessor, signature first):");
+            line(out, "    verify with " + OLD_KID + "'s public key -> "
+                    + SignedJWT.parse(forged).verify(new ECDSAVerifier(s.bank().key(OLD_KID).toECPublicKey())));
+            wrapped(out, "    -> ", verdict(s.api(), forged));
+            line(out, "  anyone can read the claims: base64url is an encoding, not");
+            line(out, "  encryption, so no secret belongs in them");
         }
     }
 
-    private static JWTClaimsSet claims(Setup s, String sub, String issuer, String audience, String scope, Duration lifetime, Duration notBeforeOffset) {
-        return new JWTClaimsSet.Builder().issuer(issuer).subject(sub).audience(audience).claim("scope", scope).issueTime(Date.from(s.clock().instant()))
-                .notBeforeTime(Date.from(s.clock().instant().plus(notBeforeOffset))).expirationTime(Date.from(s.clock().instant().plus(lifetime))).build();
-    }
-
-    private static void act3EveryClaim(StringBuilder out) throws Exception {
-        line(out, "THREE. Every claim that matters is checked.");
+    private static void act3Algorithm(StringBuilder out) throws Exception {
+        line(out, "THREE. The server chooses the algorithm, never the token.");
         try (Setup s = Setup.start()) {
-            BankIssuer bank = s.bank();
-            AccessTokenValidator api = s.api();
-            String token = bank.accessToken("ana", ACCOUNTS_READ);
-            line(out, "  at the moment of issue: " + verdict(api, token));
-            s.clock().advance(Duration.ofMinutes(5).plusSeconds(20));
-            line(out, "  20 seconds after exp, inside the 30 seconds allowed for clock skew: " + verdict(api, token));
-            s.clock().advance(Duration.ofSeconds(11));
-            line(out, "  31 seconds after exp: " + verdict(api, token));
-            s.clock().set(SimClock.START);
-            line(out, "  a token that starts in 2 minutes, presented now: "
-                    + verdict(api, bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER, BankIssuer.ACCOUNTS_API, Duration.ofMinutes(5), Duration.ofMinutes(2), "bank-2026-01")));
-            line(out, "  issued by another authorization server: "
-                    + verdict(api, bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, "https://auth.other.example", BankIssuer.ACCOUNTS_API, Duration.ofMinutes(5), Duration.ZERO, "bank-2026-01")));
-            line(out, "  meant for the loyalty API, sent to the accounts API: "
-                    + verdict(api, bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER, BankIssuer.LOYALTY_API, Duration.ofMinutes(5), Duration.ZERO, "bank-2026-01")));
-            line(out, "  with only the scope cards:read: " + verdict(api, bank.accessToken("ana", "cards:read")));
-            line(out, "  a valid signature proves who wrote the token; only the claims say whether it is for this API, now");
-        }
-    }
-
-    private static void act4KeysById(StringBuilder out) throws Exception {
-        line(out, "FOUR. Keys by id, from the one set the API was configured with.");
-        try (JwksServer attacker = new JwksServer()) {
-            SimClock clock = new SimClock();
-            BankIssuer bank = new BankIssuer(clock);
-            bank.createKey("bank-2026-01");
-            bank.signWith("bank-2026-01");
-            try (JwksServer jwks = new JwksServer()) {
-                jwks.publish(bank.publicKeys());
-                AccessTokenValidator api = new AccessTokenValidator(jwks.url(), CACHE_MILLIS, REFETCH_MILLIS, clock, BankIssuer.ACCOUNTS_API, ACCOUNTS_READ);
-                String oldToken = bank.accessToken("ana", ACCOUNTS_READ);
-                line(out, "  the bank publishes 1 key, bank-2026-01; the first token: " + verdict(api, oldToken));
-                for (int i = 0; i < 100; i++) {
-                    api.validate(bank.accessToken("ana", ACCOUNTS_READ));
-                }
-                line(out, "  100 more tokens: the key set endpoint was asked " + jwks.requests() + " time in all, the rest came from the cache");
-
-                // Everything an attacker can put in a token, tried straight away, while the key set was fetched a moment ago.
-                ECKey attackerKey = new com.nimbusds.jose.jwk.gen.ECKeyGenerator(com.nimbusds.jose.jwk.Curve.P_256).keyID("attacker-key").generate();
-                String unknown = BankIssuer.sign(claims(clock, "mallory"), BankIssuer.ACCESS_TOKEN, "attacker-key", attackerKey);
-                line(out, "  a token naming a key id the API has never seen: " + verdict(api, unknown) + "; the key set endpoint has now been asked " + jwks.requests() + " times");
-                int before = jwks.requests();
-                for (int i = 0; i < 100; i++) {
-                    verdict(api, unknown);
-                }
-                line(out, "  100 more of them: the key set endpoint was asked " + (jwks.requests() - before) + " more times (a minimum time between refetches protects it)");
-                String wrongKey = BankIssuer.sign(claims(clock, "mallory"), BankIssuer.ACCESS_TOKEN, "bank-2026-01", attackerKey);
-                line(out, "  a token signed with another key but naming the bank's key id: " + verdict(api, wrongKey));
-                attacker.publish(List.of(attackerKey));
-                JWSHeader withJku = new JWSHeader.Builder(JWSAlgorithm.ES256).type(BankIssuer.ACCESS_TOKEN).keyID("attacker-key").jwkURL(attacker.url().toURI()).build();
-                String jku = BankIssuer.sign(claims(clock, "mallory"), withJku, new com.nimbusds.jose.crypto.ECDSASigner(attackerKey));
-                JWSHeader withJwk = new JWSHeader.Builder(JWSAlgorithm.ES256).type(BankIssuer.ACCESS_TOKEN).keyID("attacker-key").jwk(attackerKey.toPublicJWK()).build();
-                String embedded = BankIssuer.sign(claims(clock, "mallory"), withJwk, new com.nimbusds.jose.crypto.ECDSASigner(attackerKey));
-                line(out, "  a token whose header points at the attacker's own key set (jku): " + verdict(api, jku) + "; the attacker's server was asked " + attacker.requests() + " times");
-                line(out, "  a token that carries its own public key in the header (jwk): " + verdict(api, embedded));
-
-                bank.createKey("bank-2026-07");
-                jwks.publish(bank.publicKeys());
-                Thread.sleep(WAIT_MILLIS);
-                line(out, "  the bank publishes bank-2026-07 before using it; after the cache time the API trusts 2 keys: the old token " + verdict(api, oldToken) + "; asked " + jwks.requests() + " times");
-                bank.signWith("bank-2026-07");
-                line(out, "  the bank signs with the new key: " + verdict(api, bank.accessToken("ana", ACCOUNTS_READ)));
-
-                bank.retire("bank-2026-01");
-                jwks.publish(bank.publicKeys());
-                line(out, "  the old key is retired and no longer published; inside the cache time the old token: " + verdict(api, oldToken) + "  <- A RETIRED KEY LIVES ON IN THE CACHE");
-                Thread.sleep(WAIT_MILLIS);
-                line(out, "  after the cache time the old token: " + verdict(api, oldToken) + "; asked " + jwks.requests() + " times (the cache expired, and the unknown key id made the library ask once more before giving up)");
-                line(out, "  keys come from the URL in the API's settings and from nowhere a token names: every one of the " + jwks.requests() + " fetches was for that URL");
+            line(out, "  THE API'S SETTINGS (in AccessTokenValidator, never from a token):");
+            line(out, "    JWSVerificationKeySelector: ES256 only");
+            line(out, "    DefaultJOSEObjectTypeVerifier: at+jwt only");
+            String good = s.bank().accessToken("ana", ACCOUNTS_READ);
+            int dot = good.lastIndexOf('.');
+            Signature jdk = Signature.getInstance("SHA256withECDSAinP1363Format");
+            jdk.initVerify(s.bank().key(OLD_KID).toECPublicKey());
+            jdk.update(good.substring(0, dot).getBytes(StandardCharsets.US_ASCII));
+            line(out, "  CHECKED WITHOUT NIMBUS (the JDK's own ECDSA on P-256):");
+            line(out, "    SHA256withECDSAinP1363Format verifies ana's token: "
+                    + jdk.verify(Base64.getUrlDecoder().decode(good.substring(dot + 1))));
+            JWTClaimsSet claims = claims(s.clock(), "ana");
+            byte[] publicKeyBytes = s.bank().key(OLD_KID).toPublicJWK().toECPublicKey().getEncoded();
+            List<String> tokens = List.of(
+                    good,
+                    new PlainJWT(new PlainHeader.Builder().type(BankIssuer.ACCESS_TOKEN).build(), claims).serialize(),
+                    BankIssuer.sign(claims, new JWSHeader.Builder(JWSAlgorithm.HS256).type(BankIssuer.ACCESS_TOKEN).keyID(OLD_KID).build(),
+                            new MACSigner(publicKeyBytes)),
+                    BankIssuer.sign(claims, new JOSEObjectType("id+jwt"), OLD_KID, s.bank().key(OLD_KID)));
+            line(out, "  THE HEADERS SENT (alg, typ), all with ana's claims:");
+            line(out, "    1. ES256  at+jwt  ana's token, signed by the bank");
+            line(out, "    2. none   at+jwt  no signature at all");
+            line(out, "    3. HS256  at+jwt  the bank's public key used as the secret");
+            line(out, "    4. ES256  id+jwt  an ID token offered as an access token");
+            line(out, "  THE RESULTS:");
+            for (int i = 0; i < tokens.size(); i++) {
+                wrapped(out, "    " + (i + 1) + ". ", verdict(s.api(), tokens.get(i)));
             }
         }
     }
 
     private static JWTClaimsSet claims(SimClock clock, String sub) {
         return new JWTClaimsSet.Builder().issuer(BankIssuer.ISSUER).subject(sub).audience(BankIssuer.ACCOUNTS_API).claim("scope", ACCOUNTS_READ)
-                .issueTime(Date.from(clock.instant())).notBeforeTime(Date.from(clock.instant())).expirationTime(Date.from(clock.instant().plus(Duration.ofMinutes(5)))).build();
+                .issueTime(Date.from(clock.instant())).notBeforeTime(Date.from(clock.instant()))
+                .expirationTime(Date.from(clock.instant().plus(Duration.ofMinutes(5)))).build();
     }
 
-    private static void act5Bill(StringBuilder out) throws Exception {
-        line(out, "FIVE. The bill: a token cannot be taken back.");
+    private static void act4Claims(StringBuilder out) throws Exception {
+        line(out, "FOUR. Every claim that matters is checked.");
+        try (Setup s = Setup.start()) {
+            BankIssuer bank = s.bank();
+            AccessTokenValidator api = s.api();
+            long iat = SimClock.START.getEpochSecond();
+            long exp = iat + 300;
+            line(out, "  THE API EXPECTS (DefaultJWTClaimsVerifier, plus 2 checks of ours):");
+            line(out, "    iss " + BankIssuer.ISSUER + ", aud " + BankIssuer.ACCOUNTS_API);
+            line(out, "    clock skew " + AccessTokenValidator.CLOCK_SKEW_SECONDS + " seconds; ours: scope " + ACCOUNTS_READ
+                    + ", lifetime");
+            line(out, "  THE TIMES IN ana's TOKEN (seconds since 1970-01-01 UTC):");
+            line(out, "    iat " + iat + "   nbf " + iat + "   exp " + exp);
+            line(out, "    accepted while now <= exp + " + AccessTokenValidator.CLOCK_SKEW_SECONDS + " = "
+                    + (exp + AccessTokenValidator.CLOCK_SKEW_SECONDS));
+            String token = bank.accessToken("ana", ACCOUNTS_READ);
+            line(out, "  THE MOMENTS TRIED:");
+            line(out, "    1. now " + iat + "  (the moment of issue)");
+            line(out, "    2. now " + (exp + 20) + "  (exp + 20)");
+            line(out, "    3. now " + (exp + 31) + "  (exp + 31)");
+            line(out, "  THE RESULTS:");
+            line(out, "    1. " + verdict(api, token));
+            s.clock().advance(Duration.ofSeconds(320));
+            line(out, "    2. " + verdict(api, token));
+            s.clock().advance(Duration.ofSeconds(11));
+            line(out, "    3. " + verdict(api, token));
+            s.clock().set(SimClock.START);
+            Duration five = Duration.ofMinutes(5);
+            List<String> changed = List.of(
+                    bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER, BankIssuer.ACCOUNTS_API, five, Duration.ofMinutes(2), OLD_KID),
+                    bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, "https://auth.partner.example", BankIssuer.ACCOUNTS_API, five, Duration.ZERO, OLD_KID),
+                    bank.accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER, BankIssuer.LOYALTY_API, five, Duration.ZERO, OLD_KID),
+                    bank.accessToken("ana", "cards:read"));
+            line(out, "  ONE CLAIM CHANGED PER TOKEN (signed by the bank, now " + iat + "):");
+            line(out, "    1. nbf   " + (iat + 120) + "  (starts in 2 minutes)");
+            line(out, "    2. iss   https://auth.partner.example");
+            line(out, "    3. aud   " + BankIssuer.LOYALTY_API);
+            line(out, "    4. scope cards:read");
+            line(out, "  THE RESULTS:");
+            for (int i = 0; i < changed.size(); i++) {
+                line(out, "    " + (i + 1) + ". " + verdict(api, changed.get(i)));
+            }
+            line(out, "  the signature proves who wrote the token; only the claims say");
+            line(out, "  whether it is for this API, now");
+        }
+    }
+
+    private static void act5Keys(StringBuilder out) throws Exception {
+        line(out, "FIVE. Keys by id, from the one URL the API was configured with.");
+        try (JwksServer attacker = new JwksServer(); JwksServer jwks = new JwksServer()) {
+            SimClock clock = new SimClock();
+            BankIssuer bank = new BankIssuer(clock);
+            bank.addKey(DemoKeys.fromSeed(OLD_KID, "bank-2026-01 demo seed"));
+            bank.signWith(OLD_KID);
+            jwks.publish(bank.publicKeys());
+            AccessTokenValidator api = new AccessTokenValidator(jwks.url(), CACHE_MILLIS, REFETCH_MILLIS, clock, BankIssuer.ACCOUNTS_API, ACCOUNTS_READ);
+            line(out, "  THE KEY SET AT http://127.0.0.1:<port>/jwks.json (kid, x):");
+            for (ECKey key : bank.publicKeys()) {
+                line(out, "    " + key.getKeyID() + "  " + key.getX());
+            }
+            line(out, "  THE API'S KEY SOURCE (JWKSourceBuilder):");
+            line(out, "    only that URL; cache " + CACHE_MILLIS + " ms; at most 1 refetch per " + REFETCH_MILLIS + " ms");
+
+            String oldToken = bank.accessToken("ana", ACCOUNTS_READ);
+            ECKey attackerKey = DemoKeys.fromSeed("attacker-key", "a key the bank never published");
+            attacker.publish(List.of(attackerKey));
+            String unknown = BankIssuer.sign(claims(clock, "mallory"), BankIssuer.ACCESS_TOKEN, "attacker-key", attackerKey);
+            String wrongKey = BankIssuer.sign(claims(clock, "mallory"), BankIssuer.ACCESS_TOKEN, OLD_KID, attackerKey);
+            JWSHeader withJku = new JWSHeader.Builder(JWSAlgorithm.ES256).type(BankIssuer.ACCESS_TOKEN).keyID("attacker-key")
+                    .jwkURL(attacker.url().toURI()).build();
+            String jku = BankIssuer.sign(claims(clock, "mallory"), withJku, new ECDSASigner(attackerKey));
+            JWSHeader withJwk = new JWSHeader.Builder(JWSAlgorithm.ES256).type(BankIssuer.ACCESS_TOKEN).keyID("attacker-key")
+                    .jwk(attackerKey.toPublicJWK()).build();
+            String embedded = BankIssuer.sign(claims(clock, "mallory"), withJwk, new ECDSASigner(attackerKey));
+
+            line(out, "  THE TOKENS SENT:");
+            line(out, "    1. kid " + OLD_KID + ", ana's token, then 100 more");
+            line(out, "    2. kid attacker-key, then the same 100 more times");
+            line(out, "    3. kid " + OLD_KID + ", signed with the attacker's key");
+            line(out, "    4. jku in the header: the attacker's own key set URL");
+            line(out, "    5. jwk in the header: the attacker's public key itself");
+            List<String> results = new ArrayList<>();
+            String first = verdict(api, oldToken);
+            for (int i = 0; i < 100; i++) {
+                verdict(api, bank.accessToken("ana", ACCOUNTS_READ));
+            }
+            results.add(first + "; fetches so far: " + jwks.requests());
+            String second = verdict(api, unknown);
+            int before = jwks.requests();
+            for (int i = 0; i < 100; i++) {
+                verdict(api, unknown);
+            }
+            results.add(second + "; fetches: " + before + ", then " + (jwks.requests() - before) + " more");
+            results.add(verdict(api, wrongKey));
+            results.add(verdict(api, jku) + "; the attacker's server was asked " + attacker.requests() + " times");
+            results.add(verdict(api, embedded));
+            line(out, "  THE RESULTS:");
+            for (int i = 0; i < results.size(); i++) {
+                wrapped(out, "    " + (i + 1) + ". ", results.get(i));
+            }
+            line(out, "  4 and 5: jku and jwk are never followed; only the kid is looked up");
+
+            bank.addKey(DemoKeys.fromSeed(NEW_KID, "bank-2026-07 demo seed"));
+            jwks.publish(bank.publicKeys());
+            Thread.sleep(WAIT_MILLIS);
+            List<String> rotation = new ArrayList<>();
+            rotation.add(verdict(api, oldToken) + "; fetches: " + jwks.requests());
+            bank.signWith(NEW_KID);
+            rotation.add(verdict(api, bank.accessToken("ana", ACCOUNTS_READ)));
+            bank.retire(OLD_KID);
+            jwks.publish(bank.publicKeys());
+            rotation.add(verdict(api, oldToken) + "  <- STILL IN THE CACHE");
+            Thread.sleep(WAIT_MILLIS);
+            rotation.add(verdict(api, oldToken) + "; fetches: " + jwks.requests());
+            line(out, "  THE ROTATION (each step waits past the " + CACHE_MILLIS + " ms cache time):");
+            line(out, "    6. " + NEW_KID + " is published; the old token is sent");
+            line(out, "    7. the bank signs with " + NEW_KID);
+            line(out, "    8. " + OLD_KID + " is retired; at once, the old token");
+            line(out, "    9. after the cache time, the old token");
+            line(out, "  THE RESULTS:");
+            for (int i = 0; i < rotation.size(); i++) {
+                wrapped(out, "    " + (i + 6) + ". ", rotation.get(i));
+            }
+            line(out, "  every one of the " + jwks.requests() + " fetches went to the configured URL");
+        }
+    }
+
+    private static void act6Bill(StringBuilder out) throws Exception {
+        line(out, "SIX. The bill: a token cannot be taken back.");
         try (Setup s = Setup.start()) {
             RefreshTokens refresh = new RefreshTokens();
             String access = s.bank().accessToken("ana", ACCOUNTS_READ);
             String refreshToken = refresh.issue("ana");
-            line(out, "  ana's access is removed 2 minutes after her token was issued");
-            s.clock().advance(Duration.ofMinutes(2));
+            line(out, "  WHAT ana HOLDS (seconds after issue):");
+            line(out, "    the access token, which stops working after 300 + 30 = 330");
+            line(out, "    a refresh token <43 random characters>, kept by the bank");
+            line(out, "  THE EVENT:");
+            line(out, "    at 120 the bank removes ana's access and revokes the refresh token");
+            s.clock().advance(Duration.ofSeconds(120));
             refresh.revokeAll("ana");
-            line(out, "  2 minutes later her access token: " + verdict(s.api(), access) + "  <- STILL WORKS UNTIL IT EXPIRES");
-            line(out, "  her refresh token, which the server looks up: " + (refresh.lookup(refreshToken) == null ? "refused (revoked)" : "accepted"));
-            s.clock().advance(Duration.ofMinutes(3).plusSeconds(31));
-            line(out, "  at 5 minutes and 31 seconds the access token: " + verdict(s.api(), access));
+            s.clock().advance(Duration.ofSeconds(120));
+            line(out, "  THE RESULTS:");
+            line(out, "    at 240 the access token:  " + verdict(s.api(), access) + "  <- STILL WORKS");
+            line(out, "    at 240 the refresh token: " + (refresh.lookup(refreshToken) == null ? "refused (revoked)" : "accepted"));
+            s.clock().advance(Duration.ofSeconds(91));
+            line(out, "    at 331 the access token:  " + verdict(s.api(), access));
             s.clock().set(SimClock.START);
-            line(out, "  so access tokens live for minutes, and a token asking for more than 15 is refused: "
-                    + verdict(s.api(), s.bank().accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER, BankIssuer.ACCOUNTS_API, Duration.ofHours(24), Duration.ZERO, "bank-2026-01")));
-            line(out, "  where a browser should keep tokens is the tokens-in-the-browser project; the library does the parsing, the signature and the claims, and the policy stays ours");
+            line(out, "  THE POLICY THAT FOLLOWS (ours: at most "
+                    + AccessTokenValidator.MAX_LIFETIME.toSeconds() + " seconds = 15 minutes):");
+            line(out, "    a token with exp = iat + 86400 (24 hours):");
+            line(out, "    -> " + verdict(s.api(), s.bank().accessToken("ana", ACCOUNTS_READ, BankIssuer.ACCESS_TOKEN, BankIssuer.ISSUER,
+                    BankIssuer.ACCOUNTS_API, Duration.ofHours(24), Duration.ZERO, OLD_KID)));
+            line(out, "  the library parses, verifies and checks claims; the policy is ours");
         }
     }
 }

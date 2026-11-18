@@ -15,17 +15,22 @@ public final class SafeSearch {
         this.sessions = sessions;
     }
 
+    static final String NATIVE = "select name from products where name like :term and listed = true order by name";
+
     public List<String> jpql(String term, String sort) {
-        String query = "select p.name from Product p where p.name like :term and p.listed = true order by " + SortColumn.parse(sort).jpql();
         try (var session = sessions.openSession()) {
-            return session.createQuery(query, String.class).setParameter("term", "%" + term + "%").getResultList();
+            return session.createQuery(jpqlStatement(sort), String.class).setParameter("term", "%" + term + "%").getResultList();
         }
+    }
+
+    /** Constant text: the only part that varies is a sort key taken from the list. */
+    static String jpqlStatement(String sort) {
+        return "select p.name from Product p where p.name like :term and p.listed = true order by " + SortColumn.parse(sort).jpql();
     }
 
     public List<String> nativeSql(String term) {
         try (var session = sessions.openSession()) {
-            return session.createNativeQuery("select name from products where name like :term and listed = true order by name", String.class)
-                    .setParameter("term", "%" + term + "%").getResultList();
+            return session.createNativeQuery(NATIVE, String.class).setParameter("term", "%" + term + "%").getResultList();
         }
     }
 

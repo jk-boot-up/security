@@ -24,13 +24,14 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Webhook Security: Signatures, Replays and Idempotency</h1>
 <pre><code>src/main/java/com/jk/explore/security/webhooks/
 ├── Event.java          A payment event: its unique id, its type, the order and the amount in cents
+├── HmacSteps.java      HMAC-SHA256 worked out by hand, for teaching (RFC 2104): the key is padded to one 64-byte block, mixed with 0x36 for an inner hash and with 0x5c for an outer hash
 ├── Orders.java         The store's orders and the money a refund event pays out
 ├── Provider.java       The payment provider, simulated: it records what really happened, signs the events it sends, and answers a status query from the store
 ├── Receiver.java       The store's webhook endpoint logic, with each check switched on by its {@link Policy}
 ├── Reply.java          What the store's webhook endpoint answers: an HTTP status and a short message
 ├── Signatures.java     The signature a payment provider puts on each webhook: an HMAC-SHA256, with a secret shared with the store, over the timestamp and the exact raw body, sent in one header as {@code t=&lt;seconds&gt;,v1=&lt;hex&gt;}
 ├── SimClock.java       A clock in whole seconds that only moves when told, so every timestamp in the demo is the same on every run
-├── WebhookDemo.java    Runs the online store story in five numbered acts and prints exact, repeatable results
+├── WebhookDemo.java    Runs the online store story in six numbered acts and prints exact, repeatable results: each message and its response in separate labelled sections, and the signature worked out step by step
 └── WebhookServer.java  The store's webhook endpoint on a real HTTP server on the loopback address, at POST /webhooks/payments, in front of a {@link Receiver}
 </code></pre>
 <p><strong>A webhook endpoint is a public address that anyone can post to, so the store must verify every message: a signature over the exact raw bytes, a signed time inside a short window, a record of events already processed, and handlers that are idempotent and check the order's state.</strong></p>
@@ -55,7 +56,7 @@ and A-1002 for 1999 cents.</p>
 <h2>Run</h2>
 <pre><code class="language-bash">./gradlew run
 </code></pre>
-<p>The demo tells the story in 5 acts, each printing exact numbers that the tests check:</p>
+<p>The demo tells the story in 6 acts, each printing exact numbers that the tests check:</p>
 <table>
 <thead>
 <tr>
@@ -66,30 +67,34 @@ and A-1002 for 1999 cents.</p>
 <tbody>
 <tr>
 <td>1. An endpoint that trusts whatever is posted</td>
-<td>Anyone posts a payment-succeeded event with no signature, and the store marks order A-1001 paid, while the provider has no payment for it.</td>
+<td>Anyone posts a payment-succeeded event for A-1001 with no signature; the store answers 200 and marks it paid, while the provider's records say no payment.</td>
 </tr>
 <tr>
-<td>2. A signature over the exact bytes</td>
-<td>An HMAC-SHA256 of the signed time and raw body accepts the real event and refuses a changed body, a missing signature and another secret, compared in constant time.</td>
+<td>2. How the provider signs a message</td>
+<td>The provider signs t, a dot and the raw body with HMAC-SHA256 and the shared secret: the key is padded to 64 bytes and mixed with 36 and 5c, two SHA-256 hashes give v1, and the header is t=1800000000,v1=dc14c6ef...</td>
 </tr>
 <tr>
-<td>3. A real message sent again</td>
-<td>With signatures only, a real refund replayed an hour later pays 8400 cents for a 4200-cent order; a signed time window and a record of event ids stop it.</td>
+<td>3. The store checks the signature</td>
+<td>The store recomputes v1 from the bytes it received and compares in constant time: the real event 200, a body changed to A-1002 401, no header 400, another secret 401; the same over the local HTTP server.</td>
 </tr>
 <tr>
-<td>4. Twice, out of order, and a new secret</td>
-<td>A retried event changes the order once; a refund before its payment is answered 409 and applied on retry; old and new secrets both work during a changeover.</td>
+<td>4. A real message sent again</td>
+<td>With signatures only, a real refund sent again an hour later pays 8400 cents for a 4200-cent order; with a 300-second window and a record of event ids, copies are ignored or refused, and editing t breaks the signature.</td>
 </tr>
 <tr>
-<td>5. The bill</td>
-<td>A re-serialized body fails the signature, so raw bytes must be kept; critical events are confirmed with the provider's API; the secret is kept and rotated; handlers stay idempotent.</td>
+<td>5. Twice, out of order, and a new secret</td>
+<td>Five arrivals: a retried payment changes nothing, a refund before its payment gets 409 and is applied on the retry; during a secret change the store accepts both secrets, and after it only the new one.</td>
+</tr>
+<tr>
+<td>6. The bill</td>
+<td>The same event written again by a framework is 88 bytes instead of 79, so its v1 differs and it is refused with 401; the raw body passes; the provider's API confirms A-1001 before shipping.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>16 tests in <code>DemoRunsTest</code>, <code>ReceiverTest</code>, <code>ServerTest</code>, <code>SignaturesTest</code>. The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run.</p>
+<p>18 tests in <code>DemoRunsTest</code>, <code>HmacStepsTest</code>, <code>ReceiverTest</code>, <code>ServerTest</code>, <code>SignaturesTest</code>. The HMAC is checked against RFC 4231 test case two, and the header against a value the test computes independently with the JDK's Mac class. The clock is simulated, so every signature and answer is the same on every run.</p>
 <h2>What the simulation got right, and what it left out</h2>
 <p>The store's endpoint runs in process and on a real HTTP server on the loopback address of this machine; the port is never printed. The payment provider is
 simulated in Java, and the clock moves only when the demo moves it, so every signature and every answer is the same on every run.</p>

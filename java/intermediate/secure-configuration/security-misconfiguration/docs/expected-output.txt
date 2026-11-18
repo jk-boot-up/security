@@ -1,37 +1,112 @@
 ONE. The store started with its shipped defaults.
-  admin login with the default password admin: 200  <- ANYONE CAN LOG IN AS ADMIN
-  GET /debug/config: 200, and the page shows the admin password: true
-  GET /static/: 200, a list of 3 files, including backup-orders.csv: true
-  GET /orders?id=abc: 500, and the page shows a stack trace: true
-  the checker scores the shipped store 0 of 8  <- EVERY DEFAULT IS A FINDING
+  THE SETTINGS FILE (as shipped):
+    profile=dev
+    admin.password=admin
+    debug.endpoint=true
+    static.listing=true
+    errors.detailed=true
+    server.banner=ShopServer/1.4.2 (Java 25)
+    http.trace=true
+    test.fake-payments=true
+  THE REQUESTS (what a scanner tries first):
+    POST /admin/login  password=admin
+    GET /debug/config
+    GET /static/
+    GET /orders?id=abc
+  THE REPLIES (the status, and what the page shows):
+    200  welcome, admin  <- ANYONE IS ADMIN
+    200  admin.password=admin  <- THE SECRET
+    200  backup-orders.csv index.html logo.png
+    500  java.lang.NumberFormatException:
+           For input string: "abc"  <- A STACK TRACE
+  THE 8 CHECKS AGAINST THE SHIPPED STORE (verdict, check, seen):
+    FAIL  default password    POST /admin/login -> 200
+    FAIL  debug page          GET /debug/config -> 200
+    FAIL  directory listing   GET /static/ -> 200
+    FAIL  error details       GET /orders?id=abc -> trace
+    FAIL  version banner      Server: ShopServer/1.4.2 (Java 25)
+    FAIL  TRACE method        TRACE / -> 200
+    FAIL  settings file mode  rw-r--r--
+    FAIL  production profile  dev, test settings: 1
+  THE SCORE:
+    0 of 8  <- EVERY DEFAULT IS A FINDING
 TWO. Secure defaults, and a gate at startup.
-  the default admin password does not work: pass (POST /admin/login with admin: 401)
-  no debug page: pass (GET /debug/config: 404)
-  no directory listing: pass (GET /static/: 404)
-  errors show no internals: pass (GET /orders?id=abc shows a stack trace: false)
-  no product or version in the Server header: pass (Server: none)
-  TRACE is refused: pass (TRACE /: 405)
-  settings file readable by its owner only: pass (permissions rw-------)
-  production profile with no test settings: pass (profile prod, test settings 0)
-  the checker scores the hardened store 8 of 8
-  the hardened profile with the admin password set back to admin: refused to start (the admin password is empty, short or a known default)
-  with an empty admin password: refused to start (the admin password is empty, short or a known default)
+  THE SETTINGS FILE (hardened: every setting stated):
+    profile=prod
+    admin.password=<the 44-character production secret>
+    debug.endpoint=false
+    static.listing=false
+    errors.detailed=false
+    server.banner=
+    http.trace=false
+  THE 8 CHECKS AGAINST THE HARDENED STORE (verdict, check, seen):
+    pass  default password    POST /admin/login -> 401
+    pass  debug page          GET /debug/config -> 404
+    pass  directory listing   GET /static/ -> 404
+    pass  error details       GET /orders?id=abc -> no trace
+    pass  version banner      Server: (none)
+    pass  TRACE method        TRACE / -> 405
+    pass  settings file mode  rw-------
+    pass  production profile  prod, test settings: 0
+  THE SCORE:
+    8 of 8
+  THE GATE'S RULES (profile prod, before the port opens):
+    admin.password: 12+ characters, not empty, none of:
+      admin, password, changeme, 123456, root, secret
+    debug.endpoint, errors.detailed, http.trace: false; no test.*
+  THE INPUTS AND RESULTS (admin.password set to):
+    admin
+      -> refused: admin password is a known default
+    (empty)
+      -> refused: admin password is empty
+    Summer2026
+      -> refused: admin password has 10 characters, under 12
+    <the 44-character production secret>
+      -> started
 THREE. Drift: development settings that reach production.
-  production made by copying the development file and changing 5 settings
-  settings that still have their development value: debug.endpoint, errors.detailed
-  development-only settings present in production: test.fake-payments
-  the drift check fails the deployment: true
-  and if it were deployed anyway, the store: refused to start (a debugging switch is on in production)
-  the hardened profile compared the same way: drift found false
+  THE INPUT (development copied, 5 settings changed):
+    profile=prod
+    admin.password=<the 44-character production secret>
+    static.listing=false
+    server.banner=
+    http.trace=false
+  THE CHECK, SETTING BY SETTING (must differ from dev):
+    admin.password   changed
+    debug.endpoint   true in both  <- STILL DEVELOPMENT
+    static.listing   changed
+    errors.detailed  true in both  <- STILL DEVELOPMENT
+    server.banner    changed
+    http.trace       changed
+  THE CHECK, KEY BY KEY (test.* = development only):
+    test.fake-payments  <- DEVELOPMENT ONLY
+  THE RESULT:
+    drift found: true, so the deployment fails
+    if it were deployed anyway, the gate:
+      -> refused: a debugging switch is on in production
+    the hardened profile, same check: drift found false
 FOUR. Banners, methods and file permissions.
-  Server header, shipped: ShopServer/1.4.2 (Java 25)  <- TELLS AN ATTACKER WHICH ADVISORIES TO LOOK UP
-  Server header, hardened: none
-  TRACE /, shipped: 200, and the reply echoes the request headers back: true
-  TRACE /, hardened: 405, the method is refused
-  the settings file written with rw-r--r--: readable by other users on the machine: true  <- IT HOLDS THE ADMIN SECRET
-  written with rw-------: readable by other users: false
+  THE REQUEST (to both stores):
+    GET /
+  THE REPLY'S Server HEADER:
+    shipped   ShopServer/1.4.2 (Java 25)  <- NAMES THE VERSION
+    hardened  (none)
+  THE REQUEST (with the customer's session cookie):
+    TRACE /   Cookie: session=c0ffee42
+  THE REPLY (the status, and the body):
+    shipped   200  Cookie: session=c0ffee42  <- ECHOED BACK
+    hardened  405  method not allowed
+  THE SETTINGS FILE ON DISK (owner, group, others):
+    rw-r--r--  =  rw-  r--  r--
+      -> other users can read the admin secret: true
+    rw-------  =  rw-  ---  ---
+      -> other users can read the admin secret: false
 FIVE. The bill: a baseline that must be checked again and again.
-  a new feature adds a setting the baseline has never seen: uploads.max-size, flagged for review: true
-  every feature adds settings, and every setting has an insecure value, so the baseline grows with the store
-  the same checks belong in CI on every change, at every startup, and against the live store on a schedule
-  a passing score means these 8 checks pass, not that the store is secure
+  THE INPUT (a new feature adds a setting):
+    uploads.max-size=unlimited
+  THE DRIFT CHECK:
+    not in the baseline -> flagged for review: true
+  THE BILL:
+    every feature adds settings, each with an insecure value,
+    so the baseline grows with the store
+    the checks run in CI, at startup and on a schedule
+    passing means these 8 checks pass, not that the store is safe

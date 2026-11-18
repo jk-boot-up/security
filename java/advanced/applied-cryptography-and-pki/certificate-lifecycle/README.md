@@ -3,6 +3,7 @@
 ```
 src/main/java/com/jk/explore/security/certlife/
 ├── CertificateLifecycleDemo.java  The life of a certificate in a bank's private PKI: issued by a root and an intermediate (openssl), revoked and checked by CRL, OCSP and stapling, replaced by short-lived certificates that step-ca renews, and the outage when a renewal is missed
+├── ChainSteps.java                A teaching class: the chain check that the JDK's PKIX validator does, redone step by step (RFC 5280, section 6, the parts this demo needs)
 ├── Chains.java                    Chain building and validation with the JDK's PKIX provider, with a clock we choose and revocation checking we configure
 ├── Credential.java                A certificate chain (leaf first) with its private key, read from files
 ├── Crls.java                      The CA database (openssl's index.txt) written directly, to see how big a CRL gets without issuing 100,000 certificates
@@ -54,11 +55,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Issue and read | A root signs an intermediate, the intermediate signs a server certificate, and Java reads every field that a client checks. |
-| 2. Revocation and a dead responder | A client that cannot reach the OCSP responder refuses a good certificate or accepts a revoked one; a CRL is up to a lifetime old. |
-| 3. Stapling | The server sends the signed OCSP answer in the handshake: no request to the responder, and a dead responder does not matter. |
-| 4. Short lives and rotation | 12-second certificates renewed by step-ca after two thirds of their life: 3 renewals and 0 of 300 handshakes fail. |
-| 5. The missed renewal | A CA that stays down past the expiry refuses 100 of 100 handshakes, after a monitor alerted 2 seconds earlier. |
+| 1. Issue and read | openssl makes the bank's root (CN=Bank Root CA, self-signed, no path length limit) and intermediate (CN=Bank Issuing CA, path length 0), both with keyCertSign and cRLSign. The intermediate issues api.bank.example for 30 days: EC 256 bits, SHA256withECDSA, digitalSignature and serverAuth, an OCSP pointer and no CRL pointer. The chain check, done by hand in seven steps, passes every step and the JDK agrees; without the intermediate it fails at step 1, and 31 days later or a day before issue at step 7, as the JDK refuses with no chain, expired and not yet valid. |
+| 2. Revocation and a dead responder | A hard-fail client refuses when it cannot learn the status, a soft-fail one accepts. With the openssl ocsp responder up, the good certificate is accepted and the revoked one refused by both; with it down or hanging, the hard-fail client refuses even the good one and the soft-fail client accepts the revoked one, 2 of 2 times; each hanging check waited about 1 second. A client holding an old CRL accepts a certificate revoked after it; the next CRL refuses it. A CRL is 20 KB at 1,000 entries and 2120 KB at 100,000: an entry is 2 + (2 + 2 serial) + (2 + 13 date) = 21 bytes, 22 once a serial needs 3 bytes. Dropping 90,000 expired entries, as RFC 5280 allows, gives 205 KB. |
+| 3. Stapling | The server sends a signed, dated OCSP answer, under 512 bytes, inside the TLS handshake (openssl s_server -status_file). With the responder up, the stapling server is accepted with 1 response in the handshake and 0 requests to the responder; the server that does not staple costs 1 request, and the responder learns the site. With the responder down, the hard-fail client refuses the server that does not staple and accepts the one that staples; two days later the staple is out of date and refused. After a revocation the old staple is still accepted, with 0 requests; a client asking the responder, or a staple made after the revocation, refuses. |
+| 4. Short lives and rotation | step-ca issues ledger.bank.example for 12 seconds with a chain of 2 certificates. The renewal is due at 12 x 2/3 = 8 seconds, leaving 12 - 8 = 4 seconds of headroom for the CA to be away; the monitor alerts with a quarter of the life left, 12 / 4 = 3 seconds; a stolen certificate is worth 12 seconds at most. In 30 seconds, 300 handshakes, 0 failed, 3 renewals, 0 failed renewals, 0 alerts, and the serial changed. With the CA away for about 2 seconds just before a renewal, 200 handshakes in 20 seconds, 0 failed: the renewal failed while it was away and succeeded once it was back. |
+| 5. The missed renewal | With the CA down past the expiry, 50 handshakes before it are fine, then 100 of 100 are refused (certificate expired), more than 10 renewals failed and none succeeded; the monitor alerted at least 2 seconds before the first refusal. Once the CA is back the expired certificate cannot be renewed and has to be issued anew; with a new one, 0 of 20 handshakes are refused. An inventory of 60 certificates has 4 already expired, 6 under 7 days, 14 under 30 days and 36 with 30 days or more. Of the 26 that expire in the next 60 days, no monitor means 26 outages; a 7-day alert prevents 23 when the owner needs 3 days and none when the owner needs 10; a 30-day alert with 10 days needed prevents 18. |
 
 ## Test
 
@@ -66,7 +67,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-18 tests in `CrlsAndVerdictTest`, `DemoRunsTest`, `FleetTest`, `ScheduleTest`. The expiry buckets, the model, the renewal schedule and the CA database are tested with no tools. The demo runs openssl, step and step-ca (./gradlew integrationTest).
+22 tests in `ChainStepsTest`, `CrlsAndVerdictTest`, `DemoRunsTest`, `FleetTest`, `ScheduleTest`. The chain steps by hand (against the JDK, with a chain made by keytool), the expiry buckets, the model, the renewal schedule and the CA database are tested with no other tools. The demo runs openssl, step 0.31.0 and step-ca 0.30.2 (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

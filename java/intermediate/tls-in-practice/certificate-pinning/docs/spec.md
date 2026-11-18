@@ -20,6 +20,7 @@ Teams rely on the device's trust store, which an interceptor may have extended, 
 | --- | --- |
 | Certificates and pins | `Pki`, `Der`, `Spki`, `PinPolicy` |
 | The client and its outcomes | `PinnedClient`, `Outcome` |
+| Teaching classes, by hand | `PinSteps`, `ChainWalk` |
 | Rotation cost and header pins | `Fleet`, `PinStore` |
 | Entry point | `PinningDemo` |
 
@@ -37,10 +38,10 @@ Teams rely on the device's trust store, which an interceptor may have extended, 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 75 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:46, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:50, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

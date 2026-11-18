@@ -1,7 +1,10 @@
 package com.jk.explore.security.k8snetpol;
 
-/** A pod of the bank: where it runs, its name, and the label that policies select it by. */
-public record Workload(String namespace, String name, String app) {
+/** A pod of the online store: where it runs, its name, the label that policies select it by, and what it does. */
+public record Workload(String namespace, String name, String app, String role) {
+
+    /** The image every pod runs: a small web server with curl inside, pinned by version. */
+    static final String IMAGE = "registry.k8s.io/e2e-test-images/agnhost:2.53";
 
     public String id() {
         return namespace + "/" + name;
@@ -19,9 +22,9 @@ public record Workload(String namespace, String name, String app) {
                 spec:
                   containers:
                     - name: main
-                      image: registry.k8s.io/e2e-test-images/agnhost:2.53
+                      image: %s
                       args: [netexec, --http-port=8080]
                       ports: [{containerPort: 8080}]
-                """.formatted(name, namespace, app);
+                """.formatted(name, namespace, app, IMAGE);
     }
 }

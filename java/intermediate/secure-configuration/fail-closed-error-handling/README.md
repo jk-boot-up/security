@@ -54,11 +54,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Failing open | A risky 1500.00 payment is approved while the fraud check is down, and a 4500.00 payment passes a 2000.00 daily limit because the spent-today value cannot be read. |
-| 2. Failing closed | The decision starts as no: a coffee is approved, the risky payment is refused, and a fraud check that is down, too slow for its 300 ms budget, or a value that cannot be read are all refusals with a reference. |
-| 3. Failing halfway | A transfer of 250.00 to a frozen account makes 250.00 vanish; as one unit of work nothing changes; three failed updates leak all three connections, and try-with-resources gives them back. |
-| 4. What the customer is told, and what the log keeps | The raw error page names an internal server, the full card number and code lines; the safe page gives a reference, and the log keeps the reason and the last four digits only. |
-| 5. The bill, and how to pay it | During a slow outage 10 coffees are refused after 50 seconds of waiting; a breaker that opens after 3 failures refuses the rest at once after 15 seconds, raises an alert, and closes again when the service is back. |
+| 1. Failing open | Starting from yes, a risky 1500.00 payment is approved while the fraud check is down, and a 4500.00 payment passes a 2000.00 daily limit because the spent-today value cannot be read. |
+| 2. Failing closed | The decision starts as no: of five payments only the coffee with every check passed is approved; a fraud check that is down, one too slow for its 300 ms budget, and an unreadable value are refusals with a reference. |
+| 3. Failing halfway | A transfer of 250.00 to a frozen account makes 250.00 vanish; as one unit of work nothing moves; three failed updates leak all three connections, and try-with-resources gives them back. |
+| 4. What the customer is told, and what the log keeps | The raw error page names an internal server, the full card number and code lines; the safe page gives reference REF-0001, and the log keeps the reason with the card masked to ****1111. |
+| 5. The bill, and how to pay it | During a slow outage 10 coffees are refused: without a breaker 10 calls wait 10 x 300 ms = 3000 ms; a breaker that opens after 3 failures makes only 3 calls (900 ms), refuses 7 at once, raises an alert, and closes again when the service is back. |
 
 ## Test
 
@@ -66,7 +66,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `AuthorizerTest`, `DemoRunsTest`, `ErrorsAndBreakerTest`, `PartialFailureTest`. Timeouts and cool-downs run on a simulated clock and every service fault is injected, so the golden output is the same on every run and no network is used.
+18 tests in `AuthorizerTest`, `DemoRunsTest`, `ErrorsAndBreakerTest`, `PartialFailureTest`. Timeouts and cool-downs run on a simulated clock and every service fault is injected, so the golden output is the same on every run and no network is used.
 
 ## What the simulation got right, and what it left out
 

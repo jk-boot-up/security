@@ -22,6 +22,7 @@ Developers fetch addresses on behalf of customers and trust the text of the addr
 | Names and the network | `Dns`, `Network`, `Response` |
 | The importers | `NaiveImporter`, `BlocklistImporter`, `SafeImporter` |
 | The address rules | `AddressPolicy` |
+| The worked spellings | `Spelling` |
 | Entry point | `SsrfDemo` |
 
 ## Requirements
@@ -37,10 +38,10 @@ Developers fetch addresses on behalf of customers and trust the text of the addr
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 31 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 108 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:21, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:32, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

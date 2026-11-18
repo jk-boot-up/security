@@ -111,7 +111,9 @@ final class Store {
         ProviderConfig config = configs.get(pending.issuer());
         IdToken token = IdTokenValidator.validate(idToken, config, CLIENT_ID, pending.nonce(), clock.now());
         String email = token.emailVerified() ? token.email() : null;
-        String key = accountKey == AccountKey.EMAIL ? String.valueOf(token.email()) : token.identity();
+        String key = accountKey == AccountKey.EMAIL
+                ? String.valueOf(token.email())
+                : token.identity();
         Account account = accounts.computeIfAbsent(key, k -> new Account(k, token.issuer(), token.subject(), email));
         String sessionId = randomValue();
         sessions.put(sessionId, new Session(account, token.issuer(), token.sid(), idToken));

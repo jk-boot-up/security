@@ -30,7 +30,8 @@ final class Validator {
 
         Object alg = header.get("alg");
         if (!Policy.ALGORITHM.equals(alg)) {
-            throw new InvalidTokenException("algorithm " + alg + " is not " + Policy.ALGORITHM);
+            throw new InvalidTokenException(
+                    "algorithm " + alg + " is not " + Policy.ALGORITHM);
         }
         Object typ = header.get("typ");
         if (!(typ instanceof String t) || !t.toLowerCase(Locale.ROOT).equals(Policy.TYPE)) {
@@ -42,7 +43,8 @@ final class Validator {
         if (!(header.get("kid") instanceof String kid)) {
             throw new InvalidTokenException("no key id");
         }
-        PublicKey key = keys.find(kid).orElseThrow(() -> new InvalidTokenException("unknown key id " + kid));
+        PublicKey key = keys.find(kid)
+                .orElseThrow(() -> new InvalidTokenException("unknown key id " + kid));
         if (!Ed25519.verify(key, parts.signingInput(), parts.signature())) {
             throw new InvalidTokenException("signature does not match");
         }

@@ -100,4 +100,36 @@ class ModelTest {
         assertFalse(ModelChecks.check(bad).isEmpty());
         assertEquals("stride-type", ModelChecks.check(bad).get(0).rule());
     }
+
+    @Test
+    void theScoreOfAc1IsWorkedOutFromItsTwoSteps() {
+        List<Node.Leaf> steps = Cases.steps(BankTree.baseline(), "AC1");
+        assertEquals(List.of("A1a", "A1b"), steps.stream().map(Node.Leaf::id).toList());
+        Cases.Entry ac1 = Cases.all(BankTree.baseline()).get(0);
+        assertEquals(350.0, ac1.cost());
+        assertEquals(0.18, ac1.chance(), 1e-9);
+        assertEquals("cost <= 500 EUR", ac1.because());
+    }
+
+    @Test
+    void eachSeverityNamesThePartOfTheRuleThatDecidedIt() {
+        List<Cases.Entry> cases = Cases.all(BankTree.baseline());
+        assertEquals("cost <= 5,000 EUR", cases.get(2).because());
+        assertEquals("cost > 5,000 EUR", cases.get(6).because());
+    }
+
+    @Test
+    void theFileHoldsOneThreatPerCaseOnTheCellItHits() {
+        List<ModelChecks.Row> rows = ModelChecks.threats(ModelBuilder.json(BankConfig.weak()));
+        assertEquals(8, rows.size());
+        assertEquals("Transfer API", rows.get(4).cell());
+        assertEquals("cost 50 EUR, chance 90%", rows.get(4).score());
+        assertEquals(10, ModelChecks.RULES.size());
+    }
+
+    @Test
+    void theTreeHasGatesThatTheFileCannotHold() {
+        assertEquals(6, ThreatDragonDemo.gates(BankTree.baseline(), Node.Kind.AND));
+        assertEquals(3, ThreatDragonDemo.gates(BankTree.baseline(), Node.Kind.OR));
+    }
 }

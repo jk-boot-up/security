@@ -74,123 +74,231 @@ test_note = "A simulated clock makes leases exact; generated passwords are rando
 
 [[act]]
 title = "Where secrets leak"
-summary = "A scanner finds 3 secrets in 3 committed files; a child process reads a key from the environment; a key deleted in a later image layer is still in layer two."
+summary = "A scanner finds 3 secrets in 3 committed files, by setting name and by entropy (the token: 4.60 bits per character, a class name: 3.54, threshold 4.0); a child process reads a key from the environment; a key deleted in layer 3 of an image is still in layer 2."
 detail = """
-The scanner reads the three files the team committed and finds three secrets: a database password and a payment key named in a
-properties file, and a random-looking value in a script. The production file names where its secrets come from and holds none. A key in an
-environment variable is read by any program the store starts, and by crash reports and debug pages that print the environment. And an image
-built with the key, which a later layer deletes, hides it from the running container, but anyone with the image file reads it from layer two.
+The input is the three files the team committed: config/application.properties, config/production.properties and scripts/refund.sh.
+The scanner finds three secrets: db.password and payment.api-key, by the name of the setting, and a random-looking token in the script.
+It skips ${DB_PASSWORD} and file:/run/secrets/payment-key, because a placeholder only says where a secret comes from.
+How "random-looking" is worked out: entropy is the sum, over each character, of p x log2(1/p), where p is the character's share.
+The 32-character token has 21 characters once, 4 twice and 1 three times: 3.28 + 1.00 + 0.32 = 4.60 bits, at least 4.0, so it is flagged.
+The class name ProductCatalogueController gives 0.90 + 1.14 + 1.08 + 0.42 = 3.54, under 4.0, so it is not.
+A key in the environment variable SHOP_PAYMENT_KEY is read by printenv, a program the store starts, and by any crash report that prints the environment.
+An image is built in three layers: the jar, the key, and a whiteout that hides the key. The running container sees only app/shop.jar, but layer 2 still holds the key.
+"""
+figure = "leak_places"
+figure_title = "Three places a secret leaks from"
+figure_speech = """
+First demo: where secrets leak. [[slnc 400]] At the top left, what a scanner finds in the three files the team committed. [[slnc 300]] Two settings are named like secrets: a database password and a payment key. [[slnc 300]] The third finding is a random looking value in a script. [[slnc 700]]
+Below, how random looking is measured: the entropy, in bits per character. [[slnc 300]] The token in the script scores four point six. [[slnc 300]] An ordinary class name scores three point five four. [[slnc 300]] The white line is the threshold, four. [[slnc 300]] So the token is flagged, and the class name is not. [[slnc 700]]
+On the right, a container image, layer by layer. [[slnc 300]] Layer two copied the key in. [[slnc 300]] Layer three deletes it, with a marker called a whiteout. [[slnc 300]] The running container no longer sees the key. [[slnc 300]] But anyone with the image file can still open layer two, and read it.
 """
 speech = """
-First demo: where secrets leak. [[slnc 400]] A small scanner reads the files the team committed. [[slnc 300]] It finds three secrets. [[slnc 300]] A database password and a payment key, written into a settings file. [[slnc 300]] And a random looking value in a script. [[slnc 600]]
-A key in an environment variable is read by every program the store starts. [[slnc 300]] And by crash reports that print the environment. [[slnc 600]]
-And a key copied into a container image, then deleted in a later layer, is only hidden. [[slnc 300]] Anyone with the image file can read it from the earlier layer.
+Here is the real output. [[slnc 400]] The input: three committed files. [[slnc 300]] The result: three secrets, with the file and the line, but never the value. [[slnc 300]] The production file is skipped, because its values only say where the secrets come from.
+[[page]]
+How the entropy is worked out. [[slnc 300]] Each character adds its share, times log two of one over its share. [[slnc 300]] In the token, twenty one characters appear once, and each adds five thirty seconds of a bit. [[slnc 300]] The groups add up to four point six, so it is flagged. [[slnc 300]] The class name repeats more letters, so it adds up to only three point five four.
+[[page]]
+A key in an environment variable is read by any program the store starts. [[slnc 300]] Then the image: three layers. [[slnc 300]] The running container sees only the jar file. [[slnc 300]] But layer two still holds the key. [[slnc 300]] Deleting in a later layer hides a file; it does not remove it.
 """
 rows = { leaks = "active wrong" }
 console = [
-    ["the scanner reads the 3 files the team committed and finds 3 secrets:", "muted"],
-    ["  config/application.properties:3 (a setting named db.password)", "bad"],
-    ["  config/application.properties:4 (a setting named payment.api-key)", "bad"],
-    ["  scripts/refund.sh:2 (a random-looking value)", "bad"],
-    ["a key in an environment variable is read by any program the store starts: true", "bad"],
-    ["the running container sees the key: false; anyone with the image file reads it from layer two: true", "bad"],
+    ["THE FILES THE TEAM COMMITTED (3):", "code"],
+    ["  config/application.properties  4 lines", "muted"],
+    ["  config/production.properties   2 lines", "muted"],
+    ["  scripts/refund.sh              2 lines", "muted"],
+    ["WHAT THE SCANNER FINDS (3 secrets, values never printed):", "code"],
+    ["  config/application.properties:3  a setting named db.password", "bad"],
+    ["  config/application.properties:4  a setting named payment.api-key", "bad"],
+    ["  scripts/refund.sh:2              a random-looking value", "bad"],
+    ["WHAT IT SKIPS (a placeholder says where a secret comes from):", "code"],
+    ["  config/production.properties:1   ${DB_PASSWORD}", "muted"],
+    ["  config/production.properties:2   file:/run/secrets/payment-key", "muted"],
+    ["---", ""],
+    ["HOW THE TOKEN'S ENTROPY IS WORKED OUT (32 characters, not shown):", "code"],
+    ["  21 characters once        21 x 1/32 x log2(32/1) = 3.28", "muted"],
+    ["  4 characters twice        4 x 2/32 x log2(32/2) = 1.00", "muted"],
+    ["  1 character three times   1 x 3/32 x log2(32/3) = 0.32", "muted"],
+    ["  entropy  3.28 + 1.00 + 0.32 = 4.60, at least 4.0: flagged", "bad"],
+    ["THE SAME SUM FOR A CLASS NAME, ProductCatalogueController:", "code"],
+    ["  5 characters once         5 x 1/26 x log2(26/1) = 0.90", "muted"],
+    ["  4 characters twice        4 x 2/26 x log2(26/2) = 1.14", "muted"],
+    ["  3 characters three times  3 x 3/26 x log2(26/3) = 1.08", "muted"],
+    ["  1 character four times    1 x 4/26 x log2(26/4) = 0.42", "muted"],
+    ["  entropy  0.90 + 1.14 + 1.08 + 0.42 = 3.54, under 4.0: not flagged", "ok"],
+    ["---", ""],
+    ["A KEY IN AN ENVIRONMENT VARIABLE:", "code"],
+    ["  the store sets  SHOP_PAYMENT_KEY, then starts printenv", "muted"],
+    ["  printenv reads  the key: true", "muted"],
+    ["  so does any crash report that prints the environment", "muted"],
+    ["THE IMAGE, LAYER BY LAYER (3 layers):", "code"],
+    ["  layer 1  app/shop.jar", "muted"],
+    ["  layer 2  app/config/payment.key", "muted"],
+    ["  layer 3  app/config/.wh.payment.key  (hides the file)", "muted"],
+    ["WHAT THE RUNNING CONTAINER SEES:", "code"],
+    ["  files [app/shop.jar], the key: false", "muted"],
+    ["WHAT ANYONE WITH THE IMAGE FILE READS:", "code"],
+    ["  layer 2 still holds the key: true  <- HIDDEN, NOT REMOVED", "bad"],
 ]
 
 [[act]]
 title = "Secrets injected at run time"
-summary = "A secret file readable by others is refused; an owner-only file is read once at startup; the value prints as [redacted] and the startup copy is wiped."
+summary = "A mounted secret file with permissions rw-r--r-- (group and others can read) is refused; rw------- (owner only) is read once, 24 characters; a log line shows [redacted]; the startup copy is wiped."
 detail = """
-Secrets are injected when the store starts, as files in a mounted folder, the way container platforms do. A secret file with permissions
-rw-r--r-- is refused at startup, because others can read it. The same file with rw------- is read once: twenty-four characters, nothing in
-the code or the image. Written into a log line, the secret shows as [redacted], because the Secret type never prints its value. Once the
-connection pool has its copy, the startup copy is wiped, and using it fails.
+Before the fix, the mounted file run/secrets/db-password has permissions rw-r--r--: owner rw-, group r--, others r--. Group and others can read it, so the store refuses it at startup.
+After the fix, the same file has rw-------: owner rw-, group ---, others ---. It is read once at startup: 24 characters, not in the code or the image.
+The code writes "connecting with password " + password into a log line; the log shows connecting with password [redacted], because the Secret type never prints its value.
+Once the connection pool has its copy, the startup copy is wiped, and using it fails.
+"""
+figure = "permission_bits"
+figure_title = "The secret file's permissions, before and after the fix"
+figure_speech = """
+Second demo: secrets injected at run time. [[slnc 400]] The secret is a file in a mounted folder, read when the store starts. [[slnc 600]]
+Before the fix, the permissions are r w dash, r dash dash, r dash dash. [[slnc 300]] Read them in three groups of three letters. [[slnc 300]] The owner may read and write. [[slnc 300]] The group may read. [[slnc 300]] And everyone else may read too. [[slnc 300]] So the store refuses the file at startup. [[slnc 700]]
+After the fix, only the owner has letters, and the group and the others have none. [[slnc 300]] The file is read once: twenty four characters. [[slnc 700]]
+At the bottom, the code writes the password into a log line. [[slnc 300]] But the log shows only the word redacted, because the secret type never prints its value.
 """
 speech = """
-Second demo: secrets injected at run time. [[slnc 400]] The secret is a file in a mounted folder, read when the store starts. [[slnc 600]]
-If others can read the file, the store refuses to start. [[slnc 300]] With owner only permissions, it is read once. [[slnc 600]]
-Written into a log line, it shows as redacted, because the secret type never prints its value. [[slnc 600]]
-And once the connection pool has its copy, the startup copy is wiped.
+Here is the output. [[slnc 400]] Before the fix: the permissions, split by whom, and the result: refused, because the group and others can read it. [[slnc 500]] After the fix: owner only, read once, twenty four characters. [[slnc 500]] The code and the log line it wrote: the value is redacted. [[slnc 400]] And once the connection pool has its copy, the startup copy is wiped, and using it fails.
 """
 rows = { inject = "active ok" }
 console = [
-    ["a secret file with permissions rw-r--r--: refused at startup, because others can read it", "ok"],
-    ["the same file with permissions rw-------: read once at startup, 24 characters, nothing in the code or the image", "ok"],
-    ["the secret written into a log line: \"connecting with password [redacted]\"", "ok"],
-    ["once the connection pool has its copy, the startup copy is wiped: true", "ok"],
+    ["BEFORE THE FIX, the mounted file run/secrets/db-password:", "code"],
+    ["  permissions  rw-r--r--", "muted"],
+    ["  by whom      owner rw-  group r--  others r--", "muted"],
+    ["  at startup   refused: group and others can read it", "ok"],
+    ["AFTER THE FIX, the same file:", "code"],
+    ["  permissions  rw-------", "muted"],
+    ["  by whom      owner rw-  group ---  others ---", "muted"],
+    ["  at startup   read once, 24 characters, not in the code or image", "muted"],
+    ["THE SECRET WRITTEN INTO A LOG LINE:", "code"],
+    ["  the code  \"connecting with password \" + password", "muted"],
+    ["  the log   connecting with password [redacted]", "ok"],
+    ["ONCE THE CONNECTION POOL HAS ITS COPY:", "code"],
+    ["  the startup copy is wiped: true, using it fails: true", "muted"],
 ]
 
 [[act]]
 title = "A secrets service that hands out leased logins"
-summary = "Each application gets its own database login for 900 seconds; a wrong credential is refused; renewals stop at 3600 seconds; ended leases are removed; every request is audited."
+summary = "shop-api and reports each get their own database login until t=900; a wrong credential is refused; renewals give min(now + 900, 0 + 3600): 1500, 2300, 3000, 3600, 3600; the unrenewed reports login is removed at t=900 and the shop's at t=3600; the audit trail has 10 entries."
 detail = """
-Instead of one shared password, a secrets service hands out logins. The shop API proves who it is and gets a database login of its own,
-v-shop-api-1, for 900 seconds. The reports job gets a different login; no two applications share one. A wrong application credential is
-refused. At t=600 the shop's login works, and renewing extends it to t=1500. The reports lease, never renewed, ends at t=900 and its login is
-removed from the database. Renewals stop at the maximum of 3600 seconds after issue, and at t=3600 the database refuses the shop's login, so
-the shop asks for a new one. The audit trail records every request: ten entries.
+The requests: at t=0, shop-api with its credential gets v-shop-api-1 until t=900, reports gets v-reports-2 until t=900, and shop-api with a wrong credential is refused.
+At t=600 v-shop-api-1 works. A renewal's new end is min(now + time to live, issued + maximum): at t=600, min(600 + 900, 0 + 3600) = 1500.
+At t=900 the reports lease ends, never renewed: its login is removed, and v-reports-2 no longer works.
+The shop renews at t=1400, 2100, 2800 and 3500: 2300, 3000, then min(3700, 3600) = 3600 twice, because a lease never runs past its maximum.
+At t=3600 v-shop-api-1 no longer works, so the shop asks for a new lease. The audit trail records all 10 requests.
+"""
+figure = "lease_timeline"
+figure_title = "Two leases on one time line"
+figure_speech = """
+Third demo: a secrets service that hands out leased logins. [[slnc 400]] Each application proves who it is, and gets a database login of its own, for nine hundred seconds. [[slnc 600]]
+At the top, the reports job's login. [[slnc 300]] It is never renewed, so at t equals nine hundred its lease ends, and the login is removed from the database. [[slnc 700]]
+Below it, the shop's login. [[slnc 300]] The shop renews while it works. [[slnc 300]] Each renewal moves the end to now plus nine hundred, but never past the maximum, three thousand six hundred seconds after it was issued. [[slnc 300]] At t equals two thousand eight hundred, now plus nine hundred would be three thousand seven hundred, so the end stops at three thousand six hundred. [[slnc 700]]
+At the red line, the maximum, the login ends for good, and the shop asks for a new one.
 """
 speech = """
-Third demo: a secrets service that hands out leased logins. [[slnc 400]] The shop proves who it is, and gets a database login of its own. [[slnc 300]] For nine hundred seconds. [[slnc 600]]
-The reports job gets a different login. [[slnc 300]] No two applications share one. [[slnc 300]] A wrong application credential is refused. [[slnc 600]]
-The shop renews its lease while it works. [[slnc 300]] The reports lease is never renewed, so it ends, and its login is removed from the database. [[slnc 600]]
-Renewals stop at a maximum of one hour. [[slnc 300]] Then the database refuses the old login, and the shop asks for a new one. [[slnc 300]] And every request is in the audit trail.
+Here is the output. [[slnc 400]] The requests: each application gets its own login, and a wrong credential is refused. [[slnc 400]] At t equals six hundred, the shop's login works, and the first renewal is worked out: the smaller of fifteen hundred and three thousand six hundred. [[slnc 300]] At nine hundred, the reports login is removed.
+[[page]]
+The next four renewals. [[slnc 300]] From t equals two thousand eight hundred, the maximum wins. [[slnc 300]] At three thousand six hundred, the shop's login stops working, so it asks for a new lease.
+[[page]]
+And the audit trail: ten entries, one for every lease, refusal, renewal and end. [[slnc 300]] It shows who had which login, and when.
 """
 rows = { service = "active ok" }
 console = [
-    ["shop-api proves who it is and gets a database login of its own: v-shop-api-1, for 900 seconds", "ok"],
-    ["reports gets a different login: v-reports-2; no two applications share one: true", "ok"],
-    ["a wrong application credential: refused", "ok"],
-    ["the shop renews its lease at t=600: now until t=1500", "muted"],
-    ["at t=900 the reports lease ends, it was never renewed: 1 login removed, reports can log in: false", "amber"],
-    ["the lease stops at the maximum of 3600 seconds after issue; at t=3600 the database refuses the login: true", "amber"],
-    ["the audit trail records every request: 10 entries", "muted"],
+    ["THE REQUESTS (time to live 900 s, maximum 3600 s):", "code"],
+    ["  t=0  shop-api, its credential  v-shop-api-1 until t=900", "muted"],
+    ["  t=0  reports, its credential   v-reports-2 until t=900", "muted"],
+    ["  t=0  shop-api, a wrong one     refused", "ok"],
+    ["THE LEASES OVER TIME (a renewal: min(now + ttl, issued + max)):", "code"],
+    ["  t=600   v-shop-api-1 works: true", "muted"],
+    ["  t=600   min(600 + 900, 0 + 3600) = min(1500, 3600) = 1500", "muted"],
+    ["  t=900   the reports lease ends, never renewed: 1 login removed", "muted"],
+    ["          v-reports-2 works: false", "amber"],
+    ["---", ""],
+    ["  t=1400  min(1400 + 900, 0 + 3600) = min(2300, 3600) = 2300", "muted"],
+    ["  t=2100  min(2100 + 900, 0 + 3600) = min(3000, 3600) = 3000", "muted"],
+    ["  t=2800  min(2800 + 900, 0 + 3600) = min(3700, 3600) = 3600", "muted"],
+    ["  t=3500  min(3500 + 900, 0 + 3600) = min(4400, 3600) = 3600", "muted"],
+    ["AT t=3600, THE MAXIMUM:", "muted"],
+    ["  v-shop-api-1 works: false, so the shop asks for a new lease", "muted"],
+    ["---", ""],
+    ["THE AUDIT TRAIL (10 entries):", "code"],
+    ["  t=0 shop-api leased v-shop-api-1 until t=900", "muted"],
+    ["  t=0 reports leased v-reports-2 until t=900", "muted"],
+    ["  t=0 shop-api refused: wrong application credential", "ok"],
+    ["  t=600 shop-api renewed v-shop-api-1 until t=1500", "muted"],
+    ["  t=900 reports lease ended, v-reports-2 removed", "muted"],
+    ["  t=1400 shop-api renewed v-shop-api-1 until t=2300", "muted"],
+    ["  t=2100 shop-api renewed v-shop-api-1 until t=3000", "muted"],
+    ["  t=2800 shop-api renewed v-shop-api-1 until t=3600", "muted"],
+    ["  t=3500 shop-api renewed v-shop-api-1 until t=3600", "muted"],
+    ["  t=3600 shop-api lease ended, v-shop-api-1 removed", "muted"],
 ]
 
 [[act]]
 title = "Rotation without downtime, and the blast radius of a leak"
-summary = "Both key versions work during a changeover and only the new one after; a leaked leased login works for at most 300 more seconds and is revoked at once, while a static password works for years."
+summary = "The provider accepts [v1], then [v1, v2], then [v2]: there is never a moment with no working key. A leased login copied at t=600 works 900 - 600 = 300 s more, 3600 - 600 = 3000 s if renewed, and not at all once revoked; a static password still works three years later."
 detail = """
-The payment provider issues key v2 while v1 is still in use, and during the changeover it accepts both. Every server of the store switches to
-v2, then v1 is revoked: v1 is refused and v2 works, with no moment in which neither did. Then the blast radius of a leak. A leased login copied
-at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it, and once the leak is noticed, revoking the lease ends it at once.
-A static database password copied at the same moment still works three years later, until someone remembers to change it.
+The rotation in three steps: with v1 in use the provider accepts [v1]; it issues v2 and accepts [v1, v2], so both work during the changeover; once every server is on v2, v1 is revoked and only [v2] is accepted.
+The blast radius of a leak: a thief copies a leased login at t=600. It ends at t=900, so it works 900 - 600 = 300 s more; if the thief can renew it, at most until t=3600, 3600 - 600 = 3000 s more.
+Once the leak is noticed, revoking the lease ends it at once: the login works right after: false.
+A static database password copied at the same time still works three years later, until someone changes it.
+"""
+figure = "rotation_steps"
+figure_title = "A key rotation in three steps"
+figure_speech = """
+Fourth demo: rotation without downtime. [[slnc 400]] The payment provider issues the store's A P I key. [[slnc 600]]
+Step one: the store uses version one, and the provider accepts only version one. [[slnc 600]]
+Step two: the provider issues version two, while version one is still in use. [[slnc 300]] During this changeover, it accepts both. [[slnc 300]] So each server of the store can switch whenever it is ready. [[slnc 600]]
+Step three: every server uses version two, and version one is revoked. [[slnc 300]] Now only version two works. [[slnc 600]] Because the two versions overlap, there is never a moment with no working key.
 """
 speech = """
-Fourth demo: rotation, and the blast radius of a leak. [[slnc 400]] The payment provider issues a new key, while the old one is still in use. [[slnc 300]] During the changeover, both work. [[slnc 600]]
-The store switches every server to the new key. [[slnc 300]] Then the old one is revoked. [[slnc 300]] There is never a moment when neither key works. [[slnc 600]]
-Now a leak. [[slnc 300]] A leased login, copied by a thief, works for a few minutes at most. [[slnc 300]] And revoking the lease ends it at once. [[slnc 600]]
-A static password, copied at the same moment, still works three years later.
+Here is the output. [[slnc 400]] The three steps of the rotation, with the versions the provider accepts. [[slnc 500]] Then a leak. [[slnc 300]] A thief copies a leased login at t equals six hundred. [[slnc 300]] Nine hundred minus six hundred: it works three hundred seconds more. [[slnc 300]] Renewed, at most three thousand seconds. [[slnc 300]] Revoked, not at all. [[slnc 400]] A static password copied at the same time still works three years later.
 """
 rows = { rotate = "active amber" }
 console = [
-    ["the provider issues v2, and during the changeover it accepts [v1, v2]: v1 true, v2 true", "ok"],
-    ["every server of the store switches to v2, then v1 is revoked: v1 false, v2 true", "ok"],
-    ["a leased login copied at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it", "amber"],
-    ["revoking the lease ends it at once: the login works: false", "ok"],
-    ["a static database password copied at t=600 still works three years later: true", "bad"],
+    ["THE PAYMENT KEY, STEP BY STEP (what the provider accepts):", "code"],
+    ["  1 v1 in use              [v1]      v1 true  v2 false", "muted"],
+    ["  2 v2 issued              [v1, v2]  v1 true  v2 true", "muted"],
+    ["  3 all on v2, v1 revoked  [v2]      v1 false v2 true", "muted"],
+    ["A LOGIN A THIEF COPIES AT t=600:", "code"],
+    ["  leased   ends at t=900: 900 - 600 = 300 s more", "muted"],
+    ["  renewed  at most t=3600: 3600 - 600 = 3000 s more", "muted"],
+    ["  revoked  the login works right after: false", "amber"],
+    ["A STATIC PASSWORD THE THIEF COPIES AT THE SAME TIME:", "code"],
+    ["  three years later it works: true  <- UNTIL SOMEONE CHANGES IT", "bad"],
 ]
 
 [[act]]
 title = "The bill"
-summary = "The secrets service becomes the target; the first credential remains; applications must handle new logins; a scanner is one check."
+summary = "The secrets service holds every secret; the first credential remains; applications must take new logins without a restart; a scanner finds only its patterns."
 detail = """
-The secrets service holds every secret, so it needs its own access control, audit and backups. The application still needs a first credential
-to prove who it is; platform identity, in the advanced track, removes it. Leases and rotation need applications that can reconnect with a new
-login without a restart. A scanner finds only what it has patterns for, so it is one check, not a guarantee, and history must be scanned too.
-The -with-openbao version runs the same leases against a real secrets server.
+The secrets service holds every secret, so it must be guarded, audited and backed up. The application still needs a first credential to prove who it is; platform identity, in the advanced track, removes it.
+Leases and rotation need applications that can take a new login without a restart. A scanner finds only what it has patterns for, so the history of a repository and every image must be scanned too.
+The -with-openbao version runs the same leases on a real secrets server.
+"""
+figure = "the_bill"
+figure_title = "What it costs"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] Four costs. [[slnc 600]] First, the secrets service now holds every secret. [[slnc 300]] So it must be guarded, audited, and backed up. [[slnc 600]] Second, the application still needs a first credential, to prove who it is. [[slnc 300]] Platform identity, in the advanced track, removes that last secret. [[slnc 600]] Third, applications must take a new login without a restart. [[slnc 600]] And fourth, a scanner finds only what it has patterns for. [[slnc 300]] So scan the history of the repository, and every image, too.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] The secrets service now holds every secret. [[slnc 300]] So it needs its own access control, audit trail, and backups. [[slnc 600]]
-The application still needs a first credential, to prove who it is. [[slnc 300]] Platform identity, in the advanced track, removes that last secret. [[slnc 600]]
-Applications must reconnect with new logins, without a restart. [[slnc 300]] And a scanner finds only what it has patterns for.
+Here is the output: the same four costs. [[slnc 400]] And next, the version with OpenBao runs the same leases on a real secrets server.
 """
 rows = { service = "active amber", rotate = "active amber" }
 console = [
-    ["the secrets service holds every secret, so it needs its own access control, audit and backups", "amber"],
-    ["the application still needs a first credential to prove who it is", "amber"],
-    ["leases and rotation need applications that can reconnect with a new login without a restart", "amber"],
-    ["a scanner finds only what it has patterns for, so it is one check, not a guarantee", "amber"],
+    ["WHAT IT COSTS:", "code"],
+    ["  the secrets service holds every secret: guard, audit, back up", "muted"],
+    ["  the first credential remains: platform identity removes it", "muted"],
+    ["  applications must take a new login without a restart", "muted"],
+    ["  a scanner finds only its patterns: scan history and images", "muted"],
+    ["NEXT:", "code"],
+    ["  the -with-openbao version runs the leases on a real server", "muted"],
 ]
+
+[highlight]
+console_green = ["AFTER THE FIX", "WHAT IT SKIPS", "WHAT THE RUNNING"]
+console_rose = ["BEFORE THE FIX", "WHAT THE SCANNER FINDS", "WHAT ANYONE", "A STATIC PASSWORD", "A LOGIN A THIEF"]
+console_amber = ["HOW THE TOKEN", "THE SAME SUM", "THE LEASES OVER TIME", "WHAT IT COSTS", "AT t="]
+console_cyan = ["THE FILES", "A KEY IN", "THE IMAGE", "THE SECRET WRITTEN", "ONCE THE", "THE REQUESTS", "THE AUDIT", "THE PAYMENT KEY", "NEXT"]
 
 [animation]
 subtitle = "An online store's database password and payment key: where they leak, and how a secrets service leases them instead."
@@ -434,6 +542,19 @@ body = ["Secret: a value that proves access", "Injection: handing it over at run
 narration = """Before the demos, the words. [[slnc 500]] A secret is a value that proves an application may do something. [[slnc 500]] Injection means handing it over when the application starts, not building it in. [[slnc 500]] A lease is a login that ends by itself, after a time to live. [[slnc 500]] Rotation is replacing a secret, with no downtime. [[slnc 500]] And revocation is ending it at once."""
 
 [[scene]]
+key = "03-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "03-blast-radius"
+kind = "figure"
+title = "One leak, four outcomes"
+body = "blast_radius"
+narration = """Let's see the core idea on one example. [[slnc 400]] A thief copies a login at t equals six hundred seconds. [[slnc 300]] How long does it keep working? [[slnc 600]] If it is a leased login, it ends at nine hundred: three hundred seconds more, and it stops by itself. [[slnc 300]] If the thief keeps renewing it, it still ends at the maximum, three thousand six hundred: three thousand seconds more. [[slnc 300]] If the leak is noticed and the lease is revoked, it stops at once. [[slnc 600]] But a static password, copied at the same moment, never stops. [[slnc 300]] Three years later it still works, until someone remembers to change it. [[slnc 600]] Everything in this video is about moving secrets from the bottom row toward the top."""
+
+[[scene]]
 key = "acts"
 kind = "acts"
 title = "Acts"
@@ -445,13 +566,6 @@ kind = "bullets"
 title = "From Worst to Best"
 body = ["In the code or the image: for ever", "In an environment variable: widely readable", "In an owner-only file: better", "Leased per application: ends by itself", "With rotation and revocation: ends at once"]
 narration = """Let's put the options side by side, worst first. [[slnc 400]] In the code or the image, a secret lasts for ever. [[slnc 500]] In an environment variable, it is widely readable. [[slnc 500]] In a file only the application can read, it is better. [[slnc 500]] Leased to each application, it ends by itself. [[slnc 500]] And with rotation and revocation, a leaked one can be ended at once."""
-
-[[scene]]
-key = "10-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Secret: never prints, can be wiped", "SecretScanner: names and entropy", "MountedSecrets: owner-only files", "SecretsService: leases and audit", "PaymentProvider: two key versions"]
-narration = """Here is who does what in the code. [[slnc 400]] The secret class never prints its value, and can be wiped. [[slnc 500]] The scanner looks for setting names and random looking values. [[slnc 500]] Mounted secrets reads owner only files at startup. [[slnc 500]] The secrets service leases logins and keeps an audit trail. [[slnc 300]] And the payment provider accepts two key versions during a rotation."""
 
 [[scene]]
 key = "11-recognise"
@@ -466,6 +580,12 @@ kind = "bullets"
 title = "How To Use It"
 body = ["Keep secrets out of code and images", "Inject at run time, never log", "Lease short-lived logins per application", "Rotate with two versions, revoke on a leak", "Guard the secrets service"]
 narration = """So, how do you use it? [[slnc 400]] Keep secrets out of code and images, and scan both. [[slnc 500]] Inject them at run time, and never log them. [[slnc 500]] Lease short lived logins, one per application. [[slnc 500]] Rotate with two versions during the changeover, and revoke on any sign of a leak. [[slnc 500]] And guard the secrets service as the most valuable system you run."""
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "13-outro"
@@ -565,3 +685,113 @@ threat = "The secrets service is compromised and hands out every secret"
 where = "the secrets service"
 control = "Applications prove who they are; every request is audited"
 residual = "The secrets service is the most valuable system to protect, with its own access control, monitoring and backups"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Everything runs in one process, with a simulated clock. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Secret"
+what = "a value that never prints and can be wiped"
+[[class.part]]
+title = "never printed, wiped after use"
+code = '''
+private final char[] value;
+...
+void wipe() {
+    Arrays.fill(value, '\0');
+...
+public String toString() {
+    return "[redacted]";
+'''
+speech = """The value is a char array, not a string, so it can be overwritten. [[slnc 300]] Wipe fills it with zeros. [[slnc 300]] And to string returns redacted, so a log line can never show the value."""
+
+[[class]]
+name = "SecretScanner"
+what = "finds secrets by setting name and by entropy"
+[[class.part]]
+title = "a name, or a random-looking value"
+code = """
+Matcher named = NAMED.matcher(line);
+if (named.find() && !isPlaceholder(named.group(3))) {
+...
+if (entropy(word.group()) >= ENTROPY_THRESHOLD) {
+    findings.add(new Finding(name, i + 1, "a random-looking value"));
+"""
+speech = """The first rule is a pattern: a setting whose name says password, secret, key or token. [[slnc 300]] The second rule measures entropy. [[slnc 300]] A long value with four bits per character or more is flagged."""
+[[class.part]]
+title = "the entropy sum"
+code = """
+double p = (double) n / s.length();
+h -= p * Math.log(p) / Math.log(2);
+"""
+speech = """For each character, p is its share of the value. [[slnc 300]] The sum of p times log two of one over p is the entropy in bits per character. [[slnc 300]] A test checks that the demo's groups add up to the same number."""
+
+[[class]]
+name = "ImageLayers"
+what = "an image as a stack of layer archives"
+[[class.part]]
+title = "a delete is a new layer"
+code = """
+String marker = path.substring(0, slash + 1) + WHITEOUT + path.substring(slash + 1);
+addLayer(Map.of(marker, ""));
+...
+if (base.startsWith(WHITEOUT)) {
+    view.remove(name.substring(0, slash + 1) + base.substring(WHITEOUT.length()));
+"""
+speech = """Deleting a file adds a new layer with a whiteout marker. [[slnc 300]] The merged view, what a container sees, removes the file. [[slnc 300]] But the earlier layer is unchanged, and still holds it."""
+
+[[class]]
+name = "MountedSecrets"
+what = "reads a secret file at startup, only if it is owner-only"
+[[class.part]]
+title = "refuse a file others can read"
+code = """
+if (permissions.stream().anyMatch(OTHERS::contains)) {
+    throw new UnsafeFileException(file.getFileName() + " is readable by others ("
+...
+Arrays.fill(bytes, (byte) 0);
+"""
+speech = """If the group or anyone else may read or write the file, the store refuses to start. [[slnc 300]] The bytes it read are zeroed once they are turned into a secret."""
+
+[[class]]
+name = "SecretsService"
+what = "leases a login to each application, with an audit trail"
+[[class.part]]
+title = "a new login for each lease"
+code = """
+if (expected == null || !expected.matches(credential)) {
+...
+String user = "v-" + app + "-" + counter;
+Secret password = Secret.of(randomPassword(24));
+...
+database.createAccount(user, password, lease.expiresAt());
+"""
+speech = """The application proves who it is with its own credential. [[slnc 300]] Then the service creates a brand new database login, with a random password, that ends with the lease."""
+[[class.part]]
+title = "a renewal never passes the maximum"
+code = """
+long expiresAt = Math.min(clock.now() + ttl, lease.issuedAt() + maxTtl);
+"""
+speech = """A renewal moves the end to now plus the time to live. [[slnc 300]] But never past the maximum, counted from when the lease was issued."""
+
+[[class]]
+name = "PaymentProvider"
+what = "accepts every active key version during a rotation"
+[[class.part]]
+title = "any active version works"
+code = """
+for (Secret key : keys.values()) {
+    accepted |= key.matches(presented);
+"""
+speech = """The provider checks the presented key against every active version. [[slnc 300]] During a changeover there are two, so both work, until the old one is revoked."""
+
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: how one program calls another"
+say = "A P I is application programming interface: the way one program calls another, here the payment provider's."
+
+[[acronym]]
+short = "TTL"
+long = "Time To Live: how long a lease lasts before it ends by itself"
+say = "T T L is time to live: how long a lease lasts, nine hundred seconds here, before it ends by itself."

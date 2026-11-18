@@ -16,17 +16,34 @@ Chapters:
 
 ```
 00:00 Introduction
-01:25 The Scenario
-02:00 Act One — Same origin needs no CORS
-02:12 Act Two — No CORS headers: a page may send, but not read
-02:41 Act Three — Policies that look like fixes
-03:07 Act Four — An exact allow-list
-03:33 Act Five — Wildcard and cookies never combine
-03:53 What It Costs
-04:16 Who Does What
-04:37 Where You Have Seen It
-05:02 How To Use It
-05:29 Thanks for Watching
+00:50 The Scenario
+01:27 The Words
+02:09 What the Letters Stand For
+03:14 The browser sends; the bank decides who reads
+04:06 An origin is scheme, host and port
+05:08 Act One — The bank's own page needs no CORS
+05:33 Sending is not reading
+06:38 Act Two — With no CORS headers, a page may send but not read
+06:56 Act Two — With no CORS headers, a page may send but not read
+07:19 Three policies, three origins, who reads the balance
+08:25 Act Three — Three policies that look like fixes
+08:37 Act Three — Three policies that look like fixes
+08:49 Act Three — Three policies that look like fixes
+09:07 One partner on the list, and what each page gets
+10:04 Act Four — An exact allow-list names one partner
+10:23 Act Four — An exact allow-list names one partner
+10:41 Act Four — An exact allow-list names one partner
+10:56 The same answer, with and without cookies
+11:51 Act Five — A wildcard and cookies never combine
+12:15 What It Costs
+12:55 Where You Have Seen It
+13:31 How To Use It
+14:13 The Java Classes
+14:26 Origin — three parts, all equal
+14:43 CorsPolicy — two unsafe policies, and the fix
+15:04 BankApi — the preflight and the log
+15:22 Browser — simple requests, and the read check
+15:42 Thanks for Watching
 ```
 
 ## Tags

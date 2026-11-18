@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs Docker and the ZAP image (about 2 GB, once). Cluster, registry and image names are never printed. */
+/** The demo must print exactly the golden output. Needs Docker and the ZAP image (about 2 GB, once). Addresses, ports and the session value are never printed. */
 @Tag("integration")
 class DemoRunsTest {
 

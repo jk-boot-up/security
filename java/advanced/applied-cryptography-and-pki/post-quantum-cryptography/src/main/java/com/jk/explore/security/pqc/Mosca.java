@@ -10,7 +10,7 @@ import java.util.List;
 final class Mosca {
 
     /** A kind of data and how long it must stay secret, and how long moving its protection takes. */
-    record DataClass(String name, int secrecyYears, int migrationYears) {
+    record DataClass(String name, String shortName, int secrecyYears, int migrationYears) {
         int needed() {
             return secrecyYears + migrationYears;
         }
@@ -27,11 +27,11 @@ final class Mosca {
     }
 
     static final List<DataClass> BANK = List.of(
-            new DataClass("card authorisation message", 1, 2),
-            new DataClass("online banking session", 0, 2),
-            new DataClass("customer statement archive", 10, 3),
-            new DataClass("loan contract and identity documents", 30, 4),
-            new DataClass("interbank settlement file", 7, 5));
+            new DataClass("card authorisation message", "card authorisation", 1, 2),
+            new DataClass("online banking session", "banking session", 0, 2),
+            new DataClass("customer statement archive", "statement archive", 10, 3),
+            new DataClass("loan contract and identity documents", "loan contracts", 30, 4),
+            new DataClass("interbank settlement file", "settlement file", 7, 5));
 
     /** Three threat arrival times used as scenarios, not forecasts. */
     static final int[] SCENARIOS = {8, 15, 25};

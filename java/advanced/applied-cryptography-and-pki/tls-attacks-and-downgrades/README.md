@@ -5,7 +5,7 @@ src/main/java/com/jk/explore/security/tlsattacks/
 ├── Audit.java           Finds the planted weaknesses of a server by connecting to it with openssl s_client (our own probes)
 ├── Decryptor.java       What an attacker with a recording and the server's private key can read
 ├── Lab.java             The server key, its certificate and a 1024-bit DH group, in a temporary folder that is deleted at the end
-├── Openssl.java         Finds an OpenSSL 3 or 4 command line program (not LibreSSL: it cannot run the weak settings of this lab)
+├── Openssl.java         Finds the OpenSSL command line program of the pinned release series (not LibreSSL: it cannot run the weak settings of this lab)
 ├── Probe.java           What one openssl s_client connection did
 ├── Server.java          One local TLS server, openssl s_server, listening on 127.0.0.1 only
 ├── Sh.java              Runs a program and returns what it printed, whether it worked or not
@@ -16,14 +16,14 @@ src/main/java/com/jk/explore/security/tlsattacks/
 └── Weakness.java        The weaknesses planted in the weak server: the truth the probes and testssl.sh are scored against
 ```
 
-**A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC.**
+**A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) in 6 worked-out steps and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC, and ignores its 1024-bit group for X25519MLKEM768.**
 
-A TLS server is as strong as the oldest thing it still accepts. This project starts **three local servers** with `openssl s_server` on 127.0.0.1: a weak one with **6 planted weaknesses**, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with `openssl s_client`, runs **testssl.sh v3.2.4** (cloned into `build/` and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3 or 4, git and network access once; it is tagged `integration`: `./gradlew integrationTest`.
+A TLS server is as strong as the oldest thing it still accepts. This project starts **three local servers** with `openssl s_server` on 127.0.0.1: a weak one with **6 planted weaknesses**, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with `openssl s_client`, runs **testssl.sh v3.2.4** (cloned into `build/` and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3.6 (the pinned series: the golden output depends on its TLS 1.3 group and on what the build leaves out), git and network access once; it is tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **Truth and measurement.** Our own probes find **6 of 6** planted weaknesses; testssl.sh finds **6 of 6**, **4** by a finding that names the problem and **2** (static RSA, the 1024-bit group) only by reading the key exchange column of its cipher table. The strong server raises **0**.
 - **The downgrade dance.** A network that breaks every handshake above TLS 1.0 pushes a retrying client to **TLS 1.0 with AES128-SHA after 4 attempts**; with `TLS_FALLBACK_SCSV` the server refuses; a client with a minimum of TLS 1.2 stops after 2.
-- **Forward secrecy.** A recorded session is opened later with the leaked server key: the static RSA one is (**1 of 3**), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption.
+- **Forward secrecy.** A recorded session is opened later with the leaked server key: the static RSA one is (**1 of 3**), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption, and prints the size of every value on the way.
 - **What TLS 1.3 removed.** A TLS 1.3 only server refuses **3 of 3** older versions, static RSA and CBC; compression and renegotiation have no place in the protocol.
 - **Honest limits.** This OpenSSL build has no RC4 and no zlib, and refuses DH groups below 1024 bits, so those could not be planted.
 
@@ -47,11 +47,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The weak server | A local server has 6 planted weaknesses; a strong and a TLS 1.3 only server are the controls. |
-| 2. Probes and testssl.sh | Our probes and testssl.sh each find 6 of 6; testssl.sh names 4 and shows 2 only in its cipher table. |
-| 3. The downgrade dance | A client that retries ends on TLS 1.0 with AES128-SHA; the fallback signal and a minimum version stop it. |
-| 4. The leaked key | A recording is opened with the leaked server key for static RSA and not for DHE or ECDHE. |
-| 5. What TLS 1.3 removed | A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC; compression and renegotiation have no place. |
+| 1. The lab: a weak server and two controls | Three local openssl servers: a weak one with 6 planted weaknesses, a strong one and a TLS 1.3 only one. One s_client connection per cell shows that the weak server accepts TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group and a NULL cipher, and the controls accept only the modern rows. |
+| 2. Our probes and testssl.sh, scored against the truth | Our own s_client probes find 6 of 6 planted weaknesses and raise no false alarm on the strong server. testssl.sh v3.2.4 also finds 6 of 6, but only 4 by a finding of their own: static RSA and the 1024-bit DH group show only in the key exchange column of its cipher table. |
+| 3. The downgrade dance | A network that resets every hello above TLS 1.0 pushes a retrying client down in 4 attempts to TLS 1.0 with AES128-SHA. With TLS_FALLBACK_SCSV on its retries the server refuses (inappropriate fallback); a client with a minimum of TLS 1.2 stops after 2 attempts; the JDK client does not retry. A TLS 1.3 server pushed to TLS 1.2 writes DOWNGRD into its ServerHello random. |
+| 4. A recorded session, and the server key leaks later | The same bank transfer is recorded under static RSA, DHE and ECDHE. The static RSA client sent the secret itself, encrypted to the server key (256 bytes), so the leaked key opens it in 6 steps; DHE (128 bytes) and ECDHE (32 bytes) sent public values only and stay closed, and an unrelated key opens 0 of 3. |
+| 5. What TLS 1.3 removed | A TLS 1.3 only server whose file still lists old suites and a 1024-bit DH group refuses TLS 1.0, 1.1 and 1.2 (3 of 3, protocol version), static RSA and CBC; its hello offers only the null compression method, renegotiation is forbidden, and the key exchange used the named group X25519MLKEM768, not the 1024-bit group. All 3 TLS 1.3 suites are AEAD with no fixed key exchange. |
 
 ## Test
 
@@ -59,7 +59,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-18 tests in `DecryptorTest`, `DemoRunsTest`, `ReportAndProbeTest`, `TapTest`, `TlsRecordsTest`. The record parser, the key derivation, the middlebox and the report parsing are tested with no tools. The demo runs OpenSSL and testssl.sh (./gradlew integrationTest).
+21 tests in `DecryptorTest`, `DemoRunsTest`, `ReportAndProbeTest`, `TapTest`, `TlsRecordsTest`. The record parser, the key derivation, the middlebox and the report parsing are tested with no tools. The demo runs OpenSSL and testssl.sh (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 
@@ -125,7 +125,7 @@ The testssl.sh JSON is compared with the planted weaknesses.
 - **A scanner reports what is offered,** and a person reads the table for what it does not name.
 - **Forward secrecy needs ephemeral keys,** one more computation per connection.
 - **TLS 1.3 has no way back,** so the old clients must be updated or kept on a separate endpoint.
-- **The lab depends on the OpenSSL build:** no RC4, no zlib and no tiny DH groups here.
+- **The lab depends on the OpenSSL build:** no RC4, no zlib and no tiny DH groups here, so the release series is pinned.
 
 ## When this is too much
 

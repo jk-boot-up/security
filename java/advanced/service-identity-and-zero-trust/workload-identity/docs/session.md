@@ -14,13 +14,14 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: One shared secret | 5 min |
-| 0:15 | Act 2: Identity by registration | 5 min |
-| 0:20 | Act 3: Two services check each other | 5 min |
-| 0:25 | Act 4: Rotation without a restart | 5 min |
+| 0:10 | Act 1: One shared secret in three services | 5 min |
+| 0:15 | Act 2: SPIRE decides who a workload is | 5 min |
+| 0:20 | Act 3: Two Java services check each other's SPIFFE ID | 5 min |
+| 0:25 | Act 4: Rotation: an SVID that lives 20 seconds | 5 min |
 | 0:30 | Act 5: A stolen SVID | 5 min |
-| 0:35 | Act 6: No entry, no identity | 5 min |
-| 0:40 | Exercises | 20 min |
+| 0:35 | Act 6: A workload that matches no entry | 5 min |
+| 0:40 | Act 7: Evicting the attacker | 5 min |
+| 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 

@@ -73,12 +73,12 @@ class RulesTest {
     @Test
     void checkoutPricesFromTheCatalogueAndAllowsOneCoupon() {
         Checkout.Request cart = new Checkout.Request(
-                List.of(new Checkout.Line("boots-42", 1), new Checkout.Line("socks-3", 2)), List.of("SAVE20", "SAVE20", "SPRING20"), 1);
+                List.of(new Checkout.Line("boots-42", 1), new Checkout.Line("socks-3", 2)), List.of("SUMMER20", "SUMMER20", "SPRING20"), 1);
         Checkout.Priced priced = Checkout.careful(cart);
         assertEquals(180 + 24 - 20, priced.charged());
         assertEquals(3, priced.notes().size());
         assertEquals(-59, Checkout.careless(new Checkout.Request(List.of(new Checkout.Line("boots-42", 1)),
-                List.of("SAVE20", "WELCOME20", "SPRING20"), 1)).charged());
+                List.of("SUMMER20", "WELCOME20", "SPRING20"), 1)).charged());
     }
 
     @Test

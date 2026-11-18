@@ -9,7 +9,7 @@ title = "JWT Done Right with Nimbus JOSE + JWT"
 short_title = "JWT with Nimbus"
 package = "jwtnimbus"
 main_class = "NimbusJwtDemo"
-tagline = "A standard library does the parsing, the signature and most claims; the algorithm, the type, the key set URL and the policy are still the API's to set"
+tagline = "The library checks the token; the API sets the rules"
 bold = "With Nimbus JOSE + JWT an API verifies a bearer token by fixing the algorithm and the type, taking keys only from the one key set URL in its settings, and letting the library check the signature, expiry, issuer, audience and required claims; but the scope, the lifetime policy, the cache time of the key set and the fact that a token cannot be taken back remain the API's own decisions."
 domain = "an online bank"
 domain_note = ""
@@ -55,107 +55,323 @@ met_before = [
     "`kid` in a JWT header.",
 ]
 where = """
-This is the tools version of [jwt-done-right](../jwt-done-right), in the [identity-and-access](..) module. It follows the same five acts with the same checks, on a standard library and a real key set endpoint.
+This is the tools version of [jwt-done-right](../jwt-done-right), in the [identity-and-access](..) module. It follows the same six acts with the same checks, on a standard library and a real key set endpoint.
 """
 twin = """
-The key set server is a real HTTP server on the loopback interface, and the keys are generated fresh on every run and never printed. The demo takes its time from a clock it can move, so a token's life of five minutes takes no time to wait for; only the cache of the key set uses real time, in a second or two, and it is shown on purpose.
+The key set server is a real HTTP server on the loopback interface, on a free port printed as `<port>`. The demo's keys come from fixed seeds, so the key set and the first two parts of every token are the same on every run; an ES256 signature uses a fresh random number, so the signature part is printed as a placeholder. The demo takes its time from a clock it can move, so a token's life of five minutes takes no time to wait for; only the cache of the key set uses real time, in a second or two, and it is shown on purpose.
 """
-test_note = "Every test generates new keys and starts its own key set server on a free loopback port. The key set cache tests wait a fraction of a second on purpose."
+test_note = "The demo output is compared with the golden file. Every other test generates new keys and starts its own key set server on a free loopback port. The key set cache tests wait a fraction of a second on purpose."
 
 [[act]]
-title = "Decoding is not verifying"
-summary = "A token is three base64url parts; anyone can read the claims, and a reader that only parses says mallory for a token whose claims were edited, while the processor refuses it."
+title = "The bank signs a token with Nimbus"
+summary = "Nimbus writes a 51-byte header and 143-byte claims, base64url makes them 68 and 191 characters, ES256 hashes the 260-byte signing input with SHA-256 and signs it into 64 bytes; signed twice, the signatures differ and both verify."
 detail = """
-The bank issues ana an access token of 347 characters in 3 parts. The header says ES256, type at+jwt and key id bank-2026-01. The claims name the issuer, the subject ana, the audience accounts-api, the scope, and the times. The third part is a 64-byte ES256 signature. The claims are readable by anyone: base64url is an encoding, not encryption. With the claims edited to sub mallory and ana's signature kept, a reader that only parses says mallory, and the validator refuses it: Invalid signature.
+The bank's authorization server builds a JWSHeader, {"kid":"bank-2026-01","typ":"at+jwt","alg":"ES256"}, 51 bytes as JSON, and a JWTClaimsSet of 143
+bytes: sub ana, aud accounts-api, nbf 1800000000, scope accounts:read, iss https://auth.bank.example, exp 1800000300 and iat 1800000000. Base64url turns
+them into 68 and 191 characters. ES256 is ECDSA on the curve P-256 over SHA-256: the signing input, header part, a dot and claims part, is 260 ASCII
+bytes; its SHA-256 starts abc368652950a7f5691a490899cb2e91; the signature is R and S, 32 bytes each, 64 bytes or 86 characters. The token is
+68 + 1 + 191 + 1 + 86 = 347 characters. ECDSA takes a fresh random number for every signature, so the same claims signed twice give the same first
+two parts and a different signature, and both verify with the bank's public key. That is why the signature part is printed as a placeholder.
+"""
+figure = "es256_steps"
+figure_title = "ES256: a hash, then a signature with a random number"
+figure_speech = """
+First demo: the bank signs a token, with Nimbus. [[slnc 400]] At the top, the steps, with the real sizes. [[slnc 300]] The header and the claims are J S O N: fifty one and one hundred and forty three bytes. [[slnc 300]] Base64url makes them sixty eight and one hundred and ninety one characters. [[slnc 600]]
+Joined by a dot, they are the signing input: two hundred and sixty bytes. [[slnc 300]] E S two five six first hashes it with S H A two five six, into thirty two bytes. [[slnc 300]] Then E C D S A, on the curve P two five six, signs the hash with the bank's private key. [[slnc 300]] The result is two numbers, R and S, sixty four bytes in all. [[slnc 700]]
+Below, the same claims signed twice. [[slnc 300]] The first two parts are the same. [[slnc 300]] The signatures are not: E C D S A mixes in a fresh random number every time. [[slnc 300]] Yet both verify with the bank's public key. [[slnc 300]] That is why the demo prints the signature as a placeholder.
 """
 speech = """
-First demo: decoding is not verifying. [[slnc 400]] A token has three parts, and anyone can read the claims. [[slnc 600]]
-The third part is a sixty four byte signature. [[slnc 600]]
-Edit the claims to say mallory, keep ana's signature, and a reader that only parses says mallory. [[slnc 300]] The processor refuses it, because the signature does not match.
+Here is the real output. [[slnc 400]] The header, as Nimbus writes it. [[slnc 300]] And the claims, one per line, in the library's own order: the subject Ana, the audience, the times, the scope and the issuer.
+[[page]]
+Step one: base64url, with the sizes. [[slnc 300]] Step two: the signing input, its S H A two five six hash, and a signature of sixty four bytes.
+[[page]]
+The token, in its three parts. [[slnc 300]] The signature part is a placeholder, because it changes on every run.
+[[page]]
+The same claims, signed twice. [[slnc 300]] The same first two parts, a different signature, and both verify.
 """
-rows = { decode = "active wrong" }
+rows = { decode = "active amber" }
 console = [
-    ["header: kid bank-2026-01, typ at+jwt, alg ES256", "ok"],
-    ["the claims edited to sub=mallory: parse says mallory", "bad"],
-    ["the validator -> refused (Signed JWT rejected: Invalid signature)", "ok"],
+    ["THE HEADER (JWSHeader as JSON, 51 bytes):", "code"],
+    ["  {\"kid\":\"bank-2026-01\",\"typ\":\"at+jwt\",\"alg\":\"ES256\"}", "muted"],
+    ["THE CLAIMS (JWTClaimsSet as JSON, 143 bytes):", "code"],
+    ["  \"sub\":\"ana\"", "muted"],
+    ["  \"aud\":\"accounts-api\"", "muted"],
+    ["  \"nbf\":1800000000", "muted"],
+    ["  \"scope\":\"accounts:read\"", "muted"],
+    ["  \"iss\":\"https://auth.bank.example\"", "muted"],
+    ["  \"exp\":1800000300", "muted"],
+    ["  \"iat\":1800000000", "muted"],
+    ["---", ""],
+    ["STEP 1. BASE64URL OF EACH (3 bytes -> 4 characters):", "code"],
+    ["  header 51 bytes -> 68 characters, claims 143 bytes -> 191", "muted"],
+    ["STEP 2. ES256 = ECDSA ON CURVE P-256 OVER SHA-256:", "code"],
+    ["  signing input: 260 ASCII bytes (header part . claims part)", "muted"],
+    ["  SHA-256 of it: abc368652950a7f5691a490899cb2e91...", "muted"],
+    ["  signature: R and S, 32 bytes each = 64 bytes -> 86 characters", "muted"],
+    ["---", ""],
+    ["THE TOKEN (347 characters = 68 + 1 + 191 + 1 + 86):", "code"],
+    ["  PART 1, THE HEADER:", "muted"],
+    ["    eyJraWQiOiJiYW5rLTIwMjYtMDEiLCJ0eXAiOiJhdCtqd3QiLCJhbGci", "muted"],
+    ["    OiJFUzI1NiJ9", "muted"],
+    ["  PART 2, THE CLAIMS:", "muted"],
+    ["    eyJzdWIiOiJhbmEiLCJhdWQiOiJhY2NvdW50cy1hcGkiLCJuYmYiOjE4", "muted"],
+    ["    MDAwMDAwMDAsInNjb3BlIjoiYWNjb3VudHM6cmVhZCIsImlzcyI6Imh0", "muted"],
+    ["    dHBzOi8vYXV0aC5iYW5rLmV4YW1wbGUiLCJleHAiOjE4MDAwMDAzMDAs", "muted"],
+    ["    ImlhdCI6MTgwMDAwMDAwMH0", "muted"],
+    ["  PART 3, THE SIGNATURE:", "muted"],
+    ["    <86 characters, new on every run>", "muted"],
+    ["---", ""],
+    ["THE SAME CLAIMS SIGNED TWICE (ECDSA takes a fresh random number):", "code"],
+    ["  the same first two parts: true", "ok"],
+    ["  the same signature: false", "muted"],
+    ["  both verify with the bank's public key: true", "ok"],
 ]
 
 [[act]]
-title = "The server chooses the algorithm"
-summary = "A token with alg none, an HS256 token signed with the public key as the secret, and a correctly signed token of the wrong type are all refused, because the algorithm and the type are settings of the API."
+title = "Parsing is not verifying"
+summary = "The claims part is replaced to say sub mallory with ana's signature kept: SignedJWT.parse alone returns mallory, while DefaultJWTProcessor verifies the signature first, gets false, and refuses with Invalid signature."
 detail = """
-Ana's token with the bank's key is accepted. The same claims with a header that says none and no signature are refused: Unsecured JWTs are rejected, even though the header names the right type. A token whose header says HS256, signed with the bank's public key as the shared secret, is refused: another algorithm was expected. A correctly signed token of type id+jwt, offered as an access token, is refused: type not allowed. The algorithm and the type are settings of the API.
+Only the claims part is replaced: "sub":"ana" becomes "sub":"mallory", so part 2 grows from 191 to 196 characters, while the header and Ana's
+86-character signature stay. SignedJWT.parse alone reads the claims and checks nothing: getSubject() returns mallory. The validator, a
+DefaultJWTProcessor, verifies part 3 over parts 1 and 2 with the public key of bank-2026-01 first: false. It refuses the token with Signed JWT rejected:
+Invalid signature. Anyone can read the claims, since base64url is an encoding, not encryption, so no secret belongs in them.
+"""
+figure = "forged_token"
+figure_title = "Ana's signature on mallory's claims"
+figure_speech = """
+Second demo: parsing is not verifying. [[slnc 400]] At the top, the edit. [[slnc 300]] Someone changes sub, ana, into sub, mallory. [[slnc 600]]
+The token sent keeps part one, the header, and part three, Ana's signature. [[slnc 300]] Only part two, the claims, is new. [[slnc 700]]
+On the left, the library's parse method alone. [[slnc 300]] Parsing reads the claims of any token, and checks nothing. [[slnc 300]] Get subject says mallory. [[slnc 600]]
+On the right, the validator: the library's J W T processor. [[slnc 300]] Before it trusts any claim, it checks the signature over parts one and two, with the bank's public key. [[slnc 300]] The answer is false. [[slnc 300]] Refused: invalid signature.
 """
 speech = """
-Second demo: the server chooses the algorithm. [[slnc 400]] A token that says none, with no signature, is refused. [[slnc 600]]
-A token that says H S two five six, signed with the bank's public key as the secret, is refused. [[slnc 600]]
-A correctly signed token of the wrong type is refused too. [[slnc 300]] The algorithm and the type belong to the A P I, not to the token.
+Here is the output. [[slnc 400]] The edit, and the token sent. [[slnc 400]] Parse alone says mallory. [[slnc 400]] The processor's signature check gives false, and the token is refused. [[slnc 400]] Anyone can read the claims, so no secret belongs in them.
+"""
+rows = { decode = "active ok" }
+console = [
+    ["THE EDIT (only the claims part is replaced):", "code"],
+    ["  \"sub\":\"ana\"  ->  \"sub\":\"mallory\"", "muted"],
+    ["THE TOKEN SENT:", "code"],
+    ["  part 1, the header     68 characters, unchanged", "muted"],
+    ["  part 2, the claims     196 characters, was 191", "muted"],
+    ["  part 3, the signature  86 characters, ana's, unchanged", "muted"],
+    ["SignedJWT.parse ALONE (reads the claims, checks nothing):", "code"],
+    ["  getSubject() -> mallory  <- PARSING IS NOT VERIFYING", "bad"],
+    ["THE VALIDATOR (DefaultJWTProcessor, signature first):", "code"],
+    ["  verify with bank-2026-01's public key -> false", "ok"],
+    ["  -> refused (Signed JWT rejected: Invalid signature)", "ok"],
+    ["anyone can read the claims: base64url is an encoding, not", "amber"],
+    ["encryption, so no secret belongs in them", "amber"],
+]
+
+[[act]]
+title = "The server chooses the algorithm, never the token"
+summary = "The key selector accepts only ES256 and the type verifier only at+jwt, and the JDK's own ECDSA confirms the bank's signature; a header saying none, an HS256 token keyed with the bank's public key, and an id+jwt token are refused."
+detail = """
+The API's settings are in AccessTokenValidator: a JWSVerificationKeySelector for ES256 only and a DefaultJOSEObjectTypeVerifier for at+jwt only. As a
+check that Nimbus signs standard ES256, the JDK's own SHA256withECDSAinP1363Format verifies Ana's token: true. Four headers are sent with Ana's claims.
+ES256 with at+jwt, Ana's token, is accepted. none with no signature is refused (Unsecured (plain) JWTs are rejected). HS256, with the bank's public key
+used as the shared secret, is refused (Another algorithm expected, or no matching key(s) found). An ID token, typ id+jwt, is refused (JOSE header typ
+(type) id+jwt not allowed).
+"""
+figure = "header_check"
+figure_title = "Four headers against the API's own settings"
+figure_speech = """
+Third demo: the algorithm. [[slnc 400]] At the top left, the A P I's settings, two lines of configuration. [[slnc 300]] The key selector accepts E S two five six only. [[slnc 300]] The type verifier accepts at J W T only. [[slnc 600]]
+On the right, a check without Nimbus. [[slnc 300]] The Java development kit's own E C D S A verifies Ana's token. [[slnc 300]] So the library signs standard E S two five six. [[slnc 700]]
+Below, four headers, all with Ana's claims. [[slnc 300]] Green means the value matches the settings. [[slnc 300]] Ana's real token is accepted. [[slnc 600]]
+None, with no signature: refused. [[slnc 300]] H S two five six is the classic trick: a shared-secret algorithm, keyed with the bank's public key, which anyone can download. [[slnc 300]] Refused, because only E S two five six is allowed. [[slnc 300]] And an I D token offered as an access token is refused by its type.
+"""
+speech = """
+Here is the output. [[slnc 400]] The two settings. [[slnc 300]] And the check with the Java development kit alone: true.
+[[page]]
+The four headers sent, then the four results, with the library's own messages. [[slnc 400]] Only the first is accepted.
 """
 rows = { algorithm = "active ok" }
 console = [
-    ["alg none, no signature -> refused (Unsecured JWTs are rejected)", "ok"],
-    ["HS256 signed with the public key -> refused (Another algorithm expected)", "ok"],
-    ["type id+jwt -> refused (type not allowed)", "ok"],
+    ["THE API'S SETTINGS (in AccessTokenValidator, never from a token):", "code"],
+    ["  JWSVerificationKeySelector: ES256 only", "muted"],
+    ["  DefaultJOSEObjectTypeVerifier: at+jwt only", "muted"],
+    ["CHECKED WITHOUT NIMBUS (the JDK's own ECDSA on P-256):", "code"],
+    ["  SHA256withECDSAinP1363Format verifies ana's token: true", "ok"],
+    ["---", ""],
+    ["THE HEADERS SENT (alg, typ), all with ana's claims:", "code"],
+    ["  1. ES256  at+jwt  ana's token, signed by the bank", "muted"],
+    ["  2. none   at+jwt  no signature at all", "muted"],
+    ["  3. HS256  at+jwt  the bank's public key used as the secret", "muted"],
+    ["  4. ES256  id+jwt  an ID token offered as an access token", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana", "ok"],
+    ["  2. refused (Unsecured (plain) JWTs are rejected, extend class to", "ok"],
+    ["     handle)", "muted"],
+    ["  3. refused (Signed JWT rejected: Another algorithm expected, or", "ok"],
+    ["     no matching key(s) found)", "muted"],
+    ["  4. refused (JOSE header typ (type) id+jwt not allowed)", "ok"],
 ]
 
 [[act]]
-title = "Every claim that matters"
-summary = "Expiry with 30 seconds of skew, not-before, issuer and audience are checked by the library; the scope is one check of our own."
+title = "Every claim that matters is checked"
+summary = "DefaultJWTClaimsVerifier checks iss, aud and the times with 30 seconds of skew: Ana's token is accepted at issue and at exp + 20, refused at exp + 31; a later nbf, another iss, another aud are refused by Nimbus, a missing scope by our own check."
 detail = """
-At the moment of issue the token is accepted. 20 seconds after exp, inside the 30 seconds of clock skew, it is accepted. 31 seconds after exp it is refused: Expired JWT. A token that starts in 2 minutes is refused: before use time. A token from another authorization server is refused for its issuer, and one meant for the loyalty API is refused for its audience. A token with only the scope cards:read is refused for a missing scope accounts:read. A valid signature proves who wrote the token; only the claims say whether it is for this API, now.
+The API expects the issuer https://auth.bank.example and the audience accounts-api, with 30 seconds of clock skew, checked by DefaultJWTClaimsVerifier;
+the scope accounts:read and the lifetime are two checks of ours. Ana's token has iat and nbf 1800000000 and exp 1800000300, so Nimbus accepts it while now
+<= exp + 30 = 1800000330. At the moment of issue and at exp + 20 it is accepted; at exp + 31 it is refused (Expired JWT). One claim changed per token,
+each signed by the bank: nbf 1800000120 is refused (JWT before use time), iss https://auth.partner.example (JWT iss claim value rejected), aud loyalty-api
+(JWT aud claim rejected), and scope cards:read by our own check (missing scope accounts:read).
+"""
+figure = "clock_line"
+figure_title = "The clock, and one changed claim at a time"
+figure_speech = """
+Fourth demo: the claims. [[slnc 400]] At the top, Ana's token on a time line, in seconds after it was issued. [[slnc 300]] It may be used from zero, and it expires at three hundred. [[slnc 600]]
+Nimbus allows thirty seconds of clock skew: the amber band. [[slnc 300]] With Nimbus, the last good second is three hundred and thirty itself. [[slnc 600]]
+Three moments. [[slnc 300]] At zero, accepted. [[slnc 300]] At three hundred and twenty, still accepted. [[slnc 300]] At three hundred and thirty one, refused: expired. [[slnc 700]]
+Below, four tokens signed by the bank, each with one claim changed. [[slnc 300]] One starts later. [[slnc 300]] One comes from a partner. [[slnc 300]] One is for the loyalty A P I. [[slnc 300]] The library refuses these three. [[slnc 300]] The fourth only allows cards. [[slnc 300]] The library knows nothing about scopes, so our own check refuses it.
 """
 speech = """
-Third demo: every claim that matters. [[slnc 400]] Twenty seconds after expiry, a token is still accepted, inside the clock skew. [[slnc 600]]
-Thirty one seconds after, it is refused. [[slnc 600]]
-A token that starts later is refused, and so is one from another issuer, or meant for another A P I. [[slnc 600]]
-A missing scope is refused by a check of our own. [[slnc 300]] A valid signature says who wrote the token, only the claims say whether it is for this A P I, now.
+Here is the output. [[slnc 400]] What the A P I expects, from the library and from us. [[slnc 300]] The three times, and the rule. [[slnc 400]] The three moments: accepted, accepted, refused.
+[[page]]
+One claim changed per token, and four refusals: three from Nimbus, and the scope from our own code.
 """
 rows = { claims = "active ok" }
 console = [
-    ["20 seconds after exp -> accepted (inside the skew)", "ok"],
-    ["31 seconds after exp -> refused (Expired JWT)", "ok"],
-    ["another issuer, another audience -> refused", "ok"],
-    ["only the scope cards:read -> refused (missing scope accounts:read)", "ok"],
+    ["THE API EXPECTS (DefaultJWTClaimsVerifier, plus 2 checks of ours):", "code"],
+    ["  iss https://auth.bank.example, aud accounts-api", "muted"],
+    ["  clock skew 30 seconds; ours: scope accounts:read, lifetime", "muted"],
+    ["THE TIMES IN ana's TOKEN (seconds since 1970-01-01 UTC):", "code"],
+    ["  iat 1800000000   nbf 1800000000   exp 1800000300", "muted"],
+    ["  accepted while now <= exp + 30 = 1800000330", "ok"],
+    ["THE MOMENTS TRIED:", "code"],
+    ["  1. now 1800000000  (the moment of issue)", "muted"],
+    ["  2. now 1800000320  (exp + 20)", "muted"],
+    ["  3. now 1800000331  (exp + 31)", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana", "ok"],
+    ["  2. accepted for ana", "ok"],
+    ["  3. refused (Expired JWT)", "ok"],
+    ["---", ""],
+    ["ONE CLAIM CHANGED PER TOKEN (signed by the bank, now 1800000000):", "code"],
+    ["  1. nbf   1800000120  (starts in 2 minutes)", "muted"],
+    ["  2. iss   https://auth.partner.example", "muted"],
+    ["  3. aud   loyalty-api", "muted"],
+    ["  4. scope cards:read", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  1. refused (JWT before use time)", "ok"],
+    ["  2. refused (JWT iss claim value rejected)", "ok"],
+    ["  3. refused (JWT aud claim rejected)", "ok"],
+    ["  4. refused (missing scope accounts:read)", "ok"],
+    ["the signature proves who wrote the token; only the claims say", "amber"],
+    ["whether it is for this API, now", "amber"],
 ]
 
 [[act]]
-title = "Keys by id, from one URL"
-summary = "100 tokens cost one fetch of the key set; unknown key ids, jku and jwk headers never make the API trust an attacker's key; a new key is published before it is used, and a retired key lives on in the cache."
+title = "Keys by id, from the one URL in the settings"
+summary = "The key set is fetched once for 101 tokens; an unknown kid costs one more fetch, then the refetch limit holds; a forged signature, a jku and a jwk header are refused; a retired key works until the 2000 ms cache ends."
 detail = """
-The bank publishes 1 key. The first token fetches the key set and 100 more tokens come from the cache: the endpoint was asked 1 time. A token naming a key id the API has never seen makes the library ask once more and is refused, and 100 more of them cause 0 more fetches, because of the minimum time between refetches. A token signed with another key under the bank's key id is refused for its signature. A token whose header points at the attacker's own key set is refused and the attacker's server is asked 0 times, and a token that carries its own public key is refused too. The bank publishes a new key before using it; after the cache time the API trusts 2 keys. When the old key is retired, the old token is still accepted inside the cache time, and refused after it.
+The bank publishes its key set at http://127.0.0.1:<port>/jwks.json, and the API's JWKSourceBuilder uses only that URL, caches it for 2000 ms and
+refetches at most once per 1800 ms. Ana's token and 100 more cost 1 fetch. A token with kid attacker-key is refused (no matching key) and costs a second
+fetch; 100 more cost 0 more. A token naming bank-2026-01 but signed with the attacker's key is refused (Invalid signature). A jku header pointing at the
+attacker's own key set and a jwk header carrying the attacker's key are refused; the attacker's server was asked 0 times. In the rotation, bank-2026-07
+is published first, and after the cache time the old token is still accepted (3 fetches) and a token signed with the new key is accepted. Once
+bank-2026-01 is retired, the old token is still accepted at once, from the cache; after the cache time it is refused (5 fetches). Every fetch went to the
+configured URL.
+"""
+figure = "key_source"
+figure_title = "One URL, a cache, and a retired key"
+figure_speech = """
+Fifth demo: keys. [[slnc 400]] At the top, the one U R L in the A P I's settings, where the bank publishes its public keys. [[slnc 300]] The library caches them for two seconds here, and asks again at most once every one point eight seconds. [[slnc 700]]
+Token one, and a hundred more, cost a single fetch. [[slnc 300]] Token two names a key nobody published: one more fetch, and then the limit protects the bank's server. [[slnc 300]] Token three names the bank's key, but the attacker signed it: invalid signature. [[slnc 600]]
+Tokens four and five carry the attacker's own key set address, or the key itself, in the header. [[slnc 300]] Nimbus never follows them. [[slnc 300]] The attacker's server was asked zero times. [[slnc 700]]
+Below the line, a rotation. [[slnc 300]] The new key is published before it is used, so both work. [[slnc 300]] But when the old key is retired, a token signed with it still works, until the cache ends. [[slnc 300]] The cache time is part of any plan for a stolen key.
 """
 speech = """
-Fourth demo: keys by id, from one U R L. [[slnc 400]] A hundred tokens cost one fetch of the key set. [[slnc 600]]
-A token naming an unknown key is refused, and a hundred more cause no more fetches. [[slnc 600]]
-A token whose header points at the attacker's own key set is refused, and the attacker's server is never asked. [[slnc 600]]
-A new key is published before it is used. [[slnc 300]] A retired key lives on in the cache until the cache expires.
+Here is the output. [[slnc 400]] The key set at the one U R L, and how the library fetches it. [[slnc 300]] Then the five tokens sent.
+[[page]]
+The five results, with the number of fetches. [[slnc 300]] One fetch for a hundred and one good tokens. [[slnc 300]] And four refusals.
+[[page]]
+The rotation, step by step, and its results. [[slnc 300]] The retired key still works from the cache, then it is refused. [[slnc 300]] Every fetch went to the configured U R L.
 """
 rows = { keys = "active ok" }
 console = [
-    ["100 tokens -> the key set endpoint was asked 1 time", "ok"],
-    ["a jku header -> refused; the attacker's server was asked 0 times", "ok"],
-    ["a new key is published before it is used", "ok"],
-    ["the old key retired: still accepted inside the cache time", "amber"],
+    ["THE KEY SET AT http://127.0.0.1:<port>/jwks.json (kid, x):", "code"],
+    ["  bank-2026-01  ZIFPXszswAGQ2Ohf35infmro2NQ7uRs9FPMObKLcyjo", "muted"],
+    ["THE API'S KEY SOURCE (JWKSourceBuilder):", "code"],
+    ["  only that URL; cache 2000 ms; at most 1 refetch per 1800 ms", "muted"],
+    ["THE TOKENS SENT:", "code"],
+    ["  1. kid bank-2026-01, ana's token, then 100 more", "muted"],
+    ["  2. kid attacker-key, then the same 100 more times", "muted"],
+    ["  3. kid bank-2026-01, signed with the attacker's key", "muted"],
+    ["  4. jku in the header: the attacker's own key set URL", "muted"],
+    ["  5. jwk in the header: the attacker's public key itself", "muted"],
+    ["---", ""],
+    ["THE RESULTS:", "code"],
+    ["  1. accepted for ana; fetches so far: 1", "ok"],
+    ["  2. refused (Signed JWT rejected: Another algorithm expected, or", "ok"],
+    ["     no matching key(s) found); fetches: 2, then 0 more", "muted"],
+    ["  3. refused (Signed JWT rejected: Invalid signature)", "ok"],
+    ["  4. refused (the key set could not be asked again so soon", "ok"],
+    ["     (RateLimitReachedException)); the attacker's server was asked", "muted"],
+    ["     0 times", "muted"],
+    ["  5. refused (the key set could not be asked again so soon", "ok"],
+    ["     (RateLimitReachedException))", "muted"],
+    ["4 and 5: jku and jwk are never followed; only the kid is looked up", "amber"],
+    ["---", ""],
+    ["THE ROTATION (each step waits past the 2000 ms cache time):", "code"],
+    ["  6. bank-2026-07 is published; the old token is sent", "muted"],
+    ["  7. the bank signs with bank-2026-07", "muted"],
+    ["  8. bank-2026-01 is retired; at once, the old token", "muted"],
+    ["  9. after the cache time, the old token", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  6. accepted for ana; fetches: 3", "ok"],
+    ["  7. accepted for ana", "ok"],
+    ["  8. accepted for ana  <- STILL IN THE CACHE", "bad"],
+    ["  9. refused (Signed JWT rejected: Another algorithm expected, or", "ok"],
+    ["     no matching key(s) found); fetches: 5", "muted"],
+    ["every one of the 5 fetches went to the configured URL", "amber"],
 ]
 
 [[act]]
 title = "The bill: a token cannot be taken back"
-summary = "Ana's access token works two minutes after her access was removed, her refresh token is revoked at once, the token expires after 5 minutes 31 seconds, and a lifetime of 24 hours is refused."
+summary = "Ana's access is removed at 120 seconds: at 240 her access token is still accepted while her refresh token is refused; at 331 the access token is refused as expired; a 24-hour token breaks our 900-second policy."
 detail = """
-Ana's access is removed 2 minutes after her token was issued. Her access token is still accepted: it works until it expires. Her refresh token, which the server looks up, is refused as revoked. At 5 minutes and 31 seconds the access token is refused: Expired JWT. A token that asks to live for 24 hours is refused by the lifetime policy of 15 minutes, which is one of our own checks. The library does the parsing, the signature and the claims, and the policy stays ours.
+Ana holds an access token, which stops working after 300 + 30 = 330 seconds, and a refresh token, 43 random characters the bank keeps and looks up. At
+120 seconds the bank removes her access and revokes the refresh token. At 240 the access token is still accepted, because the API checks the token and
+not the bank's records, while the refresh token is refused as revoked. At 331 the access token is refused (Expired JWT). Our own policy allows at most
+900 seconds, 15 minutes, so a token with exp = iat + 86400 is refused: lifetime longer than the policy allows. The library parses, verifies and checks
+the claims; the policy is ours.
+"""
+figure = "revocation_timeline"
+figure_title = "After the bank revokes, until the token expires"
+figure_speech = """
+Sixth demo: the bill. [[slnc 400]] Ana holds two tokens. [[slnc 300]] The access token is self-contained: the A P I checks it with the library, without asking the bank. [[slnc 300]] The refresh token is a random string that the bank looks up every time. [[slnc 700]]
+At one hundred and twenty seconds, the bank removes Ana's access. [[slnc 300]] The refresh token stops at once. [[slnc 300]] Nothing can reach the access token. [[slnc 600]]
+At two hundred and forty, it is still accepted. [[slnc 300]] At three hundred and thirty one, it finally expires. [[slnc 700]]
+No library can change this. [[slnc 300]] So access tokens must live for minutes, and our own policy refuses anything longer than fifteen.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Ana's access is removed, but her access token still works until it expires. [[slnc 600]]
-Her refresh token, which the server looks up, is refused at once. [[slnc 600]]
-So access tokens live for minutes, and a token that asks to live for a day is refused. [[slnc 300]] The library does the checks. The policy is ours.
+Here is the output. [[slnc 400]] What Ana holds, and the event at one hundred and twenty. [[slnc 400]] At two hundred and forty, the access token still works, and the refresh token is refused. [[slnc 300]] At three hundred and thirty one, the access token expires. [[slnc 400]] And a token asking for a whole day breaks our fifteen minute policy.
 """
-rows = { bill = "active ok" }
+rows = { bill = "active amber" }
 console = [
-    ["2 minutes after removal: the access token -> accepted", "bad"],
-    ["her refresh token -> refused (revoked)", "ok"],
-    ["at 5 minutes 31 seconds -> refused (Expired JWT)", "ok"],
-    ["a lifetime of 24 hours -> refused (policy)", "ok"],
+    ["WHAT ana HOLDS (seconds after issue):", "code"],
+    ["  the access token, which stops working after 300 + 30 = 330", "muted"],
+    ["  a refresh token <43 random characters>, kept by the bank", "muted"],
+    ["THE EVENT:", "code"],
+    ["  at 120 the bank removes ana's access and revokes the refresh token", "muted"],
+    ["THE RESULTS:", "code"],
+    ["  at 240 the access token:  accepted for ana  <- STILL WORKS", "bad"],
+    ["  at 240 the refresh token: refused (revoked)", "ok"],
+    ["  at 331 the access token:  refused (Expired JWT)", "ok"],
+    ["THE POLICY THAT FOLLOWS (ours: at most 900 seconds = 15 minutes):", "code"],
+    ["  a token with exp = iat + 86400 (24 hours):", "muted"],
+    ["  -> refused (lifetime longer than the policy allows)", "ok"],
+    ["the library parses, verifies and checks claims; the policy is ours", "amber"],
 ]
+
+[highlight]
+console_green = ["THE RESULTS", "THE VALIDATOR", "CHECKED WITHOUT", "THE SAME CLAIMS"]
+console_rose = ["SignedJWT.parse", "THE EDIT"]
+console_amber = ["STEP 1", "STEP 2", "THE TOKENS SENT", "THE HEADERS SENT", "THE MOMENTS TRIED", "ONE CLAIM CHANGED", "THE EVENT", "THE ROTATION"]
+console_cyan = ["THE HEADER", "THE CLAIMS", "THE TOKEN", "THE API", "THE TIMES", "THE KEY SET", "WHAT ana HOLDS", "THE POLICY"]
 
 [animation]
 subtitle = "An online bank, a token, a library, and the checks that stay ours."
@@ -199,7 +415,7 @@ objectives = [
     "name the checks the library does not do",
 ]
 walkthrough = """
-Run act two and find the two lines of configuration that refuse the token. In act four ask how long a stolen key keeps working after the bank retires it. In act five ask which of your own APIs needs a revocation list.
+Run act three and find the two lines of configuration that refuse the token. In act five ask how long a stolen key keeps working after the bank retires it. In act six ask which of your own APIs needs a revocation list.
 """
 exercises = [
     "Add a jti check against a small deny list and decide how long to keep an entry.",
@@ -234,7 +450,7 @@ nongoals = [
 problem = """
 Teams pick up a JWT library and assume that it validates everything, and leave the algorithm, the type, the key source and the policy to defaults.
 """
-roles = [["The bank", "`BankIssuer`, `RefreshTokens`"], ["The key set", "`JwksServer`"], ["The API", "`AccessTokenValidator`, `Refused`"], ["Time", "`SimClock`"], ["Entry point", "`NimbusJwtDemo`"]]
+roles = [["The bank", "`BankIssuer`, `RefreshTokens`"], ["Fixed demo keys", "`DemoKeys`"], ["The key set", "`JwksServer`"], ["The API", "`AccessTokenValidator`, `Refused`"], ["Time", "`SimClock`"], ["Entry point", "`NimbusJwtDemo`"]]
 requirements = [
     "A parsed token is not trusted until its signature is verified.",
     "The algorithm, the type, the issuer and the audience are fixed by the API.",
@@ -243,7 +459,7 @@ requirements = [
     "A jku or jwk header is never used.",
     "The scope and the lifetime policy are checked after the library.",
     "A new key can be published before it is used, and a retired key is refused once the cache expires.",
-    "The demo prints the same output on every run.",
+    "The demo prints the same output on every run; the random ES256 signature is printed as a placeholder.",
 ]
 
 [[diagram]]
@@ -416,7 +632,7 @@ residual = "A key set endpoint that is down for longer than the cache"
 
 [poster]
 headline = [["JWT WITH", "text"], ["NIMBUS JOSE", "accent"]]
-taglines = [["A standard library does the parsing, the signature and most claims; the algorithm, the typ", "gold"]]
+taglines = [["The library checks the token; the API sets the rules", "gold"]]
 before = { code = "header: kid bank-2026-01, typ at+jwt, alg ES256", note = "Decoding is not verifying", tag = "BEFORE" }
 after = { code = "new JWSVerificationKeySelector<>(ES256, keys)", note = "The bill: a token cannot be taken back", tag = "AFTER" }
 
@@ -424,7 +640,7 @@ after = { code = "new JWSVerificationKeySelector<>(ES256, keys)", note = "The bi
 key = "01-poster"
 kind = "poster"
 title = "JWT Done Right with Nimbus JOSE + JWT"
-narration = "Hello, and welcome. [[slnc 400]] This video explains checking J W T access tokens with the Nimbus library, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A J W T is a signed note that says who the caller is and what they may do. [[slnc 300]] Nimbus parses it, checks the signature, and checks most of its claims. [[slnc 300]] But the algorithm, the type, where the keys come from, and the policy are still the A P I's to set. [[slnc 600]] Think of a cash machine that reads any bank card. [[slnc 300]] It still has to be told which banks to trust, and what the daily limit is. [[slnc 600]] Our example is an online bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains checking J W T access tokens with the Nimbus library, in Java. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A JSON web token, or J W T, is a signed note that says who the caller is and what they may do. [[slnc 300]] Nimbus parses it, checks the signature, and checks most of its claims. [[slnc 300]] But the algorithm, the type, where the keys come from, and the policy are still the A P I's to set. [[slnc 600]] Think of a cash machine that reads any bank card. [[slnc 300]] It still has to be told which banks to trust, and what the daily limit is. [[slnc 600]] Our example is an online bank."
 
 [[scene]]
 key = "02-scenario"
@@ -432,6 +648,19 @@ kind = "bullets"
 title = "The Scenario"
 body = ["The bank's sign-in server signs", "access tokens with ES256,", "and publishes its public keys at one URL.", "", "The accounts API checks every token", "with Nimbus JOSE + JWT.", "", "The demo runs a real key set server", "and sends good tokens and bad ones."]
 narration = "Here is the scenario. [[slnc 400]] An online bank's sign-in server signs short access tokens, with E S two five six, and publishes its public keys at one U R L. [[slnc 500]] The accounts A P I checks every token it receives with Nimbus J O S E plus J W T, the library behind Spring Security's resource server. [[slnc 500]] The demo runs a real key set server on this machine, and sends the A P I good tokens, and every kind of bad one."
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-anatomy"
+kind = "figure"
+title = "One real token, three parts"
+body = "token_anatomy"
+narration = """Let's see the whole idea on one real token. [[slnc 400]] At the top, Ana's access token, three hundred and forty seven characters. [[slnc 300]] The dots split it into three parts. [[slnc 700]] Part one, in yellow, is the header: the key id, the type, and the algorithm, E S two five six. [[slnc 600]] Part two, in blue, is the claims: the subject Ana, the audience, the scope, the issuer, and three times in seconds. [[slnc 600]] Part three, in red, is the signature: two numbers, R and S, sixty four bytes, made with the bank's private key. [[slnc 300]] It changes on every run, so it is shown as a placeholder. [[slnc 700]] Anyone can decode parts one and two. [[slnc 300]] Only part three, checked with the bank's public key, proves the bank wrote them."""
 
 [[scene]]
 key = "03-acts"
@@ -445,13 +674,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["A cached key lives on after it is retired", "A refetch limit protects the key set server", "Clock skew helps an attacker too", "The library does not know your policy", "An access token cannot be taken back"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Keys are cached, so a retired key is still trusted until the cache expires. [[slnc 500]] A limit on refetches protects the key set server, but delays a brand new key. [[slnc 500]] Thirty seconds of clock skew helps honest servers, and an attacker with a stolen token too. [[slnc 500]] The library does not know your scopes or your lifetime rules. [[slnc 300]] And an access token cannot be taken back before it expires."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["BankIssuer: signs tokens", "RefreshTokens: looked up on the server", "JwksServer: publishes the public keys", "AccessTokenValidator: the API's checks", "SimClock: moves time forward", "NimbusJwtDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] BankIssuer is the sign-in server, which signs tokens. [[slnc 300]] RefreshTokens keeps refresh tokens on the server, so they can be revoked. [[slnc 500]] JwksServer publishes the bank's public keys at one U R L. [[slnc 500]] AccessTokenValidator is the A P I's checks: Nimbus, set up with a fixed algorithm and type, plus two checks of our own. [[slnc 500]] SimClock moves time forward. [[slnc 300]] And NimbusJwtDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -468,8 +690,161 @@ body = ["Fix the algorithm and the type", "Keys from one configured URL only", "
 narration = "So, how do you use it? [[slnc 400]] Fix the algorithm and the type in the processor, and never take them from the token. [[slnc 500]] Take keys only from the one key set U R L in your settings, never from a header. [[slnc 500]] Check the issuer and the audience exactly, and require the claims you need. [[slnc 300]] Add your own checks for scope and lifetime. [[slnc 500]] Keep access tokens short, and refresh tokens on the server, where they can be revoked. [[slnc 300]] And publish a new key before you sign with it, knowing how long the old one stays cached."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a jti deny list and", "decide how long to keep each entry."]
 narration = "That's checking J W T access tokens with Nimbus. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A standard library checks the signature and most claims, and the A P I still decides the algorithm, the type, where keys come from, the scope and the lifetime. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a check of the token's id against a small deny list, and decide how long to keep each entry. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Nimbus does the parsing, the signature and most claims. [[slnc 300]] Here are the classes that set it up, and the checks that stay ours."""
+
+[[class]]
+name = "AccessTokenValidator"
+what = "Nimbus set up by the API, then our own checks"
+[[class.part]]
+title = "keys from one URL, cached"
+code = """
+JWKSource<SecurityContext> keys = JWKSourceBuilder.<SecurityContext>create(jwks)
+        .cache(cacheMillis, 1_000L)
+        .refreshAheadCache(false)
+        .rateLimited(minRefetchMillis)
+"""
+speech = """The key source is built from the one key set U R L in the settings. [[slnc 300]] It caches the keys, and limits how often an unknown key id may cause a new fetch."""
+[[class.part]]
+title = "the algorithm and the type, fixed"
+code = """
+processor.setJWSTypeVerifier(
+        new DefaultJOSEObjectTypeVerifier<>(BankIssuer.ACCESS_TOKEN));
+processor.setJWSKeySelector(
+        new JWSVerificationKeySelector<>(JWSAlgorithm.ES256, keys));
+"""
+speech = """These two lines refuse none, H S two five six and the I D token. [[slnc 300]] The type must be at J W T, and only E S two five six keys are selected."""
+[[class.part]]
+title = "the claims: the library's, then ours"
+code = """
+Set.of(audience),
+new JWTClaimsSet.Builder().issuer(BankIssuer.ISSUER).build(),
+Set.of("sub", "iss", "aud", "exp", "iat", "nbf", "scope"),
+...
+claims.setMaxClockSkew(CLOCK_SKEW_SECONDS);
+...
+if (!List.of(scope.split(" ")).contains(requiredScope)) {
+    throw new Refused("missing scope " + requiredScope);
+"""
+speech = """The claims verifier takes the audience, the exact issuer, and the claims that must be present, with thirty seconds of skew. [[slnc 300]] The scope and the lifetime are checked by our own code, after the library."""
+
+[[class]]
+name = "BankIssuer"
+what = "the bank's authorization server: signs with the current key"
+[[class.part]]
+title = "an ES256 header with a key id"
+code = """
+JWSHeader.Builder header = new JWSHeader.Builder(JWSAlgorithm.ES256)
+        .type(type);
+...
+SignedJWT jwt = new SignedJWT(header, claims);
+jwt.sign(signer);
+return jwt.serialize();
+"""
+speech = """The bank builds a header with E S two five six, the type, and the key id. [[slnc 300]] Nimbus signs the header and the claims, and writes the three parts."""
+
+[[class]]
+name = "JwksServer"
+what = "the key set, served over HTTP on the loopback"
+[[class.part]]
+title = "public halves only, and a counter"
+code = """
+body = new JWKSet(keys.stream()
+        .map(JWK::toPublicJWK)
+        .map(JWK.class::cast)
+        .toList()).toString();
+...
+requests.incrementAndGet();
+"""
+speech = """The key set server publishes only the public halves of the keys. [[slnc 300]] It counts every request, so the demo can show how many fetches the cache saved."""
+
+[[class]]
+name = "DemoKeys"
+what = "fixed P-256 keys from a seed, so the key set repeats"
+[[class.part]]
+title = "a fixed seed instead of random bytes"
+code = """
+return new ECKeyGenerator(Curve.P_256)
+        .keyID(kid)
+        .secureRandom(new FixedRandom(seed))
+        .generate();
+"""
+speech = """For a repeatable demo, the keys come from a fixed seed. [[slnc 300]] Real keys come from real randomness, and this class must never leave a demo."""
+
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: signed claims, RFC 7519"
+say = "J W T is a JSON web token: a set of claims, signed by the server that issued it."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: text like {\"sub\":\"ana\"}"
+say = "J S O N is JavaScript object notation: names and values written as text, between braces."
+[[acronym]]
+short = "JOSE, JWS, JWK"
+long = "JSON Object Signing and Encryption; Web Signature; Web Key"
+say = "J O S E is JSON object signing and encryption, the family of standards. J W S is a JSON web signature, and J W K a JSON web key."
+[[acronym]]
+short = "JWKS, jku, jwk"
+long = "JSON Web Key Set; header fields: key set URL, embedded key"
+say = "J W K S is a JSON web key set. In a header, jku points at a key set, and jwk carries a key itself."
+[[acronym]]
+short = "API, URL"
+long = "Application Programming Interface; Uniform Resource Locator"
+say = "A P I is an application programming interface: here, the bank's accounts service. U R L is a uniform resource locator: a web address."
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol: how the key set is fetched"
+say = "H T T P is the hypertext transfer protocol: the way the A P I fetches the key set."
+[[acronym]]
+short = "RFC"
+long = "Request for Comments: the numbered internet standards"
+say = "R F C means request for comments: the numbered documents that define internet standards."
+[[acronym]]
+short = "ES256, ECDSA, P-256"
+long = "Elliptic Curve Digital Signature Algorithm, P-256, SHA-256"
+say = "E S two five six is E C D S A, the elliptic curve digital signature algorithm, on the curve P two five six, with S H A two five six."
+[[acronym]]
+short = "HS256, HMAC, SHA"
+long = "HMAC with SHA-256, a keyed hash; Secure Hash Algorithm"
+say = "S H A is the secure hash algorithm. H S two five six is H Mac with S H A two five six, a hash based message authentication code made with a shared secret."
+[[acronym]]
+short = "base64url"
+long = "64 characters, 6 bits each, safe in a web address"
+say = "Base64url writes bytes with sixty four characters, six bits each, all safe in a web address."
+[[acronym]]
+short = "iss, sub, aud"
+long = "claims: issuer, subject, audience"
+say = "In the claims, i s s is the issuer, sub is the subject, and aud is the audience."
+[[acronym]]
+short = "iat, nbf, exp"
+long = "claims: issued at, not before, expires, in seconds"
+say = "I a t is issued at, n b f is not before, and e x p is the expiry, all in seconds since nineteen seventy."
+[[acronym]]
+short = "kid, typ, alg"
+long = "header: key id, token type, algorithm"
+say = "In the header, kid is the key id, typ is the token type, and alg is the algorithm."
+[[acronym]]
+short = "at+jwt, ID"
+long = "access token type; an ID (identity) token is for the app"
+say = "At plus J W T marks an access token. An I D token, short for identity token, is meant for the app, not for an A P I."
+[[acronym]]
+short = "UTC, ASCII, ms"
+long = "Coordinated Universal Time; American text code; milliseconds"
+say = "U T C is coordinated universal time. A S C I I is the American standard code for information interchange. And m s means milliseconds."
+[[acronym]]
+short = "hex"
+long = "hexadecimal: one byte as two digits, 0-9 and a-f"
+say = "Hex is hexadecimal: each byte written as two digits, from zero to nine and a to f."

@@ -16,8 +16,8 @@ By the end of the session you can:
 | 0:00 | The problem and the analogy | 10 min |
 | 0:10 | Act 1: A cart in a cookie | 8 min |
 | 0:18 | Act 2: The cookie decides what the server builds | 8 min |
-| 0:26 | Act 3: An allow-list filter names the classes a cart is made of | 8 min |
-| 0:34 | Act 4: Data only: names and quantities, signed | 8 min |
+| 0:26 | Act 3: An allow-list filter names the classes of a cart | 8 min |
+| 0:34 | Act 4: Data only: product codes and quantities, signed | 8 min |
 | 0:42 | Exercises | 18 min |
 
 ## Walkthrough

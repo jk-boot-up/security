@@ -1,5 +1,6 @@
 package com.jk.explore.security.misconfig;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
@@ -20,8 +21,8 @@ record StoreConfig(String profile, String adminPassword, boolean debugEndpoint, 
     static final String HTTP_TRACE = "http.trace";
     static final String PROFILE = "profile";
 
-    /** The settings every profile must state, so that nothing falls back to a default nobody chose. */
-    static final Set<String> KNOWN = Set.of(PROFILE, ADMIN_PASSWORD, DEBUG_ENDPOINT, STATIC_LISTING, ERRORS_DETAILED, SERVER_BANNER, HTTP_TRACE);
+    /** The settings every profile must state, so that nothing falls back to a default nobody chose, in file order. */
+    static final List<String> KNOWN = List.of(PROFILE, ADMIN_PASSWORD, DEBUG_ENDPOINT, STATIC_LISTING, ERRORS_DETAILED, SERVER_BANNER, HTTP_TRACE);
 
     static StoreConfig from(Properties p) {
         Set<String> tests = new TreeSet<>();

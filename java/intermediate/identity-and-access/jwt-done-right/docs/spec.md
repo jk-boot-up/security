@@ -20,6 +20,7 @@ Learners use JWTs through libraries and rarely see which checks the library is m
 | Role | Class |
 | --- | --- |
 | Strict base64url | `Base64Url` |
+| Base64url by hand, for teaching | `Base64UrlSteps` |
 | Strict JSON | `Json` |
 | Ed25519 keys and signatures | `Ed25519` |
 | Compact JWS | `Jws` |
@@ -43,10 +44,10 @@ Learners use JWTs through libraries and rarely see which checks the library is m
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 38, all passing |
-| Demo output | 40 lines, identical on every run |
-| Acts | 5 |
-| Video | 09:00, 1920×1080, narrated in the amy-slow voice |
+| Tests | 40, all passing |
+| Demo output | 128 lines, identical on every run |
+| Acts | 6 |
+| Video | 18:55, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

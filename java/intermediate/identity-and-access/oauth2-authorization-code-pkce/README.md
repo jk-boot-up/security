@@ -5,6 +5,7 @@ src/main/java/com/jk/explore/security/oauth/
 ├── AuthorizationServer.java  The bank's authorization server: the authorization endpoint the browser visits, and the token endpoint the client calls directly
 ├── BankApi.java              The bank's accounts API, the resource server
 ├── BudgetApp.java            The budgeting app, a public OAuth client
+├── ChallengeSteps.java       Redoes the S256 code challenge by hand, one step at a time, so the demo can print every step with real values
 ├── ClientRegistration.java   What the bank knows about a client before any request arrives: its id, the exact redirect URIs it registered, the scopes it may ask for, and, for a confidential client that runs on a server, the SHA-256 of its secret
 ├── LoopbackBank.java         The same authorization server and API behind a real HTTP server on the loopback interface
 ├── OAuthDemo.java            Runs the online bank story in five numbered acts and prints exact, repeatable results
@@ -52,11 +53,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The authorization code flow, step by step | The app sends the browser to the bank, Ana signs in and agrees to accounts.read, the browser returns with a 43-character code that works for 60 seconds once, the app swaps it directly for an access token of 300 seconds, and reads the accounts: 200, also over a real local HTTP server. |
-| 2. PKCE: a code is useless without the verifier | The RFC 7636 verifier gives the published S256 challenge; only the challenge travels through the browser; a leaked code redeemed with no verifier or a made-up one is refused; plain and missing challenges are refused. |
-| 3. Exact redirect addresses, state, and codes that work once | Only the exact registered redirect address gets a code; a forced sign-in into Mallory's account is refused by the state check; a reused code is refused and revokes the token it gave; a code 61 seconds old is refused. |
-| 4. Scopes and refresh tokens | The token carries only accounts.read, so a payment is 403; asking for payments.write is refused; refresh tokens rotate, and reusing an old one revokes the whole family; an access token 300 seconds old is 401. |
-| 5. Current practice, and the bill | The implicit flow and the password grant are refused, as RFC 9700 and OAuth 2.1 require; a confidential client must authenticate; and production needs a real authorization server. |
+| 1. The authorization code flow, step by step | The app sends Ana's browser to the bank with the challenge E9Melhoa...; Ana signs in at the bank and agrees to accounts.read; the browser comes back with a 43-character code that works for 60 seconds, once; the app swaps it directly, with the verifier, for an access token of 300 seconds; GET /accounts answers 200, also over a real local HTTP server. |
+| 2. PKCE: a code is useless without the verifier | The verifier dBjftJeZ4... becomes 43 ASCII bytes, SHA-256 gives 32 bytes starting 13 d3 1e, base64url turns 13 d3 1e into E9Me and all 32 bytes into the published challenge E9Melhoa...; only the challenge travels through the browser; a leaked code with no verifier or a made-up one is refused; plain and missing challenges are refused. |
+| 3. Exact redirect addresses, state, and codes that work once | Of five requested redirect addresses, exact matching sends a code only to the registered one, while a prefix check on https://budget.example would send it away 3 times; a callback with Mallory's code and state is refused as invalid_state; a code used twice is refused and its first access token turns 401; a code 61 seconds old is refused. |
+| 4. Scopes and refresh tokens | The token carries only accounts.read, so GET /accounts is 200 and POST /payments is 403 insufficient_scope; asking for payments.write is refused; refresh token R1 gives A2 and R2; a thief replaying R1 is refused and the whole family is revoked, so R2 is refused and A2 is 401; an access token 300 seconds old is 401. |
+| 5. Current practice, and the bill | The implicit flow is refused with unsupported_response_type and the password grant with unsupported_grant_type, as RFC 9700 and OAuth 2.1 require; the confidential statements-service is refused with a wrong secret, and with the right secret still needs a real code; a phone app relies on PKCE; production needs a real authorization server. |
 
 ## Test
 
@@ -64,14 +65,14 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-28 tests in `AuthorizationServerTest`, `BudgetAppTest`, `DemoRunsTest`, `LoopbackTest`, `PkceTest`. PKCE is checked against RFC 7636 appendix B. Every refusal is a test with its exact OAuth error, and the whole flow is also tested over a real local HTTP server. Random codes and tokens are never printed, so the golden output is the same on every run.
+32 tests in `AuthorizationServerTest`, `BudgetAppTest`, `ChallengeStepsTest`, `DemoRunsTest`, `LoopbackTest`, `PkceTest`. PKCE is checked against RFC 7636 appendix B. Every refusal is a test with its exact OAuth error, and the whole flow is also tested over a real local HTTP server. The hand-made S256 steps are tested against the library. Random codes and tokens are printed as placeholders, so the golden output is the same on every run.
 
 ## What the simulation got right, and what it left out
 
 The authorization server, the bank API and the app run in memory with a simulated clock in whole seconds; act one also runs the flow over a real HTTP
-server on the loopback interface, and prints only status codes. Codes, tokens and states come from a secure random source and are never printed:
-messages show what each part is instead. The bank's sign-in and consent pages are stood in for by two parameters. Host names such as bank.example are
-labels; nothing leaves the machine.
+server on the loopback interface, and prints only status codes. Codes, tokens and states come from a secure random source, so they are printed as
+placeholders such as `<code>`; the visible flow uses the PKCE verifier that RFC 7636 publishes, so its challenge is worked out step by step with real
+values. The bank's sign-in and consent pages are stood in for by two parameters. Host names such as bank.example are labels; nothing leaves the machine.
 
 ## Technologies and versions
 

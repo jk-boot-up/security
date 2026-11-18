@@ -1,46 +1,94 @@
-== 1. What the checker finds on a typical image ==
-CRITICAL empty-password           test: can log in with no password
-CRITICAL extra-root-account       toor: UID 0 gives root rights to a second name
-CRITICAL open-port                port 23: listens on every interface (telnet: passwords in the clear)
-CRITICAL open-port                port 2375: listens on every interface (Docker API without TLS: root on the host for anyone who connects)
-CRITICAL open-port                port 6379: listens on every interface (Redis, usually without a password)
-CRITICAL ssh-empty-passwords      /etc/ssh/sshd_config: PermitEmptyPasswords yes
-CRITICAL unexpected-setuid        /tmp/.hidden-shell: mode 4755 runs with its owner's rights and is not on the allow-list [auto-fixable]
-HIGH     cron-group-writable      /etc/cron.daily/backup.sh: mode 0775: members of its group can add commands that run as root [auto-fixable]
-HIGH     default-account          test: a well-known account name with a login shell
-HIGH     loose-permissions        /etc/shadow: mode 0644 is looser than 0640 [auto-fixable]
-HIGH     loose-permissions        /etc/ssh/ssh_host_ed25519_key: mode 0644 is looser than 0600 [auto-fixable]
-HIGH     loose-permissions        /opt/app/config.properties: mode 0644 is looser than 0600 [auto-fixable]
-HIGH     ssh-root-login           /etc/ssh/sshd_config: PermitRootLogin yes
-HIGH     world-writable-dir       /var/www/uploads: mode 0777 lets any user change it and add or remove entries without the sticky bit [auto-fixable]
-HIGH     world-writable-file      /var/www/uploads/readme.txt: mode 0666 lets any user change it [auto-fixable]
-MEDIUM   accepts-redirects        net.ipv4.conf.all.accept_redirects: is 1: a neighbour can change this host's routes
-MEDIUM   no-aslr                  kernel.randomize_va_space: is 0, not 2: memory layout is not randomized
-MEDIUM   ssh-passwords            /etc/ssh/sshd_config: PasswordAuthentication is on: passwords can be guessed, keys cannot
-LOW      no-syncookies            net.ipv4.tcp_syncookies: is not 1: a flood of half-open connections can fill the queue
-LOW      ssh-x11                  /etc/ssh/sshd_config: X11Forwarding yes on a server that needs no graphical sessions
-20 findings: 7 critical, 8 high, 3 medium, 2 low; 7 can be fixed mechanically
-
-== 2. The fixes a machine can make ==
-permission changes applied: 7
-findings left: 13 (none of them a permission)
-  empty-password - test
-  extra-root-account - toor
-  open-port - port 23
-  open-port - port 2375
-  open-port - port 6379
-  ssh-empty-passwords - /etc/ssh/sshd_config
-  default-account - test
-  ssh-root-login - /etc/ssh/sshd_config
-  accepts-redirects - net.ipv4.conf.all.accept_redirects
-  no-aslr - kernel.randomize_va_space
-  ssh-passwords - /etc/ssh/sshd_config
-  no-syncookies - net.ipv4.tcp_syncookies
-  ssh-x11 - /etc/ssh/sshd_config
-
-== 3. The decisions a person makes ==
-after removing the second root account and the test account, switching off passwords and root login for ssh,
-setting the kernel options and closing the extra ports -> 0 findings
-
-== 4. Running it again ==
-a second scan of the hardened tree -> 0 findings; the same scan is part of the build, so a regression fails it
+ONE. The shop's server image, before any fix.
+  HOW A MODE IS READ, DIGIT BY DIGIT:
+    file     /tmp/.hidden-shell   /etc/shadow
+    mode     4755                 0644
+    special  4 set-user-id        0 none
+    user     7 rwx                6 rw-
+    group    5 r-x                4 r--
+    other    5 r-x                4 r--
+    policy   not allowed          at most 0640
+  THE REPORT: 20 FINDINGS, WORST FIRST (auto = a machine can fix):
+    CRITICAL empty-password      test
+    CRITICAL extra-root-account  toor
+    CRITICAL open-port           port 23
+    CRITICAL open-port           port 2375
+    CRITICAL open-port           port 6379
+    CRITICAL ssh-empty-passwords /etc/ssh/sshd_config
+    CRITICAL unexpected-setuid   /tmp/.hidden-shell  auto
+    HIGH     cron-group-writable /etc/cron.daily/backup.sh  auto
+    HIGH     default-account     test
+    HIGH     loose-permissions   /etc/shadow  auto
+    HIGH     loose-permissions   /etc/ssh/ssh_host_ed25519_key  auto
+    HIGH     loose-permissions   /opt/app/config.properties  auto
+    HIGH     ssh-root-login      /etc/ssh/sshd_config
+    HIGH     world-writable-dir  /var/www/uploads  auto
+    HIGH     world-writable-file /var/www/uploads/readme.txt  auto
+    MEDIUM   accepts-redirects   net.ipv4.conf.all.accept_redirects
+    MEDIUM   no-aslr             kernel.randomize_va_space
+    MEDIUM   ssh-passwords       /etc/ssh/sshd_config
+    LOW      no-syncookies       net.ipv4.tcp_syncookies
+    LOW      ssh-x11             /etc/ssh/sshd_config
+  THE COUNT:
+    severity  7 critical + 8 high + 3 medium + 2 low = 20
+    machine   7 auto, all of them file permissions
+    person    13 = 3 accounts + 4 sshd + 3 kernel + 3 ports
+TWO. The fixes a machine can make.
+  BEFORE THE FIX:
+    20 findings, 7 of them marked auto
+  HOW EACH NEW MODE IS MADE (- takes bits away, & keeps only):
+    /tmp/.hidden-shell            4755 - 4000 = 0755  no set-user-id
+    /etc/cron.daily/backup.sh     0775 - 0020 = 0755  no group write
+    /etc/shadow                   0644 & 0640 = 0640  policy 0640
+    /etc/ssh/ssh_host_ed25519_key 0644 & 0600 = 0600  policy 0600
+    /opt/app/config.properties    0644 & 0600 = 0600  policy 0600
+    /var/www/uploads              0777 - 0002 = 0775  no other write
+    /var/www/uploads/readme.txt   0666 - 0002 = 0664  no other write
+  AFTER THE FIX:
+    changes    7
+    findings   20 - 7 = 13, none of them a permission
+    run again  0 changes: nothing left to fix
+THREE. The decisions a person makes.
+  HOW THE ACCOUNT LINES ARE READ (/etc/passwd, /etc/shadow):
+    toor:x:0:0:backdoor:/root:/bin/bash
+      name toor, UID 0 = root's number -> a second root
+    test::19000:0:99999:7:::
+      name test, password field empty -> no password
+  HOW THE PORT TABLE IS READ (/proc/net/tcp, hex):
+    00000000:0016  0.0.0.0    0x0016 = 22    allowed
+    00000000:0017  0.0.0.0    0x0017 = 23    not allowed
+    00000000:18EB  0.0.0.0    0x18EB = 6379  not allowed
+    0100007F:0CEA  127.0.0.1  0x0CEA = 3306  this host only
+    00000000:01BB  0.0.0.0    0x01BB = 443   allowed
+    00000000:0947  0.0.0.0    0x0947 = 2375  not allowed
+  BEFORE THE DECISIONS (13 findings):
+    login accounts          root, toor, test, ana
+    PermitRootLogin         yes
+    PasswordAuthentication  yes
+    PermitEmptyPasswords    yes
+    X11Forwarding           yes
+    randomize_va_space      0
+    tcp_syncookies          (unset)
+    accept_redirects        1
+    ports, every interface  22 23 443 2375 6379
+  AFTER THE DECISIONS (0 findings):
+    login accounts          root, ana
+    PermitRootLogin         no
+    PasswordAuthentication  no
+    PermitEmptyPasswords    no
+    X11Forwarding           no
+    randomize_va_space      2
+    tcp_syncookies          1
+    accept_redirects        0
+    ports, every interface  22 443
+FOUR. Running it again, in every build.
+  THE BUILD RULE:
+    fail at   HIGH or worse
+  THE HARDENED IMAGE:
+    findings  0 -> build passes
+  A LATER CHANGE:
+    a deployment script runs chmod 0777 /var/www/uploads
+    an engineer adds a test account with a login shell
+  THE SCAN IN THE BUILD:
+    HIGH     default-account     test
+    HIGH     world-writable-dir  /var/www/uploads  auto
+    findings  2 -> build FAILS

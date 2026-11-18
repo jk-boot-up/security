@@ -5,7 +5,7 @@ src/main/java/com/jk/explore/security/csrf/
 ├── Bank.java        An online bank with cookie sessions and a transfer form, and the CSRF defences that {@link Protection} switches on
 ├── BankServer.java  The bank on a real HTTP server, on the loopback address and a free port
 ├── Browser.java     A small browser that follows the rules a real one follows for cookies and request headers
-├── CsrfDemo.java    Runs the online bank story in five numbered acts and prints exact, repeatable results
+├── CsrfDemo.java    Runs the online bank story in five numbered acts and prints exact, repeatable results: each request as the browser sent it, and the bank's response, in separate labelled sections
 ├── Protection.java  Which defences the bank switches on
 ├── Request.java     A request as the bank sees it: method, path, headers with lower-case names, and form or query fields
 ├── Response.java    A response: status, body, and headers such as Set-Cookie
@@ -48,11 +48,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A request Ana did not intend | While Ana is logged in, a hidden form on evil.example posts a transfer to the bank; her browser adds her cookie, and the bank sends 500 to mallory. |
-| 2. A token in every form | The bank's form carries a token tied to the session; the forged form without it, or with Mallory's own token, is refused with 403. |
-| 3. SameSite cookies | With Lax the forged post arrives without the cookie (401) while links and the bank's own form still work; Strict also drops links from other sites; no attribute means Lax in a modern browser. |
-| 4. Where the request came from, and GET | Sec-Fetch-Site: cross-site is refused, an older browser is checked by Origin, and a bank that moves money on GET loses 100 to a link even with a Lax cookie. |
-| 5. The bill | SameSite alone fails in an older browser and from a same-site subdomain; tokens stop both but must reach every form; a bearer-token API refuses the forged call with 401. |
+| 1. A request Ana did not intend | Ana logs in and gets a session cookie with SameSite=None; a hidden form on evil.example posts a transfer to the bank, her browser adds the cookie, and the bank sends 500 to mallory. |
+| 2. A token in every form | The bank's form carries a 43-character token made from 32 random bytes; the forged form without it, or with Mallory's own token, fails the check and is refused with 403. |
+| 3. SameSite cookies | evil.example and bank.example are different sites, so the request is cross-site; with Lax the forged post arrives without the cookie (401) while a link and the bank's own form still carry it; Strict also drops the link; no attribute means Lax. |
+| 4. Where the request came from, and GET | The browser sets Sec-Fetch-Site by comparing the page with the bank: same-origin, same-site or cross-site; the bank refuses cross-site, and reads Origin from an older browser; a bank that moves money on GET loses 100 to a link even with a Lax cookie. |
+| 5. The bill | SameSite alone fails in an older browser and from a same-site subdomain; tokens stop both but a page that forgot the token refuses Ana; a bearer-token API refuses the forged call with 401. |
 
 ## Test
 
@@ -60,7 +60,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-21 tests in `BankTest`, `BrowserTest`, `DemoRunsTest`, `SiteTest`. Session ids and tokens are random, so the demo prints only statuses, messages and balances. The bank's rules are tested directly with hand-made requests, and the browser's cookie rules against the real local server.
+23 tests in `BankTest`, `BrowserTest`, `DemoRunsTest`, `SiteTest`. Session ids and tokens are random, so the demo prints only statuses, messages and balances. The bank's rules are tested directly with hand-made requests, and the browser's cookie rules against the real local server.
 
 ## What the simulation got right, and what it left out
 

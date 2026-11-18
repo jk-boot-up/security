@@ -210,7 +210,7 @@ final class AuthorizationServer {
         }
         if (grant.used) {
             grant.issued.forEach(this::revokeAccess);
-            throw new OAuthException("invalid_grant", "the code was already used, so the tokens issued from it are revoked");
+            throw new OAuthException("invalid_grant", "code already used; its tokens are now revoked");
         }
         if (!grant.clientId.equals(client.clientId())) {
             throw new OAuthException("invalid_grant", "the code was issued to another client");
@@ -240,7 +240,7 @@ final class AuthorizationServer {
         }
         if (old.used) {
             revokeFamily(old.family);
-            throw new OAuthException("invalid_grant", "the refresh token was used twice, so every token in its family is revoked");
+            throw new OAuthException("invalid_grant", "refresh token used twice; its whole family is revoked");
         }
         old.used = true;
         return issue(old.clientId, old.user, old.scope, old.family);

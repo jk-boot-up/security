@@ -19,7 +19,7 @@ Logs hold attacks that nobody sees, and alerts that nobody trusts are as bad as 
 | Role | Class |
 | --- | --- |
 | The server | `Lab`, `OpenSearch` |
-| The queries | `Detections`, `Hit` |
+| The queries | `Detections`, `QueryParts`, `Buckets`, `Hit` |
 | The monitors | `Monitors` |
 | The scenario and the code rule | `Scenario`, `Event`, `ImpossibleTravelRule` |
 | Entry point | `OpenSearchDetectDemo` |
@@ -37,10 +37,10 @@ Logs hold attacks that nobody sees, and alerts that nobody trusts are as bad as 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 19, all passing |
-| Demo output | 46 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 107 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:05, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:03, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

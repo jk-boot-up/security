@@ -20,7 +20,9 @@ Network policies are written from examples and rarely tested, so a wrong one loo
 | --- | --- |
 | The pods | `Workload` |
 | The design and its comparison | `Intent` |
+| One policy | `Policy` |
 | The manifests | `Policies` |
+| The demo's lines | `Report` |
 | The cluster and the probes | `Lab` |
 | Kubernetes tools | `Cluster` |
 | Entry point | `KubernetesNetworkPoliciesDemo` |
@@ -38,10 +40,10 @@ Network policies are written from examples and rarely tested, so a wrong one loo
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 22 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 137 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:42, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:55, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

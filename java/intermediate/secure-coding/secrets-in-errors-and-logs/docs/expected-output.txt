@@ -1,25 +1,100 @@
-== 1. What the customer sees when the database is down ==
-500 java.sql.SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=s3cr3t-db-password refused while saving order o-1042
-	at com.jk.explore.security.leaks.Database.saveOrder
-	at com.jk.explore.security.leaks.Checkout.pay
-
-== 2. What the log keeps ==
-INFO checkout started: {card=4111 1111 1111 1111, cvv=737, name=Ana, order=1042} token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
-ERROR checkout failed | java.sql.SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=s3cr3t-db-password refused while saving order o-1042
-a customer whose name holds a line break -> 2 log lines from one event; the second reads:
-  INFO login succeeded user=admin ip=10.0.0.1, order=7} token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
-
-== 3. A generic answer, and the details where only the team looks ==
-500 Something went wrong. Quote reference ref-0001 to support.
-INFO checkout started for Ana with token [REDACTED]
-ERROR checkout failed [ref-0001] | SQLException: Connection to jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=[REDACTED] refused while saving order o-1042
-
-== 4. Redaction, wrappers and forged lines ==
-card number in text -> charge [CARD ****1111] for order 1042
-an order number that is not a card -> order 4111111111111112 shipped
-password pair -> login failed password=[REDACTED]&user=ana
-JSON pair -> {"user":"ana","api_key":"[REDACTED]"}
-bearer token -> Authorization: [REDACTED]
-password in a URL -> jdbc:postgresql://db.internal.shop.example:5432/shop?user=app&password=[REDACTED]
-a Secret in a message -> token [REDACTED]
-the forged name, fixed logger -> 1 line: INFO checkout started for Mallory\nINFO login succeeded user=admin ip=10.0.0.1 with token [REDACTED]
+ONE. What the customer sees when the database is down.
+  THE REQUEST (POST /checkout):
+    name   Ana
+    order  1042
+    card   4111 1111 1111 1111
+    cvv    737
+    token  eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
+  THE RESPONSE (status 500, naive checkout):
+    java.sql.SQLException: Connection to
+    jdbc:postgresql://db.internal.shop.example:5432/shop
+    ?user=app&password=s3cr3t-db-password refused while saving
+    order o-1042
+    at com.jk.explore.security.leaks.Database.saveOrder
+    at com.jk.explore.security.leaks.Checkout.pay
+  WHAT A VISITOR LEARNS (read from the response):
+    exception  java.sql.SQLException
+    host       db.internal.shop.example
+    port       5432
+    database   shop
+    user       app
+    password   s3cr3t-db-password
+    code       Database.saveOrder, Checkout.pay
+TWO. What the log keeps.
+  THE LOG FILE (naive logger, 2 lines):
+    1 INFO checkout started: {card=4111 1111 1111 1111, cvv=737,
+      name=Ana, order=1042}
+      token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
+    2 ERROR checkout failed | java.sql.SQLException: Connection to
+      jdbc:postgresql://db.internal.shop.example:5432/shop
+      ?user=app&password=s3cr3t-db-password refused while saving
+      order o-1042
+  CANARY SEARCH (each fake secret, in the page and the log):
+    secret         page  log
+    card number    no    yes
+    cvv            no    yes
+    session token  no    yes
+    db password    yes   yes
+  THE REQUEST (a name with a line break, shown as \n):
+    name   Mallory\nINFO login succeeded user=admin ip=10.0.0.1
+    order  7
+  THE LOG FILE (naive logger, 1 event, 2 lines):
+    1 INFO checkout started: {name=Mallory
+    2 INFO login succeeded user=admin ip=10.0.0.1, order=7}
+      token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl
+THREE. A generic answer, and the details where only the team looks.
+  THE RESPONSE (status 500, fixed checkout):
+    Something went wrong. Quote reference ref-0001 to support.
+  THE LOG FILE (fixed logger, 2 lines):
+    1 INFO checkout started for Ana with token [REDACTED]
+    2 ERROR checkout failed [ref-0001] | SQLException: Connection
+      to jdbc:postgresql://db.internal.shop.example:5432/shop
+      ?user=app&password=[REDACTED] refused while saving order
+      o-1042
+  HOW SUPPORT FINDS THE DETAIL:
+    the customer quotes   ref-0001
+    the log line with it  2
+  CANARY SEARCH (each fake secret, in the page and the log):
+    secret         page  log
+    card number    no    no
+    cvv            no    no
+    session token  no    no
+    db password    no    no
+  THE LOG FILE (fixed logger, the same event, 1 line):
+    1 INFO checkout started for Mallory\nINFO login succeeded
+      user=admin ip=10.0.0.1 with token [REDACTED]
+FOUR. Redaction: what it finds and what it misses.
+  BEFORE REDACTION:
+    a  charge 4111-1111-1111-1111 for order 1042
+    b  order 4111111111111112 shipped
+    c  login failed password=hunter2&user=ana
+    d  {"user":"ana","api_key":"AKIA123456"}
+    e  Authorization: Bearer abc123.def456.ghi789
+    f  postgresql://app:s3cr3t-db-password@db.internal:5432/shop
+    g  the key is hunter2
+  AFTER REDACTION:
+    a  charge [CARD ****1111] for order 1042
+    b  order 4111111111111112 shipped
+    c  login failed password=[REDACTED]&user=ana
+    d  {"user":"ana","api_key":"[REDACTED]"}
+    e  Authorization: [REDACTED]
+    f  postgresql://app:[REDACTED]@db.internal:5432/shop
+    g  the key is hunter2
+  THE RULE THAT MASKED IT:
+    a  card, Luhn passes
+    b  none: left as it was
+    c  key name
+    d  key name
+    e  key name
+    f  password in a URL
+    g  none: left as it was
+  HOW THE LUHN CHECK IS MADE (a and b):
+    digits        4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+    every 2nd x2  8 1 2 1 2 1 2 1 2 1 2 1 2 1 2 1
+    sum           30, ends in 0: a card
+    digits        4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2
+    every 2nd x2  8 1 2 1 2 1 2 1 2 1 2 1 2 1 2 2
+    sum           31, does not end in 0: not a card
+  A SECRET IN A MESSAGE ("token " + TOKEN):
+    printed   token [REDACTED]
+    reveal()  eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbmEifQ.c2lnbmF0dXJl

@@ -39,23 +39,18 @@ final class Scanner {
     private Scanner() {
     }
 
+    /** Runs the snapshot script as root inside the container. */
+    static Snapshot read(Host host) throws IOException, InterruptedException {
+        return Snapshot.of(host.exec(SNAPSHOT));
+    }
+
     static List<Finding> scan(Host host) throws IOException, InterruptedException {
-        return scan(sections(host.exec(SNAPSHOT)));
+        return scan(read(host).sections());
     }
 
     /** Splits the script's output at its #section lines. */
     static Map<String, List<String>> sections(String output) {
-        Map<String, List<String>> out = new java.util.LinkedHashMap<>();
-        String current = null;
-        for (String line : output.split("\n")) {
-            if (line.startsWith("#")) {
-                current = line.substring(1);
-                out.put(current, new ArrayList<>());
-            } else if (current != null && !line.isBlank()) {
-                out.get(current).add(line);
-            }
-        }
-        return out;
+        return Snapshot.of(output).sections();
     }
 
     static List<Finding> scan(Map<String, List<String>> s) {
@@ -102,15 +97,11 @@ final class Scanner {
     }
 
     private static void accounts(Map<String, List<String>> s, List<Finding> found) {
-        Map<String, String> shadow = new java.util.HashMap<>();
-        for (String line : s.getOrDefault("shadow", List.of())) {
-            String[] f = line.split(":", -1);
-            shadow.put(f[0], f[1]);
-        }
-        for (String line : s.getOrDefault("passwd", List.of())) {
-            String[] f = line.split(":", -1);
+        Snapshot snapshot = new Snapshot(s);
+        Map<String, String> shadow = snapshot.passwordHashes();
+        for (String[] f : snapshot.accounts()) {
             String name = f[0];
-            boolean login = !f[6].endsWith("nologin") && !f[6].endsWith("false");
+            boolean login = Snapshot.canLogIn(f);
             if (f[2].equals("0") && !name.equals("root")) {
                 found.add(new Finding(Severity.CRITICAL, "extra-root-account", name, "UID 0 gives root rights to a second name", null));
             }
@@ -158,17 +149,12 @@ final class Scanner {
         }
     }
 
-    /** /proc/net/tcp lists "local_address rem_address st": a listener is state 0A; 00000000 and the all-zero IPv6 address mean every interface. */
+    /** A listener on every interface (0.0.0.0 or ::) whose port is not on the allow-list. */
     private static void ports(Map<String, List<String>> s, List<Finding> found) {
         TreeSet<Integer> ports = new TreeSet<>();
-        for (String line : s.getOrDefault("tcp", List.of())) {
-            String[] f = line.strip().split("\\s+");
-            if (f.length < 4 || !f[3].equals("0A")) {
-                continue;
-            }
-            String[] local = f[1].split(":");
-            if (local[0].matches("0+")) {
-                ports.add(Integer.parseInt(local[1], 16));
+        for (Listeners.Listener l : Listeners.read(s.getOrDefault("tcp", List.of()))) {
+            if (l.everywhere()) {
+                ports.add(l.port());
             }
         }
         for (int port : ports) {

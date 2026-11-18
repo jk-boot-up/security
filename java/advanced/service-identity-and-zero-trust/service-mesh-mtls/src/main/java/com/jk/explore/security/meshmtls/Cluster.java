@@ -12,12 +12,15 @@ import java.util.regex.Pattern;
 /** A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close. */
 public final class Cluster implements AutoCloseable {
 
+    /** The node image, pinned by digest so a kind release cannot change the Kubernetes version under the golden output. */
+    static final String NODE_IMAGE = "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5";
+
     private final String name = "mesh-" + UUID.randomUUID().toString().substring(0, 6);
     private final Path kubeconfig;
 
     public Cluster() throws IOException, InterruptedException {
         this.kubeconfig = Files.createTempFile("kubeconfig", ".yaml");
-        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
+        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--image", NODE_IMAGE, "--kubeconfig", kubeconfig.toString(), "--wait", "180s"));
     }
 
     /** The container that is the cluster's node. */

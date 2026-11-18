@@ -1,16 +1,29 @@
 package com.jk.explore.security.securitylogging;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-/** Runs the online bank story in five numbered acts and prints exact, repeatable results. */
+/**
+ * Runs the online bank story in five numbered acts and prints exact, repeatable results. Each act prints labelled sections: the
+ * input first, then the result, and any derived value worked out step by step.
+ */
 public class SecurityLoggingDemo {
+
+    /** How many hex digits of a SHA-256 the demo prints: enough to tell the hashes apart. */
+    static final int SHORT_HASH = 12;
+
+    /** The fields of the transfer the first act shows, in the order a security event holds them. */
+    private static final List<String> EVENT_FIELDS = List.of("time", "type", "actor", "action", "target", "source", "outcome",
+            "correlation");
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -37,8 +50,28 @@ public class SecurityLoggingDemo {
         return out.toString();
     }
 
-    private static void line(StringBuilder out, String text) {
+    private static void act(StringBuilder out, String text) {
         out.append(text).append('\n');
+    }
+
+    private static void section(StringBuilder out, String title) {
+        out.append("  ").append(title).append(":\n");
+    }
+
+    private static void row(StringBuilder out, String text) {
+        out.append("    ").append(text).append('\n');
+    }
+
+    private static void fact(StringBuilder out, int width, String key, Object value) {
+        row(out, pad(key, width) + value);
+    }
+
+    private static String pad(String text, int width) {
+        return text + " ".repeat(Math.max(2, width - text.length()));
+    }
+
+    static String shortHash(String hash) {
+        return hash.substring(0, SHORT_HASH);
     }
 
     /** The morning's events written to a fresh security log in memory. */
@@ -58,69 +91,122 @@ public class SecurityLoggingDemo {
         return plain.lines();
     }
 
+    private static String clockTime(String isoTime) {
+        return isoTime.substring(11, 16);
+    }
+
     private static void act1WhatToLog(StringBuilder out) throws IOException {
-        line(out, "ONE. What a security log must answer.");
+        act(out, "ONE. What a security log must answer.");
         List<String> old = oldLog();
-        line(out, "  the bank's old logger wrote " + old.size() + " lines this morning, for example:");
-        line(out, "    " + old.get(1));
-        line(out, "    " + old.get(5));
-        line(out, "  the question: who moved 500 from ANA-1 to MAL-9, and from where?");
-        line(out, "  old lines that mention ANA-1: " + LogQuery.plainLinesMentioning(old, "ANA-1") + "  <- THE LOG CANNOT ANSWER");
+        section(out, "THE OLD LOG (" + old.size() + " lines this morning, lines 2 and 6)");
+        row(out, old.get(1));
+        row(out, old.get(5));
+        section(out, "THE QUESTION");
+        row(out, "who moved 500 from ANA-1 to MAL-9, and from where?");
+        section(out, "THE OLD LOG'S ANSWER");
+        row(out, "lines that mention ANA-1: " + LogQuery.plainLinesMentioning(old, "ANA-1") + "  <- IT CANNOT ANSWER");
         List<String> log = securityLog();
-        line(out, "  the security log records who, what, when, where from, the outcome and a request id for each of " + log.size() + " events");
         Map<String, String> transfer = LogQuery.where(log, "target", "ANA-1 -> MAL-9").getFirst();
-        line(out, "  the transfer: by " + transfer.get("actor") + ", from " + transfer.get("source") + ", at " + transfer.get("time")
-                + ", " + transfer.get("outcome") + ", request " + transfer.get("correlation"));
+        section(out, "THE SAME TRANSFER IN THE SECURITY LOG (line 6, its fields)");
+        for (String field : EVENT_FIELDS) {
+            fact(out, 13, field, transfer.get(field));
+        }
+        section(out, "THE SECURITY LOG'S ANSWER (every event as " + transfer.get("actor") + ")");
+        for (Map<String, String> f : LogQuery.where(log, "actor", transfer.get("actor"))) {
+            row(out, clockTime(f.get("time")) + "  " + pad(f.get("source"), 15) + pad(f.get("type"), 16) + f.get("outcome"));
+        }
         List<Map<String, String>> sameAddress = LogQuery.where(log, "source", transfer.get("source"));
         long failed = sameAddress.stream().filter(f -> f.get("type").equals("login") && f.get("outcome").equals("failure")).count();
         long succeeded = sameAddress.stream().filter(f -> f.get("type").equals("login") && f.get("outcome").equals("success")).count();
-        line(out, "  the same address before it: " + failed + " failed logins as ana, then " + succeeded
-                + " success  <- SOMEONE WITH ANA'S PASSWORD, NOT ANA");
-        line(out, "  event types in the log: " + log.stream().map(l -> Json.parse(l).get("type")).distinct().toList());
+        String usual = Json.parse(log.getFirst()).get("source");
+        row(out, "from " + transfer.get("source") + ": " + failed + " failed logins, " + succeeded + " success, the transfer");
+        row(out, "ana's usual address is " + usual + "  <- ANA'S PASSWORD, NOT ANA");
+        section(out, "THE EVENT TYPES (" + log.size() + " events)");
+        Map<String, Long> types = log.stream().map(l -> Json.parse(l).get("type"))
+                .collect(Collectors.groupingBy(t -> t, LinkedHashMap::new, Collectors.counting()));
+        row(out, types.entrySet().stream().map(e -> e.getKey() + " " + e.getValue()).collect(Collectors.joining(", ")));
     }
 
     private static void act2WhatNeverToLog(StringBuilder out) throws IOException {
-        line(out, "TWO. What never to log.");
+        act(out, "TWO. What never to log.");
         List<String> old = oldLog();
-        line(out, "  the old logger's card payment line holds the full card number: " + old.getLast().contains(BankDay.CARD)
-                + "  <- A BREACH OF THE LOG IS A BREACH OF THE CARDS");
+        section(out, "THE OLD LOG'S CARD PAYMENT (line 8)");
+        row(out, old.getLast());
+        row(out, "the full card number: " + old.getLast().contains(BankDay.CARD) + "  <- A LEAKED LOG LEAKS THE CARD");
+        List<SecurityEvent> events = BankDay.events(new SimClock());
         List<String> log = securityLog();
-        Map<String, String> failedLogin = Json.parse(log.get(1));
-        Map<String, String> session = Json.parse(log.get(3));
-        Map<String, String> transfer = Json.parse(log.get(5));
-        Map<String, String> payment = Json.parse(log.get(7));
-        line(out, "  the password tried in a failed login: " + failedLogin.get("detail.password"));
-        line(out, "  the session id of the new login: " + session.get("detail.session"));
-        line(out, "  the transfer's Authorization header: " + transfer.get("detail.authorization"));
-        line(out, "  the card payment: card " + payment.get("detail.card") + ", and a card number typed into the note: \""
-                + payment.get("detail.note") + "\"");
+        String[][] secretFields = {{"2", "password"}, {"4", "session"}, {"6", "authorization"}, {"8", "card"}, {"8", "note"}};
+        section(out, "BEFORE THE REDACTOR (the events' details, fake values)");
+        for (String[] at : secretFields) {
+            String value = events.get(Integer.parseInt(at[0]) - 1).details().get(at[1]);
+            if (value.startsWith("Bearer ")) {
+                row(out, "line " + at[0] + "  " + pad(at[1], 15) + "Bearer, then the token:");
+                row(out, "  " + value.substring("Bearer ".length()));
+            } else {
+                row(out, "line " + at[0] + "  " + pad(at[1], 15) + value);
+            }
+        }
+        section(out, "AFTER THE REDACTOR (the same fields in the security log)");
+        for (String[] at : secretFields) {
+            row(out, "line " + at[0] + "  " + pad(at[1], 15) + Json.parse(log.get(Integer.parseInt(at[0]) - 1)).get("detail." + at[1]));
+        }
+        section(out, "HOW EACH ONE WAS CAUGHT");
+        String card = BankDay.CARD;
+        row(out, "by field name  password, session, authorization");
+        row(out, "by its shape   " + card + ": " + card.length() + " digits, keep the last 4");
+        row(out, "               " + (card.length() - 4) + " x * + " + card.substring(card.length() - 4) + " = "
+                + Redactor.text(card));
+        row(out, "by its shape   the note's 4111-1111-1111-1111: hyphens ignored");
+        section(out, "THE SEARCH (every fake secret, in the security log)");
         long found = BankDay.SECRETS.stream().filter(secret -> log.stream().anyMatch(l -> l.contains(secret))).count();
-        line(out, "  secrets from the morning's events found anywhere in the security log: " + found + " of " + BankDay.SECRETS.size());
-        line(out, "  secrets are removed by field name, and card numbers and tokens also by their shape, so free text is covered too");
+        row(out, "found " + found + " of " + BankDay.SECRETS.size());
     }
 
     private static void act3Injection(StringBuilder out) throws IOException {
-        line(out, "THREE. Text that tries to write the log.");
+        act(out, "THREE. Text that tries to write the log.");
         String typed = "mallory\n2026-10-18T09:09:00Z INFO login ok user=admin";
-        line(out, "  a username typed into the login form: \"" + typed.replace("\n", "\\n") + "\"");
+        section(out, "THE INPUT (a username typed into the login form, \\n shown)");
+        row(out, typed.replace("\n", "\\n"));
         SimClock clock = new SimClock(Instant.parse("2026-10-18T09:08:00Z"));
         PlainLogger plain = new PlainLogger(clock);
         plain.error("login failed user=" + typed);
         List<String> plainLines = plain.lines();
-        line(out, "  the old logger's file now has " + plainLines.size() + " lines; the second reads: " + plainLines.get(1)
-                + "  <- A FORGED LINE");
+        section(out, "THE OLD LOG (1 failed login, " + plainLines.size() + " lines in the file)");
+        row(out, "1 " + plainLines.get(0));
+        row(out, "2 " + plainLines.get(1) + "  <- FORGED");
         MemorySink sink = new MemorySink();
         SecurityLog log = new SecurityLog(sink);
-        log.record(failedLogin(clock, typed, "req-0009"));
-        Map<String, String> read = Json.parse(sink.lines().getFirst());
-        line(out, "  the security log wrote " + sink.lines().size() + " line; read back, the actor is exactly what was typed: "
-                + read.get("actor").equals(typed) + ", and the outcome is " + read.get("outcome"));
+        String first = log.record(failedLogin(clock, typed, "req-0009"));
+        section(out, "THE SECURITY LOG (" + sink.lines().size() + " line; its actor field as written)");
+        row(out, field(first, "actor"));
+        Map<String, String> read = Json.parse(first);
+        section(out, "READ BACK");
+        fact(out, 9, "actor", "exactly what was typed: " + read.get("actor").equals(typed));
+        fact(out, 9, "outcome", read.get("outcome"));
         String quoted = "mallory\",\"outcome\":\"success";
-        log.record(failedLogin(clock, quoted, "req-0010"));
-        Map<String, String> second = Json.parse(sink.lines().getLast());
-        line(out, "  a username carrying a quote and a fake field: the outcome still reads " + second.get("outcome")
-                + ", and the actor is the text as typed: " + second.get("actor").equals(quoted));
-        line(out, "  structured output escapes text instead of trusting it, and keeps it whole, so investigators see exactly what was sent");
+        section(out, "THE INPUT (a username with quotes and a fake field)");
+        row(out, quoted);
+        String second = log.record(failedLogin(clock, quoted, "req-0010"));
+        section(out, "THE SECURITY LOG (its actor and outcome fields as written)");
+        row(out, field(second, "actor"));
+        row(out, field(second, "outcome"));
+        Map<String, String> back = Json.parse(second);
+        section(out, "READ BACK");
+        fact(out, 9, "actor", "exactly what was typed: " + back.get("actor").equals(quoted));
+        fact(out, 9, "outcome", back.get("outcome"));
+        section(out, "HOW THE TEXT IS ESCAPED");
+        row(out, "line break  ->  \\n      quote  ->  \\\"      backslash  ->  \\\\");
+    }
+
+    /** One field of a written line, exactly as it appears in the line: "name":"escaped value". */
+    static String field(String line, String name) {
+        String start = "\"" + name + "\":\"";
+        int from = line.indexOf(start);
+        int end = from + start.length();
+        while (line.charAt(end) != '"' || line.charAt(end - 1) == '\\') {
+            end++;
+        }
+        return line.substring(from, end + 1);
     }
 
     private static SecurityEvent failedLogin(SimClock clock, String user, String request) {
@@ -129,29 +215,41 @@ public class SecurityLoggingDemo {
     }
 
     private static void act4TamperEvidence(StringBuilder out, Path dir) throws IOException {
-        line(out, "FOUR. A log that shows it was changed.");
+        act(out, "FOUR. A log that shows it was changed.");
         FileSink file = new FileSink(dir.resolve("security.log"));
         SecurityLog log = new SecurityLog(file);
         for (SecurityEvent event : BankDay.events(new SimClock())) {
             log.record(event);
         }
         List<String> lines = file.lines();
-        line(out, "  each line carries the SHA-256 of the line before it; the morning's " + lines.size() + " lines: "
-                + describe(ChainCheck.verify(lines, SecurityLog.GENESIS)));
-        List<String> deleted = new ArrayList<>(lines);
-        deleted.remove(5);
-        line(out, "  line 6, the transfer, deleted: " + describe(ChainCheck.verify(deleted, SecurityLog.GENESIS)));
+        section(out, "THE CHAIN (each line's prev, the first " + SHORT_HASH + " hex digits)");
+        for (int i = 0; i < lines.size(); i++) {
+            String prev = Json.parse(lines.get(i)).get("prev");
+            row(out, "line " + (i + 1) + "  prev " + shortHash(prev)
+                    + (i == 0 ? "  (the start: all zeros)" : "  = SHA-256 of line " + i));
+        }
+        row(out, pad("head", 13) + shortHash(log.head()) + "  = SHA-256 of line " + lines.size() + ", kept elsewhere");
         List<String> edited = new ArrayList<>(lines);
         edited.set(5, lines.get(5).replace("\"detail.amount\":\"500\"", "\"detail.amount\":\"50\""));
-        line(out, "  line 6's amount edited from 500 to 50: " + describe(ChainCheck.verify(edited, SecurityLog.GENESIS)));
+        section(out, "HOW AN EDIT IS FOUND (line 6's amount, 500 -> 50)");
+        fact(out, 26, "SHA-256 of line 6 before", shortHash(Hashes.sha256(lines.get(5))));
+        fact(out, 26, "SHA-256 of line 6 after", shortHash(Hashes.sha256(edited.get(5))));
+        fact(out, 26, "line 7's prev", shortHash(Json.parse(lines.get(6)).get("prev")) + "  <- NO LONGER EQUAL");
+        List<String> deleted = new ArrayList<>(lines);
+        deleted.remove(5);
         List<String> lastEdited = new ArrayList<>(lines);
         lastEdited.set(7, lines.get(7).replace("\"detail.amount\":\"80\"", "\"detail.amount\":\"8\""));
         ChainCheck.Result tail = ChainCheck.verify(lastEdited, SecurityLog.GENESIS);
-        line(out, "  the last line edited: " + describe(tail) + "  <- NOTHING FOLLOWS THE LAST LINE TO GIVE IT AWAY");
-        line(out, "  compared with the latest hash, published somewhere else as each line is written: "
-                + (tail.head().equals(log.head()) ? "matches" : "does not match, so the change is found"));
-        line(out, "  the file is written by appending only, with permissions " + file.permissions());
-        line(out, "  an attacker with root can still rewrite the whole file and its chain, which is why the log must also leave the host");
+        section(out, "THE CHECKS (the log as found, and the result)");
+        fact(out, 26, "the morning's " + lines.size() + " lines", describe(ChainCheck.verify(lines, SecurityLog.GENESIS)));
+        fact(out, 26, "line 6 deleted", describe(ChainCheck.verify(deleted, SecurityLog.GENESIS)));
+        fact(out, 26, "line 6 amount 500 -> 50", describe(ChainCheck.verify(edited, SecurityLog.GENESIS)));
+        fact(out, 26, "line 8 amount 80 -> 8", describe(tail) + "  <- NOTHING FOLLOWS IT");
+        fact(out, 26, "line 8, against the head", tail.head().equals(log.head()) ? "matches" : "does not match: found");
+        section(out, "THE FILE");
+        fact(out, 13, "written by", "appending only");
+        fact(out, 13, "permissions", file.permissions() + " (owner only)");
+        fact(out, 13, "but root", "can rewrite the file and its chain");
     }
 
     private static String describe(ChainCheck.Result result) {
@@ -159,35 +257,52 @@ public class SecurityLoggingDemo {
     }
 
     private static void act5TheBill(StringBuilder out) throws IOException {
-        line(out, "FIVE. The bill.");
+        act(out, "FIVE. The bill.");
         MemorySink local = new MemorySink();
         MemorySink shipped = new MemorySink();
         SecurityLog log = new SecurityLog(local, shipped);
         for (SecurityEvent event : BankDay.events(new SimClock())) {
             log.record(event);
         }
+        section(out, "BEFORE THE ATTACKER (each line goes to both stores)");
+        fact(out, 9, "local", local.lines().size() + " lines");
+        fact(out, 9, "shipped", shipped.lines().size() + " lines");
         local.clear();
-        line(out, "  every line is also shipped to a second store as it is written; the attacker deletes the local log: local "
-                + local.lines().size() + " lines, shipped " + shipped.lines().size() + " lines, "
+        section(out, "AFTER THE ATTACKER DELETES THE LOCAL LOG");
+        fact(out, 9, "local", local.lines().size() + " lines");
+        fact(out, 9, "shipped", shipped.lines().size() + " lines, chain "
                 + describe(ChainCheck.verify(shipped.lines(), SecurityLog.GENESIS)));
+
         MemorySink year = new MemorySink();
         SecurityLog daily = new SecurityLog(year);
-        SimClock clock = new SimClock(Instant.parse("2026-01-01T12:00:00Z"));
-        for (int day = 1; day <= 40; day++) {
+        Instant first = Instant.parse("2026-01-01T12:00:00Z");
+        SimClock clock = new SimClock(first);
+        int days = 40;
+        for (int day = 1; day <= days; day++) {
             daily.record(new SecurityEvent(clock.now(), EventType.LOGIN, "customer-" + day, "login", "customer-" + day, "203.0.113.7",
                     Outcome.SUCCESS, "req-d%02d".formatted(day), Map.of()));
             clock.advance(Duration.ofDays(1));
         }
-        Retention.Pruned pruned = Retention.prune(year.lines(), clock.now(), Duration.ofDays(30));
-        line(out, "  names and addresses make the log personal data, so it is kept for a fixed time: keeping 30 days, on day 41 "
-                + pruned.removed() + " old lines go and " + pruned.kept().size() + " stay");
-        line(out, "  the kept lines check from the anchor written down when the old ones went: "
-                + describe(ChainCheck.verify(pruned.kept(), pruned.anchor())));
+        Duration keep = Duration.ofDays(30);
+        Retention.Pruned pruned = Retention.prune(year.lines(), clock.now(), keep);
+        section(out, "RETENTION (one login a day for " + days + " days, keep " + keep.toDays() + " days)");
+        fact(out, 10, "first", first.toString().substring(0, 10) + " (day 1)");
+        fact(out, 10, "today", clock.now().toString().substring(0, 10) + " (day " + (days + 1) + ")");
+        fact(out, 10, "cutoff", "today - " + keep.toDays() + " days = " + clock.now().minus(keep).toString().substring(0, 10));
+        fact(out, 10, "removed", pruned.removed() + " lines, day 1 to day " + pruned.removed());
+        fact(out, 10, "kept", pruned.kept().size() + " lines, day " + (pruned.removed() + 1) + " to day " + days);
+        fact(out, 10, "anchor", shortHash(pruned.anchor()) + " = the first kept line's prev");
+        fact(out, 10, "check", "from the anchor: " + describe(ChainCheck.verify(pruned.kept(), pruned.anchor())));
+
         List<String> morning = securityLog();
-        long average = Math.round(morning.stream().mapToInt(l -> l.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1)
-                .average().orElse(0));
-        line(out, "  the morning's lines average " + average + " bytes, so 2000000 logins a day write about "
-                + Math.round(average * 2_000_000 / 1_000_000.0) + " megabytes a day for logins alone: volume needs a budget");
-        line(out, "  and a log that nobody reads is evidence only after the fact: the -with-loki-and-grafana version ships, queries and alerts");
+        int bytes = morning.stream().mapToInt(l -> l.getBytes(StandardCharsets.UTF_8).length + 1).sum();
+        long average = Math.round(bytes / (double) morning.size());
+        long logins = 2_000_000;
+        section(out, "THE VOLUME (worked out from the morning's lines)");
+        fact(out, 16, "the morning", morning.size() + " lines, " + bytes + " bytes");
+        fact(out, 16, "one line", bytes + " / " + morning.size() + " = " + average + " bytes (rounded)");
+        fact(out, 16, "logins a day", logins);
+        fact(out, 16, "bytes a day", logins + " x " + average + " = " + logins * average);
+        fact(out, 16, "that is about", Math.round(logins * average / 1_000_000.0) + " megabytes a day, logins only");
     }
 }

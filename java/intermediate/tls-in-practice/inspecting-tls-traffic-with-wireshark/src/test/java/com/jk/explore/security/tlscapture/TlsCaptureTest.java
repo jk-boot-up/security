@@ -118,25 +118,26 @@ class TlsCaptureTest {
         try (LegacyServer legacy = new LegacyServer(ca.pkcs12("rsa"))) {
             Path rsaKex = work.resolve("rsakex.pcap");
             try (Tap tap = new Tap(legacy.port(), rsaKex)) {
-                javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
-                java.security.KeyStore store = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
-                store.load(null, null);
-                try (var in = Files.newInputStream(ca.root())) {
-                    store.setCertificateEntry("root", java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in));
-                }
-                javax.net.ssl.TrustManagerFactory trust = javax.net.ssl.TrustManagerFactory.getInstance("PKIX");
-                trust.init(store);
-                context.init(null, trust.getTrustManagers(), null);
-                try (javax.net.ssl.SSLSocket socket = (javax.net.ssl.SSLSocket) context.getSocketFactory().createSocket(java.net.InetAddress.getLoopbackAddress(), tap.port())) {
-                    socket.setEnabledProtocols(new String[] {"TLSv1.2"});
-                    socket.setEnabledCipherSuites(new String[] {"TLS_RSA_WITH_AES_128_CBC_SHA"});
-                    socket.startHandshake();
-                    socket.getOutputStream().write(("POST /login HTTP/1.1\r\nHost: " + HOST + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 25\r\nConnection: close\r\n\r\n" + Client.BODY).getBytes());
-                    socket.getInputStream().readAllBytes();
-                }
+                Client.rsaLogin(tap.port(), ca.root());
                 tap.awaitCapture();
             }
             assertEquals("ana,hunter2", Tshark.fields(rsaKex, "http.request", Tshark.serverKey(ca.key("rsa")), "urlencoded-form.value").get(0).get(0));
         }
+    }
+
+    @Test
+    void theClientHelloByHandMatchesTsharkAndTheKeyLog() throws Exception {
+        ClientHello hello = ClientHello.read(pcap1);
+        List<String> row = Tshark.fields(pcap1, "tls.handshake.type == 1", List.of(), "tls.handshake.random", "tls.handshake.extensions_server_name").get(0);
+        assertEquals(row.get(0), hello.random());
+        assertEquals(row.get(1), hello.serverName());
+        assertTrue(KeyLog.read(keys1).opens(hello.random()));
+        assertFalse(KeyLog.read(keys1).opens(ClientHello.read(pcap2).random()));
+    }
+
+    @Test
+    void theSecretIsAsLongAsTheSuitesHash() throws Exception {
+        String suite = Suites.name(Tshark.fields(pcap1, "tls.handshake.type == 2", List.of(), "tls.handshake.ciphersuite").get(0).get(0));
+        assertEquals(Suites.secretBytes(suite) * 2, KeyLog.read(keys1).line("SERVER_TRAFFIC_SECRET_0").secret().length());
     }
 }

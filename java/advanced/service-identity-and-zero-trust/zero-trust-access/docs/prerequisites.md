@@ -4,7 +4,7 @@
 
 - Java basics
 - Docker running (the Keycloak image is about 475 MB, pulled once)
-- The opa binary on the path
+- The opa binary 1.21.3 on the path (the demo checks the version)
 
 ## Explicitly not required
 

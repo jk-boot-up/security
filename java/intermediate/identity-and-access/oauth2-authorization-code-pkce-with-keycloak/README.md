@@ -5,6 +5,7 @@ src/main/java/com/jk/explore/security/oauthkeycloak/
 ├── AccountsController.java  
 ├── ApiApp.java              
 ├── ApiSecurity.java         The accounts API is a resource server: it holds no passwords, keeps no session, and believes a bearer token only if Keycloak's published key signed it, it was issued by the bank realm for this API, and it has not expired
+├── ChallengeSteps.java      Redoes the S256 code challenge by hand, one step at a time, so the demo can print every step with real values
 ├── KeycloakLab.java         One Keycloak in a Docker container, bound to the loopback address on a free port, with the bank realm imported from {@code infra/bank-realm.json} and removed on close
 ├── OAuthClient.java         The budgeting app and the customer's browser, as far as this lesson needs them
 ├── OAuthKeycloakDemo.java   Runs the bank's OAuth 2.0 story in five numbered acts against a real Keycloak in Docker and a real resource server, all on the loopback interface
@@ -19,7 +20,7 @@ The plain [oauth2-authorization-code-pkce](../oauth2-authorization-code-pkce) pr
 What it shows:
 - **The flow, step by step.** The budgeting app's request (response type `code`, `state`, an S256 `code_challenge`), Ana signing in at Keycloak and agreeing on the **consent page** (the app never sees her password), the redirect with `code`, `state` and `iss`, the token exchange made by the app directly, and an access token for 300 seconds with audience `accounts-api`, accepted by the API.
 - **PKCE.** The RFC 7636 example gives the published challenge. A thief with a leaked code and **no verifier is refused, and the failed try burns the code**, so the real app is refused too and Ana signs in again. A wrong verifier is a `PKCE verification failed`. A `plain` challenge or no challenge at all is refused at the authorization endpoint.
-- **Exact redirects, state and one-time codes.** Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and **no redirect**. A callback carrying Mallory's code fails the app's own state check. A **reused code ends the session**: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 5 seconds in this realm.
+- **Exact redirects, state and one-time codes.** Of six addresses only the registered one gets a code; the path trick, the lookalike host, the query, the upper-case host and the trailing slash get an error page and **no redirect**. A callback carrying Mallory's code fails the app's own state check. A **reused code ends the session**: Keycloak's userinfo says 401, while the API that validates the signature itself still says 200. A code lives 10 seconds in this realm.
 - **Scopes and refresh tokens.** `POST /payments` with an `accounts.read` token is `403 insufficient_scope`; asking for `payments.write` is `invalid_scope`. A refresh token is rotated; **using the old one again ends the session**, so the thief and the real app both lose.
 - **Current practice.** The implicit flow and the password grant are switched off on the client, a confidential client needs its secret and **still needs PKCE**.
 
@@ -43,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The flow, step by step | The budgeting app sends Ana to Keycloak with a state and a PKCE challenge, she signs in and agrees there, the app exchanges the code for an access token, and the API accepts it. |
-| 2. PKCE: a code is useless without the verifier | A leaked code with no verifier is refused and burned, a wrong verifier is refused, a plain challenge or none is refused at the authorization endpoint. |
-| 3. Exact redirects, state, and codes that work once | Only the registered redirect address gets a code, the state check stops Mallory's code, a reused code ends the session at Keycloak but not at a local check, and a code lives 5 seconds. |
-| 4. Scopes and refresh tokens | An accounts.read token cannot pay, an unregistered scope is refused, a refresh token is rotated, and using the old one again ends the session so the thief and the real app both lose. |
-| 5. Current practice, and the bill | The implicit flow and the password grant are off, a confidential client needs its secret and still needs PKCE, and the resource server holds no passwords and no session. |
+| 1. The flow, step by step | The app sends Ana's browser to Keycloak with the challenge E9Melhoa...; Ana signs in at Keycloak and agrees on the consent page; Keycloak redirects back with state, session_state, iss and code; the app posts the code and the verifier dBjftJeZ... to the token endpoint and gets an access token for accounts-api that lives 300 seconds; GET /accounts answers 200, and 401 without a token. |
+| 2. PKCE: a code is useless without the verifier | The verifier dBjftJeZ... becomes 43 ASCII bytes, SHA-256 gives 32 bytes starting 13 d3 1e, and base64url gives E9Me... and the published challenge; a thief redeeming a leaked code with no verifier is refused and the failed try burns the code, so the real app is refused too; a made-up verifier is a Code mismatch; plain and missing challenges are refused at Keycloak. |
+| 3. Exact redirect addresses, state, and codes that work once | Of six requested redirect addresses Keycloak sends a code only to the registered one, while a prefix check would send it away 4 times; a callback with the attacker's code and state fails the app's state check; a reused code ends the session at Keycloak (401) while the API's own signature check still says 200; a code 11 seconds old is refused. |
+| 4. Scopes and refresh tokens | The token carries openid accounts.read, so GET /accounts is 200 and POST /payments is 403 insufficient_scope; asking for payments.write is refused with Invalid scopes; refresh token R1 gives A2 and R2; a thief replaying R1 is refused, R2 is refused with Session doesn't have required client, and A2 is 401 at Keycloak; a token 331 seconds old is 401 at the API. |
+| 5. Current practice, and the bill | The implicit flow and the password grant are refused with unauthorized_client because they are switched off on the client; the confidential statements-service is refused with a wrong secret, with a code it was never given, and with a real code but no verifier; the API checks the key, issuer, audience, dates and scope of every token. |
 
 ## Test
 
@@ -55,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-33 tests in `DemoRunsTest`, `KeycloakFlowTest`, `PkceTest`, `RealmFileTest`. The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file and PKCE tests need no Docker.
+40 tests in `ChallengeStepsTest`, `DemoRunsTest`, `KeycloakFlowTest`, `PkceTest`, `RealmFileTest`, `ShownTest`. The tests that need Keycloak are tagged integration and start one container for the whole class (./gradlew integrationTest). The realm file, PKCE, hand-made S256 steps and output formatting tests need no Docker.
 
 ## What the simulation got right, and what it left out
 
-Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, ports and session ids are never printed.
+Keycloak is a real container bound to 127.0.0.1 on a free port, with the bank realm imported from infra/bank-realm.json and removed at the end. The resource server is a real Spring Boot application. The browser is a few lines of Java that keep Keycloak's cookies and follow its pages. Codes, tokens, states, ports and session ids are printed as placeholders such as `<code>`, and the visible flow uses the PKCE verifier RFC 7636 publishes, so the output is the same on every run.
 
 ## Technologies and versions
 

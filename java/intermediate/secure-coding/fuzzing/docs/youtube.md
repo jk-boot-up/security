@@ -18,16 +18,40 @@ Chapters:
 00:00 Introduction
 01:01 The Scenario
 01:19 The Words
-01:48 Act One — The example tests pass
-02:25 Act Two — A mutation fuzzer
-03:20 Act Three — Guided by coverage
-04:11 Act Four — From crash to fix
-05:06 Act Five — What fuzzing does not find
-05:45 From Crash To Test
-06:11 Who Does What
-06:37 Where You Have Seen It
-07:02 How To Use It
-07:27 Thanks for Watching
+01:48 What the Letters Stand For
+02:36 One run of a fuzzer
+03:30 Six example tests pass; one line nobody tested crashes
+04:24 Act One — The example tests pass
+04:49 Act One — The example tests pass
+05:10 How the inputs are made, and how a total overflows
+06:19 Act Two — A mutation fuzzer
+06:46 Act Two — A mutation fuzzer
+07:01 Act Two — A mutation fuzzer
+07:23 Act Two — A mutation fuzzer
+07:32 Guidance keeps each input that matches one more letter
+08:37 Act Three — Guided by coverage
+08:49 Act Three — Guided by coverage
+09:14 Act Three — Guided by coverage
+09:32 Shrink each crash, then fix the parser
+10:27 Act Four — From crash to fix
+10:38 Act Four — From crash to fix
+10:53 Act Four — From crash to fix
+11:14 No crash, so no report
+12:05 Act Five — What fuzzing does not find
+12:25 From Crash To Test
+12:50 Where You Have Seen It
+13:16 How To Use It
+13:41 The Java Classes
+13:53 Fuzzer — one change: flip a bit
+14:07 Fuzzer — a crash is anything but a refusal
+14:19 Fuzzer — guided: keep an input that reached a new branch
+14:33 Coverage — a counter per branch
+14:46 CartParser — one letter, one branch
+15:00 CartParser — the bug: no colon
+15:14 OrderLine — the overflow, and its fix
+15:28 Minimizer — remove a piece, keep it if it still crashes
+15:42 Crash — type and place
+15:53 Thanks for Watching
 ```
 
 ## Tags

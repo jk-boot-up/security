@@ -40,10 +40,10 @@ Teams review code but not designs, and when they do model threats, the model is 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 42 lines, identical on every run |
+| Tests | 19, all passing |
+| Demo output | 116 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:56, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:59, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

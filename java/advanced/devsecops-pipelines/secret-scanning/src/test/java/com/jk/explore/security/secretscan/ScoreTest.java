@@ -33,6 +33,6 @@ class ScoreTest {
 
     @Test
     void theLineReadsLikeTheDemo() {
-        assertEquals("0 of 5 real secrets found, 0 look-alikes flagged, 0 other alarms", Score.of(List.of()).line());
+        assertEquals("secrets found 0 of 5, look-alikes flagged 0 of 4", Score.of(List.of()).line());
     }
 }

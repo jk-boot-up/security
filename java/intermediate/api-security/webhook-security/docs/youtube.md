@@ -18,16 +18,39 @@ Chapters:
 00:00 Introduction
 01:04 The Scenario
 01:26 The Words
-01:54 Act One — An endpoint that trusts whatever is posted
-02:26 Act Two — A signature over the exact bytes
-03:11 Act Three — A real message sent again
-03:59 Act Four — Twice, out of order, and a new secret
-04:41 Act Five — The bill
-05:21 Four Questions for Every Message
-05:48 Who Does What
-06:16 Where You Have Seen It
-06:42 How To Use It
-07:12 Thanks for Watching
+01:54 What the Letters Stand For
+02:53 What the Letters Stand For (continued)
+03:35 A message and its signature
+04:31 A forged payment, and what the provider really knows
+05:26 Act One — An endpoint that trusts whatever is posted
+05:46 An HMAC, step by step, with the real values
+07:00 Act Two — How the provider signs a message
+07:20 Act Two — How the provider signs a message
+07:36 The v1 sent, the v1 computed, and the answer
+08:34 Act Three — The store checks the signature
+08:50 Act Three — The store checks the signature
+09:02 One real refund, sent again
+10:14 Act Four — A real message sent again
+10:29 Act Four — A real message sent again
+10:50 Events twice and out of order, and a change of secret
+11:57 Act Five — Twice, out of order, and a new secret
+12:16 Act Five — Twice, out of order, and a new secret
+12:31 The same event, different bytes, a different v1
+13:23 Act Six — The bill
+13:36 Act Six — The bill
+13:53 Four Questions for Every Message
+14:20 Who Does What
+14:53 Where You Have Seen It
+15:20 How To Use It
+15:49 The Java Classes
+16:04 Signatures — what is signed, and the header
+16:15 Signatures — a constant-time comparison, under any secret
+16:27 HmacSteps — pad, mix, hash twice
+16:41 Receiver — signature, time, then event id
+16:57 Receiver — not yet: try again later
+17:12 Orders — a state check
+17:25 WebhookServer — keep the raw bytes
+17:36 Thanks for Watching
 ```
 
 ## Tags

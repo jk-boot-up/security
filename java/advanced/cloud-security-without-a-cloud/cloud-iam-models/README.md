@@ -6,11 +6,12 @@ src/main/java/com/jk/explore/security/iammodel/
 ├── Decision.java      The answer, and the layer or rule that decided it
 ├── Escalation.java    A search for the paths by which a principal can make itself an administrator, using only what the policies allow: assume a role, change a policy that it is attached to, attach a policy to itself, or pass an administrator role to a function that it creates and runs
 ├── Evaluator.java     The evaluation logic, as the cloud providers document it
-├── IamModelDemo.java  ReportCo, a service that reads its customers' buckets by assuming a role in each customer's account
+├── IamModelDemo.java  A resource ARN as the slides show it: s3 buckets without their arn:aws:s3::: prefix
 ├── Policy.java        A policy document in the usual JSON form: statements with an effect, actions, resources, a principal (for resource policies) and conditions
 ├── Principal.java     Who is asking: an account, an ARN, the policies attached to them, an optional permission boundary, an optional session policy (for a role session) and tags
 ├── Request.java       One question for the evaluator: may this principal do this action on this resource?
 ├── Role.java          A role: a name in an account, a trust policy (who may assume it, under which conditions), the policies it grants and an optional permission boundary
+├── Steps.java         A teaching class: the evaluation order written out as seven questions, asked one after the other, the way the providers document it
 └── Wild.java          The wildcards of policy documents: matches any run of characters (including none) and ?
 ```
 
@@ -46,10 +47,10 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 | Act | What it shows |
 | --- | --- |
 | 1. Identity policies: default deny, allow, explicit deny | Nothing is allowed until something allows it; a deny beats every allow; action names ignore case and resource names do not; Allow with NotAction allows everything else. |
-| 2. Accounts: who has to agree | In one account either side is enough; across accounts both; Principal * means anyone; an organization policy stops even an administrator. |
-| 3. Roles and the layers that narrow them | A trust policy asks for a second factor; a boundary and a session policy narrow 6 actions to 4 to 2; naming the session is stronger than naming the account. |
-| 4. The confused deputy | A reporting service that assumes roles for many customers reads the bank's data for Mallory until the trust policy asks for the external id issued to the bank. |
-| 5. The bill | A search over the policies finds carol and ben on a path to administrator, and not ana; wildcards are decisions nobody made; a model is not the service. |
+| 2. Accounts: who has to agree | In one account either side is enough; across accounts both must allow; Principal * means anyone; an organization policy stops even an administrator. |
+| 3. Roles and the layers that narrow them | A trust policy asks for a second factor; a boundary and a session policy narrow eight actions from 6 to 4 to 2; a bucket policy that names the session is not narrowed. |
+| 4. The confused deputy | A reporting service that assumes roles for many customers reads the bank's files for Mallory, until the trust policy asks for the external id the service issued to the bank. |
+| 5. The bill | A search that asks the evaluator at every step finds carol and ben on a path to administrator, and not ana; every policy here has a wildcard. |
 
 ## Test
 
@@ -57,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-19 tests in `DemoRunsTest`, `EvaluatorTest`, `RoleTest`. The tests run the evaluator rule by rule: deny, wildcards, NotAction, one account and two, anonymous callers, organization policies, boundaries and session policies, conditions and missing keys, trust policies, the external id, the source ARN and the escalation search.
+22 tests in `DemoRunsTest`, `EvaluatorTest`, `RoleTest`, `StepsTest`. The tests run the evaluator rule by rule: deny, wildcards, NotAction, one account and two, anonymous callers, organization policies, boundaries and session policies, conditions and missing keys, trust policies, the external id, the source ARN and the escalation search.
 
 ## What the simulation got right, and what it left out
 

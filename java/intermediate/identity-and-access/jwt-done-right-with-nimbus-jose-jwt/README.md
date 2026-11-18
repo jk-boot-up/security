@@ -4,8 +4,9 @@
 src/main/java/com/jk/explore/security/jwtnimbus/
 ├── AccessTokenValidator.java  What the accounts API does with a bearer token
 ├── BankIssuer.java            The bank's authorization server: it holds the signing keys, signs access tokens with the current one, and says what it publishes
+├── DemoKeys.java              Fixed P-256 keys, so the demo prints the same key set on every run
 ├── JwksServer.java            The bank's published key set at /jwks.json: a real HTTP server on the loopback interface that counts how often it is asked
-├── NimbusJwtDemo.java         Runs the bank's token story in five numbered acts with Nimbus JOSE + JWT and a real key-set server on the loopback interface
+├── NimbusJwtDemo.java         Runs the bank's token story in six numbered acts with Nimbus JOSE + JWT and a real key-set server on the loopback interface
 ├── RefreshTokens.java         Refresh tokens are not JWTs: they are random strings that the server looks up, so it can take one back at any moment
 ├── Refused.java               A token the API will not accept, with the reason the library gave
 └── SimClock.java              A clock that stands still until the demo moves it, so a token's life of five minutes takes no time to wait for
@@ -38,15 +39,16 @@ An online bank's authorization server signs access tokens and publishes its keys
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Decoding is not verifying | A token is three base64url parts; anyone can read the claims, and a reader that only parses says mallory for a token whose claims were edited, while the processor refuses it. |
-| 2. The server chooses the algorithm | A token with alg none, an HS256 token signed with the public key as the secret, and a correctly signed token of the wrong type are all refused, because the algorithm and the type are settings of the API. |
-| 3. Every claim that matters | Expiry with 30 seconds of skew, not-before, issuer and audience are checked by the library; the scope is one check of our own. |
-| 4. Keys by id, from one URL | 100 tokens cost one fetch of the key set; unknown key ids, jku and jwk headers never make the API trust an attacker's key; a new key is published before it is used, and a retired key lives on in the cache. |
-| 5. The bill: a token cannot be taken back | Ana's access token works two minutes after her access was removed, her refresh token is revoked at once, the token expires after 5 minutes 31 seconds, and a lifetime of 24 hours is refused. |
+| 1. The bank signs a token with Nimbus | Nimbus writes a 51-byte header and 143-byte claims, base64url makes them 68 and 191 characters, ES256 hashes the 260-byte signing input with SHA-256 and signs it into 64 bytes; signed twice, the signatures differ and both verify. |
+| 2. Parsing is not verifying | The claims part is replaced to say sub mallory with ana's signature kept: SignedJWT.parse alone returns mallory, while DefaultJWTProcessor verifies the signature first, gets false, and refuses with Invalid signature. |
+| 3. The server chooses the algorithm, never the token | The key selector accepts only ES256 and the type verifier only at+jwt, and the JDK's own ECDSA confirms the bank's signature; a header saying none, an HS256 token keyed with the bank's public key, and an id+jwt token are refused. |
+| 4. Every claim that matters is checked | DefaultJWTClaimsVerifier checks iss, aud and the times with 30 seconds of skew: Ana's token is accepted at issue and at exp + 20, refused at exp + 31; a later nbf, another iss, another aud are refused by Nimbus, a missing scope by our own check. |
+| 5. Keys by id, from the one URL in the settings | The key set is fetched once for 101 tokens; an unknown kid costs one more fetch, then the refetch limit holds; a forged signature, a jku and a jwk header are refused; a retired key works until the 2000 ms cache ends. |
+| 6. The bill: a token cannot be taken back | Ana's access is removed at 120 seconds: at 240 her access token is still accepted while her refresh token is refused; at 331 the access token is refused as expired; a 24-hour token breaks our 900-second policy. |
 
 ## Test
 
@@ -54,11 +56,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-25 tests in `DemoRunsTest`, `NimbusJwtTest`. Every test generates new keys and starts its own key set server on a free loopback port. The key set cache tests wait a fraction of a second on purpose.
+25 tests in `DemoRunsTest`, `NimbusJwtTest`. The demo output is compared with the golden file. Every other test generates new keys and starts its own key set server on a free loopback port. The key set cache tests wait a fraction of a second on purpose.
 
 ## What the simulation got right, and what it left out
 
-The key set server is a real HTTP server on the loopback interface, and the keys are generated fresh on every run and never printed. The demo takes its time from a clock it can move, so a token's life of five minutes takes no time to wait for; only the cache of the key set uses real time, in a second or two, and it is shown on purpose.
+The key set server is a real HTTP server on the loopback interface, on a free port printed as `<port>`. The demo's keys come from fixed seeds, so the key set and the first two parts of every token are the same on every run; an ES256 signature uses a fresh random number, so the signature part is printed as a placeholder. The demo takes its time from a clock it can move, so a token's life of five minutes takes no time to wait for; only the cache of the key set uses real time, in a second or two, and it is shown on purpose.
 
 ## Technologies and versions
 
@@ -135,4 +137,4 @@ For one service that is the only issuer and the only verifier, a shared secret a
 
 ## Where this sits
 
-This is the tools version of [jwt-done-right](../jwt-done-right), in the [identity-and-access](..) module. It follows the same five acts with the same checks, on a standard library and a real key set endpoint.
+This is the tools version of [jwt-done-right](../jwt-done-right), in the [identity-and-access](..) module. It follows the same six acts with the same checks, on a standard library and a real key set endpoint.

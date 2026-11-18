@@ -20,6 +20,7 @@ Developers put detail in places that many people can read, and cannot take it ba
 | --- | --- |
 | Logging | `Logger`, `NaiveLogger`, `SafeLogger`, `LogSink` |
 | Redaction | `Redactor`, `Luhn`, `Secret` |
+| Checking | `Canaries`, `PageReader` (teaching) |
 | The shop | `Checkout`, `Database` |
 | Entry point | `LeaksDemo` |
 
@@ -37,10 +38,10 @@ Developers put detail in places that many people can read, and cannot take it ba
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 25 lines, identical on every run |
+| Tests | 17, all passing |
+| Demo output | 100 lines, identical on every run |
 | Acts | 4 |
-| Video | 05:57, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

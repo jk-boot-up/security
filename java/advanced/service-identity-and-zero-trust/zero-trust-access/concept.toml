@@ -10,7 +10,7 @@ short_title = "Zero Trust Access"
 package = "zerotrust"
 main_class = "ZeroTrustAccessDemo"
 tagline = "Put an identity-aware proxy in front of a bank's ledger API: every request is authenticated with a Keycloak token, authorized by OPA and written to an audit log, close to the resource"
-bold = "A bank's ledger API behind the network perimeter answers 10 of 10 requests that carry no identity, 3 of them transfers; behind an identity-aware proxy the same 10 requests get 0 successes, and a request that skips the proxy and goes straight to the ledger gets 0 too; the proxy checks a Keycloak JWT (signature from the JWKS, issuer, audience, expiry) and refuses 7 of 7 bad tokens with 401 (none, expired, wrong audience, edited roles, flipped signature, forged with the attacker's own key, algorithm none), then asks OPA, which answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00; of 39 requests every one has exactly one audit record (39 of 39) and 0 of 22 tokens appear in the log; a token outlives its ended session and is still accepted (200) until it expires, a session check at Keycloak refuses it (401) for 1 extra call per request, a 4 second lifetime bounds the exposure, and with OPA down the proxy answers 503."
+bold = "A bank's ledger API behind the network perimeter answers 10 of 10 requests that carry no identity, 3 of them transfers; behind an identity-aware proxy the same 10 requests get 0 successes, and a request that skips the proxy and goes straight to the ledger gets 0 too; the proxy checks a Keycloak JWT (signature from the JWKS, issuer, audience, expiry) and refuses 7 of 7 bad tokens with 401 (none, expired, wrong audience, edited roles, flipped signature, forged with the attacker's own key, algorithm none), then asks OPA, which answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00; of 39 requests every one has exactly one audit record (39 of 39) and 0 of 26 tokens appear in the log; a token outlives its ended session and is still accepted (200) until it expires, a session check at Keycloak refuses it (401) for 1 extra call per request, a 4 second lifetime bounds the exposure, and with OPA down the proxy answers 503."
 domain = "a bank"
 domain_note = ""
 youtube_description = "Zero trust access in Java with Keycloak and OPA: an identity-aware proxy that checks a JWT, asks a policy engine for a decision and writes an audit record for every request, compared with the network perimeter, plus token lifetime, revocation and what happens when a part is down."
@@ -27,7 +27,7 @@ What it shows:
 - **The perimeter.** The ledger inside the network answers **10 of 10** requests with no identity. Behind the proxy the same 10 get **0**, and 0 more when they go straight to the ledger.
 - **Authentication.** **7 of 7** bad tokens get 401: none, expired, wrong audience, roles edited, signature flipped, signed with the attacker's own key, algorithm none.
 - **Authorization.** OPA answers 403 for the wrong role, a device that is not compliant and a transfer outside business hours; its Rego has **15 of 15** tests.
-- **Audit.** **39** requests, **39** records, **0 of 22** tokens in the log.
+- **Audit.** **39** requests, **39** records, **0 of 26** tokens in the log.
 - **Lifetime.** A token stays valid after its session ends (**200**) until it expires; a session check refuses it (**401**) for one more call per request; a **4 second** lifetime bounds the window.
 
 **Maps to:** NIST SP 800-207 (zero trust architecture) · OWASP ASVS 5.0 V8 Authorization and V9 Self-contained Tokens · RFC 7519 (JWT) and RFC 8725 (JWT best practices) · CIS Controls 6 and 8 · ISO/IEC 27001:2022 A.8.2 and A.8.15.
@@ -60,96 +60,276 @@ This is a project of the [service-identity-and-zero-trust](..) module. mutual-tl
 twin = """
 Keycloak and the opa binary are real. The proxy and the ledger are the project's own small Java programs. Envoy and oauth2-proxy were not run: they would do the proxy's job, and writing it in Java shows every step. The device posture is a claim set per Keycloak client, standing in for a device management system.
 """
-test_note = "The JWT validation, the proxy, the audit log and the ledger are tested with the JDK only, with a stand-in for OPA. The demo runs Keycloak in Docker and the opa binary (./gradlew integrationTest)."
+test_note = "The JWT validation, the RS256 steps by hand (against the JDK), the proxy, the audit log and the ledger are tested with the JDK only, with a stand-in for OPA. The demo runs Keycloak 26.8.1 (pinned by digest) in Docker and opa 1.21.3 (./gradlew integrationTest)."
 
 [[act]]
-title = "The perimeter"
-summary = "The ledger inside the network answers all 10 requests that carry no identity."
+title = "Before: the ledger trusts the network"
+summary = "Ten requests with no identity (3 balances, 3 transfers, 2 audit exports, 2 freezes) go straight to the ledger: 10 of 10 succeed, its code runs 10 times, 3 of them transfers, and nobody can say who sent them. The after has three parts: Keycloak 26.8.1 with the realm bank (3 users, 4 clients, 3 roles), OPA 1.21.3 with one Rego file whose 15 tests pass, and a proxy that learned 1 signing key from the JWKS."
 detail = """
-The ledger API trusts the network. Ten requests with no identity (3 balances, 3 transfers, 2 audit exports, 2 freezes) all succeed, its code runs 10 times and 3 transfers are executed for callers nobody can name. The ledger can log an address, not a person.
+The input: ten requests, none with an identity: 3 balance reads, 3 transfers, 2 audit exports and 2 account freezes.
+The result: sent straight to the ledger from inside the network, 10 of 10 succeed, the ledger's code runs 10 times, 3 of them transfers. The ledger sees an address, not a person.
+The parts of the after: Keycloak 26.8.1 imports the realm bank (alice the teller, bob the auditor, carol the admin), OPA 1.21.3 runs policy/ledger.rego (its own tests: 15 of 15 pass), the proxy learns 1 signing key from the JWKS, and the device posture is a claim named compliant, set per Keycloak client.
+"""
+figure = "perimeter"
+figure_title = "Ten requests, no identity, ten answers"
+figure_speech = """
+First demo: before. [[slnc 400]] On the left, the input: ten requests, and none of them carries an identity. [[slnc 300]] Three balance reads, three transfers, two audit exports, and two account freezes. [[slnc 700]]
+They go straight to the ledger, inside the bank's network. [[slnc 300]] The ledger answers all ten. [[slnc 300]] Its code runs ten times, and three of those runs move money. [[slnc 700]]
+On the right, the question an auditor asks: who did it? [[slnc 300]] The answer is unknown. [[slnc 300]] The ledger sees a network address, not a person, and being inside the network was the only check. [[slnc 700]]
+At the bottom, the parts of the after. [[slnc 300]] Keycloak issues the tokens, O P A decides, and a small proxy, written in Java, sits in front of the ledger.
 """
 speech = """
-First demo: the perimeter. [[slnc 400]] Ten requests, no identity. [[slnc 600]] Ten answers, three of them transfers.
+Here is the real output. [[slnc 400]] The ten requests, by kind. [[slnc 400]] Sent straight to the ledger, ten of ten succeed, the ledger runs ten times, three of them transfers, and who sent them is unknown.
+[[page]]
+The parts of the after. [[slnc 300]] Keycloak, with the realm bank: three users, four clients, three roles. [[slnc 300]] O P A, with one policy file, whose own fifteen tests pass. [[slnc 300]] And the proxy, which learned one signing key from Keycloak's key set.
 """
 rows = { perimeter = "active wrong" }
 console = [
-    ["requests with no identity: 10", "bad"],
-    ["succeed: 10", "bad"],
-    ["transfers executed: 3", "bad"],
+    ["THE REQUESTS (10, none with an identity):", "code"],
+    ["  GET  /accounts/{id}/balance   3", "muted"],
+    ["  POST /transfers               3", "muted"],
+    ["  GET  /audit/entries           2", "muted"],
+    ["  POST /admin/freeze            2", "muted"],
+    ["THE RESULT (sent straight to the ledger):", "code"],
+    ["  succeed     10 of 10", "bad"],
+    ["  ledger ran  10 times, 3 of them transfers", "bad"],
+    ["  who         unknown: the ledger sees an address, not a person", "bad"],
+    ["---", ""],
+    ["THE PARTS OF THE AFTER:", "code"],
+    ["  Keycloak 26.8.1  realm bank: 3 users, 4 clients, 3 roles", "muted"],
+    ["  users            alice teller, bob auditor, carol admin", "muted"],
+    ["  OPA 1.21.3       policy/ledger.rego; its tests: 15 of 15 pass", "muted"],
+    ["  proxy            1 signing key, learned from the JWKS", "muted"],
+    ["  device           a claim, compliant, set per Keycloak client", "muted"],
 ]
 
 [[act]]
-title = "Who is calling"
-summary = "The proxy refuses 7 of 7 bad tokens with 401, and the same 10 identity-less requests now get 0 successes."
+title = "Who is calling: the token, checked by hand"
+summary = "Alice's token is header.claims.signature with alg RS256, audience ledger-api, roles [teller], compliant true and a lifetime of 300 seconds. Checked by hand, s^e mod n is 256 bytes: 00 01, 202 bytes of FF, 00, a 19-byte label and a 32-byte hash equal to the SHA-256 of header.claims, and the JDK agrees. Bob's token with the roles edited keeps the padding but not the hash; a token signed with another key has no padding at all. At the proxy 7 of 7 bad tokens get 401, and the same 10 identity-less requests now get 0 successes, through the proxy or straight to the ledger."
 detail = """
-The proxy checks the signature against the keys Keycloak publishes, the issuer, the audience and the expiry, and accepts only RS256. No token, an expired token, a token for another audience, a token with its roles edited to admin, a flipped signature character, a token signed with the attacker's own key and a token with the algorithm none all get 401. The ten identity-less requests get 0 successes, and 0 when sent straight to the ledger.
+The input: alice's token from Keycloak, three base64url parts. The header says RS256 and names a key in the JWKS; the claims say issuer .../realms/bank, audience ledger-api, user alice, roles [teller], compliant true, and exp - iat = 300 seconds.
+How the signature is checked: the key is RSA 2048 bits with e = 65537. The signature s is 256 bytes; m = s^e mod n is 256 bytes and must be 00 01, 202 bytes of FF, 00, the 19-byte label that says a SHA-256 hash follows, then 32 bytes equal to the SHA-256 of header.claims. They are, and the JDK's SHA256withRSA agrees. Then issuer, audience and expiry are checked.
+Two forgeries: bob's token with the roles edited to admin keeps bob's real signature, so the padding is right but the hash is not; mallory's token signed with her own key gives m that is noise, with no padding.
+The result at the proxy: no token, an expired token, a token for reports-api, the edited roles, a changed signature character, mallory's own key and the algorithm none all get 401. The same ten requests with no identity get 0 of 10 through the proxy, and 0 of 10 straight to the ledger, which wants the proxy's mark.
+"""
+figure = "signature_by_hand"
+figure_title = "RS256, worked out for one token"
+figure_speech = """
+Second demo: who is calling. [[slnc 400]] At the top, the input: alice's token, and the bank's public key, from Keycloak's key set. [[slnc 300]] The key is R S A, two thousand and forty eight bits. [[slnc 700]]
+The check undoes the signature: m equals s to the power e, modulo n. [[slnc 300]] The result is a block of two hundred and fifty six bytes, and it must have a fixed shape. [[slnc 300]] First zero zero zero one, then two hundred and two bytes of F F, then zero zero. [[slnc 300]] Then a label of nineteen bytes, that says a S H A two fifty six hash follows. [[slnc 300]] And the last thirty two bytes must equal the S H A two fifty six of the header and the claims. [[slnc 300]] For alice's token, they do. [[slnc 700]]
+At the bottom, two forgeries. [[slnc 300]] Bob edited his roles to admin and kept his signature. [[slnc 300]] The padding is still right, but the hash no longer fits the new claims. [[slnc 300]] Mallory signed with her own key. [[slnc 300]] With the bank's key, her block is noise: not even the padding is there.
 """
 speech = """
-Second demo: who is calling. [[slnc 400]] Seven bad tokens, seven refusals. [[slnc 600]] The same ten requests now get nothing.
+Here is the real output. [[slnc 400]] The token has three parts. [[slnc 300]] Its header names the algorithm, R S 256, and a key in the key set. [[slnc 300]] Its claims name the issuer, the audience ledger A P I, alice, her role teller, a compliant device, and a lifetime of three hundred seconds.
+[[page]]
+The signature, by hand. [[slnc 300]] A two thousand and forty eight bit key. [[slnc 300]] A two hundred and fifty six byte signature, and a two hundred and fifty six byte block. [[slnc 300]] The padding, the label, and the hash all check out, and the J D K agrees. [[slnc 300]] Then the issuer, the audience, and the expiry are good: the token is valid.
+[[page]]
+The same steps on two forgeries. [[slnc 300]] Bob's edited token keeps the padding, but fails the hash. [[slnc 300]] Mallory's own key fails even the padding. [[slnc 300]] The J D K refuses both. [[slnc 400]] At the proxy, seven bad tokens, seven times four oh one, each with its reason.
+[[page]]
+And the same ten requests with no identity: none gets through the proxy, and none gets through straight to the ledger, because it answers only the proxy.
 """
 rows = { authn = "active ok" }
 console = [
-    ["bad tokens refused: 7 of 7", "ok"],
-    ["no identity, through the proxy: 0 of 10", "ok"],
-    ["no identity, straight to the ledger: 0 of 10", "ok"],
+    ["THE TOKEN (alice, asked through the client ledger-managed):", "code"],
+    ["  form     header.claims.signature, each part base64url", "muted"],
+    ["  header   alg RS256, typ JWT, kid: a key in the JWKS", "muted"],
+    ["  claims   iss .../realms/bank, aud ledger-api", "muted"],
+    ["           preferred_username alice, roles [teller]", "muted"],
+    ["           compliant true, exp - iat = 300 seconds", "muted"],
+    ["---", ""],
+    ["HOW THE SIGNATURE IS CHECKED (RS256, by hand):", "code"],
+    ["  key      RSA 2048 bits from the JWKS: n, and e = 65537", "muted"],
+    ["  s        the signature: 256 bytes", "muted"],
+    ["  m        s^e mod n: 256 bytes", "muted"],
+    ["  m holds  00 01, 202 x FF, 00, label (19 bytes), hash (32)", "muted"],
+    ["  label    3031...0420: a SHA-256 hash follows: yes", "ok"],
+    ["  hash     SHA-256(header.claims) = the last 32 bytes: yes", "ok"],
+    ["  JDK      Signature SHA256withRSA agrees: yes", "ok"],
+    ["  then     iss, aud and exp: good, the token is valid", "muted"],
+    ["---", ""],
+    ["THE SAME STEPS ON TWO FORGERIES:", "code"],
+    ["  token                         padding  hash  JDK", "code"],
+    ["  alice's, as issued            yes      yes   valid", "muted"],
+    ["  bob's, roles edited to admin  yes      no    refused", "ok"],
+    ["  mallory's, own key            no       no    refused", "ok"],
+    ["THE BAD TOKENS AT THE PROXY (status, reason):", "code"],
+    ["  no token                              401  no token", "ok"],
+    ["  alice, after its 4 second lifetime    401  expired", "ok"],
+    ["  alice, made for reports-api           401  wrong audience", "ok"],
+    ["  bob, roles edited to admin            401  bad signature", "ok"],
+    ["  alice, a signature character changed  401  bad signature", "ok"],
+    ["  mallory, own key, claims admin        401  bad signature", "ok"],
+    ["  mallory, algorithm none               401  unsupported algorithm", "ok"],
+    ["---", ""],
+    ["THE SAME 10 REQUESTS WITH NO IDENTITY, NOW:", "code"],
+    ["  through the proxy       0 of 10 succeed (before: 10)", "ok"],
+    ["  straight to the ledger  0 of 10 (it wants the proxy's mark)", "ok"],
+    ["  ledger ran              0 more times", "ok"],
 ]
 
 [[act]]
-title = "May they"
-summary = "OPA answers 403 for the wrong role, a device that is not compliant, and a transfer at 23:00."
+title = "May they: OPA decides"
+summary = "The proxy sends OPA the user, roles, device claim, method, path and hour. For alice's transfer OPA works out resource transfer, role_ok true, device_ok true and business_hours true at 10:00, so the reasons are empty and allow is true; at 23:00 business_hours is undefined, the reasons are [outside business hours] and allow is false. The grants give the teller balance and transfer, the auditor audit and balance, the admin audit, balance and freeze. Of 11 requests with valid tokens, 5 get 200 and 6 get 403, and the ledger ran 5 times."
 detail = """
-With a good token, the proxy asks OPA with the user, roles, device posture claim, method, path and hour. Bob the auditor cannot transfer, Alice the teller cannot read the audit, Carol the admin is not a teller, a device that is not compliant is refused, and a teller's transfer at 23:00 is refused while the same transfer at 10:00 gets 200. The Rego file has 15 of 15 tests passing.
+The input: what the proxy sends OPA for alice's transfer: user alice, roles [teller], device_compliant true, method POST, path /transfers, hour 10, then the same at hour 23.
+How the decision is made: OPA's own values for each rule. resource is transfer; role_ok is true because {POST, transfer, teller} is in the grants; device_ok is true; business_hours is true at 10:00 and undefined at 23:00. The reasons are [] at 10:00 and [outside business hours] at 23:00, and allow is count(reasons) == 0: true, then false.
+The grants: a teller may GET balance and POST transfer, an auditor GET audit and GET balance, an admin GET audit, GET balance and POST freeze. Anything else is denied.
+The result at the proxy: 11 requests with valid tokens, 200 for 5 and 403 for 6 (outside business hours, role not allowed three times, unknown operation, device not compliant). The ledger ran 5 times, only for the allowed ones.
+"""
+figure = "policy_steps"
+figure_title = "One transfer, decided at 10:00 and at 23:00"
+figure_speech = """
+Third demo: may they. [[slnc 400]] At the top left, the input the proxy sends O P A for alice's transfer. [[slnc 300]] Her name, her role teller, a compliant device, the method, the path, and the hour. [[slnc 700]]
+Below, how the decision is made, rule by rule, with O P A's own values. [[slnc 300]] The request is a transfer. [[slnc 300]] A teller may make transfers, so the role is fine. [[slnc 300]] The device is compliant. [[slnc 300]] At ten in the morning it is business hours, so the list of reasons is empty, and the answer is allow. [[slnc 500]] At eleven at night, the business hours rule is not true. [[slnc 300]] One reason appears, outside business hours, and the answer is deny. [[slnc 700]]
+On the right, the grants the rules read: which role may do what. [[slnc 300]] Only a teller moves money, and only an admin freezes an account. [[slnc 300]] Anything not in this table is denied.
 """
 speech = """
-Third demo: may they. [[slnc 400]] A good token is not enough. [[slnc 600]] The role, the device and the hour all have to say yes.
+Here is the real output. [[slnc 400]] The input: alice, a teller, on a compliant device, asking to post a transfer, at hour ten and then at hour twenty three. [[slnc 400]] Each rule's value, from O P A: everything true at ten, business hours undefined at twenty three, so one reason, and allow is false.
+[[page]]
+The grants. [[slnc 300]] A teller: balance and transfer. [[slnc 300]] An auditor: audit and balance. [[slnc 300]] An admin: audit, balance, and freeze.
+[[page]]
+The decisions at the proxy, each with a valid token. [[slnc 300]] Alice's transfer at ten: two hundred. [[slnc 300]] At twenty three: four oh three, outside business hours. [[slnc 300]] Bob cannot transfer, alice cannot read the audit, and carol, the admin, cannot transfer either. [[slnc 300]] An unknown path is refused, and so is alice on a device that is not compliant.
+[[page]]
+In total, eleven requests with valid tokens: five allowed, six refused. [[slnc 300]] And the ledger ran five times, only for the allowed ones.
 """
 rows = { authz = "active ok" }
 console = [
-    ["wrong role: 403", "ok"],
-    ["device not compliant: 403", "ok"],
-    ["transfer at 23:00: 403", "ok"],
-]
-
-[[act]]
-title = "Logged"
-summary = "39 requests, 39 audit records, and 0 of 22 tokens in the log."
-detail = """
-Each request ends in one place that writes one record: allow or deny, the status, the reason, the user, the method and the path. Of 39 requests sent, 39 records match in order with the status the caller saw: 12 allow and 27 deny, each with a reason. None of the 22 tokens used appears in the log.
-"""
-speech = """
-Fourth demo: logged. [[slnc 400]] Thirty-nine requests, thirty-nine records. [[slnc 600]] And not one token in the log.
-"""
-rows = { audit = "active ok" }
-console = [
-    ["requests: 39, records: 39", "ok"],
-    ["allow 12, deny 27", "ok"],
-    ["tokens in the log: 0 of 22", "ok"],
+    ["THE INPUT THE PROXY SENDS OPA (alice, POST /transfers):", "code"],
+    ["  user alice, roles [teller], device_compliant true", "muted"],
+    ["  method POST, path /transfers, hour 10 (then 23)", "muted"],
+    ["HOW THE DECISION IS MADE (each rule's value, from OPA):", "code"],
+    ["  rule            at 10:00        at 23:00", "muted"],
+    ["  resource        transfer        transfer", "muted"],
+    ["  role_ok         true            true", "muted"],
+    ["  device_ok       true            true", "muted"],
+    ["  business_hours  true            undefined", "muted"],
+    ["  reasons         []              [outside business hours]", "muted"],
+    ["  allow           true            false", "muted"],
+    ["---", ""],
+    ["THE GRANTS (any other request is denied):", "code"],
+    ["  teller   GET balance, POST transfer", "muted"],
+    ["  auditor  GET audit, GET balance", "muted"],
+    ["  admin    GET audit, GET balance, POST freeze", "muted"],
+    ["---", ""],
+    ["THE DECISIONS AT THE PROXY (a valid token each time):", "code"],
+    ["  alice teller   GET  balance           200", "muted"],
+    ["  alice teller   POST transfers 10:00   200", "muted"],
+    ["  alice teller   POST transfers 23:00   403  outside business hours", "ok"],
+    ["  bob auditor    GET  audit             200", "muted"],
+    ["  bob auditor    POST transfers         403  role not allowed", "ok"],
+    ["  alice teller   GET  audit             403  role not allowed", "ok"],
+    ["  carol admin    POST freeze            200", "muted"],
+    ["  carol admin    POST transfers         403  role not allowed", "ok"],
+    ["  alice teller   GET  /nope             403  unknown operation", "ok"],
+    ["  alice, managed device, GET balance    200", "muted"],
+    ["  alice, unmanaged device, GET balance  403  device not compliant", "ok"],
+    ["---", ""],
+    ["THE RESULT:", "code"],
+    ["  valid tokens sent     11: 200 for 5, 403 for 6", "muted"],
+    ["  ledger ran            5 times: only for the allowed ones", "ok"],
 ]
 
 [[act]]
 title = "A token outlives its session"
-summary = "After logout the token is still accepted until it expires; a session check or a 4 second lifetime closes the window."
+summary = "Alice's token, good for 300 seconds, gets 200 before her logout and still 200 after it, because the proxy checks only signature and expiry. With a session check at Keycloak on every request it gets 401 (session ended), a new login and bob still get 200, for 3 calls to Keycloak. A 4 second token still works at once after the logout and gets 401 once it expires: the window is 4 seconds at most, not 300. With Keycloak stopped, a valid token still gets 200 without the check and 401 with it; with OPA stopped the answer is 503."
 detail = """
-Alice's session is ended at Keycloak, and her token, good for 300 seconds, still gets 200: the proxy checks signature and expiry. With a session check at Keycloak on every request the same token gets 401, at a cost of one call per request (3 for 3). A token with a 4 second lifetime is accepted at once after its session ends and refused after 4 seconds. With Keycloak stopped, old tokens still work without the check and are refused with it; with OPA stopped the answer is 503.
+The input: alice's token with a lifetime of 300 seconds; it gets 200 before her logout.
+The result after the logout at Keycloak: the same token still gets 200, because its signature and expiry are still good. With a session check at Keycloak on every request it gets 401, session ended, while a new login and bob's token get 200; the check cost 3 calls to Keycloak for 3 requests.
+A short lifetime instead: a 4 second token gets 200 before the logout and at once after it, and 401, expired, once its 4 seconds are over. The window after a logout is 4 seconds at most, not 300.
+When a part is down: with Keycloak stopped a valid token still gets 200, because the keys are cached; with the session check on it gets 401, because the session cannot be confirmed. With OPA stopped the proxy answers 503, decision unavailable: no decision is a no.
+"""
+figure = "token_window"
+figure_title = "How long a token works after a logout"
+figure_speech = """
+Fourth demo: a token outlives its session. [[slnc 400]] At the top, the input: alice logs out at Keycloak. [[slnc 300]] Does the token she already holds still work? [[slnc 700]]
+The amber line is the logout. [[slnc 300]] In the first row, a proxy that checks only the signature and the expiry. [[slnc 300]] The token keeps working until its three hundred seconds are over: the rose bar. [[slnc 500]] In the second row, the proxy asks Keycloak, on every request, whether the session is still alive. [[slnc 300]] The token is refused at once, for one extra call per request. [[slnc 500]] In the third row, a token that lives only four seconds. [[slnc 300]] It still works right after the logout, but only for four seconds at most. [[slnc 700]]
+At the bottom, when a part is down. [[slnc 300]] With Keycloak stopped, old tokens still work, because the keys are cached. [[slnc 300]] With O P A stopped, the proxy answers five oh three: no decision is a no.
 """
 speech = """
-Fifth demo: a token outlives its session. [[slnc 400]] Logout does not reach a token that checks only its signature. [[slnc 600]] A short life or a session check closes the window.
+Here is the real output. [[slnc 400]] Alice's token works before the logout. [[slnc 300]] After it, the same token still gets two hundred. [[slnc 300]] With a session check it gets four oh one, while a new login and bob still get in, for three calls to Keycloak. [[slnc 400]] The four second token works at once after the logout, and is refused once it expires: four seconds at most, not three hundred.
+[[page]]
+When a part is down. [[slnc 300]] Keycloak stopped: two hundred without the session check, four oh one with it. [[slnc 300]] O P A stopped: five oh three, decision unavailable.
 """
 rows = { expiry = "active wrong" }
 console = [
-    ["after logout, no check: 200", "bad"],
-    ["after logout, session check: 401", "ok"],
-    ["OPA down: 503", "ok"],
+    ["THE TOKEN (alice, a lifetime of 300 seconds):", "code"],
+    ["  before the logout                     200", "muted"],
+    ["AFTER THE LOGOUT AT KEYCLOAK:", "code"],
+    ["  the same token, no session check      200", "bad"],
+    ["  the same token, with a session check  401  session ended", "ok"],
+    ["  a new login, with the check           200", "muted"],
+    ["  bob, GET audit, with the check        200", "muted"],
+    ["  calls to Keycloak for those 3         3", "muted"],
+    ["A SHORT LIFETIME INSTEAD (4 seconds, no session check):", "code"],
+    ["  before the logout                     200", "muted"],
+    ["  after the logout, at once             200", "bad"],
+    ["  after its lifetime                    401  expired", "ok"],
+    ["  the window after a logout             4 s at most, not 300", "muted"],
+    ["---", ""],
+    ["WHEN A PART IS DOWN (alice, a valid token):", "code"],
+    ["  Keycloak stopped, no session check    200", "bad"],
+    ["  Keycloak stopped, session check on    401  session ended", "ok"],
+    ["  OPA stopped                           503  decision unavailable", "ok"],
 ]
+
+[[act]]
+title = "One record per request"
+summary = "One record is a line of JSON: seq 20, decision deny, status 403, reason outside business hours, user alice, POST /transfers and a timestamp. The demo sent 39 requests to the proxy, and 39 records were written, 39 of 39 in the same order with the status the caller saw: allow 12, deny 27, each with its reason. None of the 26 tokens used is in the log file, and a forged token names no one: 23 of 39 records name a user."
+detail = """
+The input: one record, a line of JSON in build/lab/audit.log: seq 20, decision deny, status 403, reason outside business hours, user alice, method POST, path /transfers and the time.
+The result: the demo sent 39 requests to the proxy and 39 records were written; all 39 match the request in order, with the status the caller saw.
+The reasons: allowed 12, no token 11, bad signature 3, role not allowed 3, expired 2, session ended 2, and one each of decision unavailable, device not compliant, outside business hours, unknown operation, unsupported algorithm and wrong audience.
+What the log does not hold: 0 of the 26 access and refresh tokens; and no name taken from a forged token, whose claims are never trusted: 23 of 39 records name a user.
+"""
+figure = "audit_reasons"
+figure_title = "Thirty-nine requests, thirty-nine records"
+figure_speech = """
+Fifth demo: one record per request. [[slnc 400]] At the top, the input: every request the demo sent to the proxy, thirty nine of them. [[slnc 300]] And the result: thirty nine records, all in the same order, with the status the caller saw. [[slnc 700]]
+The bars are the reasons, counted. [[slnc 300]] The green bar is the twelve allowed requests. [[slnc 300]] The rose bars are the twenty seven refusals, each with a reason someone can read later: no token, a bad signature, the wrong role, and so on. [[slnc 700]]
+On the right, what the log does not hold. [[slnc 300]] Not one of the twenty six tokens. [[slnc 300]] A log with tokens in it would be a store of keys. [[slnc 300]] And no name taken from a forged token, because its claims are never trusted.
+"""
+speech = """
+Here is the real output. [[slnc 400]] One record: sequence twenty, deny, four oh three, outside business hours, alice, a post to transfers, and the time. [[slnc 400]] Thirty nine requests sent, thirty nine records written, thirty nine of thirty nine matching.
+[[page]]
+The reasons: twelve allowed, and twenty seven denied, each with its reason. [[slnc 400]] And what the log does not hold: zero of twenty six tokens, and no name from a forged token.
+"""
+rows = { audit = "active ok" }
+console = [
+    ["ONE RECORD (a line of JSON in build/lab/audit.log):", "code"],
+    ["  seq 20, decision deny, status 403", "muted"],
+    ["  reason outside business hours, user alice", "muted"],
+    ["  method POST, path /transfers, ts (the time)", "muted"],
+    ["THE REQUESTS AGAINST THE RECORDS:", "code"],
+    ["  requests sent to the proxy  39", "muted"],
+    ["  records written             39", "muted"],
+    ["  same order, same status     39 of 39", "ok"],
+    ["---", ""],
+    ["THE REASONS (allow 12, deny 27):", "code"],
+    ["  allowed                12    outside business hours  1", "muted"],
+    ["  bad signature           3    role not allowed        3", "muted"],
+    ["  decision unavailable    1    session ended           2", "muted"],
+    ["  device not compliant    1    unknown operation       1", "muted"],
+    ["  expired                 2    unsupported algorithm   1", "muted"],
+    ["  no token               11    wrong audience          1", "muted"],
+    ["WHAT THE LOG DOES NOT HOLD:", "code"],
+    ["  tokens (access or refresh)  0 of 26", "ok"],
+    ["  a name from a forged token  none: 23 of 39 records name a user", "ok"],
+]
+
+[highlight]
+console_green = ["THE PARTS", "THE RESULT:", "THE SAME 10", "THE GRANTS", "THE REQUESTS AGAINST", "WHAT THE LOG"]
+console_rose = ["THE RESULT (sent", "THE SAME STEPS", "THE BAD TOKENS", "AFTER THE LOGOUT", "WHEN A PART"]
+console_amber = ["HOW THE SIGNATURE", "HOW THE DECISION", "THE DECISIONS AT", "A SHORT LIFETIME", "THE REASONS"]
+console_cyan = ["THE REQUESTS (", "THE TOKEN", "THE INPUT", "ONE RECORD"]
 
 [animation]
 subtitle = "A bank's ledger, one door and one record per request."
 boxes = [
-    ["perimeter", "The perimeter", "10 of 10"],
-    ["authn", "Who is calling", "7 of 7"],
-    ["authz", "May they", "403"],
-    ["audit", "Logged", "39 of 39"],
+    ["perimeter", "Before: the ledger trusts the network", "10 of 10"],
+    ["authn", "Who is calling", "7 of 7 refused"],
+    ["authz", "May they", "5 of 11"],
     ["expiry", "A token outlives its session", "300 s, 4 s"],
+    ["audit", "One record per request", "39 of 39"],
 ]
 
 [docs.problem]
@@ -170,7 +350,7 @@ deliver = [
 required = [
     "Java basics",
     "Docker running (the Keycloak image is about 475 MB, pulled once)",
-    "The opa binary on the path",
+    "The opa binary 1.21.3 on the path (the demo checks the version)",
 ]
 not_required = [
     "Envoy",
@@ -357,6 +537,7 @@ out_of_scope = [
 ]
 tests = [
     "`JwtTest` checks the token rules with a key made in the test.",
+    "`Rs256StepsTest` proves the signature check by hand gives the JDK's answer for a good token and for each forgery.",
     "`ProxyTest` checks the status codes, the one record per request, the session check and the failure to decide, with no Docker.",
     "`DemoRunsTest` runs Keycloak and OPA and compares the whole demo with the golden output (integrationTest).",
 ]
@@ -406,7 +587,7 @@ residual = "The check costs a call per request and needs Keycloak up"
 
 [poster]
 headline = [["ZERO TRUST", "text"], ["ACCESS", "accent"]]
-taglines = [["Put an identity-aware proxy in front of a bank's ledger API: every request is authenticate", "gold"]]
+taglines = [["Every request authenticated, authorized and recorded", "gold"]]
 before = { code = "POST /transfers   (no identity)", note = "10 of 10 succeed", tag = "BEFORE" }
 after = { code = "POST /transfers + token + policy", note = "0 of 10 succeed", tag = "AFTER" }
 
@@ -414,14 +595,36 @@ after = { code = "POST /transfers + token + policy", note = "0 of 10 succeed", t
 key = "01-poster"
 kind = "poster"
 title = "Zero Trust Access"
-narration = "Hello, and welcome. [[slnc 400]] This video explains zero trust access, with Keycloak and O P A. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Zero trust says that being inside the network proves nothing. [[slnc 300]] Every request is authenticated, authorized, and logged, close to the resource it wants. [[slnc 600]] Think of a building where the lobby guard used to wave everyone through. [[slnc 300]] Now every office door checks a badge, looks up what that badge may open, and writes down each attempt. [[slnc 600]] Our example is a bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains zero trust access, with Keycloak and O P A, the open policy agent. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Zero trust says that being inside the network proves nothing. [[slnc 300]] Every request is authenticated, authorized, and logged, close to the resource it wants. [[slnc 600]] Think of a building where the lobby guard used to wave everyone through. [[slnc 300]] Now every office door checks a badge, looks up what that badge may open, and writes down each attempt. [[slnc 600]] Our example is a bank."
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
-body = ["A bank's internal ledger API.", "", "Before: anything inside the network may call it.", "After: an identity-aware proxy checks a Keycloak", "token, asks OPA for a decision, and writes", "an audit record for every request."]
-narration = "Here is the scenario. [[slnc 400]] A bank has an internal ledger A P I. [[slnc 500]] Before: anything that can reach it on the network may call it, with no identity at all. [[slnc 500]] After: an identity aware proxy, written in Java, sits in front of it. [[slnc 300]] It checks a token from Keycloak, asks O P A, the policy engine, for a decision, and writes one audit record for every request."
+body = ["A bank's internal ledger API: balances,", "transfers, audit exports and account freezes.", "", "Before: anything inside the network may call it.", "After: an identity-aware proxy checks a Keycloak", "token, asks OPA for a decision, and writes", "an audit record for every request."]
+narration = "Here is the scenario. [[slnc 400]] A bank has an internal ledger A P I, for balances, transfers, audit exports, and account freezes. [[slnc 500]] Before: anything that can reach it on the network may call it, with no identity at all. [[slnc 500]] After: an identity aware proxy, written in Java, sits in front of it. [[slnc 300]] It checks a token from Keycloak, asks O P A for a decision, and writes one audit record for every request."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Token: a signed note from Keycloak: who, and roles", "Claims: the fields inside, like iss, aud and exp", "Authenticate: check who is calling (401 if not)", "Authorize: check what they may do (403 if not)", "Policy: the rules, here in Rego, run by OPA", "Session: a login at Keycloak, ended by a logout"]
+narration = """Before the demos, the words. [[slnc 500]] A token is a signed note from Keycloak that says who the caller is, and which roles they have. [[slnc 500]] Its claims are the fields inside: the issuer, the audience it was made for, and when it expires. [[slnc 500]] To authenticate is to check who is calling. [[slnc 300]] If that fails, the answer is four oh one. [[slnc 500]] To authorize is to check what they may do. [[slnc 300]] If that fails, the answer is four oh three. [[slnc 500]] A policy is the set of rules, written here in a language called Rego, and run by O P A. [[slnc 500]] And a session is a login at Keycloak, which a logout ends."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-core"
+kind = "figure"
+title = "One request, three checks"
+body = "one_request"
+narration = """Let's see the core idea on one example: alice, a teller, sends a transfer with her token. [[slnc 400]] At the top, the three checks the proxy makes, in front of the ledger. [[slnc 300]] First, authenticate: who is calling? [[slnc 300]] The token's signature, issuer, audience, and expiry. [[slnc 300]] Second, authorize: may they do this? [[slnc 300]] O P A looks at the role, the device, and the hour. [[slnc 300]] Third, record it, one line per request. [[slnc 700]]
+At the bottom, three requests. [[slnc 300]] At ten in the morning, all three checks say yes, and the ledger runs: two hundred. [[slnc 500]] At eleven at night, the same token passes the first check, but O P A says no: four oh three, outside business hours. [[slnc 500]] With no token at all, the first check fails: four oh one. [[slnc 600]]
+Every one of the three answers is written down, and the ledger only runs for the first."""
 
 [[scene]]
 key = "03-acts"
@@ -433,29 +636,35 @@ narration = "unused"
 key = "04-costs"
 kind = "bullets"
 title = "What It Costs"
-body = ["Every request pays for a check", "A token outlives its session", "  until it expires", "Checking the session costs one more call", "If the proxy or OPA is down, nothing gets in", "The policy and the audit log need upkeep"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every request pays for a check. [[slnc 500]] A token stays valid after its session ends, until it expires. [[slnc 300]] Checking the session closes that gap, for one more call per request. [[slnc 500]] If the proxy or the policy engine is down, nothing gets in. [[slnc 500]] And the policy, and the audit log, need people to keep them right."
+body = ["Every request pays for a check and a decision", "A token outlives its session until it expires", "Checking the session costs one call per request", "If OPA is down, nothing gets in", "The proxy must be the only door to the ledger", "The policy and the audit log need upkeep"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every request pays for a signature check and a policy decision. [[slnc 500]] A token stays valid after its session ends, until it expires. [[slnc 300]] Checking the session closes that gap, for one more call per request. [[slnc 500]] If the policy engine is down, nothing gets in. [[slnc 500]] The proxy must be the only door: here the ledger wants the proxy's mark, and a real one would use mutual T L S. [[slnc 500]] And the policy, and the audit log, need people to keep them right."
 
 [[scene]]
 key = "05-roles"
 kind = "bullets"
 title = "Who Does What"
-body = ["Ledger: the bank's internal ledger API", "Proxy: authenticate, authorize, audit", "Jwt, Jwks: check the token and the issuer's keys", "Opa: the policy engine's decision", "AuditLog: one line per decision, never a token", "Keycloak: issues the tokens"]
-narration = "Here is who does what in the code. [[slnc 400]] Ledger is the bank's internal ledger A P I. [[slnc 500]] Proxy runs the same three steps on every request: authenticate, authorize, and audit. [[slnc 500]] Jwt and Jwks check the token's signature against the issuer's published keys, and its issuer, audience, and expiry. [[slnc 500]] Opa asks the policy engine for a decision. [[slnc 300]] AuditLog writes one line per decision, and is never given a token. [[slnc 300]] And Keycloak issues the tokens."
+body = ["Ledger: the bank's internal ledger API", "Proxy: authenticate, authorize, record", "Jwt, Jwks: check the token with the issuer's keys", "Rs256Steps: the signature check, by hand", "Opa: asks the policy engine for a decision", "AuditLog: one line per decision, never a token", "Keycloak: issues the tokens, ends sessions"]
+narration = "Here is who does what in the code. [[slnc 400]] Ledger is the bank's internal ledger A P I. [[slnc 500]] Proxy runs the same three steps on every request: authenticate, authorize, and record. [[slnc 500]] Jwt and Jwks check the token's signature against the issuer's published keys, and its issuer, audience, and expiry. [[slnc 300]] Rs256Steps redoes the signature check by hand, for teaching. [[slnc 500]] Opa asks the policy engine for a decision. [[slnc 300]] AuditLog writes one line per decision, and is never given a token. [[slnc 300]] And Keycloak issues the tokens, and ends sessions."
 
 [[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["A VPN that opens every internal system", "An internal service with no login at all", "A JWT in an Authorization: Bearer header", "A 401 for no token, a 403 for no permission"]
-narration = "You have probably met this already. [[slnc 400]] A V P N that opens every internal system is the perimeter. [[slnc 500]] An internal service with no login at all trusts the network. [[slnc 500]] A J W T in an authorization bearer header is an identity on each request. [[slnc 500]] And a four oh one for no token, against a four oh three for no permission, are the two questions: who are you, and may you."
+narration = "You have probably met this already. [[slnc 400]] The V P N that opens every internal system is the perimeter. [[slnc 500]] An internal service with no login at all trusts the network. [[slnc 500]] The J W T in an authorization bearer header is an identity on each request. [[slnc 500]] And a four oh one for no token, against a four oh three for no permission, are the two questions: who are you, and may you."
 
 [[scene]]
 key = "07-verdict"
 kind = "bullets"
 title = "How To Use It"
-body = ["Authenticate every request, near the resource", "Check signature, issuer, audience and expiry", "Decide with role, device and time", "Log every decision, never the token", "Short token lifetimes; check the session"]
-narration = "So, how do you use it? [[slnc 400]] Authenticate every request, close to the resource. [[slnc 500]] Check the token's signature, issuer, audience, and expiry, and choose the algorithm yourself. [[slnc 500]] Decide with more than a role: the device and the time too. [[slnc 500]] Log every decision, and never the token. [[slnc 300]] And keep token lifetimes short, or check the session."
+body = ["Authenticate every request, near the resource", "Check signature, issuer, audience and expiry;", "  choose the algorithm yourself", "Decide with role, device and time; deny by default", "Log every decision, never the token", "Short token lifetimes; check the session"]
+narration = "So, how do you use it? [[slnc 400]] Authenticate every request, close to the resource. [[slnc 500]] Check the token's signature, issuer, audience, and expiry, and choose the algorithm yourself, never from the token. [[slnc 500]] Decide with more than a role: the device and the time too, and deny by default. [[slnc 500]] Log every decision, and never the token. [[slnc 300]] And keep token lifetimes short, or check the session."
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "08-outro"
@@ -464,3 +673,159 @@ title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Let an auditor read balances", "only from a compliant device, 08:00 to 20:00."]
 narration = "That's zero trust access. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Being inside the network proves nothing: check who is calling, decide if they may, and record it, on every request. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a rule that lets an auditor read balances only from a compliant device, between eight in the morning and eight in the evening. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Keycloak and O P A do the identity and the decisions; the proxy ties them together. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Proxy"
+what = "the one door: authenticate, authorize, record"
+[[class.part]]
+title = "401, then 403, then forward"
+code = """
+Jwt.Result jwt = Jwt.verify(token, keys, issuer, audience, clock.instant());
+if (!jwt.valid()) {
+    return new Outcome(401, jwt.reason(), jwt.user(), "authentication failed", false);
+...
+Decider.Decision d = decider.decide(input);
+if (!d.allow()) {
+    return new Outcome(403, String.join(" + ", d.reasons()), jwt.user(), "forbidden", false);
+"""
+speech = """First the token: if it is not valid, the answer is four oh one, with the reason. [[slnc 300]] Then the policy engine: if it says no, the answer is four oh three, with its reasons. [[slnc 300]] Only then is the request forwarded to the ledger."""
+[[class.part]]
+title = "fail closed, and always one record"
+code = """
+// when the decision cannot be made the answer is no
+o = new Outcome(503, "decision unavailable", "-", "no decision", false);
+}
+audit.record(o.allowed() ? "allow" : "deny", o.status(), o.reason(), o.user(), method, path);
+"""
+speech = """If anything goes wrong, such as O P A being down, the answer is five oh three, a no. [[slnc 300]] And whatever happened, the last line writes exactly one record."""
+
+[[class]]
+name = "Jwt"
+what = "the token rules, in the right order"
+[[class.part]]
+title = "the verifier picks the algorithm"
+code = """
+if (!"RS256".equals(header.get("alg"))) {
+    return Result.invalid("unsupported algorithm", "-", Map.of());
+...
+if (!s.verify(signature)) {
+    return Result.invalid("bad signature", "-", Map.of());
+...
+if (!audiences(claims.get("aud")).contains(audience)) {
+"""
+speech = """Only R S 256 is accepted, so a token that says the algorithm none is refused. [[slnc 300]] The signature is checked before any claim is trusted. [[slnc 300]] Then the issuer, the audience, and the expiry."""
+
+[[class]]
+name = "Rs256Steps"
+what = "a teaching class: the signature check by hand"
+[[class.part]]
+title = "s^e mod n, then padding and hash"
+code = """
+byte[] m = fixed(new BigInteger(1, s).modPow(key.getPublicExponent(), key.getModulus()), k);
+...
+boolean padding = m[0] == 0 && m[1] == 1 && i - 2 >= 8 && i < k && m[i] == 0;
+...
+boolean hash = label && MessageDigest.isEqual(Arrays.copyOfRange(m, k - 32, k), digest);
+"""
+speech = """The public key undoes the signature: s to the power e, modulo n. [[slnc 300]] The block must start with the padding, and end with the S H A two fifty six of the header and the claims. [[slnc 300]] A test proves these steps give the J D K's answer."""
+
+[[class]]
+name = "Opa"
+what = "asks the policy engine, over HTTP"
+[[class.part]]
+title = "no answer is not a yes"
+code = """
+HttpRequest req = HttpRequest.newBuilder(base.resolve("/v1/data/bank/zerotrust/decision"))
+...
+if (res.statusCode() != 200 || !result.has("allow")) {
+    throw new IOException("opa gave no decision");
+"""
+speech = """The proxy posts the input to O P A and reads the decision. [[slnc 300]] A missing answer throws, and the proxy turns that into a no."""
+
+[[class]]
+name = "Ledger"
+what = "the resource: it answers only the proxy"
+[[class.part]]
+title = "the proxy's mark"
+code = """
+if (mark != null && !mark.equals(x.getRequestHeaders().getFirst("X-Proxy-Mark"))) {
+    reply(x, 403, "only the proxy may call the ledger");
+"""
+speech = """Behind the proxy, the ledger refuses any request without the proxy's mark, so skipping the proxy gets nothing. [[slnc 300]] In production this link would be mutual T L S."""
+
+[[class]]
+name = "AuditLog"
+what = "one line per decision, made of fields only"
+[[class.part]]
+title = "never given a token"
+code = """
+Entry e = new Entry(entries.size() + 1L, decision, status, reason, user, method, path);
+...
+line.put("reason", e.reason());
+line.put("user", e.user());
+"""
+speech = """A record is built from fields: the decision, the status, the reason, the user, the method, and the path. [[slnc 300]] It is never handed a header or a token, so none can leak into the log."""
+
+[[acronym]]
+short = "OPA"
+long = "Open Policy Agent: the engine that runs the Rego policy"
+say = "O P A is the open policy agent, the engine that runs the policy."
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: header.claims.signature"
+say = "J W T is a jay son web token: a header, the claims, and a signature."
+[[acronym]]
+short = "JWKS"
+long = "JSON Web Key Set: the issuer's published public keys"
+say = "J W K S is the jay son web key set, the public keys the issuer publishes."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: the format of tokens and records"
+say = "jay son is JavaScript object notation."
+[[acronym]]
+short = "RS256, RSA"
+long = "an RSA signature over a SHA-256 hash; RSA: Rivest, Shamir, Adleman"
+say = "R S 256 is an R S A signature over a S H A two fifty six hash. R S A is named after Rivest, Shamir and Adleman."
+[[acronym]]
+short = "SHA-256"
+long = "Secure Hash Algorithm, 256 bits: 32 bytes"
+say = "S H A two fifty six is the secure hash algorithm with two hundred and fifty six bits, thirty two bytes."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit: its Signature class does RS256"
+say = "J D K is the Java development kit."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: the ledger's requests"
+say = "A P I is application programming interface."
+[[acronym]]
+short = "HTTP, GET/POST"
+long = "Hypertext Transfer Protocol; GET reads, POST changes"
+say = "H T T P is the hypertext transfer protocol. GET reads, and POST changes something."
+[[acronym]]
+short = "401, 403, 503"
+long = "HTTP status: not authenticated, forbidden, unavailable"
+say = "Four oh one means not authenticated, four oh three means forbidden, and five oh three means unavailable."
+[[acronym]]
+short = "iss, aud, exp, iat"
+long = "claims: issuer, audience, expires at, issued at"
+say = "iss, aud, exp and iat are the claims issuer, audience, expires at, and issued at."
+[[acronym]]
+short = "kid, alg"
+long = "header fields: the key id, and the algorithm"
+say = "kid is the key id, and alg is the algorithm."
+[[acronym]]
+short = "FF, hex"
+long = "hexadecimal: FF is the byte 255"
+say = "Hex is hexadecimal. F F is the byte two hundred and fifty five."
+[[acronym]]
+short = "VPN"
+long = "Virtual Private Network: puts a laptop on the inside"
+say = "V P N is a virtual private network."
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: mutual TLS would link proxy and ledger"
+say = "T L S is transport layer security."

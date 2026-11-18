@@ -41,10 +41,10 @@ Teams bind bodies to entities, return entities, and rate-limit in one server's m
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 35 lines, identical on every run |
+| Tests | 24, all passing |
+| Demo output | 109 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:02, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:09, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

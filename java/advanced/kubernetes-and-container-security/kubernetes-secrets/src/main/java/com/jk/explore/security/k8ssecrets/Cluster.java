@@ -13,6 +13,8 @@ import java.util.UUID;
  */
 public final class Cluster implements AutoCloseable {
 
+    /** The node image, pinned by digest: the Kubernetes version decides how a Secret is stored and which claims a token has. */
+    static final String NODE_IMAGE = "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5";
     private static final String ENC_DIR = "/etc/kubernetes/enc";
     private static final String APISERVER = "/etc/kubernetes/manifests/kube-apiserver.yaml";
 
@@ -47,7 +49,7 @@ public final class Cluster implements AutoCloseable {
                           readOnly: true
                           pathType: Directory
                 """.formatted(encDir, ENC_DIR, ENC_DIR, ENC_DIR, ENC_DIR));
-        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--kubeconfig", kubeconfig.toString(), "--config", config.toString(), "--wait", "180s"));
+        Sh.must(List.of("kind", "create", "cluster", "--name", name, "--image", NODE_IMAGE, "--kubeconfig", kubeconfig.toString(), "--config", config.toString(), "--wait", "180s"));
     }
 
     String node() {
@@ -122,7 +124,9 @@ public final class Cluster implements AutoCloseable {
     /** Writes the aescbc configuration to the shared folder and restarts the API server so that it reads it. */
     void enableEncryption() throws IOException, InterruptedException {
         Files.writeString(encDir.resolve("enc.yaml"), Encryption.aescbc(key));
-        Sh.must(List.of("docker", "exec", node(), "sh", "-c", "mv " + APISERVER + " /tmp/apiserver.off && sleep 20 && mv /tmp/apiserver.off " + APISERVER));
+        // the kubelet stops the API server when its manifest goes away, and starts it again when it comes back
+        String restart = "mv " + APISERVER + " /tmp/apiserver.off && sleep 20 && mv /tmp/apiserver.off " + APISERVER;
+        Sh.must(List.of("docker", "exec", node(), "sh", "-c", restart));
         waitReady();
     }
 

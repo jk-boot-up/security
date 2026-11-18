@@ -21,6 +21,7 @@ Servers are set up once and never reviewed, so old settings, expiring certificat
 | The profile | `ServerProfile`, `CertFacts`, `HttpFacts` |
 | The checker and its report | `Checker`, `Finding`, `Severity`, `Report`, `CipherSuites` |
 | Policies | `Policy` |
+| Teaching class | `SuiteName` |
 | Demo servers | `Profiles` |
 | Entry point | `TlsCheckDemo` |
 
@@ -38,10 +39,10 @@ Servers are set up once and never reviewed, so old settings, expiring certificat
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 44 lines, identical on every run |
+| Tests | 13, all passing |
+| Demo output | 128 lines, identical on every run |
 | Acts | 4 |
-| Video | 05:44, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -29,6 +29,11 @@ final class LockingTransfer implements Steps {
         this.second = swap ? from : to;
     }
 
+    /** The order this transfer takes its two locks in, such as "ANA-1, then BEN-2". */
+    String lockOrder() {
+        return first + ", then " + second;
+    }
+
     @Override
     public String name() {
         return name;

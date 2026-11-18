@@ -50,20 +50,22 @@ final class CertificateAuthority {
     private final Map<String, Set<String>> allowedNames;
     private final Map<BigInteger, Integer> revoked = new LinkedHashMap<>();
     private final List<String> audit = new ArrayList<>();
+    private final List<String> rootUses = new ArrayList<>();
+    private final Instant start;
     private long nextSerial = 1000;
-    private int rootSignatures;
 
     CertificateAuthority(Instant start, Map<String, Set<String>> allowedNames) {
         this.allowedNames = Map.copyOf(allowedNames);
+        this.start = start;
         var rootKeys = Keys.newPair();
         X500Name rootName = new X500Name("CN=Shop Internal Root CA,O=Example Shop");
         this.root = new Issued(rootKeys, build(rootName, rootName, BigInteger.ONE, start, start.plus(Duration.ofDays(20 * 365)),
                 rootKeys.getPublic(), rootKeys.getPrivate(), null, Kind.ROOT, List.of(), null));
-        rootSignatures++;
+        rootUses.add("the root's own certificate");
         var issuingKeys = Keys.newPair();
         this.issuing = new Issued(issuingKeys, build(issuingName, rootName, BigInteger.TWO, start,
                 start.plus(Duration.ofDays(5 * 365)), issuingKeys.getPublic(), rootKeys.getPrivate(), root.certificate(), Kind.ISSUING, List.of(), null));
-        rootSignatures++;
+        rootUses.add("the issuing authority's certificate");
         audit.add("root signed the issuing authority, serial 2, path length 0, names limited to " + DOMAIN);
     }
 
@@ -79,7 +81,12 @@ final class CertificateAuthority {
 
     /** How many times the root's private key has been used. An offline root is used rarely, on purpose. */
     int rootSignatures() {
-        return rootSignatures;
+        return rootUses.size();
+    }
+
+    /** What the root's private key signed, in order. */
+    List<String> rootUses() {
+        return List.copyOf(rootUses);
     }
 
     List<String> audit() {
@@ -93,11 +100,11 @@ final class CertificateAuthority {
     X509Certificate issue(PKCS10CertificationRequest request, String requester, Profile profile, Duration lifetime, Instant now) throws RefusedException {
         try {
             if (!Csr.provesPossession(request)) {
-                throw new RefusedException("the request is not signed by the key it carries");
+                throw new RefusedException("not signed by the key it carries");
             }
             List<String> names = Csr.names(request);
             if (names.isEmpty()) {
-                throw new RefusedException("a certificate needs at least one subject alternative name");
+                throw new RefusedException("needs at least one subject alternative name");
             }
             Set<String> allowed = allowedNames.getOrDefault(requester, Set.of());
             for (String name : names) {
@@ -106,11 +113,11 @@ final class CertificateAuthority {
                     throw new RefusedException(name + " is outside " + DOMAIN);
                 }
                 if (!allowed.contains(lower)) {
-                    throw new RefusedException(requester + " may not ask for " + name);
+                    throw new RefusedException("may not ask for " + name);
                 }
             }
             if (lifetime.compareTo(profile.maxLifetime()) > 0) {
-                throw new RefusedException("asked for " + describe(lifetime) + ", the " + profile.name() + " profile allows at most " + describe(profile.maxLifetime()));
+                throw new RefusedException(describe(lifetime) + " is over the " + profile.name() + " profile's " + describe(profile.maxLifetime()));
             }
             X509Certificate certificate = endEntity(Csr.publicKey(request), names, profile.purpose(), now, now.plus(lifetime));
             audit.add("issued serial " + certificate.getSerialNumber() + " to " + requester + " for " + String.join(", ", names)
@@ -144,7 +151,7 @@ final class CertificateAuthority {
 
     static String describe(Duration duration) {
         long hours = duration.toHours();
-        return hours % 24 == 0 ? hours / 24 + " days" : hours + " hours";
+        return hours % 24 == 0 && hours > 24 ? hours / 24 + " days" : hours + " hours";
     }
 
     void revoke(BigInteger serial, int reason, Instant when) {
@@ -168,7 +175,8 @@ final class CertificateAuthority {
 
     /** The root's revocation list, covering the issuing authority. Each one is a use of the offline root key. */
     X509CRL rootCrl(Instant thisUpdate, Duration validFor, boolean issuingRevoked) {
-        rootSignatures++;
+        rootUses.add("the root's revocation list, day " + Duration.between(start, thisUpdate).toDays()
+                + (issuingRevoked ? ", issuing CA revoked" : ""));
         return crl(root, thisUpdate, validFor, issuingRevoked ? Map.of(BigInteger.TWO, CRLReason.cACompromise) : Map.of());
     }
 
@@ -203,7 +211,8 @@ final class CertificateAuthority {
                     builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(0));
                     builder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
                     GeneralSubtree permitted = new GeneralSubtree(new GeneralName(GeneralName.dNSName, DOMAIN));
-                    builder.addExtension(Extension.nameConstraints, true, new NameConstraints(new GeneralSubtree[] {permitted}, null));
+                    builder.addExtension(Extension.nameConstraints, true,
+                            new NameConstraints(new GeneralSubtree[] {permitted}, null));
                 }
                 case END_ENTITY -> {
                     builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));

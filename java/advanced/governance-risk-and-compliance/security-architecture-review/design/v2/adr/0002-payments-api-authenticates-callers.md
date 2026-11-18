@@ -1,4 +1,4 @@
-# 2. The payments API authenticates its callers
+# 2. Payments API checks its callers
 
 Status: Accepted
 

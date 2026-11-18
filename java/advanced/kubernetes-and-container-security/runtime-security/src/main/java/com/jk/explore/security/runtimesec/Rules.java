@@ -48,7 +48,8 @@ public final class Rules {
                     }
                 }
                 case "connect" -> {
-                    if (e.address() != null && !e.ip().startsWith("127.") && !baseline.allowedIps().contains(e.ip())) {
+                    if (e.address() != null && !e.ip().startsWith("127.")
+                            && !baseline.allowedIps().contains(e.ip())) {
                         alerts.add(new Alert(CONNECT, pod, e.address()));
                     }
                 }

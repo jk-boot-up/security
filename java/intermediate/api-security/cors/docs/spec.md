@@ -37,10 +37,10 @@ Developers fix CORS errors in the quickest way, and the quickest ways let other 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 36 lines, identical on every run |
+| Tests | 14, all passing |
+| Demo output | 91 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:30, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:41, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

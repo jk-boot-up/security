@@ -10,8 +10,12 @@ record Secrets(byte[] client, byte[] server) {
     static Secrets derive(byte[] sharedSecret, byte[] transcriptHash) {
         byte[] emptyHash = Hkdf.sha256();
         byte[] early = Hkdf.extract(Hkdf.ZEROS, Hkdf.ZEROS);
-        byte[] handshake = Hkdf.extract(Hkdf.deriveSecret(early, "derived", emptyHash), sharedSecret);
-        byte[] master = Hkdf.extract(Hkdf.deriveSecret(handshake, "derived", emptyHash), Hkdf.ZEROS);
-        return new Secrets(Hkdf.deriveSecret(master, "c ap traffic", transcriptHash), Hkdf.deriveSecret(master, "s ap traffic", transcriptHash));
+        byte[] handshake = Hkdf.extract(
+                Hkdf.deriveSecret(early, "derived", emptyHash), sharedSecret);
+        byte[] master = Hkdf.extract(
+                Hkdf.deriveSecret(handshake, "derived", emptyHash), Hkdf.ZEROS);
+        byte[] client = Hkdf.deriveSecret(master, "c ap traffic", transcriptHash);
+        byte[] server = Hkdf.deriveSecret(master, "s ap traffic", transcriptHash);
+        return new Secrets(client, server);
     }
 }

@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -69,28 +68,11 @@ public final class Scanner {
     }
 
     private void accounts(List<Finding> f) throws IOException {
-        Path passwd = root.resolve("etc/passwd");
-        Path shadow = root.resolve("etc/shadow");
-        if (!Files.exists(passwd)) {
-            return;
-        }
-        Map<String, String> hashes = new HashMap<>();
-        if (Files.exists(shadow)) {
-            for (String line : Files.readAllLines(shadow)) {
-                String[] p = line.split(":", -1);
-                if (p.length > 1) {
-                    hashes.put(p[0], p[1]);
-                }
-            }
-        }
-        for (String line : Files.readAllLines(passwd)) {
-            String[] p = line.split(":", -1);
-            if (p.length < 7) {
-                continue;
-            }
-            String user = p[0];
-            boolean login = !(p[6].endsWith("nologin") || p[6].endsWith("false"));
-            if (p[2].equals("0") && !user.equals("root")) {
+        Map<String, String> hashes = HostFiles.passwordHashes(root);
+        for (String[] account : HostFiles.passwd(root)) {
+            String user = account[0];
+            boolean login = HostFiles.canLogIn(account);
+            if (account[2].equals("0") && !user.equals("root")) {
                 f.add(new Finding("extra-root-account", Severity.CRITICAL, user, "UID 0 gives root rights to a second name", false));
             }
             String hash = hashes.get(user);
@@ -104,18 +86,10 @@ public final class Scanner {
     }
 
     private void ssh(List<Finding> f) throws IOException {
-        Path cfg = root.resolve("etc/ssh/sshd_config");
-        if (!Files.exists(cfg)) {
+        if (!Files.exists(root.resolve("etc/ssh/sshd_config"))) {
             return;
         }
-        Map<String, String> s = new HashMap<>();
-        for (String line : Files.readAllLines(cfg)) {
-            String t = line.trim();
-            if (!t.isEmpty() && !t.startsWith("#")) {
-                String[] p = t.split("\\s+", 2);
-                s.putIfAbsent(p[0].toLowerCase(), p.length > 1 ? p[1].trim().toLowerCase() : "");
-            }
-        }
+        Map<String, String> s = HostFiles.sshd(root);
         if (!"no".equals(s.getOrDefault("permitrootlogin", "yes")) && !"prohibit-password".equals(s.get("permitrootlogin"))) {
             f.add(new Finding("ssh-root-login", Severity.HIGH, "/etc/ssh/sshd_config", "PermitRootLogin " + s.getOrDefault("permitrootlogin", "(default: yes)"), false));
         }
@@ -131,16 +105,7 @@ public final class Scanner {
     }
 
     private void kernel(List<Finding> f) throws IOException {
-        Path cfg = root.resolve("etc/sysctl.conf");
-        Map<String, String> s = new HashMap<>();
-        if (Files.exists(cfg)) {
-            for (String line : Files.readAllLines(cfg)) {
-                String t = line.trim();
-                if (t.contains("=") && !t.startsWith("#")) {
-                    s.put(t.substring(0, t.indexOf('=')).trim(), t.substring(t.indexOf('=') + 1).trim());
-                }
-            }
-        }
+        Map<String, String> s = HostFiles.sysctl(root);
         if (!"2".equals(s.get("kernel.randomize_va_space"))) {
             f.add(new Finding("no-aslr", Severity.MEDIUM, "kernel.randomize_va_space", "is " + s.getOrDefault("kernel.randomize_va_space", "(unset)") + ", not 2: memory layout is not randomized", false));
         }
@@ -152,21 +117,10 @@ public final class Scanner {
         }
     }
 
-    /** Reads a {@code /proc/net/tcp}-style table: local address in hex, state 0A means listening. */
     private void ports(List<Finding> f) throws IOException {
-        Path tcp = root.resolve("proc/net/tcp");
-        if (!Files.exists(tcp)) {
-            return;
-        }
-        for (String line : Files.readAllLines(tcp).stream().skip(1).toList()) {
-            String[] p = line.trim().split("\\s+");
-            if (p.length < 4 || !p[3].equals("0A")) {
-                continue;
-            }
-            String[] local = p[1].split(":");
-            int port = Integer.parseInt(local[1], 16);
-            boolean everywhere = local[0].equals("00000000");
-            if (everywhere && !policy.portsAllowed().contains(port)) {
+        for (PortTable.Listener l : PortTable.listening(root.resolve("proc/net/tcp"))) {
+            int port = l.port();
+            if (l.everywhere() && !policy.portsAllowed().contains(port)) {
                 f.add(new Finding("open-port", port == 23 || port == 2375 || port == 6379 ? Severity.CRITICAL : Severity.HIGH, "port " + port,
                         "listens on every interface (" + describe(port) + ")", false));
             }
@@ -185,9 +139,9 @@ public final class Scanner {
         };
     }
 
-    /** Applies the safe, mechanical fixes: a permission change for each fixable finding. Returns how many were applied. */
-    public int applyPermissionFixes(List<Finding> findings) {
-        int n = 0;
+    /** Applies the safe, mechanical fixes: a permission change for each fixable finding. Returns the changes made. */
+    public List<Fix> applyPermissionFixes(List<Finding> findings) {
+        List<Fix> done = new ArrayList<>();
         try {
             for (Finding x : findings) {
                 if (!x.fixable()) {
@@ -195,21 +149,31 @@ public final class Scanner {
                 }
                 Path p = root.resolve(x.subject().substring(1));
                 int mode = Modes.of(p);
-                int fixed = switch (x.rule()) {
-                    case "unexpected-setuid" -> mode & ~(Modes.SETUID | Modes.SETGID);
-                    case "world-writable-dir", "world-writable-file" -> mode & ~Modes.OTHER_WRITE;
-                    case "cron-group-writable" -> mode & ~Modes.GROUP_WRITE;
-                    case "loose-permissions" -> mode & policy.maxModes().get(x.subject());
-                    default -> mode;
+                Fix fix = switch (x.rule()) {
+                    case "unexpected-setuid" -> remove(x, mode, Modes.SETUID | Modes.SETGID, "set-user-id");
+                    case "world-writable-dir", "world-writable-file" -> remove(x, mode, Modes.OTHER_WRITE, "other write");
+                    case "cron-group-writable" -> remove(x, mode, Modes.GROUP_WRITE, "group write");
+                    case "loose-permissions" -> keep(x, mode, policy.maxModes().get(x.subject()));
+                    default -> null;
                 };
-                if (fixed != mode) {
-                    Modes.set(p, fixed);
-                    n++;
+                if (fix != null && fix.after() != mode) {
+                    Modes.set(p, fix.after());
+                    done.add(fix);
                 }
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        return n;
+        return done;
+    }
+
+    /** Takes bits away: 4755 - 4000 = 0755. */
+    private static Fix remove(Finding x, int mode, int bits, String why) {
+        return new Fix(x.subject(), mode, "-", mode & bits, mode & ~bits, "no " + why);
+    }
+
+    /** Keeps only the bits the policy allows: 0644 & 0600 = 0600. */
+    private static Fix keep(Finding x, int mode, int max) {
+        return new Fix(x.subject(), mode, "&", max, mode & max, "policy " + Modes.octal(max));
     }
 }

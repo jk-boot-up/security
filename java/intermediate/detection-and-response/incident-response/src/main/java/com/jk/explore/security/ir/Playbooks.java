@@ -23,8 +23,12 @@ public final class Playbooks {
     /** The playbook: contain without destroying evidence, then capture, scope, close every way back in, rebuild from the image, reconnect, watch. */
     public static World playbook() {
         World w = new World(Preparation.full());
-        new Responder(w).detect().isolateWeb01().killDatabaseSessions().captureEvidence().scopeFromLogs().rotateDatabasePassword().disableBackdoorAccount()
-                .patchVulnerability().rebuildWeb01().reconnect().monitorTwoHours();
+        new Responder(w).detect()
+                .isolateWeb01().killDatabaseSessions() // contain
+                .captureEvidence().scopeFromLogs() // analyse
+                .rotateDatabasePassword().disableBackdoorAccount()
+                .patchVulnerability().rebuildWeb01() // eradicate
+                .reconnect().monitorTwoHours(); // recover
         return w;
     }
 }

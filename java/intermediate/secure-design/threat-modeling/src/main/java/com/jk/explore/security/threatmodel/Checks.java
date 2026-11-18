@@ -12,13 +12,13 @@ import java.util.function.Function;
  */
 final class Checks {
 
-    static final String TLS = "TLS on every flow that crosses a boundary";
-    static final String MUTUAL_AUTH = "both ends authenticated on every flow that crosses a boundary";
-    static final String AUDIT = "every process that receives money writes to the audit log";
-    static final String AUTHORIZATION = "every process that receives a flow from a less trusted zone checks authorization";
-    static final String STRONG_LOGIN = "customers sign in with a phishing-resistant passkey";
-    static final String STORE_PROTECTION = "stores are encrypted at rest and never reached from the device or partner zones";
-    static final String RATE_LIMIT = "every public-facing process checks tokens and limits rates";
+    static final String TLS = "TLS on every boundary-crossing flow";
+    static final String MUTUAL_AUTH = "both ends authenticated across boundaries";
+    static final String AUDIT = "money receivers write to the audit log";
+    static final String AUTHORIZATION = "authorization wherever trust rises";
+    static final String STRONG_LOGIN = "customers sign in with a passkey";
+    static final String STORE_PROTECTION = "stores encrypted, reached only from inside";
+    static final String RATE_LIMIT = "public processes check tokens, limit rates";
     static final String OWNERS = "every data store has a named owner";
 
     private Checks() {

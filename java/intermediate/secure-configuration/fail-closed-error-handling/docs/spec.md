@@ -42,10 +42,10 @@ Security checks are tested for the case where everything works; the failure case
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 32 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 95 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:07, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:02, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

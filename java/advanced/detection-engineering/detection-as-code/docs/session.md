@@ -15,9 +15,9 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The recorded logs | 5 min |
-| 0:15 | Act 2: Rules scored | 5 min |
-| 0:20 | Act 3: False-positive budgets | 5 min |
+| 0:10 | Act 1: One rule against three events | 5 min |
+| 0:15 | Act 2: A week of logs, each rule scored | 5 min |
+| 0:20 | Act 3: False-alarm budgets and tuning | 5 min |
 | 0:25 | Act 4: Tests and mutants | 5 min |
 | 0:30 | Act 5: ATT&CK coverage | 5 min |
 | 0:35 | Act 6: pySigma and OpenSearch | 5 min |

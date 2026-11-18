@@ -38,10 +38,10 @@ Teams cannot say which security requirements apply to them, which are met, and w
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 48 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 126 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:11, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:51, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

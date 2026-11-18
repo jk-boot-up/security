@@ -21,7 +21,10 @@ Teams do not know what their images contain, and learn of a critical advisory fr
 | The lab | `Lab` |
 | The bill | `Sbom` |
 | The scan | `Scan` |
-| Entry point and gate | `SbomScanDemo` |
+| The deployment gate | `Gate` |
+| A package URL, part by part | `Purl` |
+| Version order | `Versions` |
+| Entry point | `SbomScanDemo` |
 
 ## Requirements
 
@@ -37,10 +40,10 @@ Teams do not know what their images contain, and learn of a critical advisory fr
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 30 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 82 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:47, 1920×1080, narrated in the amy-slow voice |
+| Video | 14:59, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

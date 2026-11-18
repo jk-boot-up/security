@@ -38,10 +38,10 @@ Teams ship checks and secrets in client code and assume that they cannot be read
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 8, all passing |
-| Demo output | 23 lines, identical on every run |
+| Tests | 12, all passing |
+| Demo output | 111 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:22, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:21, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

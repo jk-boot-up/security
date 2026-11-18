@@ -1,5 +1,6 @@
 package com.jk.explore.security.actuatorspring;
 
+import java.util.Arrays;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -7,8 +8,9 @@ import org.springframework.context.ConfigurableApplicationContext;
 record Running(ConfigurableApplicationContext context, String customerUrl, String managementUrl) implements AutoCloseable {
 
     static Running start(String profile, String... properties) {
-        ConfigurableApplicationContext context = new SpringApplicationBuilder(StoreApp.class).profiles(profile)
-                .run(java.util.Arrays.stream(properties).map(p -> "--" + p).toArray(String[]::new));
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(StoreApp.class).profiles(profile);
+        String[] args = Arrays.stream(properties).map(p -> "--" + p).toArray(String[]::new);
+        ConfigurableApplicationContext context = builder.run(args);
         String customer = "http://127.0.0.1:" + context.getEnvironment().getProperty("local.server.port");
         String management = "http://127.0.0.1:" + context.getEnvironment().getProperty("local.management.port");
         return new Running(context, customer, management);

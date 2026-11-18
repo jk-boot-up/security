@@ -125,4 +125,31 @@ class DepConfusionTest {
         assertThrows(ResolutionException.class, () -> new HighestVersionResolver().resolve("nothing", VersionRange.any(), Set.<Repository>of().stream().toList()));
         assertThrows(ResolutionException.class, () -> new FirstRepositoryResolver().resolve("nothing", VersionRange.any(), List.of(DepConfusionDemo.publicRepo())));
     }
+
+    @Test
+    void whyHigherNamesTheFirstNumberThatDiffers() {
+        assertEquals("major 99 > 1", Version.parse("99.0.0").whyHigher(Version.parse("1.4.2")));
+        assertEquals("minor 9 < 10", Version.parse("1.9.0").whyHigher(Version.parse("1.10.0")));
+        assertEquals("patch 3 > 2", Version.parse("1.4.3").whyHigher(Version.parse("1.4.2")));
+        assertEquals("equal", Version.parse("1.4.2").whyHigher(Version.parse("1.4.2")));
+    }
+
+    @Test
+    void theDigestIsTheSha256OfThreeLines() throws Exception {
+        Artifact a = Artifact.of("shop-pricing", "1.4.2", "internal pricing rules");
+        assertEquals("shop-pricing@1.4.2\ninternal pricing rules\n", a.digestInput());
+        assertEquals("shop-pricing@1.4.2\ninternal pricing rules\necho", a.withInstallScript("echo").digestInput());
+        byte[] sha = java.security.MessageDigest.getInstance("SHA-256").digest(a.digestInput().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(java.util.HexFormat.of().formatHex(sha), a.digest());
+    }
+
+    @Test
+    void theFilterNamesTheOnlyRepositoriesAllowedForEachName() {
+        ContentFilteringResolver f = new ContentFilteringResolver(n -> n.startsWith("shop-"));
+        List<Repository> repos = List.of(DepConfusionDemo.privateRepo(), DepConfusionDemo.publicRepo());
+        assertTrue(f.isInternal("shop-newlib"));
+        assertFalse(f.isInternal("json-lib"));
+        assertEquals(List.of("company-private"), f.allowedFor("shop-newlib", repos).stream().map(Repository::name).toList());
+        assertEquals(List.of("public-registry"), f.allowedFor("json-lib", repos).stream().map(Repository::name).toList());
+    }
 }

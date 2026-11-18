@@ -19,12 +19,26 @@ import tools.jackson.databind.node.ObjectNode;
 /** A real certificate authority, step-ca, running on this machine and driven with the step command line. It can be stopped and started again. */
 final class StepCa implements AutoCloseable {
 
+    /** The versions the golden output was made with (see docs/prerequisites.md); another version could issue or renew differently. */
+    static final String STEP_VERSION = "0.31.0";
+    static final String STEP_CA_VERSION = "0.30.2";
+
     private final Path work;
     private final Path home;
     private final Map<String, String> env;
     private final List<String> connect;
     private final Path password;
     private Process process;
+
+    /** Stops with a clear message when step or step-ca is not the pinned version. */
+    static void requirePinnedVersions() throws IOException, InterruptedException {
+        String cli = Sh.run("step", "version").output();
+        String ca = Sh.run("step-ca", "version").output();
+        if (!cli.contains("Smallstep CLI/" + STEP_VERSION + " ") || !ca.contains("Smallstep CA/" + STEP_CA_VERSION + " ")) {
+            throw new IllegalStateException("this demo needs step " + STEP_VERSION + " and step-ca " + STEP_CA_VERSION + ", found: "
+                    + cli.lines().findFirst().orElse("none") + " and " + ca.lines().findFirst().orElse("none"));
+        }
+    }
 
     StepCa(Path dir) throws IOException, InterruptedException {
         this.work = Files.createDirectories(dir.toAbsolutePath());

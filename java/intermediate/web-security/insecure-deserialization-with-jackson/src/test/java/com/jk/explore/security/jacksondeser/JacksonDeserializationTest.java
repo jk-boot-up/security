@@ -54,7 +54,7 @@ class JacksonDeserializationTest {
     void jacksonThreeRefusesClassNamesAgainstAnObjectBaseType() {
         Refused refused = assertThrows(Refused.class, () -> Cookies.read(Mappers.defaults(), LooseCart.class, Cookies.fromJson(
                 "{\"lines\":[],\"gift\":{\"@class\":\"" + Note.Gift.class.getName() + "\",\"message\":\"hi\"}}")));
-        assertEquals("the default validator denies class names for an Object", refused.getMessage());
+        assertEquals("Object is too general a base type", refused.getMessage());
     }
 
     @Test

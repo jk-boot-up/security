@@ -52,7 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `PasskeysSpringTest` starts a real bank for each case and checks registration, the CSRF token, sign-in, the single use of a challenge, another key, the origin and the relying party id hash, the browser's and authenticator's rules, a flipped flag, the defaults, user verification, a clone and its suspension, a forged signature, a synced passkey, removing a passkey and the end of the password.
-- `CborTest` and `SoftwareAuthenticatorTest` check the bytes the authenticator builds, and `DemoRunsTest` compares the whole demo with the golden output.
+- `CborTest` and `SoftwareAuthenticatorTest` check the bytes the authenticator builds, the COSE key read back label by label and the 69 signed bytes, and `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next
 

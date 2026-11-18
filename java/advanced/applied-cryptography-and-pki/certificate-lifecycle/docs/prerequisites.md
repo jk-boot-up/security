@@ -3,7 +3,7 @@
 ## Required
 
 - Java basics
-- openssl 3 or 4 and step with step-ca (brew install step openssl@3)
+- openssl 3 or 4, and step 0.31.0 with step-ca 0.30.2 (the demo checks these two versions)
 - About two minutes for the demo
 
 ## Explicitly not required

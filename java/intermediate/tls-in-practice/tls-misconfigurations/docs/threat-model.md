@@ -51,7 +51,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `TlsCheckTest` checks every rule on both sides of its boundary, wildcard matching, the cipher classification, the grading rules, the worst-first order and the policy.
+- `TlsCheckTest` checks every rule on both sides of its boundary, wildcard matching, the cipher classification, the grading rules, the score bands, the suite name parts, the worst-first order and the policy.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

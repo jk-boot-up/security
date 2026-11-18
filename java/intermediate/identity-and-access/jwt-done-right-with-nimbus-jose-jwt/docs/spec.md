@@ -19,6 +19,7 @@ Teams pick up a JWT library and assume that it validates everything, and leave t
 | Role | Class |
 | --- | --- |
 | The bank | `BankIssuer`, `RefreshTokens` |
+| Fixed demo keys | `DemoKeys` |
 | The key set | `JwksServer` |
 | The API | `AccessTokenValidator`, `Refused` |
 | Time | `SimClock` |
@@ -33,7 +34,7 @@ Teams pick up a JWT library and assume that it validates everything, and leave t
 5. A jku or jwk header is never used.
 6. The scope and the lifetime policy are checked after the library.
 7. A new key can be published before it is used, and a retired key is refused once the cache expires.
-8. The demo prints the same output on every run.
+8. The demo prints the same output on every run; the random ES256 signature is printed as a placeholder.
 
 ## Measured
 
@@ -41,9 +42,9 @@ Teams pick up a JWT library and assume that it validates everything, and leave t
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 28, all passing |
-| Demo output | 43 lines, identical on every run |
-| Acts | 5 |
-| Video | 07:16, 1920×1080, narrated in the amy-slow voice |
+| Demo output | 139 lines, identical on every run |
+| Acts | 6 |
+| Video | 19:12, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -16,7 +16,7 @@ domain_note = ""
 youtube_description = "Network segmentation measured on real Docker networks for an online store's six services: one flat network where a taken-over front reaches the database, the cache, the admin panel and the build server; three coarse networks; a layout generated from the design as code with one internal network for each allowed pair; drift found by comparing what can talk with what should; published ports; and which services can reach a server on the internet."
 thumb_lines = ["NETWORK", "ISOLATION"]
 thumb_code = "nc -z -w1 db 5432"
-youtube_title = "Network Isolation: Measuring What a Taken-Over Service Can Reach (Docker Networks, Intent as Code)"
+youtube_title = "Network Isolation in Java: Measuring What a Taken-Over Service Can Reach (Docker Networks)"
 youtube_tags = ["network segmentation", "network isolation", "docker networks", "lateral movement", "blast radius", "security groups", "zero trust", "cloud security", "drift detection", "java"]
 
 [readme]
@@ -60,91 +60,216 @@ This is the second project of the [cloud-security-without-a-cloud](..) module, a
 twin = """
 The networks and containers are real; the checks are connections from inside the containers, made with nc. Names and addresses are never printed, only which services reach which, so the output is the same on every run.
 """
-test_note = "The intent and the comparison are tested with no Docker. The rest create real networks and containers and remove them (./gradlew integrationTest)."
+test_note = "The intent, the comparison and the layout worked out on paper are tested with no Docker. The rest create real networks and containers and remove them (./gradlew integrationTest)."
 
 [[act]]
 title = "One flat network"
-summary = "A taken-over front reaches the database, the cache, the admin panel and the build server; 15 of 15 pairs can talk."
+summary = "Six containers on one Docker network: the taken-over front reaches every other service, and 15 of 15 pairs can talk where the design wants 6."
 detail = """
-Six containers on one Docker network, each listening on its port. The front is taken over; what it reaches by name: app, db, cache, admin and ci. Pairs that can talk, in either direction: 15 of 15; the design wanted 6.
+The input: six services of the store, each a container listening on its port (web 8000, app 8080, db 5432, cache 6379, admin 9000, ci 2222), all on one network called flat.
+The attack: web, the public front, is taken over. Measured from inside it with nc, it reaches app, db, cache, admin and ci by name.
+How many pairs can talk: n services on one network make n x (n - 1) / 2 pairs, so 6 x 5 / 2 = 15, and 15 of 15 are measured. The design wants 6, so 9 pairs are extra.
+"""
+figure = "flat_reach"
+figure_title = "Taken over on a flat network, the front reaches everything"
+figure_speech = """
+First demo: one flat network. [[slnc 400]] On the left, the layout: six services of the store, all on one Docker network. [[slnc 300]] The web front, the application, the database, the cache, the admin panel, and the build server. [[slnc 700]]
+Now the attack. [[slnc 300]] The web front faces the internet, so it is the one an attacker takes over first. [[slnc 300]] From inside it, the demo tries to connect to every other service, by name. [[slnc 600]]
+On the right, the result. [[slnc 300]] It reaches all five: the application, the database, the cache, the admin panel, and the build server. [[slnc 300]] Nothing stands between the internet and the accounts database except the front itself.
 """
 speech = """
-First demo: one flat network. [[slnc 400]] The front is taken over. [[slnc 600]]
-It reaches the application, the database, the cache, the admin panel, and the build server. [[slnc 300]] Fifteen pairs can talk. The design wanted six.
+Here is the real output. [[slnc 400]] First the input: the six services, each with its port, and the layout: one network called flat. [[slnc 400]] Then the attack: the front is taken over. [[slnc 300]] Measured from inside it, it reaches every other service.
+[[page]]
+How many pairs can talk. [[slnc 300]] Six services on one network make six times five, divided by two: fifteen pairs. [[slnc 300]] All fifteen are measured. [[slnc 400]] The design wants six, so nine pairs are extra, and none is missing.
 """
 rows = { flat = "active wrong" }
 console = [
-    ["web reaches app, db, cache, admin, ci", "bad"],
-    ["15 of 15 pairs can talk", "bad"],
-    ["the design wanted 6", "ok"],
+    ["THE SERVICES (one container each, listening on a port):", "code"],
+    ["  web    8000  the public front", "muted"],
+    ["  app    8080  the application", "muted"],
+    ["  db     5432  the accounts database", "muted"],
+    ["  cache  6379  the session cache", "muted"],
+    ["  admin  9000  the admin panel", "muted"],
+    ["  ci     2222  the build server", "muted"],
+    ["THE LAYOUT:", "code"],
+    ["  flat   web app db cache admin ci  has a way out", "muted"],
+    ["THE ATTACK: web, the public front, is taken over", "code"],
+    ["WHAT web REACHES BY NAME (measured with nc):", "code"],
+    ["  app db cache admin ci  <- EVERYTHING", "bad"],
+    ["---", ""],
+    ["HOW MANY PAIRS CAN TALK (n services make n x (n-1) / 2):", "code"],
+    ["  flat   6 services  6 x 5 / 2 = 15", "muted"],
+    ["  measured 15 of 15 possible pairs", "muted"],
+    ["AGAINST THE DESIGN (6 pairs wanted):", "code"],
+    ["  extra    9  admin-cache admin-web app-ci cache-ci", "muted"],
+    ["           cache-db cache-web ci-db ci-web", "muted"],
+    ["           db-web", "muted"],
+    ["  missing  0", "muted"],
 ]
 
 [[act]]
 title = "Three networks: front, back, management"
-summary = "The front reaches only the application, but members of one network reach each other: 8 pairs, 2 of them unwanted."
+summary = "Front, back and management networks cut the pairs to 8 and the front reaches only the application, but everything on the back network reaches everything else on it: 2 extra pairs."
 detail = """
-Web and app on front; app, db, cache and admin on back, an internal network with no route out; admin and ci on management. The front is taken over: it reaches the application only, by name and by address after scanning every address it can learn. Pairs that can talk: 8 of 15, the design wanted 6, extra: 2 (admin-cache and cache-db), missing: 0. Everything on a network can talk to everything else on it.
+The input: three networks. front holds web and app and has a way out; back holds app, db, cache and admin and is internal; mgmt holds admin and ci and is internal. web is published on front.
+The result, measured: the taken-over front reaches only app, by name and also by every address it can learn.
+How many pairs can talk: front 2 x 1 / 2 = 1, back 4 x 3 / 2 = 6, mgmt 2 x 1 / 2 = 1; together 8, and 8 are measured. Against the design's 6, 2 are extra: admin-cache and cache-db, because everything on back reaches everything else on back.
+"""
+figure = "tiers_layout"
+figure_title = "Three networks, and the pairs each one makes"
+figure_speech = """
+Second demo: three networks, the usual tiers. [[slnc 400]] The front network holds the web front and the application, and has a way out. [[slnc 300]] The back network holds the application, the database, the cache and the admin panel, and it is internal. [[slnc 300]] The management network holds the admin panel and the build server. [[slnc 700]]
+Under each network, the pairs it makes. [[slnc 300]] Two services make one pair. Four services make four times three, divided by two: six pairs. [[slnc 300]] Together, eight. [[slnc 600]]
+The design wants six. [[slnc 300]] So two are extra: the admin panel can reach the cache, and the cache can reach the database. [[slnc 300]] Nobody asked for either, they come with sharing the back network.
 """
 speech = """
-Second demo: three networks. [[slnc 400]] The front now reaches only the application. [[slnc 600]]
-But everything on a network talks to everything else on it, so two pairs exist that nobody asked for.
+The input: the three networks, and which ones are internal. [[slnc 400]] The result: from the taken-over front, only the application can be reached. [[slnc 300]] By name, and also by every address the front can learn.
+[[page]]
+How many pairs can talk, network by network: one, six and one, so eight. [[slnc 300]] Eight are measured. [[slnc 400]] Against the design, two are extra, admin to cache and cache to database. [[slnc 300]] Everything on the back network talks to everything else on it.
 """
-rows = { coarse = "active ok" }
+rows = { coarse = "active wrong" }
 console = [
-    ["web reaches app only, by name and by address", "ok"],
-    ["8 of 15 pairs; the design wanted 6", "bad"],
-    ["extra: admin-cache, cache-db", "bad"],
+    ["THE LAYOUT:", "code"],
+    ["  front  web app                    has a way out", "muted"],
+    ["  back   app db cache admin         internal", "muted"],
+    ["  mgmt   admin ci                   internal", "muted"],
+    ["WHAT web REACHES (measured):", "code"],
+    ["  by name     app", "muted"],
+    ["  by address  app   (every address it can learn)", "muted"],
+    ["---", ""],
+    ["HOW MANY PAIRS CAN TALK:", "code"],
+    ["  front  2 services  2 x 1 / 2 = 1", "muted"],
+    ["  back   4 services  4 x 3 / 2 = 6", "muted"],
+    ["  mgmt   2 services  2 x 1 / 2 = 1", "muted"],
+    ["  together 8, as distinct pairs 8", "muted"],
+    ["  measured 8 of 15 possible pairs", "muted"],
+    ["AGAINST THE DESIGN (6 pairs wanted):", "code"],
+    ["  extra    2  admin-cache cache-db", "muted"],
+    ["  missing  0", "muted"],
+    ["WHY: everything on back talks to everything else on back", "code"],
 ]
 
 [[act]]
 title = "The design as code, and a layout built from it"
-summary = "One internal network for each wanted pair measures exactly 6 pairs; a service joined to one more network is drift."
+summary = "The intent is 6 pairs; a layout with one internal network per pair measures exactly 6 pairs, and a service joined to one more network is found as drift: extra db-web."
 detail = """
-The intent is six pairs: admin-app, admin-ci, admin-db, app-cache, app-db and app-web. One internal network for each pair, each service on the networks of its pairs: measured 6 pairs, extra 0, missing 0. The taken-over front reaches the application only, by name and by address. Someone with the Docker socket joins web and db to one more network; measuring against the intent finds db-web at once.
+The input is the design as code: the six pairs that may talk, admin-app, admin-ci, admin-db, app-cache, app-db and app-web. The layout built from it has one internal network for each pair, link1 to link6, and an edge network with a way out that only web is on.
+The measurement: 6 pairs, 0 extra, 0 missing; the front reaches only app, by name and by address.
+The drift: someone with the Docker socket creates the network oops and connects web and db to it. Measured again: 7 pairs, and the extra one is db-web, found by comparing the measurement with the intent.
+"""
+figure = "intent_links"
+figure_title = "One network for each allowed pair, and the drift"
+figure_speech = """
+Third demo: the design, written as code. [[slnc 400]] The intent lists the six pairs of services that may talk. [[slnc 300]] The layout is built from it: one small internal network for each pair. [[slnc 700]]
+In the picture, each green line is one of those networks, link one to link six. [[slnc 300]] The front talks only to the application. [[slnc 300]] The application talks to the database and the cache. [[slnc 300]] The admin panel talks to the application, the database, and the build server. [[slnc 600]]
+Measured, that is exactly six pairs: nothing extra, nothing missing. [[slnc 600]]
+Then someone with access to Docker joins the front and the database to one more network. [[slnc 300]] The rose line. [[slnc 300]] Measured again, there are seven pairs, and the extra one, database to web, is found at once.
 """
 speech = """
-Third demo: the design as code. [[slnc 400]] Six pairs may talk. One internal network for each pair. [[slnc 600]]
-The measurement matches the design exactly. [[slnc 300]] And when someone joins two services to one more network, the comparison finds it.
+The input: the intent, six pairs. [[slnc 300]] Then the layout built from it: six internal networks, one per pair, and an edge network for the front.
+[[page]]
+The measurement: six pairs, none extra, none missing. [[slnc 300]] The front reaches only the application. [[slnc 400]] Then the drift: two Docker commands join the front and the database to a new network. [[slnc 300]] Measured again, the extra pair, database to web, shows up.
 """
 rows = { code = "active ok" }
 console = [
-    ["intent: 6 pairs; measured: 6, extra 0, missing 0", "ok"],
-    ["web reaches app only", "ok"],
-    ["one more network: extra db-web, found", "ok"],
+    ["THE INTENT (the pairs that may talk):", "code"],
+    ["  admin-app admin-ci admin-db", "muted"],
+    ["  app-cache app-db app-web", "muted"],
+    ["THE LAYOUT BUILT FROM IT (one network per pair):", "code"],
+    ["  link1  admin app                  internal", "muted"],
+    ["  link2  admin ci                   internal", "muted"],
+    ["  link3  admin db                   internal", "muted"],
+    ["  link4  app cache                  internal", "muted"],
+    ["  link5  app db                     internal", "muted"],
+    ["  link6  app web                    internal", "muted"],
+    ["  edge   web                        has a way out", "muted"],
+    ["---", ""],
+    ["THE MEASUREMENT:", "code"],
+    ["  pairs 6, extra 0, missing 0", "muted"],
+    ["  web reaches by name app, by address app", "muted"],
+    ["THE DRIFT: someone with the Docker socket runs", "code"],
+    ["  docker network create --internal oops", "muted"],
+    ["  docker network connect oops web, and the same for db", "muted"],
+    ["THE MEASUREMENT AFTER THE DRIFT:", "code"],
+    ["  pairs 7, extra db-web  <- FOUND BY MEASURING", "bad"],
 ]
 
 [[act]]
 title = "The edge: what is published, and what can leave"
-summary = "Only the front is published to the host, and only the front can reach a server on the internet side."
+summary = "Only the front is published to the host, and only the front can reach a server on the internet side: internal networks have no way out."
 detail = """
-Published to the host: web yes, app no, db no, and the host can open web's port. With an attacker's server on the internet side, the services that can reach it: web only. Internal networks have no way out, so a taken-over database cannot send anything out; a taken-over front still can, and its way out is the next thing to close.
+The way in: of the six services only web is published to the host, on 127.0.0.1, and the host can connect to it; app, db, cache, admin and ci are not published.
+The way out: a server evil, listening on port 4444, is put on the edge network, as a stand-in for the internet. Measured from each service, only web reaches it.
+How it is worked out: only edge has a way out, and only web is on edge, so the layout predicts web, and web is what is measured. A taken-over database cannot send anything out; a taken-over front still can, and that way out is the next thing to close.
+"""
+figure = "edge_ways"
+figure_title = "The way in and the way out"
+figure_speech = """
+Fourth demo: the edge. [[slnc 400]] On the left, the way in. [[slnc 300]] Only the web front is published to the host, and the host can connect to it. [[slnc 300]] The other five services have no published port at all. [[slnc 700]]
+On the right, the way out. [[slnc 300]] A stand-in for an attacker's server on the internet, called evil, listens on port forty four forty four. [[slnc 300]] From each service, the demo tries to reach it. [[slnc 600]]
+Only the web front can. [[slnc 300]] Every other service is only on internal networks, and an internal network has no way out. [[slnc 300]] So a taken-over database cannot send its data anywhere. [[slnc 300]] A taken-over front still can.
 """
 speech = """
-Fourth demo: the edge. [[slnc 400]] Only the front is published to the host. [[slnc 600]]
-And only the front can reach a server on the internet. [[slnc 300]] A taken-over database cannot send anything out.
+The way in: only the front is published to the host, and the host connects. [[slnc 300]] No other service is published. [[slnc 400]] Then the way out: an attacker's server on the edge network.
+[[page]]
+Who reaches it, measured: only the front. [[slnc 400]] How that is worked out: only the edge network has a way out, and only the front is on it. [[slnc 300]] The layout predicts web, and web is what is measured.
 """
 rows = { edge = "active ok" }
 console = [
-    ["published: web yes, app no, db no", "ok"],
-    ["can reach the attacker's server: web only", "bad"],
-    ["internal networks have no way out", "ok"],
+    ["THE WAY IN: ports published to the host (127.0.0.1)", "code"],
+    ["  web    published, the host connects: yes", "muted"],
+    ["  app    not published", "muted"],
+    ["  db     not published", "muted"],
+    ["  cache  not published", "muted"],
+    ["  admin  not published", "muted"],
+    ["  ci     not published", "muted"],
+    ["THE WAY OUT: an attacker's server, evil:4444, on edge", "code"],
+    ["---", ""],
+    ["WHO REACHES IT (measured):", "code"],
+    ["  web    yes  <- THE FRONT HAS A WAY OUT", "bad"],
+    ["  app    no", "muted"],
+    ["  db     no", "muted"],
+    ["  cache  no", "muted"],
+    ["  admin  no", "muted"],
+    ["  ci     no", "muted"],
+    ["HOW IT IS WORKED OUT:", "code"],
+    ["  only edge has a way out, and only web is on edge", "muted"],
+    ["  worked out web, measured web", "muted"],
 ]
 
 [[act]]
 title = "The bill"
-summary = "Pivots, reachable is not authorised, the Docker socket beats every rule, and a diagram of the network is a wish."
+summary = "The pivots are the services on several networks (app is on four); reachable is not authorised; the Docker socket beats every rule; one network per pair costs 7 networks for 6 services."
 detail = """
-Names are scoped to networks: a service on two networks, and app is on four, is a pivot. Reachable is not authorised. Whoever can use the Docker socket can join any container to any network. One network for each pair does not scale to a hundred services, which is why clouds have security groups and clusters have network policies, and why those need testing as this does. Measure against the intent in the build and on a schedule.
+The pivots, worked out from the layout of act three: web is on 2 networks, app on 4, db on 2, admin on 3. A taken-over pivot reaches every network it is on, so the pivots are where an attacker goes next.
+What the network does not decide: reachable is not authorised, so the database still checks who the application is; and whoever can use the Docker socket can join anything to any network.
+What it costs: one network per pair is 7 networks for 6 services, which does not scale to a hundred; at scale clouds use security groups and clusters use network policies, and they need testing the same way, against the intent, on a schedule.
+"""
+figure = "pivots"
+figure_title = "The pivots: services on more than one network"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] A service on two or more networks is a pivot. [[slnc 300]] If it is taken over, it reaches every network it is on. [[slnc 700]]
+The application is on four networks: to the admin panel, the cache, the database, and the front. [[slnc 300]] The admin panel is on three. [[slnc 300]] The front and the database are on two each. [[slnc 600]]
+These are the services to watch most closely. [[slnc 300]] And remember: reaching a service is not the same as being allowed to use it. [[slnc 300]] The database must still check who is calling.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] A service on two networks is a pivot. Reachable is not authorised. [[slnc 600]]
-Whoever has the Docker socket can join anything to anything. [[slnc 300]] A diagram of the network is a wish. The measurement is the network.
+The pivots: the application on four networks, the admin panel on three, the front and the database on two. [[slnc 400]] What the network does not decide: whether a call is authorised, and who may use the Docker socket. [[slnc 300]] And the cost: seven networks for six services. [[slnc 300]] At scale, security groups and network policies, tested the same way.
 """
 rows = { bill = "active wrong" }
 console = [
-    ["app is on four networks: a pivot", "bad"],
-    ["the Docker socket joins any container to any network", "bad"],
-    ["measure against the intent, in the build and on a schedule", "ok"],
+    ["THE PIVOTS (services on two or more networks):", "code"],
+    ["  web    2 networks  link6 edge", "muted"],
+    ["  app    4 networks  link1 link4 link5 link6", "muted"],
+    ["  db     2 networks  link3 link5", "muted"],
+    ["  admin  3 networks  link1 link2 link3", "muted"],
+    ["  a taken-over pivot reaches every network it is on", "muted"],
+    ["WHAT THE NETWORK DOES NOT DECIDE:", "code"],
+    ["  reachable is not authorised: db still checks who app is", "muted"],
+    ["  the Docker socket can join anything to any network", "muted"],
+    ["WHAT IT COSTS:", "code"],
+    ["  one network per pair: 7 networks for 6 services", "muted"],
+    ["  at scale: security groups and network policies, tested", "muted"],
+    ["  the same way, against the intent, on a schedule", "muted"],
 ]
 
 [animation]
@@ -224,7 +349,7 @@ nongoals = [
 problem = """
 Services share networks that nobody drew carefully, so a taken-over service reaches things it should not.
 """
-roles = [["The shop", "`Service`"], ["The networks and containers", "`Lab`"], ["The design", "`Intent`"], ["Entry point", "`NetworkIsolationDemo`"]]
+roles = [["The shop", "`Service`"], ["The networks and containers", "`Lab`"], ["The design", "`Intent`"], ["The layout on paper", "`Layout`"], ["Entry point", "`NetworkIsolationDemo`"]]
 requirements = [
     "Reachability is measured from inside containers, by name and by address.",
     "The intent is a table of allowed pairs and a layout can be built from it.",
@@ -388,15 +513,15 @@ residual = "Operators with the socket"
 
 [poster]
 headline = [["NETWORK", "text"], ["ISOLATION", "accent"]]
-taglines = [["Measure what a taken-over service can reach on a flat network, on coarse networks and on a", "gold"]]
-before = { code = "web reaches app, db, cache, admin, ci", note = "One flat network", tag = "BEFORE" }
-after = { code = "nc -z -w1 db 5432", note = "The bill", tag = "AFTER" }
+taglines = [["Measure what a taken-over service can reach", "gold"]]
+before = { code = "web reaches app db cache admin ci", note = "One flat network", tag = "BEFORE" }
+after = { code = "pairs 6, extra 0, missing 0", note = "Built from the intent", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "Network Isolation"
-narration = "Hello, and welcome. [[slnc 400]] This video explains network isolation, measured on real Docker networks. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Network isolation answers one question: if this service is taken over, what else can it reach? [[slnc 300]] Clouds call the answer by many names, like a V P C, a security group, or a network policy. [[slnc 300]] This project measures it, by connecting from inside every container, and compares the result with the design. [[slnc 600]] Think of the doors between rooms in a shop: the till should open to the stockroom, never to the safe. [[slnc 600]] Our example is an online store."
+narration = "Hello, and welcome. [[slnc 400]] This video explains network isolation, measured on real Docker networks. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] Network isolation answers one question: if this service is taken over, what else can it reach? [[slnc 300]] Clouds call the answer by many names, like a V P C, a virtual private cloud, a security group, or a network policy. [[slnc 300]] This project measures it, by connecting from inside every container, and compares the result with the design. [[slnc 600]] Think of the doors between rooms in a shop: the till should open to the stockroom, never to the safe. [[slnc 600]] Our example is an online store."
 
 [[scene]]
 key = "02-scenario"
@@ -404,6 +529,26 @@ kind = "bullets"
 title = "The Scenario"
 body = ["An online store with six services:", "  a web front, an application,", "  a database, a cache,", "  an admin panel and a build server", "", "Each runs in a real container.", "The demo connects from inside each one,", "on three different network layouts."]
 narration = "Here is the scenario. [[slnc 400]] An online store with six services: a web front, an application, a database, a cache, an admin panel, and a build server. [[slnc 500]] Each runs in a real Docker container, listening on its port. [[slnc 500]] The demo tries to connect from inside every container to every other one, on three layouts: one flat network, three coarse networks, and a layout built from the design."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Network: containers on it can reach each other", "Internal network: no route out to the internet", "Pair: two services that can talk, either way", "Intent: the pairs the design allows, as code", "Drift: the real network no longer matches the intent", "Pivot: a service on two or more networks"]
+narration = """Before the demos, the words. [[slnc 500]] A Docker network joins containers: every container on it can reach every other one. [[slnc 500]] An internal network has no route out to the internet. [[slnc 500]] A pair is two services that can talk, in either direction. [[slnc 500]] The intent is the list of pairs the design allows, written as code. [[slnc 500]] Drift is when the real network no longer matches the intent. [[slnc 500]] And a pivot is a service on two or more networks: taken over, it reaches all of them."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-formula"
+kind = "figure"
+title = "How many pairs one network makes"
+body = "pairs_formula"
+narration = """Let's see the core idea on one example: how many pairs of services one network lets talk. [[slnc 400]] On the left, six services on one network. [[slnc 300]] Every line is a pair that can talk. [[slnc 600]] Each of the six can reach the other five. [[slnc 300]] Six times five is thirty arrows. [[slnc 300]] But an arrow each way between the same two services is one pair, so divide by two: fifteen pairs. [[slnc 600]] The design of this store wants only six. [[slnc 300]] So a flat network gives nine pairs that nobody asked for. [[slnc 300]] The demo measures all fifteen, from inside the containers."""
 
 [[scene]]
 key = "03-acts"
@@ -417,13 +562,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["More networks mean more to manage", "Measuring takes time", "A service on two networks is a bridge", "Segmentation is not authentication", "The way out is easy to forget"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] More networks mean more to manage, and more to get wrong. [[slnc 500]] Measuring every pair of services takes time. [[slnc 500]] A service that sits on two networks is a bridge between them. [[slnc 500]] Being able to reach a service is not the same as being allowed to use it, so each one still needs authentication. [[slnc 300]] And the way out, to the internet, is easy to forget."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Service: one of the shop's six services", "Intent: the design, as the pairs that may talk", "Lab: builds networks, starts containers,", "  and measures who can reach whom", "NetworkIsolationDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Service is one of the shop's six services, with its name and port. [[slnc 500]] Intent is the design, written as code: the six pairs of services that may talk. [[slnc 500]] Lab builds the Docker networks, starts the containers, and measures who can reach whom, from inside. [[slnc 500]] And NetworkIsolationDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -440,8 +578,96 @@ body = ["Write down which services may talk", "Build the networks from that inte
 narration = "So, how do you use it? [[slnc 400]] Write down which services may talk, as code. [[slnc 300]] Build the networks from that intent, not by hand. [[slnc 500]] Measure what can really talk, in the build and on a schedule, and compare it with the intent. [[slnc 500]] Publish only the front, and close the way out for everything else. [[slnc 300]] Guard whatever can change the networks, like the Docker socket. [[slnc 300]] And still authenticate every call."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a metrics service that every", "service may talk to, and see what the layout becomes."]
 narration = "That's network isolation. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A network diagram is a wish, and the measurement is the network, so write the intent as code, build from it, and measure against it. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a metrics service that every service may talk to, and see what the layout becomes. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[highlight]
+console_green = ["THE MEASUREMENT:", "THE INTENT", "THE LAYOUT BUILT"]
+console_rose = ["THE ATTACK", "THE DRIFT", "THE MEASUREMENT AFTER", "AGAINST THE DESIGN", "THE PIVOTS"]
+console_amber = ["HOW ", "WHY", "WHAT THE NETWORK", "WHAT IT COSTS"]
+console_cyan = ["THE SERVICES", "THE LAYOUT", "WHAT web", "THE WAY", "WHO REACHES"]
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] One class works the layout out on paper, and one builds it for real and measures it. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Layout"
+what = "a layout on paper: which service is on which network"
+[[class.part]]
+title = "every two members of a network are a pair"
+code = """
+for (List<String> members : networks.values()) {
+    for (int i = 0; i < members.size(); i++) {
+        for (int j = i + 1; j < members.size(); j++) {
+            out.add(Intent.pair(members.get(i), members.get(j)));
+"""
+speech = """Two containers can talk exactly when they share a network. [[slnc 300]] So the pairs are every two members of every network, collected in a set so that none is counted twice."""
+[[class.part]]
+title = "n services make n x (n - 1) / 2 pairs"
+code = """
+int n = networks.get(network).size();
+return n * (n - 1) / 2;
+"""
+speech = """The count for one network, as worked out in the demo. [[slnc 300]] A test proves the real Docker networks give the same pairs as the layout."""
+
+[[class]]
+name = "Intent"
+what = "the design as code: the pairs that may talk"
+[[class.part]]
+title = "extra: reachable, and not wanted"
+code = """
+public Set<String> extra(Set<String> measured) {
+    Set<String> out = new TreeSet<>(measured);
+    out.removeAll(pairs);
+"""
+speech = """Extra pairs are the measured ones minus the intended ones. [[slnc 300]] Missing pairs are the other way round. [[slnc 300]] Drift shows up here as soon as it happens."""
+
+[[class]]
+name = "Lab"
+what = "real Docker networks and containers, and the measurement"
+[[class.part]]
+title = "an internal network has no way out"
+code = """
+List<String> command = new ArrayList<>(List.of("network", "create"));
+if (internal) {
+    command.add("--internal");
+"""
+speech = """Each network is made with the docker command. [[slnc 300]] The internal flag removes its route to the outside."""
+[[class.part]]
+title = "measure from inside a container"
+code = """
+String[] probe = {"exec", containers.get(from), "nc", "-z", "-w", "1", host, String.valueOf(port)};
+return Sh.run(probe).ok();
+"""
+speech = """A connection is tried from inside one container with netcat, waiting at most one second. [[slnc 300]] A closed path is found by waiting, which is why the demo takes a few minutes."""
+
+[[acronym]]
+short = "VPC"
+long = "Virtual Private Cloud: a cloud's private network"
+say = "V P C is virtual private cloud: a private network inside a cloud."
+[[acronym]]
+short = "IP"
+long = "Internet Protocol: addresses such as 127.0.0.1"
+say = "I P is internet protocol. An I P address, such as one two seven dot zero dot zero dot one, names one machine."
+[[acronym]]
+short = "nc"
+long = "netcat: opens a connection to test a port"
+say = "N C is netcat, a small tool that opens a connection to see whether a port answers."
+[[acronym]]
+short = "db"
+long = "database: here the store's accounts database"
+say = "D B means database."
+[[acronym]]
+short = "ci"
+long = "Continuous Integration: here the build server"
+say = "C I is continuous integration: the build server that builds and tests the code."

@@ -8,28 +8,28 @@ A team chooses an ASVS level for its application, writes the requirements that a
 
 ### 1. Choosing a level
 
-A small decision model chooses the level. Every application starts at L1, the floor. A brochure site stays at L1. The online store holds customer accounts and personal data, so it is L2. The online bank also moves money, is regulated and holds highly sensitive data, so it is L3.
-The reasons are printed, because a level nobody can explain is a level nobody will defend. Of the 14 requirements, L1 applies 8, L2 applies 12 and L3 applies all 14: each level includes the ones below it.
+The input is three applications, each described by what it holds and does: a brochure site with LOW data, no accounts, no money and no regulation; the online store with MEDIUM data and customer accounts; the online bank with HIGH data, accounts, money and regulation.
+The result: every application starts at L1, the floor; holding customer accounts or personal data raises it to L2; moving money under regulation with HIGH data raises it to L3. So the brochure site is L1, the store L2 and the bank L3, and each level comes with the reasons that gave it. Of the 14 requirements, L1 asks for 8 (SR-01 to SR-08), L2 for 12 (L1 + SR-09, SR-10, SR-12, SR-14) and L3 for all 14 (L2 + SR-11, SR-13).
 
 ### 2. Requirements written down as data
 
-The team writes its requirements in a file next to the code, so they are reviewed and versioned like code. security-requirements.tsv holds 14 requirements and reads back exactly the same. For example SR-01, in the Web Frontend Security chapter at L1, verified by an automated test: every page sets a content security policy, nosniff and a framing policy.
-Six are verified by an automated test, four by a configuration check, and four by a person. The statements are the team's own words and the ids are the team's own; each one names its chapter of the standard.
+The input is the team's 14 requirements, SR-01 to SR-14, each with the lowest level it applies to, how it is verified (automated, configuration or manual) and its chapter of the standard, such as SR-01 L1 automated Web Frontend Security.
+The result is security-requirements.tsv: 15 lines, a header and 14 rows, read back as the same 14 requirements: true. One row, field by field: id SR-01, chapter Web Frontend Security, level L1, verification AUTOMATED, check headers, edition 5.0, statement "Every page sets CSP, nosniff and a framing policy". Automated 6 (SR-01 to SR-05, SR-13), configuration 4 (SR-06, SR-07, SR-09, SR-12), manual 4 (SR-08, SR-10, SR-11, SR-14).
 
 ### 3. Checks that ask the running store
 
-Each check asks the running store a question and answers pass or fail. Does a page carry a CSP, nosniff and a framing policy? Is the session cookie Secure and HttpOnly? Is a password kept as a slow, salted hash? Does sign-in issue a new session id? Does an error page hide the stack trace? Is the debug endpoint closed, and is the oldest TLS version 1.2 or later?
-Are security events logged, and are account pages marked no-store? All of these pass. Do staff sign in with a second factor? That one fails. Nine of ten checks pass on the store as it is configured today. And the same password check on a build that stores passwords as plain SHA-256 fails: a check catches what a review might miss.
+The input is ten questions, one per check, such as password-storage: is a password a slow, salted hash? The store as configured today answers: headers, cookies, password-storage, session-rotation, error-leak, debug-off, tls, audit-log and no-store pass; staff-mfa fails. 9 of 10 pass.
+How the password check decides: the stored value has the shape scheme$rounds$salt$hash, and it needs pbkdf2-sha256 with rounds >= 600,000. Before, the store today stores pbkdf2-sha256$600000$ followed by a 16-byte salt and a 32-byte hash: pbkdf2-sha256, 600,000 >= 600,000 rounds, pass. After, a build that uses plain SHA-256 stores sha256$c4bbcb1fbec99d65bf59d85c...: no rounds and no salt, FAIL; the same password gives the same 64 hex digits on every store.
 
 ### 4. Coverage and gaps
 
-The store at L2: met 8, failed 1, still manual 3, not applicable 2, reported chapter by chapter. The gap is SR-09: staff sign in without a second factor. A release that ships with the debug flag on makes SR-05 and SR-06 newly fail, error pages that show stack traces and an open debug endpoint, and the release gate refuses it.
-Once staff sign in with a second factor, nothing fails, and the report says what is left for people to check: 3 requirements.
+The input is the 14 requirements, the store's level L2, and the answers of the checks. The result, requirement by requirement: met 8 (SR-01 to SR-07, SR-12), failed 1 (SR-09), not applicable 2 (SR-11, SR-13, which are L3), manual 3 (SR-08, SR-10, SR-14). By chapter, Authentication has 1 met and 1 failed; Authorization, Validation and Business Logic, and Secure Coding and Architecture each have 1 manual.
+The gap is SR-09: staff accounts sign in with a second factor. Before the release, failing SR-09. After a release with the debug flag on, failing SR-05 SR-06 SR-09, so newly failing SR-05 SR-06, and the release gate refuses it. After staff sign in with a second factor, failing 0, and SR-08 SR-10 SR-14 are left to people.
 
 ### 5. The bill
 
-Judged at the bank's L3, the same store has 4 requirements that need a person: SR-08, SR-10, SR-11 and SR-14, and no test replaces that review. A standard says what to verify, not which threats this system faces: the threat model comes first, and its mitigations become extra requirements.
-One requirement, SR-14, was mapped against the older edition 4.0.3 of the standard, and is flagged to review the mapping. And a report where every check passes means these checks pass, not that the store is secure.
+The same store, with staff signing in with a second factor, judged at two levels: at L2, 12 apply, 9 met, 0 failed, 3 manual; at L3, 14 apply, 10 met, 0 failed, 4 manual. At L3 four requirements need a person, and no test replaces it: SR-08 every order and account access is checked on the server; SR-10 business limits, like refunds per day, hold on the server; SR-11 signing keys live in a hardware module or a key service; SR-14 third-party components are listed and kept up to date.
+SR-14 is mapped to edition 4.0.3, older than 5.0, so its mapping must be reviewed. And a passing report does not say which threats this system faces (the threat model does), nor that the store is secure: only that these checks pass.
 
 ## The verdict
 

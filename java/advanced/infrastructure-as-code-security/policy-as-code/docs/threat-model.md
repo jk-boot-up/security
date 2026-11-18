@@ -48,7 +48,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `PolicyTest` checks the cases, the mutants and the response with no tools, and the decisions, the Rego tests and the mutation score with opa.
+- `PolicyTest` checks the cases, the rule labels, the mutants, the steps and the response with no tools, and the decisions, the Rego tests, the mutation score, the steps' values and the pinned versions with opa.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

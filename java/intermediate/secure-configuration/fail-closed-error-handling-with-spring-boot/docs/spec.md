@@ -41,9 +41,9 @@ Teams catch exceptions to keep requests flowing, trust a transaction annotation 
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 15, all passing |
-| Demo output | 36 lines, identical on every run |
+| Demo output | 94 lines, identical on every run |
 | Acts | 5 |
-| Video | 07:01, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:39, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

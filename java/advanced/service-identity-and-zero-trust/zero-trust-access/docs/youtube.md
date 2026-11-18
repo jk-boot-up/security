@@ -16,17 +16,44 @@ Chapters:
 
 ```
 00:00 Introduction
-02:19 The Scenario
-02:43 Act One — The perimeter
-02:53 Act Two — Who is calling
-03:05 Act Three — May they
-03:16 Act Four — Logged
-03:26 Act Five — A token outlives its session
-03:41 What It Costs
-04:24 Who Does What
-04:51 Where You Have Seen It
-05:14 How To Use It
-05:38 Thanks for Watching
+00:47 The Scenario
+01:21 The Words
+02:10 What the Letters Stand For
+03:03 What the Letters Stand For (continued)
+03:42 What the Letters Stand For (continued)
+03:57 One request, three checks
+05:06 Ten requests, no identity, ten answers
+06:04 Act One — Before: the ledger trusts the network
+06:21 Act One — Before: the ledger trusts the network
+06:41 RS256, worked out for one token
+08:00 Act Two — Who is calling: the token, checked by hand
+08:24 Act Two — Who is calling: the token, checked by hand
+08:50 Act Two — Who is calling: the token, checked by hand
+09:13 Act Two — Who is calling: the token, checked by hand
+09:25 One transfer, decided at 10:00 and at 23:00
+10:32 Act Three — May they: OPA decides
+10:56 Act Three — May they: OPA decides
+11:09 Act Three — May they: OPA decides
+11:37 Act Three — May they: OPA decides
+11:49 How long a token works after a logout
+13:01 Act Four — A token outlives its session
+13:31 Act Four — A token outlives its session
+13:45 Thirty-nine requests, thirty-nine records
+14:41 Act Five — One record per request
+15:01 Act Five — One record per request
+15:16 What It Costs
+15:58 Who Does What
+16:46 Where You Have Seen It
+17:17 How To Use It
+17:50 The Java Classes
+18:03 Proxy — 401, then 403, then forward
+18:21 Proxy — fail closed, and always one record
+18:35 Jwt — the verifier picks the algorithm
+18:53 Rs256Steps — s^e mod n, then padding and hash
+19:13 Opa — no answer is not a yes
+19:24 Ledger — the proxy's mark
+19:37 AuditLog — never given a token
+19:52 Thanks for Watching
 ```
 
 ## Tags

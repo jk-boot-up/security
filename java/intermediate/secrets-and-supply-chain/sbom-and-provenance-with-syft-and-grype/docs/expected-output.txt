@@ -1,30 +1,82 @@
 ONE. What a bill of materials answers, and what it does not.
-  syft catalogues the image shop-sbom:2.14.1 and writes a CycloneDX JSON bill of materials: true, with operating system packages: true and libraries: true
-  the application's libraries, each by its package URL: [pkg:maven/org.apache.logging.log4j/log4j-api@2.14.1, pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1]
-  each library jar carries its SHA-1: true, and its licence: true
-  the bill of materials names the image, and not the repository, the commit or the builder: true  <- THAT IS WHAT PROVENANCE IS FOR
+  THE IMAGE (the input):
+    image     shop-sbom:2.14.1
+    base      eclipse-temurin:21-jre-alpine
+    /app/lib  log4j-core-2.14.1.jar, log4j-api-2.14.1.jar
+    command   syft shop-sbom:2.14.1 -o cyclonedx-json
+  THE BILL OF MATERIALS (CycloneDX 1.7, the result):
+    subject      shop-sbom:2.14.1
+    OS packages  listed, as pkg:apk/... (yes)
+    libraries    log4j-api@2.14.1, log4j-core@2.14.1
+  ONE PACKAGE URL, PART BY PART:
+    pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1
+    type       maven
+    namespace  org.apache.logging.log4j
+    name       log4j-core
+    version    2.14.1
+  ITS FILE'S FINGERPRINT, CHECKED:
+    the file     /app/lib/log4j-core-2.14.1.jar
+    in the bill  SHA-1 9141212b8507ab50a45525b545b39d224614528b
+    of the jar   SHA-1 9141212b8507ab50a45525b545b39d224614528b
+    the same     yes
+    licence      Apache-2.0, named in the bill: yes
+  WHAT THE BILL DOES NOT SAY:
+    repository, commit, builder  not in it  <- PROVENANCE
 TWO. Scanning it against known advisories.
-  grype reads the image and matches its packages to its vulnerability database: critical advisories in log4j: [CVE-2021-44228, CVE-2021-45046], high: [CVE-2021-45105]
-  each says which version fixes it: [2.15.0, 2.16.0, 2.17.0]
-  scanning the bill of materials alone, not the image, finds the same advisories in log4j: true
-  the rest of the findings come from the base image's operating system packages: true  (their number changes every day, so it is not printed)
-  the image was never run: the bill of materials is read from its layers
+  THE SCAN (the input):
+    command   grype shop-sbom:2.14.1 -o json
+    database  advisories, built within 7 days: yes
+  THE CRITICAL AND HIGH ADVISORIES IN log4j (the result):
+    CRITICAL  CVE-2021-44228  fixed in 2.15.0
+    CRITICAL  CVE-2021-45046  fixed in 2.16.0
+    HIGH      CVE-2021-45105  fixed in 2.17.0
+  HOW ONE MATCH IS MADE (CVE-2021-44228):
+    the bill says  log4j-core 2.14.1
+    the advisory   fixed in 2.15.0
+    compared       2.14.1 < 2.15.0: yes, so it matches
+  THE SAME SCAN, FROM THE BILL ALONE:
+    command   grype sbom:sbom.cdx.json -o json
+    log4j     the same advisories: yes
+    the rest  in the base image's OS packages: yes
+              (their number changes daily, so it is not printed)
 THREE. Fixing it, and checking that it is fixed.
-  the upgrade that clears every critical and high advisory in log4j is 2.17.0 or later; the team builds shop-sbom:2.25.5
-  the new bill of materials differs in exactly the libraries that changed: removed [pkg:maven/org.apache.logging.log4j/log4j-api@2.14.1, pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1], added [pkg:maven/org.apache.logging.log4j/log4j-api@2.25.5, pkg:maven/org.apache.logging.log4j/log4j-core@2.25.5]
-  the base image's packages are the same in both: true
-  the scan of the new image: critical and high advisories in log4j: 0, where the old image had 3
+  THE UPGRADE (the input):
+    fixes needed  2.15.0, 2.16.0, 2.17.0
+    so at least   2.17.0
+    new image     shop-sbom:2.25.5
+  THE TWO BILLS COMPARED (the result):
+    removed      log4j-api@2.14.1, log4j-core@2.14.1
+    added        log4j-api@2.25.5, log4j-core@2.25.5
+    OS packages  the same in both: yes
+  THE NEW SCAN:
+    critical and high in log4j  before 3, after 0
 FOUR. A gate that reads the scan.
-  the gate refuses a critical or high advisory in the store's own libraries; shop-sbom:2.14.1: refused (2 critical and 1 high advisories)
-  an exception for a high advisory cannot cover a critical one: the same image with the exception written down: refused (2 critical and 0 high advisories)
-  shop-sbom:2.16.0, which fixes the critical ones: refused (0 critical and 1 high advisories)
-  with the written exception, on day 100: deployed with exceptions for its high advisories; on day 130, after it ran out on day 120: refused (0 critical and 1 high advisories)
-  shop-sbom:2.25.5: deployed
-  an exception names the advisory, the reason and the day it ends, so that it is reviewed and cannot stay for ever
+  THE RULE:
+    refuse a critical or high advisory in the store's libraries
+    a written exception may cover a high one, until its end day
+  THE EXCEPTION (written down):
+    advisory   CVE-2021-45105 (high)
+    reason     a denial of service needing an admin's config
+    ends       on day 120
+  SIX REQUESTS TO DEPLOY, AND THE ANSWERS:
+    shop-sbom:2.14.1             refused: 2 critical, 1 high
+    2.14.1, exception, day 100   refused: 2 critical, 0 high
+    shop-sbom:2.16.0             refused: 0 critical, 1 high
+    2.16.0, exception, day 100   deployed, 1 high excepted
+    2.16.0, exception, day 130   refused: 0 critical, 1 high
+    shop-sbom:2.25.5             deployed
 FIVE. The bill.
-  the same log4j-core 2.14.1 jar, renamed blob.dat inside another image: the bill of materials lists a log4j library: false, the scan finds a log4j advisory: false  <- A SCANNER FINDS ONLY WHAT THE CATALOGUER RECOGNISES
-  the bill of materials written for shop-sbom:2.14.1, offered for shop-sbom:2.25.5: describes it false  <- WRITE THE BILL AT EVERY BUILD
-  the database that the scan matches against is data: it was built 7 days ago or less
-  an advisory published tomorrow will match a bill of materials written today, so the bills must be kept and scanned again on a schedule
-  a finding is a question, not a verdict: a vulnerable library the store never calls is still reported; a statement of exploitability (VEX) records the answer
-  the signed provenance of how the image was built, which this bill does not hold, is in the plain sbom-and-provenance project and in the cosign project
+  A RENAMED JAR (the input):
+    image     shop-sbom:renamed
+    /app/lib  blob.dat: the log4j-core-2.14.1.jar, renamed
+  WHAT THE TOOLS SEE (the result):
+    syft: a log4j library  no
+    grype: an advisory     no  <- ONLY WHAT SYFT KNOWS
+  A STALE BILL:
+    written for   shop-sbom:2.14.1
+    offered for   shop-sbom:2.25.5
+    describes it  no  <- WRITE THE BILL AT EVERY BUILD
+  WHAT A SCAN CANNOT DO:
+    see tomorrow's advisories: keep bills, rescan on a schedule
+    know if the store calls the code: a VEX statement says
+    say who built the image: signed provenance (plain project)

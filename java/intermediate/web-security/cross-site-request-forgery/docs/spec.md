@@ -38,10 +38,10 @@ Developers trust a valid session cookie as proof of intent, and so a page on any
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 21, all passing |
-| Demo output | 37 lines, identical on every run |
+| Tests | 23, all passing |
+| Demo output | 107 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:12, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:52, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

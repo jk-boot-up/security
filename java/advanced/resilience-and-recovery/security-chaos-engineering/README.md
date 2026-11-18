@@ -21,7 +21,7 @@ src/main/java/com/jk/explore/security/securitychaos/
 
 **A bank payments service has five controls that each call a dependency: a rate limit, a revocation check, authorization, a fraud score and an audit trail; with Toxiproxy between the service and each dependency, 10 experiments (down, slow, hung, reset, trickle, slow close) each test 2 hypotheses, that the control holds and that an alert fires; the first version holds 2 of 20: it approves 6 of 6 payments with authorization down, slow or reset, 6 of 6 without a fraud score, 6 of 6 with a revoked certificate and 40 of 40 from one account with the limit at 5, loses 20 of 20 audit records and raises 0 alerts; the hardened version holds 20 of 20: it approves 0 of 6, holds 6 of 6 payments for review, approves 5 of 40, loses 0 of 20 audit records and raises an alert after 3 failed probes; it still approves 1 of 1 payment whose certificate was revoked during an outage after a good answer was cached.**
 
-A security control is a dependency like any other: it is a call over a network, and it can be slow, hung, reset or gone. What the service does then is a decision somebody made, often by accident. This project asks the question by experiment. A **bank payments service** (built with the JDK `HttpServer`) calls five dependencies through **Toxiproxy**, which runs in Docker and is driven from Java through its HTTP API. Each of 10 experiments states a **steady state**, **injects a failure**, **observes** and gives a **verdict**, for two hypotheses: the control **fails closed**, and **an alert fires**. The first version has planted weaknesses; the hardened version fixes them. The demo needs Docker and the `ghcr.io/shopify/toxiproxy` image (a few MB) and is tagged `integration`: `./gradlew integrationTest`.
+A security control is a dependency like any other: it is a call over a network, and it can be slow, hung, reset or gone. What the service does then is a decision somebody made, often by accident. This project asks the question by experiment. A **bank payments service** (built with the JDK `HttpServer`) calls five dependencies through **Toxiproxy**, which runs in Docker and is driven from Java through its HTTP API. Each of 10 experiments states a **steady state**, **injects a failure**, **observes** and gives a **verdict**, for two hypotheses: the control **fails closed**, and **an alert fires**. The first version has planted weaknesses; the hardened version fixes them. The demo needs Docker and the `ghcr.io/shopify/toxiproxy:2.13.0` image (a few MB) and is tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **Fail open.** With authorization down, slow or reset the first version approves **6 of 6** payments; the hardened one approves **0 of 6**.
@@ -46,15 +46,17 @@ A bank's payments service checks every payment against five controls. In a real 
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 7 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Steady state | Before every experiment four ordinary payments give the expected answers and 4 of 4 audit records arrive. |
-| 2. Authorization and fraud | The first version approves 6 of 6 payments with authorization down, slow or reset, and 6 of 6 without a fraud score; the hardened one approves 0 and holds 6 for review. |
-| 3. Audit, limit and revocation | The first version loses 20 of 20 audit records, lets 40 of 40 through a limit of 5 and approves 6 of 6 revoked certificates; the hardened one loses 0 and approves 5 of 40 and 0 of 6. |
-| 4. Does anybody hear it? | The first version raises 0 alerts; the hardened version raises one after 3 failed probes, and none for a slow close. |
-| 5. The scoreboard | Hypotheses held: 2 of 20 for the first version, 20 of 20 for the hardened one, with one gap measured: 1 of 1 certificate revoked during an outage is approved. |
+| 1. The service, the faults and the steady state | Five controls, each a call to a dependency through its own Toxiproxy proxy; six faults; a 1500 ms deadline; and a steady state that holds before 20 of 20 runs. |
+| 2. Authorization: down, slow, reset | With authorization down, slow or reset the first version approves 6 of 6 payments; the hardened version approves 0 of 6. |
+| 3. The fraud score: a hang and a trickle | With the fraud service hung or on a trickle the first version approves 6 of 6 payments unscreened; the hardened one holds 6 for review. A 4009-byte answer at 1024 bytes a second takes 3.9 s, past the 1.5 s deadline. |
+| 4. The audit trail: the sink down, then a slow close | With the audit sink down for a burst the first version loses 20 of 20 records without a sound; the hardened one keeps 20 in a journal and sends 20 when the sink is back. A slow close loses nothing in either. |
+| 5. The rate limit and the revocation check | With the rate-limit store resetting, one account gets 40 of 40 payments through a limit of 5 in the first version and 5 of 40 in the hardened one; a revoked certificate is approved 6 of 6 against 0 of 6. |
+| 6. Does anybody hear it? | The hardened version's monitor raises an alert after 3 failed probes, 9 of 9 times, and none for the slow close; the first version raises 0 of 9. |
+| 7. The scoreboard, and what is left | Hypotheses held: 2 of 20 for the first version and 20 of 20 for the hardened one; one gap remains: a certificate revoked during an outage, with a good cached answer, is approved 1 of 1. |
 
 ## Test
 
@@ -62,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-18 tests in `DemoRunsTest`, `ExperimentTest`, `MonitorTest`, `PaymentsTest`. The service, the audit trails and the monitor are tested with stub dependencies and no Docker. The demo starts Toxiproxy (./gradlew integrationTest).
+21 tests in `DemoRunsTest`, `ExperimentTest`, `MonitorTest`, `PaymentsTest`. The service, the audit trails, the monitor and its probe history, and the trickle arithmetic are tested with stub dependencies and no Docker. The demo starts Toxiproxy (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

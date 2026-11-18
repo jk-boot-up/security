@@ -29,8 +29,12 @@ final class ConfigChecker {
     record Reply(int status, String body, Optional<String> server) {
     }
 
-    Reply send(String method, String path, String body) throws IOException, InterruptedException {
+    /** One request; `headers` are extra name, value pairs, such as a cookie. */
+    Reply send(String method, String path, String body, String... headers) throws IOException, InterruptedException {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + path));
+        if (headers.length > 0) {
+            request.headers(headers);
+        }
         if (body == null) {
             request.method(method, HttpRequest.BodyPublishers.noBody());
         } else {
@@ -43,23 +47,24 @@ final class ConfigChecker {
     List<Check> checkAll(StoreConfig config, Path configFile) throws IOException, InterruptedException {
         List<Check> checks = new ArrayList<>();
         Reply login = send("POST", "/admin/login", "password=admin");
-        checks.add(new Check("the default admin password does not work", login.status() != 200, "POST /admin/login with admin: " + login.status()));
+        checks.add(new Check("default password", login.status() != 200, "POST /admin/login -> " + login.status()));
         Reply debug = send("GET", "/debug/config", null);
-        checks.add(new Check("no debug page", debug.status() == 404, "GET /debug/config: " + debug.status()));
+        checks.add(new Check("debug page", debug.status() == 404,
+                "GET /debug/config -> " + debug.status()));
         Reply listing = send("GET", "/static/", null);
-        checks.add(new Check("no directory listing", listing.status() != 200, "GET /static/: " + listing.status()));
+        checks.add(new Check("directory listing", listing.status() != 200, "GET /static/ -> " + listing.status()));
         Reply error = send("GET", "/orders?id=abc", null);
         boolean trace = error.body().contains("Exception") || error.body().contains("\tat ");
-        checks.add(new Check("errors show no internals", !trace, "GET /orders?id=abc shows a stack trace: " + trace));
+        checks.add(new Check("error details", !trace, "GET /orders?id=abc -> " + (trace ? "trace" : "no trace")));
         Reply home = send("GET", "/", null);
         boolean banner = home.server().filter(s -> s.matches(".*\\d.*")).isPresent();
-        checks.add(new Check("no product or version in the Server header", !banner, "Server: " + home.server().orElse("none")));
+        checks.add(new Check("version banner", !banner, "Server: " + home.server().orElse("(none)")));
         Reply traceMethod = send("TRACE", "/", null);
-        checks.add(new Check("TRACE is refused", traceMethod.status() == 405, "TRACE /: " + traceMethod.status()));
+        checks.add(new Check("TRACE method", traceMethod.status() == 405, "TRACE / -> " + traceMethod.status()));
         boolean others = ConfigFile.readableByOthers(configFile);
-        checks.add(new Check("settings file readable by its owner only", !others, "permissions " + ConfigFile.permissions(configFile)));
+        checks.add(new Check("settings file mode", !others, ConfigFile.permissions(configFile)));
         boolean prodClean = "prod".equals(config.profile()) && config.testSettings().isEmpty();
-        checks.add(new Check("production profile with no test settings", prodClean, "profile " + config.profile() + ", test settings " + config.testSettings().size()));
+        checks.add(new Check("production profile", prodClean, config.profile() + ", test settings: " + config.testSettings().size()));
         return checks;
     }
 

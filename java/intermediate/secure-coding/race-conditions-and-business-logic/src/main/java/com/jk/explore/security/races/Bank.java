@@ -60,7 +60,7 @@ final class Bank {
         Transfer earlier = keys.putIfAbsent(key, t);
         if (earlier != null) {
             if (!earlier.equals(t)) {
-                return "refused: the key " + key + " was used for a different transfer";
+                return "refused: the key was used for another transfer";
             }
             String answer;
             while ((answer = answers.get(key)) == null) {

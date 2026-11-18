@@ -9,8 +9,8 @@ title = "TLS Attacks and Downgrades"
 short_title = "TLS Attacks"
 package = "tlsattacks"
 main_class = "TlsAttacksDemo"
-tagline = "Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the weaknesses that were planted, watch a client fall back to TLS 1.0, read a recorded session with a leaked key, and check what TLS 1.3 removed"
-bold = "A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC."
+tagline = "Weak local servers, a forced fallback and a leaked key"
+bold = "A weak local server has 6 planted weaknesses (TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group, a NULL cipher); our own openssl probes find 6 of 6 and testssl.sh finds 6 of 6, 4 by a finding that names the problem and 2 only by reading its cipher table, and the strong server raises none. A client that falls back ends on TLS 1.0 with AES128-SHA after 4 attempts, the same client with TLS_FALLBACK_SCSV is refused, and a leaked server key opens the recorded static RSA session (1 of 3) in 6 worked-out steps and neither the DHE nor the ECDHE one. A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC, and ignores its 1024-bit group for X25519MLKEM768."
 domain = "a bank"
 domain_note = ""
 youtube_description = "TLS attacks and downgrades on deliberately weak local servers: openssl and testssl.sh scored against planted weaknesses, the fallback dance and TLS_FALLBACK_SCSV, a recorded session opened with a leaked key, and what TLS 1.3 removed."
@@ -21,12 +21,12 @@ youtube_tags = ["tls", "tls downgrade", "testssl.sh", "openssl", "forward secrec
 
 [readme]
 intro = """
-A TLS server is as strong as the oldest thing it still accepts. This project starts **three local servers** with `openssl s_server` on 127.0.0.1: a weak one with **6 planted weaknesses**, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with `openssl s_client`, runs **testssl.sh v3.2.4** (cloned into `build/` and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3 or 4, git and network access once; it is tagged `integration`: `./gradlew integrationTest`.
+A TLS server is as strong as the oldest thing it still accepts. This project starts **three local servers** with `openssl s_server` on 127.0.0.1: a weak one with **6 planted weaknesses**, a strong one for TLS 1.2 and 1.3, and a TLS 1.3 only one. Java probes them with `openssl s_client`, runs **testssl.sh v3.2.4** (cloned into `build/` and pinned to its commit) and reads its JSON, and counts what each found against the weaknesses that were planted. The demo needs OpenSSL 3.6 (the pinned series: the golden output depends on its TLS 1.3 group and on what the build leaves out), git and network access once; it is tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **Truth and measurement.** Our own probes find **6 of 6** planted weaknesses; testssl.sh finds **6 of 6**, **4** by a finding that names the problem and **2** (static RSA, the 1024-bit group) only by reading the key exchange column of its cipher table. The strong server raises **0**.
 - **The downgrade dance.** A network that breaks every handshake above TLS 1.0 pushes a retrying client to **TLS 1.0 with AES128-SHA after 4 attempts**; with `TLS_FALLBACK_SCSV` the server refuses; a client with a minimum of TLS 1.2 stops after 2.
-- **Forward secrecy.** A recorded session is opened later with the leaked server key: the static RSA one is (**1 of 3**), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption.
+- **Forward secrecy.** A recorded session is opened later with the leaked server key: the static RSA one is (**1 of 3**), the DHE and ECDHE ones are not. The Java code does the TLS 1.2 key derivation and the AES-GCM decryption, and prints the size of every value on the way.
 - **What TLS 1.3 removed.** A TLS 1.3 only server refuses **3 of 3** older versions, static RSA and CBC; compression and renegotiation have no place in the protocol.
 - **Honest limits.** This OpenSSL build has no RC4 and no zlib, and refuses DH groups below 1024 bits, so those could not be planted.
 
@@ -43,7 +43,7 @@ costs = [
     "**A scanner reports what is offered,** and a person reads the table for what it does not name.",
     "**Forward secrecy needs ephemeral keys,** one more computation per connection.",
     "**TLS 1.3 has no way back,** so the old clients must be updated or kept on a separate endpoint.",
-    "**The lab depends on the OpenSSL build:** no RC4, no zlib and no tiny DH groups here.",
+    "**The lab depends on the OpenSSL build:** no RC4, no zlib and no tiny DH groups here, so the release series is pinned.",
 ]
 too_much = """
 An internal tool that only talks to servers you control needs no scan of its own. Use this when a service is reachable by clients you do not control, or when you must show that old settings are really off.
@@ -63,84 +63,270 @@ OpenSSL and testssl.sh are real; the servers are local, on 127.0.0.1, with a thr
 test_note = "The record parser, the key derivation, the middlebox and the report parsing are tested with no tools. The demo runs OpenSSL and testssl.sh (./gradlew integrationTest)."
 
 [[act]]
-title = "The weak server"
-summary = "A local server has 6 planted weaknesses; a strong and a TLS 1.3 only server are the controls."
+title = "The lab: a weak server and two controls"
+summary = "Three local openssl servers: a weak one with 6 planted weaknesses, a strong one and a TLS 1.3 only one. One s_client connection per cell shows that the weak server accepts TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit DH group and a NULL cipher, and the controls accept only the modern rows."
 detail = """
-The weak server accepts TLS 1.0 and 1.1, static RSA, CBC with SHA-1, a 1024-bit finite-field DH group and a NULL cipher. openssl s_client probes show what each of the three servers accepts: 4 protocol versions and 8 cipher suites, as yes and no.
+The input is the lab: three openssl s_server processes on 127.0.0.1, made with OpenSSL 3.6, and testssl.sh v3.2.4 pinned to commit 97763a4. Six weaknesses are planted in the weak server: TLS 1.0, TLS 1.1, static RSA key exchange, CBC suites with SHA-1, a 1024-bit DH group and a NULL cipher.
+The result is a table of 4 protocol versions and 8 cipher suites against the 3 servers, one s_client connection per cell. The weak server says yes to every old row; the strong server only to TLS 1.2, TLS 1.3 and the two ECDHE AEAD suites; the TLS 1.3 only server only to TLS 1.3.
+The DH group size is read from s_client's line "Peer Temp Key: DH, 1024 bits"; under 2048 bits is a weakness.
+"""
+figure = "accept_grid"
+figure_title = "What each server accepts, one connection per cell"
+figure_speech = """
+First demo: the lab. [[slnc 400]] Three local servers, all made with Open S S L, on this machine only. [[slnc 300]] A weak one, a strong one, and one that speaks only T L S one point three. [[slnc 600]]
+On the left, the input: what a client asked for. [[slnc 300]] Four protocol versions, and eight cipher suites, each with what its name says. [[slnc 300]] Static R S A, finite field D H, or elliptic curve D H, and the cipher mode. [[slnc 600]]
+On the right, the answer: did the connection succeed? [[slnc 300]] Red means an old or weak setting was accepted. [[slnc 300]] The weak server says yes to T L S one point zero and one point one, to static R S A, to C B C with S H A one, to a ten twenty four bit D H group, and even to a suite with no encryption at all. [[slnc 600]]
+The strong server accepts only the modern rows. [[slnc 300]] And the T L S one point three only server accepts one row: T L S one point three.
 """
 speech = """
-First demo: the weak server. [[slnc 400]] Six planted weaknesses. [[slnc 600]] Two other servers are the controls.
+Here is the real output. [[slnc 400]] The lab: three servers, Open S S L three point six, and test s s l pinned to a commit. [[slnc 400]] Then the truth: the six weaknesses planted in the weak server.
+[[page]]
+What each server accepts. [[slnc 300]] One connection per cell. [[slnc 300]] The weak server says yes to nearly every row. [[slnc 300]] The controls say yes only to the modern ones.
+[[page]]
+What the suite names say: the key exchange, and the cipher. [[slnc 400]] And how the D H group size is read: the client prints the size of the server's temporary key, ten twenty four bits. [[slnc 300]] Under two thousand and forty eight bits is a weakness.
 """
-rows = { weak = "active ok" }
+rows = { weak = "active wrong" }
 console = [
-    ["planted weaknesses: 6", "bad"],
-    ["DH group: 1024 bits", "bad"],
-    ["strong server: none", "ok"],
+    ["THE LAB (three local servers on 127.0.0.1):", "code"],
+    ["  servers   weak, strong, tls 1.3 only", "muted"],
+    ["  made by   openssl s_server, OpenSSL 3.6", "muted"],
+    ["  scanner   testssl.sh v3.2.4 (commit 97763a4)", "muted"],
+    ["THE WEAKNESSES PLANTED IN THE WEAK SERVER (6):", "code"],
+    ["  1  TLS 1.0 accepted", "muted"],
+    ["  2  TLS 1.1 accepted", "muted"],
+    ["  3  static RSA key exchange (no forward secrecy)", "muted"],
+    ["  4  CBC suites with SHA-1", "muted"],
+    ["  5  1024-bit DH group", "muted"],
+    ["  6  NULL cipher (no encryption)", "muted"],
+    ["---", ""],
+    ["WHAT EACH SERVER ACCEPTS:       weak  strong  1.3 only", "code"],
+    ["  TLSv1.0                       yes   no      no", "muted"],
+    ["  TLSv1.1                       yes   no      no", "muted"],
+    ["  TLSv1.2                       yes   yes     no", "muted"],
+    ["  TLSv1.3                       yes   yes     yes", "muted"],
+    ["  AES128-GCM-SHA256             yes   no      no", "muted"],
+    ["  AES128-SHA                    yes   no      no", "muted"],
+    ["  DHE-RSA-AES128-GCM-SHA256     yes   no      no", "muted"],
+    ["  DHE-RSA-AES128-SHA            yes   no      no", "muted"],
+    ["  ECDHE-RSA-AES128-SHA          yes   no      no", "muted"],
+    ["  ECDHE-RSA-AES128-GCM-SHA256   yes   yes     no", "muted"],
+    ["  ECDHE-RSA-CHACHA20-POLY1305   no    yes     no", "muted"],
+    ["  NULL-SHA                      yes   no      no", "muted"],
+    ["---", ""],
+    ["WHAT THE SUITE NAMES SAY (key exchange, cipher):", "code"],
+    ["  AES128-GCM-SHA256             static RSA, GCM", "muted"],
+    ["  AES128-SHA                    static RSA, CBC, SHA-1", "muted"],
+    ["  DHE-RSA-AES128-GCM-SHA256     finite-field DH, GCM", "muted"],
+    ["  DHE-RSA-AES128-SHA            finite-field DH, CBC, SHA-1", "muted"],
+    ["  ECDHE-RSA-AES128-SHA          elliptic curve DH, CBC, SHA-1", "muted"],
+    ["  ECDHE-RSA-AES128-GCM-SHA256   elliptic curve DH, GCM", "muted"],
+    ["  ECDHE-RSA-CHACHA20-POLY1305   elliptic curve DH, ChaCha20", "muted"],
+    ["  NULL-SHA                      no encryption", "muted"],
+    ["HOW THE DH GROUP SIZE IS READ:", "code"],
+    ["  asked for DHE-RSA-AES128-GCM-SHA256, weak server", "muted"],
+    ["  s_client  Peer Temp Key: DH, 1024 bits", "bad"],
+    ["  rule      under 2048 bits is a weakness", "muted"],
 ]
 
 [[act]]
-title = "Probes and testssl.sh"
-summary = "Our probes and testssl.sh each find 6 of 6; testssl.sh names 4 and shows 2 only in its cipher table."
+title = "Our probes and testssl.sh, scored against the truth"
+summary = "Our own s_client probes find 6 of 6 planted weaknesses and raise no false alarm on the strong server. testssl.sh v3.2.4 also finds 6 of 6, but only 4 by a finding of their own: static RSA and the 1024-bit DH group show only in the key exchange column of its cipher table."
 detail = """
-Java reads the testssl.sh JSON and counts it against the planted list. TLS 1.0, TLS 1.1, the NULL cipher and the CBC suites have a finding of their own. Static RSA and the 1024-bit group have none: they show only in the key exchange column of the cipher table. The strong server raises nothing.
+The input is the list of 6 planted weaknesses, the truth that each tool is scored against.
+Our probes find each with one connection: -tls1 and -tls1_1 connect, AES128-GCM-SHA256, AES128-SHA and NULL-SHA connect, and the server sends a DH key of 1024 bits, under 2048. Found 6 of 6 on the weak server, 0 on the strong one.
+testssl.sh's JSON report names TLS 1.0 and TLS 1.1 (findings TLS1 and TLS1_1, LOW), CBC with SHA-1 (LUCKY13, LOW) and the NULL cipher (its table row, CRITICAL). Static RSA (RSA in the Kx column, 4 rows) and the DH group (DH 1024) have no finding of their own. Found 6 of 6, 4 by a finding and 2 only in the table; the strong server has no finding of LOW or worse.
+"""
+figure = "scorecard"
+figure_title = "Six planted weaknesses: how each tool found them"
+figure_speech = """
+Second demo: scoring the tools against the truth. [[slnc 400]] We planted the weaknesses ourselves, so we know exactly what a good scanner must find. [[slnc 600]]
+On the left, the six planted weaknesses. [[slnc 300]] In the middle, our own probes: one connection each. [[slnc 300]] If an old version or a weak suite connects, the weakness is there. [[slnc 600]]
+On the right, the report of test s s l. [[slnc 300]] The green ones have a finding of their own: T L S one point zero and one point one, the C B C suites, and the null cipher. [[slnc 300]] The amber ones do not. [[slnc 300]] Static R S A and the ten twenty four bit group appear only in the key exchange column of its cipher table. [[slnc 600]]
+Both tools find six of six. [[slnc 300]] But a person who reads only the findings would miss two of them.
 """
 speech = """
-Second demo: probes and testssl.sh. [[slnc 400]] Both find six of six. [[slnc 600]] Two of them only in the cipher table.
+Our probes on the weak server, and how each weakness was found. [[slnc 300]] Five connect, and one is the size of the D H key. [[slnc 400]] The score: six of six on the weak server, and no false alarm on the strong one.
+[[page]]
+Test s s l, where each weakness shows in its report. [[slnc 300]] Four have a finding. [[slnc 300]] Two show only in the key exchange column. [[slnc 400]] The score: six of six, and nothing on the strong server.
 """
 rows = { scan = "active ok" }
 console = [
-    ["own probes: 6 of 6", "ok"],
-    ["testssl.sh: 6 of 6, 4 named", "ok"],
-    ["strong server: 0", "ok"],
+    ["OUR PROBES ON THE WEAK SERVER (how each was found):", "code"],
+    ["  TLS 1.0       -tls1 connected", "muted"],
+    ["  TLS 1.1       -tls1_1 connected", "muted"],
+    ["  static RSA    AES128-GCM-SHA256 connected", "muted"],
+    ["  CBC, SHA-1    AES128-SHA connected", "muted"],
+    ["  DH 1024 bits  server sent DH 1024 bits, under 2048", "muted"],
+    ["  NULL cipher   NULL-SHA connected", "muted"],
+    ["THE SCORE OF OUR PROBES:", "code"],
+    ["  weak    found 6 of 6, missed: none", "ok"],
+    ["  strong  found 0, false alarms: none", "ok"],
+    ["---", ""],
+    ["TESTSSL.SH v3.2.4 ON THE WEAK SERVER (where each shows):", "code"],
+    ["  TLS 1.0       finding TLS1, LOW", "muted"],
+    ["  TLS 1.1       finding TLS1_1, LOW", "muted"],
+    ["  static RSA    only the Kx column: RSA, 4 rows", "amber"],
+    ["  CBC, SHA-1    finding LUCKY13, LOW", "muted"],
+    ["  DH 1024 bits  only the Kx column: DH 1024", "amber"],
+    ["  NULL cipher   table row NULL-SHA, CRITICAL", "muted"],
+    ["THE SCORE OF TESTSSL.SH:", "code"],
+    ["  weak    found 6 of 6, missed: none", "ok"],
+    ["          4 by a finding, 2 only in the cipher table", "muted"],
+    ["  strong  found 0, findings of LOW or worse: 0", "ok"],
 ]
 
 [[act]]
 title = "The downgrade dance"
-summary = "A client that retries ends on TLS 1.0 with AES128-SHA; the fallback signal and a minimum version stop it."
+summary = "A network that resets every hello above TLS 1.0 pushes a retrying client down in 4 attempts to TLS 1.0 with AES128-SHA. With TLS_FALLBACK_SCSV on its retries the server refuses (inappropriate fallback); a client with a minimum of TLS 1.2 stops after 2 attempts; the JDK client does not retry. A TLS 1.3 server pushed to TLS 1.2 writes DOWNGRD into its ServerHello random."
 detail = """
-A middlebox breaks every handshake above TLS 1.0. The retrying client needs 4 attempts and ends on TLS 1.0 with a static RSA CBC suite. With TLS_FALLBACK_SCSV the server answers inappropriate fallback. A client with a minimum of TLS 1.2 stops after 2 attempts. The JDK client never retries. A TLS 1.3 server that is pushed down marks its ServerHello with DOWNGRD.
+First, the server's own marker: asked for TLS 1.2, a server that can speak TLS 1.3 ends its ServerHello random with the bytes 44 4F 57 4E 47 52 44 01, "DOWNGRD" and 01, which means a downgrade to TLS 1.2. Asked for TLS 1.3, there is no marker.
+The input of the dance is a network that resets every ClientHello offering more than TLS 1.0. A client that falls back with no signal tries up to TLS 1.3, TLS 1.2, TLS 1.1 and TLS 1.0, and connects on the fourth attempt with AES128-SHA.
+The same client sending TLS_FALLBACK_SCSV on every retry is refused on the fourth attempt: the server can do better than TLS 1.0, so it answers inappropriate fallback. A client with a minimum of TLS 1.2 stops after 2 attempts and never offers TLS 1.0. The JDK client, with TLSv1.3 and TLSv1.2 enabled, fails and does not retry.
+"""
+figure = "three_clients"
+figure_title = "Three clients through the same broken network"
+figure_speech = """
+Third demo: the downgrade dance. [[slnc 400]] At the top, the server's own alarm. [[slnc 300]] A server that can speak T L S one point three, but is asked for one point two, writes eight special bytes at the end of its random value. [[slnc 300]] They spell DOWNGRD, then one. [[slnc 300]] A modern client that sees them knows it was pushed down. [[slnc 600]]
+Below, three clients go through the same network, which resets every hello above T L S one point zero. [[slnc 600]]
+On the left, a client with no signal. [[slnc 300]] It is reset three times, and on the fourth try it connects with T L S one point zero. [[slnc 600]]
+In the middle, the same client, but every retry carries the fallback signal, S C S V. [[slnc 300]] The server sees that it could do better, and refuses. [[slnc 600]]
+On the right, a client with a minimum of T L S one point two. [[slnc 300]] It gives up after two tries, and never offers the old version.
 """
 speech = """
-Third demo: the downgrade dance. [[slnc 400]] A failing network and a retrying client end on TLS one point zero. [[slnc 600]] The fallback signal stops it.
+The server hello random. [[slnc 300]] Asked for T L S one point two, the last eight bytes spell DOWNGRD and one. [[slnc 300]] Asked for one point three, there is no marker. [[slnc 400]] The network resets every hello above T L S one point zero. [[slnc 300]] The client with no signal ends on T L S one point zero with A E S one twenty eight S H A, after four attempts.
+[[page]]
+With the fallback signal, the fourth attempt is refused: inappropriate fallback. [[slnc 400]] With a minimum of T L S one point two, the client stops after two attempts. [[slnc 400]] And the J D K client fails, and does not retry with an older version.
 """
 rows = { downgrade = "active wrong" }
 console = [
-    ["falls back: TLSv1, AES128-SHA, 4 attempts", "bad"],
-    ["with SCSV: inappropriate fallback", "ok"],
-    ["minimum TLS 1.2: 2 attempts, no", "ok"],
+    ["THE SERVER HELLO RANDOM (a server that can speak TLS 1.3):", "code"],
+    ["  asked for TLS 1.2  last 8 bytes 44 4F 57 4E 47 52 44 01", "muted"],
+    ["                     \"DOWNGRD\" + 01: a downgrade to TLS 1.2", "ok"],
+    ["  asked for TLS 1.3  no DOWNGRD marker in the last 8 bytes", "muted"],
+    ["THE NETWORK (a broken or hostile middlebox):", "code"],
+    ["  resets every hello that offers more than TLS 1.0", "muted"],
+    ["A CLIENT THAT FALLS BACK WITH NO SIGNAL:", "code"],
+    ["  attempt 1  up to TLS 1.3   reset by the network", "amber"],
+    ["  attempt 2  TLS 1.2         reset by the network", "amber"],
+    ["  attempt 3  TLS 1.1         reset by the network", "amber"],
+    ["  attempt 4  TLS 1.0         connected, AES128-SHA", "bad"],
+    ["  result     connected yes, on TLSv1 with AES128-SHA", "bad"],
+    ["---", ""],
+    ["THE SAME CLIENT, SENDING TLS_FALLBACK_SCSV ON EVERY RETRY:", "code"],
+    ["  attempt 1  up to TLS 1.3   reset by the network", "amber"],
+    ["  attempt 2  TLS 1.2 + SCSV  reset by the network", "amber"],
+    ["  attempt 3  TLS 1.1 + SCSV  reset by the network", "amber"],
+    ["  attempt 4  TLS 1.0 + SCSV  refused: inappropriate fallback", "ok"],
+    ["  result     connected no, the server saw the signal", "ok"],
+    ["A CLIENT WITH A MINIMUM OF TLS 1.2:", "code"],
+    ["  attempt 1  up to TLS 1.3   reset by the network", "amber"],
+    ["  attempt 2  TLS 1.2         reset by the network", "amber"],
+    ["  result     connected no, it never offered TLS 1.0", "ok"],
+    ["THE JDK CLIENT, DEFAULT SETTINGS, THROUGH THE SAME NETWORK:", "code"],
+    ["  enabled    TLSv1.3, TLSv1.2", "muted"],
+    ["  result     handshake failed yes, retried older: no", "ok"],
 ]
 
 [[act]]
-title = "The leaked key"
-summary = "A recording is opened with the leaked server key for static RSA and not for DHE or ECDHE."
+title = "A recorded session, and the server key leaks later"
+summary = "The same bank transfer is recorded under static RSA, DHE and ECDHE. The static RSA client sent the secret itself, encrypted to the server key (256 bytes), so the leaked key opens it in 6 steps; DHE (128 bytes) and ECDHE (32 bytes) sent public values only and stay closed, and an unrelated key opens 0 of 3."
 detail = """
-The demo records three sessions through a tap. Java derives the TLS 1.2 keys from the RSA-decrypted pre-master secret and decrypts the AES-GCM record: the request is read for the static RSA session. For DHE and ECDHE the secret was agreed from keys that were thrown away, and the leaked key opens nothing. A key that is not the server's opens none.
+The input: the request POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500 is sent once under each of three TLS 1.2 suites, through a tap that records both directions. In no recording is the request visible in clear.
+What the client sent in its key exchange message: static RSA, 256 bytes, the secret encrypted to the server's key; DHE, 128 bytes, a DH public value; ECDHE, 32 bytes, an EC public value. The secrets of DHE and ECDHE were made from keys thrown away after the handshake.
+How the leaked key opens the static RSA session: RSA-decrypt the 256 bytes to the 48-byte pre-master secret; the TLS 1.2 PRF with "master secret" and both randoms gives the 48-byte master secret; with "key expansion" a 40-byte key block; bytes 0 to 15 are the client write key and bytes 32 to 35 the salt; AES-GCM with the salt and 8 bytes from the record opens the request. The result: static RSA opened, DHE and ECDHE not, and a key that is not the server's opens 0 of 3.
+"""
+figure = "leaked_key"
+figure_title = "Which recording a leaked key opens, step by step"
+figure_speech = """
+Fourth demo: a session is recorded today, and the server's key leaks a year later. [[slnc 400]] Three sessions carry the same bank transfer. [[slnc 600]]
+On the left, what each client sent in its key exchange message. [[slnc 300]] With static R S A, the client sent the secret itself, two hundred and fifty six bytes, encrypted to the server's key. [[slnc 300]] With D H E and E C D H E, it sent only a public value. [[slnc 300]] The secret was agreed from keys that were thrown away after the handshake. [[slnc 600]]
+On the right, how the leaked key opens the static R S A session. [[slnc 300]] Decrypt the two hundred and fifty six bytes: forty eight bytes of pre-master secret. [[slnc 300]] The T L S pseudo random function turns it into the master secret, then into a key block. [[slnc 300]] Sixteen bytes of it are the client's key, and four bytes are the salt. [[slnc 300]] A E S G C M then opens the record, and the transfer is there in clear. [[slnc 600]]
+For D H E and E C D H E, there is nothing for the key to decrypt.
 """
 speech = """
-Fourth demo: the leaked key. [[slnc 400]] Static RSA is opened a year later. [[slnc 600]] The ephemeral exchanges are not.
+The recording: the same transfer, in three sessions. [[slnc 300]] In none of them is the request visible in clear. [[slnc 400]] What the client sent: the encrypted secret for static R S A, and only public values for D H E and E C D H E.
+[[page]]
+How the leaked key opens the static R S A session, in six steps, with the size of every value. [[slnc 400]] The result: static R S A is opened, and the transfer is read. [[slnc 300]] D H E and E C D H E are not. [[slnc 300]] And a key that is not the server's opens none of the three.
 """
 rows = { leak = "active wrong" }
 console = [
-    ["static RSA: opened, amount=2500", "bad"],
-    ["DHE: not opened", "ok"],
-    ["ECDHE: not opened", "ok"],
+    ["THE RECORDING (one session per suite, through a tap):", "code"],
+    ["  request                      the same in each session:", "muted"],
+    ["  POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500", "muted"],
+    ["  AES128-GCM-SHA256            negotiated yes, in clear: no", "muted"],
+    ["  DHE-RSA-AES128-GCM-SHA256    negotiated yes, in clear: no", "muted"],
+    ["  ECDHE-RSA-AES128-GCM-SHA256  negotiated yes, in clear: no", "muted"],
+    ["WHAT THE CLIENT SENT IN ITS KEY EXCHANGE MESSAGE:", "code"],
+    ["  static RSA  256 bytes: the secret, encrypted to the key", "muted"],
+    ["  DHE         128 bytes: a DH public value only", "muted"],
+    ["  ECDHE       32 bytes: an EC public value only", "muted"],
+    ["---", ""],
+    ["HOW THE LEAKED KEY OPENS THE STATIC RSA SESSION:", "code"],
+    ["  1 RSA-decrypt the 256 bytes -> pre-master secret, 48 bytes", "muted"],
+    ["  2 PRF(pre-master, \"master secret\", randoms) -> 48 bytes", "muted"],
+    ["  3 PRF(master, \"key expansion\", randoms)   -> 40 bytes", "muted"],
+    ["  4 key block bytes 0-15  -> client write key, 16 bytes", "muted"],
+    ["  5 key block bytes 32-35 -> client salt, 4 bytes", "muted"],
+    ["  6 AES-GCM, nonce = salt + 8 bytes of the record -> the request", "muted"],
+    ["THE RESULT, WITH THE LEAKED SERVER KEY:", "code"],
+    ["  static RSA  opened", "bad"],
+    ["              POST /transfer?from=ACC-1001&to=ACC-2002&amount=2500", "bad"],
+    ["  DHE         not opened", "ok"],
+    ["  ECDHE       not opened", "ok"],
+    ["  unrelated   a key that is not the server's opened 0 of 3", "ok"],
 ]
 
 [[act]]
 title = "What TLS 1.3 removed"
-summary = "A TLS 1.3 only server refuses all 3 older versions, static RSA and CBC; compression and renegotiation have no place."
+summary = "A TLS 1.3 only server whose file still lists old suites and a 1024-bit DH group refuses TLS 1.0, 1.1 and 1.2 (3 of 3, protocol version), static RSA and CBC; its hello offers only the null compression method, renegotiation is forbidden, and the key exchange used the named group X25519MLKEM768, not the 1024-bit group. All 3 TLS 1.3 suites are AEAD with no fixed key exchange."
 detail = """
-The TLS 1.3 only server answers protocol version to TLS 1.0, 1.1 and 1.2, and refuses a static RSA and a CBC suite. None of the 3 TLS 1.3 suites has a fixed key exchange or lacks AEAD. A TLS 1.3 hello offers only the null compression method, the client library refuses to renegotiate, and the 1024-bit group in the server's file is not used. RC4 and zlib are not in this OpenSSL build.
+The input is a server with a minimum of TLS 1.3 whose configuration still lists DHE-RSA-AES128-SHA and AES128-GCM-SHA256 and a 1024-bit DH group.
+What a client asked for, and the answer: TLS 1.0, 1.1 and 1.2 refused 3 of 3 with the alert protocol version; static RSA (AES128-GCM-SHA256) and CBC with a MAC (AES128-SHA) do not connect; a TLS 1.3 hello started with -comp offers only method 0, no compression; the client library refuses to renegotiate, because TLS 1.3 forbids it; the 1024-bit DH group is not used, the named group X25519MLKEM768 is.
+The TLS 1.3 suites, from openssl ciphers -v -tls1_3: TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256 and TLS_AES_128_GCM_SHA256, all Kx=any, Au=any, Mac=AEAD: 0 of 3 with a fixed key exchange, 0 of 3 not AEAD. For comparison, the weak server on TLS 1.2: no compression (this build has no zlib), renegotiation refused with a no_renegotiation alert, and no RC4 in this build.
+"""
+figure = "tls13_removed"
+figure_title = "What a client asked the TLS 1.3 only server, and the answer"
+figure_speech = """
+Fifth demo: what T L S one point three removed. [[slnc 400]] This server's configuration still lists the old suites and the ten twenty four bit group. [[slnc 300]] But its minimum is T L S one point three. [[slnc 600]]
+On the left, what a client asked for. [[slnc 300]] On the right, the answer. [[slnc 300]] T L S one point zero, one point one and one point two: refused, three of three. [[slnc 300]] Static R S A and C B C: no connection. [[slnc 300]] Compression: the hello offers only method zero, which means none. [[slnc 300]] Renegotiation: forbidden. [[slnc 300]] And the old D H group is ignored. [[slnc 300]] The key exchange used a named group, a hybrid of X twenty five five nineteen and M L KEM. [[slnc 600]]
+At the bottom, the only three suites T L S one point three has. [[slnc 300]] Every one is authenticated encryption, and none fixes the key exchange.
 """
 speech = """
-Fifth demo: what TLS one point three removed. [[slnc 400]] Old versions, static RSA, CBC. [[slnc 600]] Refused, three of three.
+The T L S one point three only server, and what its file still lists. [[slnc 400]] What a client asked for: old versions, static R S A, C B C, compression, renegotiation, and the old group. [[slnc 300]] Every one refused or ignored.
+[[page]]
+The three T L S one point three suites. [[slnc 300]] Any key exchange, any authentication, and A E A D only. [[slnc 400]] For comparison, the weak server on T L S one point two. [[slnc 300]] No compression in this build, and renegotiation refused by the server. [[slnc 300]] R C four is not in this build, so it could not be planted.
 """
 rows = { tls13 = "active ok" }
 console = [
-    ["older versions refused: 3 of 3", "ok"],
-    ["static RSA and CBC refused", "ok"],
-    ["1024-bit group used: no", "ok"],
+    ["THE TLS 1.3 ONLY SERVER (its configuration):", "code"],
+    ["  minimum   TLS 1.3", "muted"],
+    ["  its file  still lists DHE-RSA-AES128-SHA, AES128-GCM-SHA256", "muted"],
+    ["            and a 1024-bit DH group", "muted"],
+    ["WHAT A CLIENT ASKED FOR, AND THE ANSWER:", "code"],
+    ["  TLS 1.0, 1.1, 1.2   refused 3 of 3: protocol version", "ok"],
+    ["  static RSA          AES128-GCM-SHA256 connected no", "ok"],
+    ["  CBC with a MAC      AES128-SHA connected no", "ok"],
+    ["  compression         the hello offers methods [0] (0 is none)", "muted"],
+    ["  renegotiation       refused by the client: TLS 1.3 forbids it", "ok"],
+    ["  1024-bit DH group   used no, group X25519MLKEM768", "ok"],
+    ["---", ""],
+    ["THE TLS 1.3 SUITES (openssl ciphers -v -tls1_3):", "code"],
+    ["  TLS_AES_256_GCM_SHA384        Kx=any Au=any Mac=AEAD", "muted"],
+    ["  TLS_CHACHA20_POLY1305_SHA256  Kx=any Au=any Mac=AEAD", "muted"],
+    ["  TLS_AES_128_GCM_SHA256        Kx=any Au=any Mac=AEAD", "muted"],
+    ["  fixed key exchange  0 of 3; not AEAD: 0 of 3", "ok"],
+    ["THE WEAK SERVER ON TLS 1.2, FOR COMPARISON:", "code"],
+    ["  compression    none: this OpenSSL build has no zlib", "muted"],
+    ["  renegotiation  refused by the server: no_renegotiation alert", "ok"],
+    ["  RC4            not in this OpenSSL build, so not planted", "muted"],
 ]
+
+[highlight]
+console_green = ["THE SCORE", "THE RESULT", "THE SAME CLIENT", "A CLIENT WITH A MINIMUM", "THE TLS 1.3"]
+console_rose = ["THE WEAKNESSES", "A CLIENT THAT FALLS BACK", "HOW THE LEAKED", "THE NETWORK"]
+console_amber = ["HOW THE DH", "WHAT THE SUITE", "TESTSSL.SH", "WHAT THE CLIENT SENT", "THE WEAK SERVER ON"]
+console_cyan = ["THE LAB", "WHAT EACH", "OUR PROBES", "THE SERVER HELLO", "THE RECORDING", "WHAT A CLIENT", "THE JDK"]
+
 
 [animation]
 subtitle = "A bank's old side door, and the one TLS 1.3 shut."
@@ -169,7 +355,7 @@ deliver = [
 [docs.prerequisites]
 required = [
     "Java basics",
-    "OpenSSL 3 or 4 on the PATH (brew install openssl@3) or OPENSSL set",
+    "OpenSSL 3.6 (brew install openssl@3) or OPENSSL set to an OpenSSL 3.6 program",
     "git and network access once, to clone testssl.sh v3.2.4 into build/",
 ]
 not_required = [
@@ -381,22 +567,44 @@ residual = "Settings the scanner does not name"
 
 [poster]
 headline = [["TLS ATTACKS", "text"], ["AND DOWNGRADES", "accent"]]
-taglines = [["Run deliberately weak local TLS servers, scan them with openssl and testssl.sh against the", "gold"]]
-before = { code = "planted weaknesses: 6", note = "The weak server", tag = "BEFORE" }
-after = { code = "older versions refused: 3 of 3", note = "TLS 1.3 only", tag = "AFTER" }
+taglines = [["Weak local servers, a forced fallback and a leaked key", "gold"]]
+before = { code = "attempt 4  TLS 1.0  connected, AES128-SHA", note = "A client that falls back", tag = "BEFORE" }
+after = { code = "TLS 1.0, 1.1, 1.2  refused 3 of 3", note = "TLS 1.3 only", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "TLS Attacks and Downgrades"
-narration = "Hello, and welcome. [[slnc 400]] This video explains T L S attacks and downgrades. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A T L S server is as strong as the oldest thing it still accepts. [[slnc 300]] A downgrade attack pushes the two ends to agree on that oldest thing: an old version, or a weak cipher. [[slnc 300]] T L S 1 point 3 removed most of those choices. [[slnc 600]] Think of a vault with a new door, that still opens with the old key if you ask politely. [[slnc 600]] Our example is a bank."
+narration = "Hello, and welcome. [[slnc 400]] This video explains T L S attacks and downgrades. [[slnc 300]] T L S is transport layer security, the protocol behind the padlock in the browser. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A server that speaks T L S is as strong as the oldest thing it still accepts. [[slnc 300]] A downgrade attack pushes both ends to agree on that oldest thing: an old version, or a weak cipher. [[slnc 300]] T L S one point three removed most of those old choices. [[slnc 600]] Think of a bank branch with a strong new door, that still keeps its old side door unlocked for a few customers. [[slnc 600]] Our example is a bank."
 
 [[scene]]
 key = "02-scenario"
 kind = "bullets"
 title = "The Scenario"
-body = ["A bank's online banking front end must serve", "a few old devices.", "", "Three local servers: a weak one with 6 planted", "weaknesses, a strong one, and a TLS 1.3 only one.", "openssl and testssl.sh scan them."]
-narration = "Here is the scenario. [[slnc 400]] A bank's online banking front end must serve a few old devices, so someone keeps the old settings switched on. [[slnc 500]] The demo starts three local servers. [[slnc 300]] A weak one, with six planted weaknesses. [[slnc 300]] A strong one, for T L S 1 point 2 and 1 point 3. [[slnc 300]] And one that speaks only T L S 1 point 3. [[slnc 500]] It scans them, makes a client fall back, and opens a recorded session with a leaked key."
+body = ["A bank's online banking front end must serve", "a few old devices, so the old settings stay on.", "", "Three local servers: a weak one with 6 planted", "weaknesses, a strong one, and a TLS 1.3 only one.", "openssl and testssl.sh probe them."]
+narration = "Here is the scenario. [[slnc 400]] A bank's online banking front end must serve a few old devices, so someone keeps the old settings switched on. [[slnc 500]] The demo starts three local servers, on this machine only. [[slnc 300]] A weak one, with six planted weaknesses. [[slnc 300]] A strong one, for T L S one point two and one point three. [[slnc 300]] And one that speaks only T L S one point three. [[slnc 500]] It scans them, pushes a client down to the oldest version, and opens a recorded session with a leaked key."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Protocol version: TLS 1.0, 1.1, 1.2, 1.3", "Cipher suite: key exchange, cipher, MAC", "Static RSA: the secret is sent, encrypted", "Forward secrecy: throw-away keys per session", "Downgrade: both ends pushed to an older choice", "Fallback signal: 'I am retrying with less'"]
+narration = """Before the demos, the words. [[slnc 500]] A protocol version is the edition of T L S, from one point zero, which is old, to one point three. [[slnc 500]] A cipher suite names the algorithms of one connection: the key exchange, the cipher, and the check. [[slnc 500]] Static R S A means the client sends the session secret, encrypted to the server's long term key. [[slnc 500]] Forward secrecy means each session uses throw away keys, so a stolen server key cannot open old recordings. [[slnc 500]] A downgrade pushes both ends to an older choice than they could use. [[slnc 500]] And the fallback signal is a flag a client sends when it retries with less."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-ladder"
+kind = "figure"
+title = "A downgrade on one connection"
+body = "downgrade_ladder"
+narration = """Let's see the core idea on one example: one client, and one network. [[slnc 400]] The server could speak T L S one point three. [[slnc 300]] But the network in the middle resets every hello that offers more than T L S one point zero. [[slnc 600]]
+The client tries up to T L S one point three. [[slnc 300]] Reset. [[slnc 300]] It assumes the server is old, and tries one point two. [[slnc 300]] Reset again. [[slnc 300]] Then one point one. [[slnc 300]] Reset. [[slnc 600]]
+On the fourth try it offers T L S one point zero, the network lets it through, and the server accepts. [[slnc 300]] The connection uses A E S one twenty eight S H A: static R S A, C B C, and S H A one. [[slnc 600]] Nobody broke any encryption. [[slnc 300]] The client was simply too helpful, and the network chose the version."""
 
 [[scene]]
 key = "03-acts"
@@ -408,34 +616,203 @@ narration = "unused"
 key = "04-costs"
 kind = "bullets"
 title = "What It Costs"
-body = ["Turning off old versions locks out old devices", "Scanners report some flaws only in a table", "Static RSA: one leaked key opens", "  every recorded session", "A retrying client can be pushed down", "Old builds cannot always plant every weakness"]
-narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Turning off old versions locks out the old devices that needed them. [[slnc 500]] A scanner reports some weaknesses only in its cipher table, so someone has to read it. [[slnc 500]] With static R S A key exchange, one leaked server key opens every session ever recorded. [[slnc 500]] And a client that retries with older versions can be pushed down by anyone on the network."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Server, Lab: local openssl servers and their keys", "Weakness: the planted truth", "Audit, Probe: our own openssl probes", "TestSsl: runs testssl.sh and reads its JSON", "Tap: a man in the middle that records and breaks", "Decryptor: opens a recording with a leaked key"]
-narration = "Here is who does what in the code. [[slnc 400]] Server and Lab start the local openssl servers, with their keys. [[slnc 500]] Weakness is each planted weakness, the truth the scans are scored against. [[slnc 500]] Audit and Probe are our own openssl probes. [[slnc 300]] TestSsl runs testssl dot S H, and reads its J S O N. [[slnc 500]] Tap is a man in the middle that records traffic, and can break handshakes. [[slnc 300]] And Decryptor opens a recorded session with a leaked key."
+body = ["Turning off old versions locks out old devices", "A scanner shows some flaws only in a table", "Static RSA: one leaked key opens", "  every recorded session", "Ephemeral keys cost one more computation", "The lab depends on the OpenSSL build"]
+narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Turning off old versions locks out the old devices that needed them. [[slnc 500]] A scanner shows some weaknesses only in its cipher table, so someone has to read it. [[slnc 500]] With static R S A, one leaked server key opens every session ever recorded. [[slnc 500]] Ephemeral keys cost one more computation per connection. [[slnc 300]] And this lab depends on its Open S S L build, which has no R C four and no compression to plant."
 
 [[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["A scan report: TLS 1.0 offered (deprecated)", "A cipher name such as AES128-SHA", "  (static RSA, CBC, SHA-1)", "An error: inappropriate fallback", "A load balancer policy that allows TLS 1.0"]
-narration = "You have probably met this already. [[slnc 400]] A scan report saying T L S 1 point 0 offered, deprecated, is an old version left on. [[slnc 500]] A cipher name such as A E S 128 S H A means static R S A, C B C mode, and S H A 1. [[slnc 500]] An inappropriate fallback error is the fallback signal doing its job. [[slnc 500]] And a load balancer policy that still allows T L S 1 point 0 is the weak server, in production."
+narration = "You have probably met this already. [[slnc 400]] A scan report saying T L S one point zero offered, deprecated, is an old version left on. [[slnc 500]] A cipher name such as A E S one twenty eight S H A means static R S A, C B C mode, and S H A one. [[slnc 500]] An inappropriate fallback error is the fallback signal doing its job. [[slnc 500]] And a load balancer policy that still allows T L S one point zero is the weak server, in production."
 
 [[scene]]
 key = "07-verdict"
 kind = "bullets"
 title = "How To Use It"
-body = ["TLS 1.2 at minimum; TLS 1.3 where you can", "Only ECDHE or DHE key exchange, with AEAD", "Send and honour TLS_FALLBACK_SCSV", "Scan every server, and read the cipher table", "Clients: set a minimum, never fall back"]
-narration = "So, how do you use it? [[slnc 400]] Accept T L S 1 point 2 at the minimum, and 1 point 3 where you can. [[slnc 500]] Allow only ephemeral key exchange, E C D H E or D H E, with authenticated encryption such as G C M. [[slnc 500]] Honour the fallback signal on the server. [[slnc 500]] Scan every server, and read the whole cipher table. [[slnc 300]] And on clients, set a minimum version, and never retry with a lower one."
+body = ["TLS 1.2 at minimum; TLS 1.3 where you can", "Only ECDHE or DHE key exchange, with AEAD", "Honour TLS_FALLBACK_SCSV on the server", "Scan every server, and read the cipher table", "Clients: set a minimum, never fall back"]
+narration = "So, how do you use it? [[slnc 400]] Accept T L S one point two at the minimum, and one point three where you can. [[slnc 500]] Allow only ephemeral key exchange, E C D H E or D H E, with authenticated encryption such as G C M. [[slnc 500]] Honour the fallback signal on the server. [[slnc 500]] Scan every server, and read the whole cipher table, not only the findings. [[slnc 300]] And on clients, set a minimum version, and never retry with a lower one."
+
+[[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
 
 [[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Plant a certificate signed", "with SHA-1, and see who finds it."]
-narration = "That's T L S attacks and downgrades. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A server is as weak as the oldest thing it accepts, so switch the old things off, keep forward secrecy, and never let a client fall back. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a seventh weakness, a certificate signed with S H A 1, and see which scanner finds it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+narration = "That's T L S attacks and downgrades. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A server is as weak as the oldest thing it accepts, so switch the old things off, keep forward secrecy, and never let a client fall back. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a seventh weakness, a certificate signed with S H A one, and see which tool finds it. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The servers and the scanner are real programs, and Java drives them, sits in the middle, and reads what they say. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Weakness"
+what = "the planted truth the tools are scored against"
+[[class.part]]
+title = "six weaknesses, a label and a short name"
+code = """
+TLS_1_0("TLS 1.0 accepted", "TLS 1.0"),
+...
+NULL_CIPHER("NULL cipher (no encryption)", "NULL cipher");
+"""
+speech = """Each planted weakness is one value of an enum. [[slnc 300]] Because we planted them, we know the right answer, and can count what each tool found and missed."""
+
+[[class]]
+name = "Server"
+what = "one local openssl s_server on 127.0.0.1"
+[[class.part]]
+title = "the server is a real openssl process"
+code = """
+List<String> cmd = new ArrayList<>(lab.openssl().command("s_server",
+        "-accept", "127.0.0.1:" + port,
+        "-cert", lab.cert().toString(), "-key", lab.key().toString(),
+        "-cipher", profile.ciphers,
+        "-min_protocol", profile.minProtocol,
+        "-serverpref", "-www", "-quiet"));
+"""
+speech = """A profile gives the suites and the minimum version. [[slnc 300]] The weak profile lists the old suites and T L S one point zero. [[slnc 300]] The server listens on this machine only."""
+
+[[class]]
+name = "Tap"
+what = "a man in the middle that records, and can break handshakes"
+[[class.part]]
+title = "reset every hello above a version"
+code = """
+int version = TlsRecords.clientHelloVersion(first);
+if (version > maxHelloVersion) {
+    broken = true;
+    return;
+"""
+speech = """The tap reads the first record of each connection. [[slnc 300]] If the hello offers a version above the limit, it closes the connection, the way a faulty middlebox or an attacker would."""
+
+[[class]]
+name = "TlsAttacksDemo"
+what = "the demo, and a client that retries"
+[[class.part]]
+title = "retry with less, with or without the signal"
+code = """
+for (int i = 3; i >= minVersionIndex; i--) {
+...
+    boolean signal = scsv && !attempts.isEmpty();
+    if (signal) {
+        flags.add("-fallback_scsv");
+"""
+speech = """The client starts at T L S one point three and steps down on each failure, never below its minimum. [[slnc 300]] With the signal on, every retry tells the server: I am falling back."""
+
+[[class]]
+name = "TlsRecords"
+what = "reads the bytes of a recorded connection"
+[[class.part]]
+title = "the downgrade marker"
+code = """
+byte[] tail = Arrays.copyOfRange(r, 24, 32);
+byte[] marker = {0x44, 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44};
+"""
+speech = """The last eight bytes of the server's random value. [[slnc 300]] If the first seven spell DOWNGRD, the server was pushed below T L S one point three."""
+
+[[class]]
+name = "Decryptor"
+what = "a teaching class: opens a recording with a leaked key"
+[[class.part]]
+title = "from the encrypted secret to the client's key"
+code = """
+byte[] premaster = premaster(exchange, key);
+...
+byte[] master = prf(premaster, "master secret",
+        concat(clientRandom, serverRandom), 48);
+byte[] block = prf(master, "key expansion",
+        concat(serverRandom, clientRandom), 40);
+byte[] clientKey = Arrays.copyOfRange(block, 0, 16);
+"""
+speech = """This redoes the T L S one point two key schedule by hand. [[slnc 300]] The leaked key decrypts the pre-master secret, and the pseudo random function makes the master secret and the key block. [[slnc 300]] A test checks the function against a published test vector."""
+
+[[class]]
+name = "TestSsl"
+what = "runs testssl.sh and reads its JSON report"
+[[class.part]]
+title = "a weakness with no finding of its own"
+code = """
+int rsa = new TreeSet<>(kx(findings, "RSA")).size();
+if (rsa > 0) {
+    found.put(Weakness.STATIC_RSA,
+            "only the Kx column: RSA, " + rsa + " rows");
+"""
+speech = """Static R S A has no finding of its own in the report. [[slnc 300]] So the code reads the key exchange column of the cipher table, and counts the rows that say R S A."""
+
+[[acronym]]
+short = "TLS, TLS1, TLS1_1"
+long = "Transport Layer Security; testssl.sh ids for TLS 1.0 and 1.1"
+say = "T L S is transport layer security: the protocol that encrypts a connection and proves the server's identity. In test s s l's report, T L S one and T L S one underscore one are the findings for versions one point zero and one point one."
+[[acronym]]
+short = "SSL"
+long = "Secure Sockets Layer: TLS's old name, as in testssl.sh"
+say = "S S L is secure sockets layer, the old name of T L S. Test s s l and s client keep the old name."
+[[acronym]]
+short = "HTTP, HTTPS"
+long = "Hypertext Transfer Protocol; HTTP inside TLS"
+say = "H T T P is the hypertext transfer protocol of the web, and H T T P S is H T T P inside T L S."
+[[acronym]]
+short = "RSA"
+long = "Rivest-Shamir-Adleman: a public-key algorithm"
+say = "R S A, after Rivest, Shamir and Adleman, is a public key algorithm. Used as the key exchange, it gives no forward secrecy."
+[[acronym]]
+short = "DH, DHE, ECDHE"
+long = "Diffie-Hellman; (Elliptic Curve) Diffie-Hellman Ephemeral"
+say = "D H is Diffie Hellman key agreement. D H E and E C D H E use fresh, ephemeral keys for every session, which gives forward secrecy."
+[[acronym]]
+short = "EC"
+long = "Elliptic Curve: a kind of public key"
+say = "E C means elliptic curve, the family of keys used by E C D H E."
+[[acronym]]
+short = "AES, AES128"
+long = "Advanced Encryption Standard, here with a 128-bit key"
+say = "A E S is the advanced encryption standard, the usual block cipher. A E S one twenty eight uses a one hundred twenty eight bit key."
+[[acronym]]
+short = "GCM, CBC"
+long = "Galois/Counter Mode; Cipher Block Chaining"
+say = "G C M is Galois counter mode, which encrypts and checks in one step. C B C is cipher block chaining, an older mode with a separate check."
+[[acronym]]
+short = "AEAD"
+long = "Authenticated Encryption with Associated Data"
+say = "A E A D is authenticated encryption with associated data, like G C M: it encrypts and detects any change."
+[[acronym]]
+short = "MAC"
+long = "Message Authentication Code: a keyed check value"
+say = "M A C is a message authentication code: a check value that only the key holders can make."
+[[acronym]]
+short = "SHA, SHA-1, SHA256"
+long = "Secure Hash Algorithm; SHA-1 is broken"
+say = "S H A is the secure hash algorithm. S H A one is the old, broken version."
+[[acronym]]
+short = "SCSV"
+long = "Signaling Cipher Suite Value: TLS_FALLBACK_SCSV"
+say = "S C S V is a signaling cipher suite value. T L S fallback S C S V is a fake suite a client adds when it retries with a lower version."
+[[acronym]]
+short = "PRF"
+long = "Pseudo-Random Function: TLS 1.2's key maker"
+say = "P R F is the pseudo random function that T L S one point two uses to turn a secret into keys."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit"
+say = "J D K is the Java development kit, here its built in T L S client."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: the report format"
+say = "J S O N is JavaScript object notation, the format of test s s l's report."
+[[acronym]]
+short = "ML-KEM, KEM"
+long = "Module-Lattice Key Encapsulation Mechanism (post-quantum)"
+say = "M L KEM is the module lattice key encapsulation mechanism, a post quantum key exchange. X twenty five five nineteen M L KEM seven sixty eight joins it with elliptic curve key agreement."
+[[acronym]]
+short = "LUCKY13"
+long = "Lucky Thirteen: a timing attack on CBC with a MAC"
+say = "Lucky thirteen is a timing attack on C B C suites that check with a M A C. Test s s l names its finding after it."
+[[acronym]]
+short = "RC4"
+long = "Rivest Cipher 4: a broken stream cipher"
+say = "R C four is Rivest cipher four, a broken stream cipher."

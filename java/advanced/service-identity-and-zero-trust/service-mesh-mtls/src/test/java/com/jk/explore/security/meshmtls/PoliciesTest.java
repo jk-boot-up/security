@@ -15,6 +15,12 @@ class PoliciesTest {
     }
 
     @Test
+    void theIdentityIsItsPartsJoinedByDots() {
+        assertEquals(List.of("payments", "bank", "serviceaccount.identity", "linkerd", "cluster.local"), Lab.PAYMENTS.identityParts());
+        assertEquals(String.join(".", Lab.PAYMENTS.identityParts()), Lab.PAYMENTS.identity());
+    }
+
+    @Test
     void aServiceAccountOfAnotherNamespaceIsAnotherIdentity() {
         assertFalse(Lab.PAYMENTS.identity().equals(new Service("shadow", "payments").identity()));
     }

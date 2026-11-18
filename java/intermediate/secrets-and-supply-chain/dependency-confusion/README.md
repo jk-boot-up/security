@@ -41,7 +41,7 @@ are only ever fetched from the online store's own shelves, and a record of the e
 
 ## The scenario
 
-An online store's build needs `json-lib` (public), `shop-pricing` and `shop-audit` (internal). The demo has a private and a public repository, five resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.
+An online store's build needs `json-lib` (public), `shop-pricing` and `shop-audit` (internal). The demo has a private and a public repository, four resolvers that behave like real tools, a lockfile, and a build that runs install scripts. The attacker's script is only a line of text; nothing is run.
 
 ## Run
 
@@ -53,11 +53,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A build that works | The build gets json-lib from the public registry and the two internal libraries from the private repository, and records their digests in a lockfile. |
-| 2. Somebody registers the online store's package name in the public registry | With highest-version-wins across repositories, shop-pricing 99.0.0 from the public registry is installed and its install script runs on the build machine. |
-| 3. Repository order helps only until a name is missing | With the private repository first, existing names are safe; but a new internal library falls through to the public registry, and with the public registry first an attacker's copy of an exact version number wins. |
-| 4. Names decide where a package may come from | With content filtering, internal names come only from the private repository and the missing library is a build error, not an install; public names never go to the private repository. |
-| 5. Locked digests, and watching the names | The lockfile rejects the squatted shop-pricing even under highest-version-wins, and rejects a changed artifact with the same version number; a name watch lists the shadowed internal names. |
+| 1. A build that works | The build asks for json-lib [2.0.0, 3.0.0), shop-pricing >= 1.0.0 and shop-audit [3.1.0, 3.1.1); the highest version in any repository gives json-lib from the public registry and the two internal libraries from the private one, and a lockfile records each version with its SHA-256 digest. |
+| 2. Somebody registers the store's name in the public registry | The attacker publishes shop-pricing 99.0.0 and shop-newlib 1.0.0 to the public registry, each with an install script. Both 1.4.2 and 99.0.0 are in the range >= 1.0.0, major 99 > 1, so the highest-version rule installs the attacker's package and its script runs on the build machine. |
+| 3. Repository order helps only until a name is missing | Asking company-private first keeps shop-pricing at 1.4.2. But shop-newlib, not yet in company-private, falls through to the public registry and its script runs; and with the public registry first, the attacker's copy of the pinned shop-audit 3.1.0 wins. |
+| 4. Names decide where a package may come from | A name that starts with shop- is internal and may come from company-private only; json-lib may come from public-registry only. The dependencies install as intended, and the unpublished shop-newlib is refused: the build fails closed and the attacker's package is never asked for. |
+| 5. Locked digests, and watching the names | The lockfile says shop-pricing 1.4.2 with its digest; the public 99.0.0 has another version and the changed private 1.4.2 another digest, so both are refused even under highest-version-wins. The name watch finds shop-newlib and shop-pricing in the public registry. |
 
 ## Test
 
@@ -65,7 +65,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `DepConfusionTest`. Nothing is random and no script is run, so the demo prints the same text on every run.
+15 tests in `DemoRunsTest`, `DepConfusionTest`. Nothing is random and no script is run, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

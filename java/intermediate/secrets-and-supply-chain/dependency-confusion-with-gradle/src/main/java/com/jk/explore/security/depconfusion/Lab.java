@@ -34,7 +34,7 @@ public final class Lab implements AutoCloseable {
     /** A {@code maven { }} block for a repository; {@code content} is the Groovy of its content filter, or empty. */
     static String maven(Repo repo, String content) {
         return "        maven {\n            name = '" + repo.name() + "'\n            url = '" + repo.url() + "'\n            allowInsecureProtocol = true\n"
-                + (content.isEmpty() ? "" : "            content {\n" + content + "\n            }\n") + "        }";
+                + (content.isEmpty() ? "" : "            content {\n                " + content.strip() + "\n            }\n") + "        }";
     }
 
     Build build(String name, String repositories, String dependencies) throws IOException {

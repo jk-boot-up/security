@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The tree, as a Threat Dragon model | 7 min |
-| 0:17 | Act 2: Checked by Threat Dragon's own validator | 7 min |
-| 0:24 | Act 3: The plan, step by step, in the file | 7 min |
-| 0:31 | Act 4: Checks the schema cannot make | 7 min |
-| 0:38 | Act 5: The editor, and the bill | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: The bank as a Threat Dragon diagram | 5 min |
+| 0:15 | Act 2: From the tree's numbers to a severity | 5 min |
+| 0:20 | Act 3: Checked by Threat Dragon's own validator | 5 min |
+| 0:25 | Act 4: The plan, step by step, in the file | 5 min |
+| 0:30 | Act 5: Checks the schema cannot make | 5 min |
+| 0:35 | Act 6: The editor, and the bill | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

@@ -1,7 +1,9 @@
 package com.jk.explore.security.ir;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** What the organisation did <em>before</em> the incident. Almost everything that goes well or badly later is decided here. */
 public record Preparation(boolean runbook, boolean monitoringOnDatabaseReads, boolean logsShippedCentrally, int logRetentionDays, boolean forensicsReady,
@@ -19,26 +21,26 @@ public record Preparation(boolean runbook, boolean monitoringOnDatabaseReads, bo
         return new Preparation(true, true, true, 30, true, true, true);
     }
 
+    /** The six things, in a fixed order, and whether each one is in place. */
+    public Map<String, Boolean> checklist() {
+        Map<String, Boolean> c = new LinkedHashMap<>();
+        c.put("runbook and contact list", runbook);
+        c.put("alert on unusual database reads", monitoringOnDatabaseReads);
+        c.put("logs kept centrally 7+ days",
+                logsShippedCentrally && logRetentionDays >= 7);
+        c.put("snapshot of memory and disk", forensicsReady);
+        c.put("known-good image to rebuild", knownGoodImages);
+        c.put("tested backups", testedBackups);
+        return c;
+    }
+
     public List<String> missing() {
         List<String> m = new ArrayList<>();
-        if (!runbook) {
-            m.add("no written runbook and contact list");
-        }
-        if (!monitoringOnDatabaseReads) {
-            m.add("no alert on unusual database reads");
-        }
-        if (!logsShippedCentrally || logRetentionDays < 7) {
-            m.add("logs not kept centrally for at least 7 days");
-        }
-        if (!forensicsReady) {
-            m.add("no way to snapshot memory and disk");
-        }
-        if (!knownGoodImages) {
-            m.add("no known-good image to rebuild from");
-        }
-        if (!testedBackups) {
-            m.add("backups never tested");
-        }
+        checklist().forEach((thing, inPlace) -> {
+            if (!inPlace) {
+                m.add(thing);
+            }
+        });
         return m;
     }
 

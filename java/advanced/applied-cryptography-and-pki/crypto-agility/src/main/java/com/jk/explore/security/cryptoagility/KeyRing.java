@@ -1,5 +1,6 @@
 package com.jk.explore.security.cryptoagility;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Map;
 import java.util.TreeMap;
@@ -44,7 +45,7 @@ public final class KeyRing {
             byte[] out = new byte[bytes];
             int filled = 0;
             for (int block = 1; filled < bytes; block++) {
-                mac.update((purpose + "/" + block).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                mac.update((purpose + "/" + block).getBytes(StandardCharsets.UTF_8));
                 byte[] part = mac.doFinal();
                 int n = Math.min(part.length, bytes - filled);
                 System.arraycopy(part, 0, out, filled, n);

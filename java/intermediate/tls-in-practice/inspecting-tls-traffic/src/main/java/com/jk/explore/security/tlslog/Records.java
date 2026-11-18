@@ -46,11 +46,22 @@ final class Records {
     }
 
     private static SecretKeySpec key(byte[] secret) {
-        return new SecretKeySpec(Hkdf.expandLabel(secret, "key", new byte[0], 16), "AES");
+        return new SecretKeySpec(keyBytes(secret), "AES");
     }
 
-    private static byte[] nonce(byte[] secret, long seq) {
-        byte[] iv = Hkdf.expandLabel(secret, "iv", new byte[0], 12);
+    /** The AES key of one direction: 16 bytes expanded from its traffic secret. */
+    static byte[] keyBytes(byte[] secret) {
+        return Hkdf.expandLabel(secret, "key", new byte[0], 16);
+    }
+
+    /** The 12-byte IV of one direction, expanded from its traffic secret. */
+    static byte[] iv(byte[] secret) {
+        return Hkdf.expandLabel(secret, "iv", new byte[0], 12);
+    }
+
+    /** The nonce of record number {@code seq}: the IV with the record number XORed into its last bytes. */
+    static byte[] nonce(byte[] secret, long seq) {
+        byte[] iv = iv(secret);
         for (int i = 0; i < 8; i++) {
             iv[11 - i] ^= (byte) (seq >> (8 * i));
         }

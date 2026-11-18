@@ -9,7 +9,8 @@ public final class FirstRepositoryResolver implements Resolver {
     @Override
     public Resolved resolve(String name, VersionRange range, List<Repository> repositories) {
         for (Repository r : repositories) {
-            var found = r.find(name, range).stream().max(Comparator.comparing(Artifact::version));
+            var found = r.find(name, range).stream()
+                    .max(Comparator.comparing(Artifact::version));
             if (found.isPresent()) {
                 return new Resolved(found.get(), r);
             }

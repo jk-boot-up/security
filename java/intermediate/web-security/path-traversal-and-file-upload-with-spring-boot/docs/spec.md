@@ -39,10 +39,10 @@ Servers use names and paths from requests as if they were their own.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 47 lines, identical on every run |
-| Acts | 6 |
-| Video | 06:55, 1920×1080, narrated in the amy-slow voice |
+| Tests | 14, all passing |
+| Demo output | 166 lines, identical on every run |
+| Acts | 8 |
+| Video | 23:10, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

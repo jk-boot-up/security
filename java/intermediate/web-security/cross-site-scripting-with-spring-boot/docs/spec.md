@@ -40,9 +40,9 @@ Developers trust the template engine without knowing where its escaping stops, a
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
 | Tests | 13, all passing |
-| Demo output | 28 lines, identical on every run |
-| Acts | 5 |
-| Video | 07:26, 1920×1080, narrated in the amy-slow voice |
+| Demo output | 68 lines, identical on every run |
+| Acts | 4 |
+| Video | 13:36, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

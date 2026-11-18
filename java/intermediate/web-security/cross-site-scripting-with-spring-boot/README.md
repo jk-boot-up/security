@@ -10,7 +10,7 @@ src/main/java/com/jk/explore/security/xssspring/
 ├── Shop.java                   The store: Thymeleaf pages, and Spring Security writing a strict Content-Security-Policy with this request's nonce
 ├── Templates.java              The store's templates, read from the class path, so a test can list every place that turns escaping off
 ├── Wire.java                   Fetches a page from a running store over the loopback interface with the JDK's HTTP client
-└── XssSpringDemo.java          Runs the online store story in five numbered acts against a real Spring Boot server on the loopback interface
+└── XssSpringDemo.java          Runs the online store story in four numbered acts against a real Spring Boot server on the loopback interface
 ```
 
 **Thymeleaf escapes every value written with th:text, in the right way for an attribute, a link or a script; th:utext switches that off, and Spring Security can send a strict policy with a fresh nonce for every page once a small filter supplies the nonce.**
@@ -40,15 +40,14 @@ checks the page's policy and nonce on two requests, and reads the session cookie
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 4 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Thymeleaf escapes by default | Ana's review, the text <b>Great boots</b>, written with th:text comes out as &lt;b&gt;Great boots&lt;/b&gt;: no bold element on the page, and nothing had to be remembered. |
-| 2. th:utext, the one switch that turns escaping off | The same review written with th:utext becomes a bold element the shop never wrote; one of the two templates uses th:utext, and a test fails if another appears. |
-| 3. The other places a value can go | Ben's fit note reads back whole from an attribute, the search text stays one link parameter, and a value inside a script is written as one JavaScript string. |
-| 4. A strict Content-Security-Policy from Spring Security, with a fresh nonce for every page | Every page has a policy whose nonce matches the page's own script, the next page has a different nonce, and a script without the nonce may not run. |
-| 5. The bill | The session cookie is HttpOnly and SameSite=Strict; escaping protects only what goes through it; some places need design rather than escaping; the nonce needs a small filter. |
+| 1. Thymeleaf escapes by default | Ana's review <b>Great boots</b>, written with th:text, reaches the page as &lt;b&gt;Great boots&lt;/b&gt;: the browser finds only the shop's elements, and nothing had to be remembered. |
+| 2. th:utext, the one switch that turns escaping off | The same review written with th:utext reaches the page as <b>Great boots</b>, a b element the shop never wrote; a test searches the templates and allows th:utext only in the one trap template. |
+| 3. The other places a value can go | A fit note in an attribute becomes Fits 5&quot; boots, a search in a link becomes size%205%20%26%20up, and a note in a script becomes "It's \"great\"": each read back whole. |
+| 4. A strict Content-Security-Policy from Spring Security | A small filter makes a 24-character nonce from 16 random bytes before Spring Security writes its headers; the policy and the shop's script carry the same nonce, a script without it is blocked, and the session cookie is HttpOnly and SameSite=Strict. |
 
 ## Test
 

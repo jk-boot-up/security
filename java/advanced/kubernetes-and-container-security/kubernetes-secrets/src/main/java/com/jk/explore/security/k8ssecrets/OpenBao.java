@@ -6,6 +6,9 @@ import java.io.IOException;
 final class OpenBao {
 
     static final String SECRET_VALUE = "demo-db-password-7";
+    static final String POLICY = "payments-read";
+    static final String SECRET_PATH = "secret/data/payments/db";
+    static final int TOKEN_TTL_SECONDS = 10;
     private static final String URL = "http://openbao.vault.svc:8200";
 
     private final Cluster cluster;
@@ -33,9 +36,14 @@ final class OpenBao {
         admin("bao kv put -mount=secret payments/db password=" + SECRET_VALUE);
         admin("bao auth enable kubernetes");
         admin("bao write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc:443");
-        admin("echo 'path \"secret/data/payments/db\" { capabilities = [\"read\"] }' | bao policy write payments-read -");
-        admin("bao write auth/kubernetes/role/payments bound_service_account_names=" + serviceAccount + " bound_service_account_namespaces=" + namespace
-                + " audience=" + Manifests.AUDIENCE + " token_policies=payments-read token_ttl=10s token_max_ttl=10s");
+        admin("echo 'path \"" + SECRET_PATH + "\" { capabilities = [\"read\"] }' | bao policy write " + POLICY + " -");
+        String role = "bao write auth/kubernetes/role/payments"
+                + " bound_service_account_names=" + serviceAccount
+                + " bound_service_account_namespaces=" + namespace
+                + " audience=" + Manifests.AUDIENCE
+                + " token_policies=" + POLICY
+                + " token_ttl=" + TOKEN_TTL_SECONDS + "s token_max_ttl=" + TOKEN_TTL_SECONDS + "s";
+        admin(role);
     }
 
     private Http call(String namespace, String pod, String method, String path, String token, String body) throws IOException, InterruptedException {
@@ -49,7 +57,12 @@ final class OpenBao {
         return call(namespace, pod, "POST", "/v1/auth/kubernetes/login", "", body);
     }
 
+    /** The token the kubelet put in the pod's volume: what the pod sends to log in. */
+    Jwt podToken(String namespace, String pod) throws IOException, InterruptedException {
+        return Jwt.parse(cluster.exec(namespace, pod, "cat", Manifests.TOKEN_PATH).output());
+    }
+
     Http read(String namespace, String pod, String clientToken) throws IOException, InterruptedException {
-        return call(namespace, pod, "GET", "/v1/secret/data/payments/db", clientToken, "");
+        return call(namespace, pod, "GET", "/v1/" + SECRET_PATH, clientToken, "");
     }
 }

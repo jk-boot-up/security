@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Cloud misconfigurations on a local AWS emulator for a bank: public buckets, a wildcard administrator policy, ports open to the world, the metadata service without a token and unencrypted disks, found by a scanner written in Java, fixed, and found again in OpenTofu files by Checkov and Trivy, with the metadata endpoint attacked and defended.
+> Cloud misconfigurations on a local AWS emulator (Moto) for a bank: public buckets, a wildcard administrator policy, ports open to the world, the instance metadata service without a token and unencrypted disks. A scanner written in Java reads the account through the AWS SDK and finds 13 findings from 9 rules; the fixes are 7 edits and 2 replacements; the same setup as OpenTofu files is scanned by Checkov and Trivy at pinned versions and compared rule by rule; server-side request forgery against IMDSv1 and IMDSv2 is shown request by request; and the emulator accepts a public policy that AWS would refuse.

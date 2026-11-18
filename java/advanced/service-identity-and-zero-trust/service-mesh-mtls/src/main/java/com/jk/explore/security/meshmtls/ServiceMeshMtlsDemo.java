@@ -1,14 +1,18 @@
 package com.jk.explore.security.meshmtls;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
+import java.util.Set;
 
+/**
+ * Runs a bank's pods on a real kind cluster with Linkerd in six numbered acts. Each act prints its input and its result in separate, labelled
+ * sections, and works out the values a reader would wonder about (an identity's parts, the number of pairs, a certificate's lifetime).
+ */
 public class ServiceMeshMtlsDemo {
 
-    private static final String MARKER = "ACCT-4417-transfer-9000";
-    private static final Pattern PROXY_PORT = Pattern.compile("\\.4143[ :]");
+    static final String MARKER = "ACCT-4417-transfer-9000";
+    static final String CAPTURE = "tcp port 8080 or tcp port 4143";
+    static final String HOSTILE = "' OR '1'='1";
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -18,16 +22,26 @@ public class ServiceMeshMtlsDemo {
         return b ? "yes" : "no";
     }
 
-    static String line(Design.Diff d) {
-        return String.format("%d of %d pairs answered, %d unwanted, %d missing", d.answered(), d.total(), d.unwanted().size(), d.missing().size());
+    static void line(StringBuilder out, String text) {
+        out.append(text).append('\n');
     }
 
-    static String counts(Map<String, Long> m) {
-        return m.isEmpty() ? "nothing" : m.toString().replaceAll("^\\{|}$", "");
+    /** The first two parts of an identity (ServiceAccount and namespace), or the key as it is. */
+    static String shortId(String identity) {
+        int at = identity.indexOf(".serviceaccount.");
+        return at < 0 ? identity : identity.substring(0, at);
     }
 
-    static String minutes(Duration d) {
-        return d.toMinutes() + " minutes";
+    static void table(StringBuilder out, Set<String> answered) {
+        for (String row : Design.table(Lab.CALLERS, Lab.BANK, answered)) {
+            line(out, "    " + row);
+        }
+    }
+
+    static void score(StringBuilder out, Design.Diff d) {
+        line(out, "    answered      " + d.answered() + " of " + d.total());
+        line(out, "    not designed  " + d.unwanted().size() + " (answered, not in the design)");
+        line(out, "    missing       " + d.missing().size() + " (in the design, refused)");
     }
 
     public static String run() throws Exception {
@@ -36,113 +50,155 @@ public class ServiceMeshMtlsDemo {
             Cluster c = lab.cluster;
             String call = Lab.PAYMENTS.url("/echo?msg=" + MARKER);
 
-            out.append("--- before the proxies: a call between two pods\n");
-            out.append("Linkerd's control plane is installed, the bank namespace is not injected yet\n");
-            out.append("pods with a proxy: " + lab.proxies() + " of 5\n");
-            String[] plain = new String[1];
-            String wire = lab.sniffer.capture(0, "tcp port 8080 or tcp port 4143", () -> plain[0] = String.valueOf(c.http(Lab.WEB, call)));
-            out.append("web calls payments: HTTP " + plain[0] + "\n");
-            out.append("the account number can be read from the wire: " + yes(wire.contains(MARKER)) + "\n");
-
-            out.append("--- inject the proxies\n");
+            line(out, "ONE. Before and after the proxies.");
+            line(out, "  THE CALL (web calls payments; a capture runs on the node):");
+            line(out, "    GET " + call);
+            line(out, "  BEFORE THE PROXIES (" + lab.proxies() + " of 5 pods have one):");
+            String[] code = new String[1];
+            String wire = lab.sniffer.capture(0, CAPTURE, () -> code[0] = String.valueOf(c.http(Lab.WEB, call)));
+            String seen = Wire.requestLine(wire, MARKER);
+            line(out, "    answer             HTTP " + code[0]);
+            line(out, "    request on wire    " + (seen.isEmpty() ? "none" : seen.replace(" HTTP/1.1", "")));
+            line(out, "    account readable   " + yes(!seen.isEmpty()));
             lab.inject("bank", 4);
-            out.append("pods with a proxy: " + lab.proxies() + " of 5 (the legacy namespace was left out)\n");
-            String[] meshed = new String[1];
-            wire = lab.sniffer.capture(0, "tcp port 8080 or tcp port 4143", () -> meshed[0] = String.valueOf(c.http(Lab.WEB, call)));
-            out.append("web calls payments: HTTP " + meshed[0] + "\n");
-            out.append("the account number can be read from the wire: " + yes(wire.contains(MARKER)) + "\n");
-            out.append("packets seen on the proxy port 4143: " + yes(PROXY_PORT.matcher(wire).find()) + "\n");
-            Map<String, Long> seenByServer = Metrics.byIdentity(c.proxyMetrics(Lab.PAYMENTS), "request_total", "inbound", "8080", "client_id");
-            Map<String, Long> seenByClient = Metrics.byIdentity(c.proxyMetrics(Lab.WEB), "request_total", "outbound", "8080", "server_id");
-            out.append("payments' proxy counted requests by the client's certificate: " + counts(seenByServer) + "\n");
-            out.append("web's proxy counted requests by the server's certificate: " + counts(seenByClient) + "\n");
-            out.append("both ends proved who they are: " + yes(seenByServer.containsKey(Lab.WEB.identity()) && seenByClient.containsKey(Lab.PAYMENTS.identity())) + "\n");
+            line(out, "  AFTER THE PROXIES (" + lab.proxies() + " of 5 pods; legacy/batch left out):");
+            wire = lab.sniffer.capture(0, CAPTURE, () -> code[0] = String.valueOf(c.http(Lab.WEB, call)));
+            seen = Wire.requestLine(wire, MARKER);
+            line(out, "    answer             HTTP " + code[0]);
+            line(out, "    request on wire    " + (seen.isEmpty() ? "none" : seen.replace(" HTTP/1.1", "")));
+            line(out, "    account readable   " + yes(!seen.isEmpty()));
+            line(out, "    port 4143 used     " + yes(Wire.proxyPort(wire)) + " (the proxy's inbound port)");
+            Map<String, Long> byServer = Metrics.byIdentity(c.proxyMetrics(Lab.PAYMENTS), "request_total", "inbound", "8080", "client_id");
+            Map<String, Long> byClient = Metrics.byIdentity(c.proxyMetrics(Lab.WEB), "request_total", "outbound", "8080", "server_id");
+            line(out, "  WHAT PAYMENTS' PROXY COUNTED (the client's certificate):");
+            byServer.forEach((id, n) -> line(out, "    " + id + "  " + n));
+            line(out, "  WHAT WEB'S PROXY COUNTED (the server's certificate):");
+            byClient.forEach((id, n) -> line(out, "    " + id + "  " + n));
+            line(out, "  THE RESULT:");
+            line(out, "    both ends proved who they are: "
+                    + yes(byServer.containsKey(Lab.WEB.identity()) && byClient.containsKey(Lab.PAYMENTS.identity())));
 
-            out.append("--- an identity for each workload, taken from its ServiceAccount\n");
-            boolean derived = true;
+            line(out, "TWO. An identity from each ServiceAccount.");
+            line(out, "  THE INPUT (the payments pod):");
+            line(out, "    namespace           " + Lab.PAYMENTS.namespace());
+            line(out, "    serviceAccountName  " + Lab.PAYMENTS.serviceAccount());
+            line(out, "  HOW THE NAME IS MADE (the parts, joined by dots):");
+            var parts = Lab.PAYMENTS.identityParts();
+            line(out, "    ServiceAccount      " + parts.get(0));
+            line(out, "    namespace           " + parts.get(1));
+            line(out, "    fixed               " + parts.get(2));
+            line(out, "    Linkerd namespace   " + parts.get(3));
+            line(out, "    trust domain        " + parts.get(4));
+            line(out, "  THE CERTIFICATES (linkerd identity, the subject):");
+            int derived = 0;
             for (Service s : Lab.BANK) {
                 CertInfo cert = c.identity(s);
-                out.append(s.id() + " holds a certificate for " + cert.subject() + "\n");
-                derived &= cert.subject().equals(s.identity());
+                line(out, "    " + cert.subject());
+                derived += cert.subject().equals(s.identity()) ? 1 : 0;
             }
-            out.append("each name is the ServiceAccount, the namespace and the trust domain: " + yes(derived) + "\n");
+            line(out, "    made by the rule above: " + derived + " of " + Lab.BANK.size());
             CertInfo firstCert = c.identity(Lab.PAYMENTS);
 
-            out.append("--- mutual TLS alone does not decide who may call\n");
-            Design.Diff open = lab.diff();
-            out.append("no policy: " + line(open) + "\n");
-            long fromBatch = open.unwanted().stream().filter(p -> p.startsWith(Lab.BATCH.id())).count();
-            out.append("pairs answered for the pod outside the mesh: " + fromBatch + " of 4\n");
+            line(out, "THREE. Mutual TLS alone does not decide who may call.");
+            int pairs = Lab.CALLERS.size() * Lab.BANK.size() - Lab.BANK.size();
+            line(out, "  THE CALLS (every caller to every bank service, no policy):");
+            line(out, "    " + Lab.CALLERS.size() + " callers x " + Lab.BANK.size() + " services - " + Lab.BANK.size()
+                    + " calls to itself = " + pairs + " pairs");
+            line(out, "    the design allows 2: web -> payments, payments -> ledger");
+            Set<String> open = lab.measure();
+            line(out, "  WHO ANSWERED (row calls column):");
+            table(out, open);
+            Design.Diff openDiff = Lab.diff(open);
+            line(out, "  THE RESULT:");
+            score(out, openDiff);
+            long fromBatch = openDiff.unwanted().stream().filter(p -> p.startsWith(Lab.BATCH.id())).count();
+            line(out, "    from legacy/batch, no proxy   " + fromBatch + " of 4");
             Map<String, Long> plainIn = Metrics.byIdentity(c.proxyMetrics(Lab.LEDGER), "tcp_open_total", "inbound", "8080", "client_id");
-            out.append("ledger's proxy accepted connections without any identity: " + yes(plainIn.containsKey(Metrics.NO_IDENTITY)) + "\n");
+            line(out, "    ledger let in no identity     " + yes(plainIn.containsKey(Metrics.NO_IDENTITY)));
             String ledgerIp = c.podIp(Lab.LEDGER);
-            out.append("the node itself, with no proxy and no identity, calls ledger: HTTP " + c.httpFromNode("http://" + ledgerIp + ":8080/hostname") + "\n");
-            out.append("the default inbound policy of Linkerd 'all-unauthenticated' lets every caller in\n");
+            line(out, "    the node calls ledger         HTTP " + c.httpFromNode("http://" + ledgerIp + ":8080/hostname"));
+            line(out, "    Linkerd's default policy      all-unauthenticated");
 
-            out.append("--- a policy names who may call\n");
+            line(out, "FOUR. A policy names who may call.");
+            line(out, "  THE POLICY (a Server per service, one caller named):");
+            line(out, "    web         Server, no caller named");
+            line(out, "    statements  Server, no caller named");
+            line(out, "    payments    Server + AuthorizationPolicy: web");
+            line(out, "    ledger      Server + AuthorizationPolicy: payments");
             lab.applyDesignPolicy();
-            Design.Diff policed = lab.diff();
-            out.append("a Server for each service, an AuthorizationPolicy naming one identity: " + line(policed) + "\n");
-            out.append("the measurement equals the design: " + yes(policed.matches()) + "\n");
-            out.append("statements calls ledger: HTTP " + c.http(Lab.STATEMENTS, Lab.LEDGER.url("/hostname")) + "\n");
-            out.append("web calls ledger directly: HTTP " + c.http(Lab.WEB, Lab.LEDGER.url("/hostname")) + "\n");
-            out.append("the pod outside the mesh calls ledger: HTTP " + c.http(Lab.BATCH, Lab.LEDGER.url("/hostname")) + "\n");
-            out.append("payments calls ledger: HTTP " + c.http(Lab.PAYMENTS, Lab.LEDGER.url("/hostname")) + "\n");
+            Set<String> policed = lab.measure();
+            line(out, "  WHO ANSWERED (row calls column):");
+            table(out, policed);
+            Design.Diff policedDiff = Lab.diff(policed);
+            line(out, "  THE RESULT:");
+            score(out, policedDiff);
+            line(out, "    the measurement equals the design: " + yes(policedDiff.matches()));
+            line(out, "  CALLS TO LEDGER, ONE BY ONE:");
+            line(out, "    statements    HTTP " + c.http(Lab.STATEMENTS, Lab.LEDGER.url("/hostname")));
+            line(out, "    web           HTTP " + c.http(Lab.WEB, Lab.LEDGER.url("/hostname")));
+            line(out, "    legacy/batch  HTTP " + c.http(Lab.BATCH, Lab.LEDGER.url("/hostname")));
+            line(out, "    payments      HTTP " + c.http(Lab.PAYMENTS, Lab.LEDGER.url("/hostname")));
             Map<String, Long> denied = Metrics.byIdentity(c.proxyMetrics(Lab.LEDGER), "inbound_http_authz_deny_total", "inbound", "8080", "client_id");
-            out.append("ledger's proxy counted refusals by caller: " + counts(denied) + "\n");
+            line(out, "  LEDGER'S PROXY COUNTED REFUSALS (by the caller's identity):");
+            denied.forEach((id, n) -> line(out, String.format("    %-16s %d", shortId(id), n)));
 
-            out.append("--- what the mesh does not protect\n");
-            out.append("the node itself calls ledger: HTTP " + c.httpFromNode("http://" + ledgerIp + ":8080/hostname") + "\n");
+            line(out, "FIVE. What the mesh does not protect.");
+            line(out, "  ROOT ON THE NODE:");
+            line(out, "    the node calls ledger              HTTP " + c.httpFromNode("http://" + ledgerIp + ":8080/hostname"));
             int pid = c.podPid(Lab.PAYMENTS);
             String inside = lab.sniffer.capture(pid, "tcp port 8080", () -> c.http(Lab.WEB, call));
-            out.append("root on the node reads the account number inside the payments pod, between proxy and app: " + yes(inside.contains(MARKER)) + "\n");
-
-            String towardsLegacy = lab.sniffer.capture(0, "tcp port 8080 or tcp port 4143", () -> plain[0] = String.valueOf(c.http(Lab.WEB, Lab.BATCH.url("/echo?msg=" + MARKER))));
-            out.append("web calls the pod outside the mesh: HTTP " + plain[0] + ", the account number can be read from the wire: " + yes(towardsLegacy.contains(MARKER)) + "\n");
-
+            line(out, "    inside payments, proxy to app      " + yes(!Wire.requestLine(inside, MARKER).isEmpty()));
+            line(out, "  A POD OUTSIDE THE MESH:");
+            String towardsLegacy = lab.sniffer.capture(0, CAPTURE, () -> code[0] = String.valueOf(c.http(Lab.WEB, Lab.BATCH.url("/echo?msg=" + MARKER))));
+            line(out, "    web calls legacy/batch             HTTP " + code[0]);
+            line(out, "    account readable on the wire       " + yes(!Wire.requestLine(towardsLegacy, MARKER).isEmpty()));
+            line(out, "  AN ALLOWED CALLER, A HOSTILE REQUEST:");
             String hostile = "/echo?msg=%27%20OR%20%271%27=%271";
             int hostileCode = c.http(Lab.WEB, Lab.PAYMENTS.url(hostile));
             String echoed = c.body(Lab.WEB, Lab.PAYMENTS.url(hostile));
-            out.append("web, allowed, sends an injection string to payments: HTTP " + hostileCode + ", the string arrives intact: " + yes(echoed.contains("' OR '1'='1")) + "\n");
-
+            line(out, "    web sends " + HOSTILE + " to payments  HTTP " + hostileCode);
+            line(out, "    the string arrives intact          " + yes(echoed.contains(HOSTILE)));
+            line(out, "  WHO MAY TAKE AN IDENTITY (calls to ledger):");
             Service impostor = new Service("bank", "impostor", "payments");
             c.apply(impostor.manifest());
             lab.settle("bank", 5);
-            out.append("a new pod in bank that runs as the payments ServiceAccount calls ledger: HTTP " + c.http(impostor, Lab.LEDGER.url("/hostname")) + "\n");
+            line(out, "    new pod in bank, runs as payments  HTTP " + c.http(impostor, Lab.LEDGER.url("/hostname")));
             Service shadow = new Service("shadow", "payments");
             c.must("annotate", "namespace", "shadow", "linkerd.io/inject=enabled", "--overwrite");
             c.apply(shadow.manifest());
             lab.settle("shadow", 1);
-            out.append("a ServiceAccount also named payments in another namespace calls ledger: HTTP " + c.http(shadow, Lab.LEDGER.url("/hostname")) + "\n");
-            out.append("--- who may create pods decides who may take an identity\n");
+            line(out, "    payments in namespace shadow       HTTP " + c.http(shadow, Lab.LEDGER.url("/hostname")));
+            line(out, "    its identity is " + shortId(shadow.identity()) + ", not " + shortId(Lab.PAYMENTS.identity()));
+            line(out, "  WHO MAY CREATE PODS IN BANK:");
             Sh.Result webCan = c.kubectl("auth", "can-i", "create", "pods", "-n", "bank", "--as", "system:serviceaccount:bank:web");
-            out.append("the web ServiceAccount may create pods in bank: " + webCan.output().strip() + "\n");
+            line(out, "    the web ServiceAccount             " + webCan.output().strip());
             c.must("-n", "bank", "create", "rolebinding", "dev-edit", "--clusterrole=edit", "--user=dev");
             Sh.Result devCan = c.kubectl("auth", "can-i", "create", "pods", "-n", "bank", "--as", "dev");
-            out.append("a developer with the namespace's edit role may create pods in bank: " + devCan.output().strip() + "\n");
+            line(out, "    a developer with the edit role     " + devCan.output().strip());
 
-            out.append("--- certificate lifetime and rotation\n");
-            out.append("Linkerd's default lifetime of a workload certificate: " + Linkerd.defaultIssuanceLifetime() + "\n");
-            out.append("lifetime in this run: " + minutes(firstCert.lifetime()) + "\n");
+            line(out, "SIX. Certificate lifetime and renewal.");
+            line(out, "  THE SETTING (linkerd install):");
+            line(out, "    Linkerd's default lifetime   " + Linkerd.defaultIssuanceLifetime());
+            line(out, "    this run                     " + Lab.ISSUANCE_LIFETIME);
+            line(out, "  HOW THE LIFETIME IS READ (payments' certificate):");
+            long span = firstCert.spanSeconds();
+            long skew = CertInfo.SKEW.toSeconds();
+            line(out, "    Not After - Not Before       " + span + " s");
+            line(out, "    minus the clock skew, twice  " + span + " - 2 x " + skew + " = " + firstCert.lifetime().toSeconds()
+                    + " s = " + firstCert.lifetime().toMinutes() + " minutes");
             CertInfo anchor = CertInfo.fromPem(c.must("-n", "linkerd", "get", "configmap", "linkerd-identity-trust-roots", "-o", "jsonpath={.data.ca-bundle\\.crt}"));
-            out.append("the trust anchor is valid for " + Duration.between(anchor.notBefore(), anchor.notAfter()).toDays() + " days\n");
+            line(out, "    the trust anchor, valid for  " + Duration.between(anchor.notBefore(), anchor.notAfter()).toDays() + " days");
             CertInfo later = firstCert;
             for (int i = 0; i < 60 && !later.notAfter().isAfter(firstCert.notAfter()); i++) {
                 Thread.sleep(15_000);
                 later = c.identity(Lab.PAYMENTS);
             }
-            out.append("payments' proxy holds a newer certificate than before: " + yes(later.notAfter().isAfter(firstCert.notAfter())) + "\n");
-            out.append("the name in it is the same: " + yes(later.subject().equals(firstCert.subject())) + "\n");
-            out.append("the pod restarted to get it: " + yes(lab.restarts(Lab.PAYMENTS) > 0) + "\n");
-            out.append("calls still answer after the renewal: payments calls ledger HTTP " + c.http(Lab.PAYMENTS, Lab.LEDGER.url("/hostname")) + "\n");
+            line(out, "  AFTER THE RENEWAL (checked every 15 s):");
+            line(out, "    a newer certificate          " + yes(later.notAfter().isAfter(firstCert.notAfter())));
+            line(out, "    the same name                " + yes(later.subject().equals(firstCert.subject())));
+            line(out, "    the pod restarted            " + yes(lab.restarts(Lab.PAYMENTS) > 0));
+            line(out, "    payments calls ledger        HTTP " + c.http(Lab.PAYMENTS, Lab.LEDGER.url("/hostname")));
         }
-        out.append("--- the bill\n");
-        out.append("the mesh gives each pod a name taken from its ServiceAccount and encrypts between proxies: it does not decide who may call until a policy says so\n");
-        out.append("a policy covers the ports that have a Server and the callers that go through a proxy\n");
-        out.append("the mesh judges the caller, never the request: an allowed caller can send anything\n");
-        out.append("the identity is only as good as who may create pods with a ServiceAccount\n");
-        out.append("a certificate is trusted until it expires: the lifetime is how long a stolen one is useful\n");
-        out.append("whoever has root on a node can read what the proxy hands to the app\n");
         return out.toString();
     }
 }

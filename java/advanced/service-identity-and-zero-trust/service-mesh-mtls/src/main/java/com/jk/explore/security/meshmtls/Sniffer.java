@@ -11,11 +11,14 @@ final class Sniffer implements AutoCloseable {
         void run() throws Exception;
     }
 
+    /** The capture container's image, pinned by digest. */
+    static final String IMAGE = "alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a";
+
     private final String name = "sniffer-" + UUID.randomUUID().toString().substring(0, 6);
 
     Sniffer(String node) throws IOException, InterruptedException {
         Sh.must(java.util.List.of("docker", "run", "-d", "--name", name, "--pid", "container:" + node, "--net", "container:" + node,
-                "--privileged", "alpine:3", "sleep", "3600"));
+                "--privileged", IMAGE, "sleep", "3600"));
         Sh.must(java.util.List.of("docker", "exec", name, "apk", "add", "-q", "tcpdump"));
     }
 

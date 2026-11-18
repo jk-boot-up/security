@@ -1,6 +1,7 @@
 package com.jk.explore.security.passkeysspring;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Map;
@@ -44,5 +45,25 @@ class CborTest {
     @Test
     void anUnsupportedItemIsRefused() {
         assertThrows(IllegalArgumentException.class, () -> Cbor.map(1, 2.5));
+    }
+
+    @Test
+    void aCoseKeyReadsBackAsItsLabelsAndValues() {
+        byte[] x = new byte[32];
+        byte[] y = new byte[32];
+        java.util.List<Object[]> pairs = Cbor.readMap(Cbor.map(1, 2, 3, -7, -1, 1, -2, x, -3, y));
+        assertEquals(java.util.List.of(1, 3, -1, -2, -3), pairs.stream().map(p -> p[0]).toList());
+        assertEquals(java.util.List.of(2, -7, 1), pairs.subList(0, 3).stream().map(p -> p[1]).toList());
+        assertEquals(32, ((byte[]) pairs.get(3)[1]).length);
+    }
+
+    @Test
+    void theSignedBytesAreTheAuthenticatorDataThenTheClientDataHash() throws Exception {
+        byte[] authData = new byte[37];
+        byte[] clientData = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] signed = SoftwareAuthenticator.signedBytes(authData, clientData);
+        assertEquals(69, signed.length);
+        assertArrayEquals(java.security.MessageDigest.getInstance("SHA-256").digest(clientData),
+                java.util.Arrays.copyOfRange(signed, 37, 69));
     }
 }

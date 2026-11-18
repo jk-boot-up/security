@@ -15,6 +15,15 @@ final class Seccomp {
     private Seccomp() {
     }
 
+    /** How many system calls the profile denies: the quoted names in its list. */
+    static int denied() throws IOException {
+        try (InputStream in = Seccomp.class.getResourceAsStream("/seccomp-default-like.json")) {
+            String json = new String(in.readAllBytes());
+            String names = json.substring(json.indexOf("\"names\""), json.indexOf(']', json.indexOf("\"names\"")));
+            return (int) names.chars().filter(c -> c == '"').count() / 2 - 1;
+        }
+    }
+
     static Path profile() throws IOException {
         Path file = Files.createTempFile("seccomp-default-like", ".json");
         try (InputStream in = Seccomp.class.getResourceAsStream("/seccomp-default-like.json")) {

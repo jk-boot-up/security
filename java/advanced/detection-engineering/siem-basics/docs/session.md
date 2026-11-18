@@ -14,9 +14,9 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Collecting three sources | 7 min |
-| 0:17 | Act 2: Normalizing into one shape | 7 min |
-| 0:24 | Act 3: The clock | 7 min |
+| 0:10 | Act 1: Three formats, one shape | 7 min |
+| 0:17 | Act 2: One query on the common fields | 7 min |
+| 0:24 | Act 3: The clock decides an alert | 7 min |
 | 0:31 | Act 4: Correlating across sources | 7 min |
 | 0:38 | Act 5: From alerts to cases | 7 min |
 | 0:45 | Exercises | 15 min |

@@ -35,21 +35,21 @@ final class DeployGate {
         }
         int index = log.indexOf(release);
         if (index < 0) {
-            return Verdict.refuse("the signature is not in the public log");
+            return Verdict.refuse("not in the public log");
         }
         TransparencyLog.TreeHead head = log.head();
         if (!TransparencyLog.headIsSigned(head, log.publicKey())) {
-            return Verdict.refuse("the log's tree head is not signed by the log");
+            return Verdict.refuse("log head not signed by the log");
         }
         List<byte[]> proof = log.inclusionProof(index, head.size());
         if (!MerkleTree.verifyInclusion(MerkleTree.leafHash(release.logEntry()), index, head.size(), proof, head.root())) {
-            return Verdict.refuse("the log's inclusion proof does not check");
+            return Verdict.refuse("inclusion proof fails");
         }
         KeyRing.TrustedKey key = keys.find(release.keyId()).orElseThrow();
         int loggedDay = log.dayOf(index);
         if (loggedDay >= key.revokedFromDay()) {
-            return Verdict.refuse("logged on day " + loggedDay + ", after key " + key.keyId() + " was revoked on day " + key.revokedFromDay());
+            return Verdict.refuse("logged day " + loggedDay + ", revoked day " + key.revokedFromDay());
         }
-        return Verdict.accept(signature.reason() + ", logged as entry " + index);
+        return Verdict.accept(signature.reason() + ", entry " + index);
     }
 }

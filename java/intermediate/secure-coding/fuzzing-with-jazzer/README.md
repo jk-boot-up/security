@@ -5,7 +5,7 @@ src/main/java/com/jk/explore/security/jazzerfuzz/
 ├── CartParser.java                 The store's cart format, a small subset of JSON: numbers, strings with {@code \"} and {@code \\} escapes, lists and objects
 ├── Crashes.java                    Runs a parser on an input and says what, if anything, it did wrong: the exception that is not a refusal, and the first line of the store's code in it
 ├── Finding.java                    One distinct problem that Jazzer reported: the kind of exception, where in the store's code it happened, and the file that holds the input
-├── JazzerFuzzDemo.java             
+├── JazzerFuzzDemo.java             Runs the online store story in five numbered acts with the real Jazzer and prints exact, repeatable results
 ├── JazzerRun.java                  The real Jazzer, started as a program of its own on one fuzz target, with a corpus of seed inputs and a fixed random seed, and its report read back
 ├── Minimizer.java                  Makes a crashing input as small and plain as it can while it still crashes in the same place: it deletes stretches of characters, from half of the input down to one, then replaces each with a plainer one (A for a letter, 0 for a digit), and repeats until nothing changes
 ├── Money.java                      An amount of money in cents
@@ -52,11 +52,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The example tests pass | Six of six example tests pass, and a line with only a product code still crashes the parser. |
-| 2. The real Jazzer | A three-line fuzz target, two seed lines, a fixed random seed and 300000 runs find three distinct bugs. |
-| 3. Guided by coverage, and by what you give it | With no seeds it reaches 7 coverage points and finds nothing; with the examples, 19 and three bugs; the gift-message bug needs a seed with a note field. |
-| 4. From crash to fix | Each saved input is made smallest, kept as a regression test, and the fixed parsers run clean under the same fuzzer. |
-| 5. What fuzzing finds besides crashes, and what it does not | A sanitizer flags a regular expression injection; a quantity of -5 is no crash; the nesting crash needs a longer input than the default. |
+| 1. The example tests pass | Six of six example tests pass, SHO-1042,2,8990 gives 2 x 8990 = 17980 cents, and a line with only a product code still crashes the parser at line 24. |
+| 2. The real Jazzer | Jazzer 0.30, a three-line fuzz target, two seed lines, random seed 7 and 300000 runs find 3 distinct findings: line 24 (fields[1] missing), line 25 (fields[2] missing) and a negative Money at line 8. |
+| 3. Guided by coverage, and by what you give it | With no seeds Jazzer reaches 7 coverage points and finds nothing: 8 random ASCII characters are a product code once in 409977207 tries. With the two example lines it reaches 19 points and 3 findings; the cart's gift-message bug needs one seed with a note field. |
+| 4. From crash to fix | The minimizer makes SHO-1042,28990 shorter, then plainer, to AAA-0000,0; Jazzer's saved inputs become AAA-0000, AAA-0000,0 and AAA-0000,4000,4000000 (4000 x 4000000 wraps to -1179869184); the fixed parser refuses each, and shows 0 findings in 300000 and 1000000 runs. |
+| 5. What fuzzing finds besides crashes, and what it does not | A sanitizer reports a Regular Expression Injection in the careless search box, and 0 findings in the fixed one; a cart with a quantity of -5 parses, so no report; the nesting crash needs more than Jazzer's 4096-byte default and is shown by hand. |
 
 ## Test
 
@@ -64,7 +64,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `DemoRunsTest`, `FixedParsersFuzzTest`, `JazzerRealTest`, `MinimizerTest`, `ReportTest`, `SavedInputsTest`. Most tests run in milliseconds: the saved inputs as regression tests, the minimizer and the reader of Jazzer's report. The tests that start Jazzer are tagged integration (./gradlew integrationTest).
+22 tests in `DemoRunsTest`, `FixedParsersFuzzTest`, `JazzerRealTest`, `MinimizerTest`, `ReportTest`, `SavedInputsTest`, `WorkedValuesTest`. Most tests run in milliseconds: the saved inputs as regression tests, the minimizer and the reader of Jazzer's report. The tests that start Jazzer are tagged integration (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

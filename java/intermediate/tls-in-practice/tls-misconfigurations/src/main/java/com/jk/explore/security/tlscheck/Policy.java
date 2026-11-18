@@ -17,7 +17,8 @@ public record Policy(String name, Set<String> protocols, List<String> cipherSuit
 
     /** Applies the policy to a server: protocols and suites come from the policy, everything else is kept. */
     public ServerProfile applyTo(ServerProfile s) {
-        return new ServerProfile(s.host(), protocols, cipherSuites, true, false, true, s.certificate(), s.http());
+        return new ServerProfile(s.host(), protocols, cipherSuites, true, false, true,
+                s.certificate(), s.http());
     }
 
     /** A fragment of an nginx configuration with the same settings. */

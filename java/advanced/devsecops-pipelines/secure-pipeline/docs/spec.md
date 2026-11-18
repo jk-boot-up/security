@@ -19,6 +19,8 @@ Releases are built wherever, checked when convenient and trusted without proof.
 | Role | Class |
 | --- | --- |
 | The stages and gates | `Pipeline`, `Gate` |
+| The pinned tools and their reports | `Tools`, `Reports` |
+| The signature check with the JDK alone | `SignatureSteps` |
 | Building twice and comparing | `Reproducibility` |
 | Signing with cosign | `Cosign` |
 | The provenance statement | `Provenance` |
@@ -41,10 +43,10 @@ Releases are built wherever, checked when convenient and trusted without proof.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 20, all passing |
-| Demo output | 48 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:23, 1920×1080, narrated in the amy-slow voice |
+| Tests | 27, all passing |
+| Demo output | 129 lines, identical on every run |
+| Acts | 6 |
+| Video | 21:08, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

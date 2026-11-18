@@ -42,11 +42,21 @@ final class AccessTokenValidator {
      */
     AccessTokenValidator(URL jwks, long cacheMillis, long minRefetchMillis, Clock clock, String audience, String requiredScope) {
         this.requiredScope = requiredScope;
-        JWKSource<SecurityContext> keys = JWKSourceBuilder.<SecurityContext>create(jwks).cache(cacheMillis, 1_000L).refreshAheadCache(false).rateLimited(minRefetchMillis).retrying(true).build();
-        processor.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(BankIssuer.ACCESS_TOKEN));
-        processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.ES256, keys));
-        DefaultJWTClaimsVerifier<SecurityContext> claims = new DefaultJWTClaimsVerifier<>(Set.of(audience),
-                new JWTClaimsSet.Builder().issuer(BankIssuer.ISSUER).build(), Set.of("sub", "iss", "aud", "exp", "iat", "nbf", "scope"), Set.of()) {
+        JWKSource<SecurityContext> keys = JWKSourceBuilder.<SecurityContext>create(jwks)
+                .cache(cacheMillis, 1_000L)
+                .refreshAheadCache(false)
+                .rateLimited(minRefetchMillis)
+                .retrying(true)
+                .build();
+        processor.setJWSTypeVerifier(
+                new DefaultJOSEObjectTypeVerifier<>(BankIssuer.ACCESS_TOKEN));
+        processor.setJWSKeySelector(
+                new JWSVerificationKeySelector<>(JWSAlgorithm.ES256, keys));
+        DefaultJWTClaimsVerifier<SecurityContext> claims = new DefaultJWTClaimsVerifier<>(
+                Set.of(audience),
+                new JWTClaimsSet.Builder().issuer(BankIssuer.ISSUER).build(),
+                Set.of("sub", "iss", "aud", "exp", "iat", "nbf", "scope"),
+                Set.of()) {
             @Override
             protected Date currentTime() {
                 return Date.from(clock.instant());

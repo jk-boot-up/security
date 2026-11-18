@@ -48,6 +48,11 @@ public record CertInfo(String subject, Instant notBefore, Instant notAfter) {
         return LocalDateTime.parse(cleaned, WHEN).toInstant(ZoneOffset.UTC);
     }
 
+    /** Not After minus Not Before, as the certificate states it: the lifetime plus the skew allowance at both ends. */
+    public long spanSeconds() {
+        return Duration.between(notBefore, notAfter).toSeconds();
+    }
+
     /** How long the issuer meant it to live, without the clock-skew allowance at both ends. */
     public Duration lifetime() {
         return Duration.between(notBefore, notAfter).minus(SKEW.multipliedBy(2));

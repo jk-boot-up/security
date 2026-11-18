@@ -42,11 +42,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Expose everything | With the tutorial setting, a stranger reads the payment key and the database password, lists the unlisted refund route, downloads a heap dump containing the key, changes a log level and stops the store; the checker scores 0 of 8. |
-| 2. What Spring Boot already does | With no settings only health is listed, with include=* values are masked and the heap dump and shutdown stay off, but names and routes are open and an allowed heap dump contains the key that env masked. |
-| 3. Hardened: another port, a short list, rules | Operations sit on their own loopback port with health, info and loggers only; strangers see a status, nothing else is reachable even for an operator, and the checker scores 8 of 8. |
-| 4. Who may read, and who may change | Loggers are for operators only, health details too, and the loggers endpoint is read-only: an operator who posts a new level gets 405 and the level stays. |
-| 5. The bill | One line of include=* added to the hardened store costs a check, the login rules still keep strangers out, and the checker belongs in CI. |
+| 1. Expose everything | A tutorial's six settings expose 14 endpoints on the customers' port; with no login a stranger reads the payment key and the database password, finds an unlisted refund route, sees the health components, downloads a heap dump that contains the key and changes a log level; the checker scores 0 of 8, and POST /actuator/shutdown stops the store. |
+| 2. What Spring Boot already does | With no settings the actuator offers health only and answers {"groups":["liveness","readiness"],"status":"UP"}; include=* alone masks the key as ****** but still lists the refund route, and heapdump and shutdown stay 404; one more line allows the heap dump, and the masked key is in it. |
+| 3. Hardened: another port, a short list, rules | The hardened profile puts operations on their own loopback port, lists health, info and loggers, shows health details to the OPS role only and makes loggers read-only; Spring Security lets everyone see health and needs OPS for the rest; env, heapdump, mappings and shutdown answer 403 even to the operator; the checker scores 8 of 8. |
+| 4. Who may read, and who may change | The loggers endpoint answers 401 with no login, 403 to customer ana and 200 to operator ops; health shows components to ops only; ops posting DEBUG gets 405 and the level stays OFF, because access is read-only. |
+| 5. The bill | One added line, include=*, makes the hardened store score 7 of 8: the route map is open to the operator again; the login rules still answer 401 to strangers; four separate layers, and checks in CI on every change. |
 
 ## Test
 
@@ -54,7 +54,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `ActuatorSpringTest`, `DemoRunsTest`. Each test starts a real store on free loopback ports and stops it. Nothing is printed that changes between runs.
+15 tests in `ActuatorSpringTest`, `DemoRunsTest`, `ReplyReadingTest`. Each test starts a real store on free loopback ports and stops it. Nothing is printed that changes between runs.
 
 ## What the simulation got right, and what it left out
 

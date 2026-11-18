@@ -26,20 +26,25 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <p>A TLS capture is unreadable without keys; a key log holds the traffic secrets of exactly the connections it lists and must stay out of production; and forward secrecy means a stolen long-term server key cannot open recorded ephemeral connections.</p>
 <h2>The 5 acts</h2>
 <h3>1. What the wire shows</h3>
-<p>The client sends a login request and the server answers. A capture holds the client and server random values (sent in the clear), the key shares, and two records of 70 and 52 bytes, each beginning with the record header 17 03 03: "application data", because TLS 1.3 hides the real content type inside the encrypted part.
-Searching the bytes for "password" finds nothing, and the decryptor with no keys returns nothing. Lengths and timing are still visible, which is a limit of TLS.</p>
+<p>The input is one login to an online store: the client sends "POST /login HTTP/1.1 | user=ana&amp;password=hunter2" and the server answers "HTTP/1.1 200 OK | session=7f3a".
+The capture holds the client random (3bd68db307915645...) and the server random (363791a138986206...) in the clear, then a 70-byte record from the client and a 52-byte record from the server.
+The record header, worked out: 17 is type 23, application data; 03 03 is version 3.3, the same in every TLS 1.3 record; 00 41 is a length of 65 = 48 bytes of text + 1 inner content type + 16 bytes of GCM tag; 5 header bytes + 65 = 70.
+The result with no key: the word "password" is not in the bytes, and nothing decrypts.</p>
 <h3>2. Writing a key log</h3>
-<p>A client that supports key logging reads SSLKEYLOGFILE. Here it returns nothing when the variable is not set, the path in development, and refuses to start in production. The file has one line per direction: a label, the client random in hex, and the traffic secret in hex. The client random
-names the connection, and the secret is what the record keys are derived from.</p>
+<p>The input is the client's environment. Without SSLKEYLOGFILE there is no key log; with SSLKEYLOGFILE=/tmp/keys.log and APP_ENV=dev the client writes to /tmp/keys.log; with APP_ENV=production it refuses to start.
+The result is two lines in the NSS key log format: a label, the client random and the secret. The line part by part: the label CLIENT_TRAFFIC_SECRET_0 names the client-to-server direction, the client random 3bd68db30791... (32 bytes) is the same as the capture's, and it is how a tool matches the line to a connection, and the secret 7c6da57caa88... (32 bytes) opens that one direction.</p>
 <h3>3. Reading the capture with the key log</h3>
-<p>The decryptor finds the lines for this capture's client random, derives the record keys and nonces from the secrets, and opens the records in order. The login request appears with its password, and the reply with the session cookie value.
-This is exactly what a developer needs for debugging, and exactly what an attacker gets by finding the file.</p>
+<p>The input is the capture and the key log. The capture's client random 3bd68db30791... is looked up in the log, and both lines are found: CLIENT_TRAFFIC_SECRET_0 7c6da57caa88... and SERVER_TRAFFIC_SECRET_0 ea2a4ed1b2fa....
+From secret to key, worked out for the client direction: the key is HKDF-Expand-Label(secret, "key", 16) = cfeb456056d9d85d..., the IV is HKDF-Expand-Label(secret, "iv", 12) = 6d3d06a138e98f67..., and the nonce of each record is the IV XOR the record number, so record 0 ends db a7 and record 1 would end db a6. AES-128-GCM opens the record and checks the header with it.
+The result: both records open, with the login, the password and the session.</p>
 <h3>4. A key log opens its own connections and no others</h3>
-<p>Each connection has its own random values and key shares, so its secrets are unrelated to every other connection's. Session one's log decrypts nothing in session two's capture. Adding session two's lines opens it. Giving the decryptor only the client line of session one
-opens the client's request and not the server's reply, because the two directions have separate secrets.</p>
+<p>The input is a second connection, another customer asking for GET /orders, with client random 1ccd6b949daf... where session one has 3bd68db30791....
+Try 1, session two with session one's key log: no line has its client random, so nothing opens. Try 2, with its own two lines added: client "GET /orders HTTP/1.1" and server "HTTP/1.1 200 OK | 3 orders" open. Try 3, session one with only its CLIENT line: the client's login opens, the server's record stays closed.
+The result: a key log line opens one direction of one connection, no more.</p>
 <h3>5. Why the server's own key is a different matter</h3>
-<p>With static RSA key exchange, the client encrypts the secret it chose under the server's long-term public key. An attacker who recorded the connection last year and steals the server's private key today decrypts the premaster secret, derives the same keys, and reads the login.
-With ephemeral key exchange (X25519) the long-term key only signs the handshake: the traffic secrets came from values that were thrown away, so the stolen key opens nothing. That is forward secrecy, and the reason static RSA is gone from TLS 1.3 and a finding in the previous project.</p>
+<p>The input is two recordings from last year. With static RSA key exchange the client's secret crossed the wire encrypted to the server's long-term key, 256 bytes. With ECDHE only two public values of 32 bytes crossed (8d0e655ac863... and 2af6fb559353...); the shared secret was never sent. Today the server's long-term RSA private key leaks.
+The result: the static RSA recording opens, login and password included; the ECDHE recording opens nothing.
+Why, worked out: with static RSA the key decrypts the 256 bytes and gets the secret; with ECDHE the secret needs a private value of the handshake, thrown away when it ended.</p>
 <h2>The verdict</h2>
 <p>Use key logs only for your own traffic in development and delete them after use. Make the setting fail loudly in production. Offer only ephemeral key exchange (TLS 1.3, or ECDHE in TLS 1.2), so that a future key theft does not unlock recordings.</p>
 <h2>How to recognise this in code you did not write</h2>

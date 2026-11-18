@@ -14,7 +14,8 @@ public final class Audit {
     private static final Pattern KEY = Pattern.compile(" key=\"([a-z]+)\"");
     private static final Pattern COMM = Pattern.compile(" comm=\"([^\"]*)\"");
     private static final Pattern SUCCESS = Pattern.compile(" success=(yes|no)");
-    private static final Pattern CONTAINER = Pattern.compile("cri-containerd-([0-9a-f]{64})\\.scope");
+    private static final Pattern CONTAINER =
+            Pattern.compile("cri-containerd-([0-9a-f]{64})\\.scope");
     private static final Pattern NAME = Pattern.compile(" name=\"([^\"]*)\"");
     private static final Pattern NAMETYPE = Pattern.compile(" nametype=([A-Z]+)");
     private static final Pattern CWD = Pattern.compile(" cwd=\"([^\"]*)\"");
@@ -47,6 +48,31 @@ public final class Audit {
             ip.append(Integer.parseInt(hex.substring(8 + 2 * i, 10 + 2 * i), 16));
         }
         return ip + ":" + port;
+    }
+
+    /** The raw hex socket address of one event (its SOCKADDR record), or null. */
+    public static String saddr(String log, String eventId) {
+        for (String line : log.split("\n")) {
+            Matcher id = ID.matcher(line);
+            if (line.startsWith("type=SOCKADDR") && id.find() && id.group(1).equals(eventId)) {
+                return first(SADDR, line);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A teaching method: how {@link #address(String)} reads the hex, step by step. The family is two bytes read low byte
+     * first (the machine's order), the port two bytes read high byte first (network order). The address bytes are not shown.
+     */
+    public static List<String> explain(String hex) {
+        String fam = hex.substring(0, 4);
+        String port = hex.substring(4, 8);
+        int family = Integer.parseInt(hex.substring(2, 4) + hex.substring(0, 2), 16);
+        return List.of(
+                String.format("%-10s %s %s, then 4 bytes of address", "saddr", fam, port),
+                String.format("%-10s %s %s, low byte first: %d = %s", "family", fam.substring(0, 2), fam.substring(2), family, family == 2 ? "IPv4" : "other"),
+                String.format("%-10s %s %s, high byte first: 0x%s = %d", "port", port.substring(0, 2), port.substring(2), port, Integer.parseInt(port, 16)));
     }
 
     /** Groups the records by event number. Records of an event that has no SYSCALL record are dropped. */

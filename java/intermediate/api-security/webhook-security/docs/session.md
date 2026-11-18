@@ -15,17 +15,18 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: An endpoint that trusts whatever is posted | 7 min |
-| 0:17 | Act 2: A signature over the exact bytes | 7 min |
-| 0:24 | Act 3: A real message sent again | 7 min |
-| 0:31 | Act 4: Twice, out of order, and a new secret | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: An endpoint that trusts whatever is posted | 5 min |
+| 0:15 | Act 2: How the provider signs a message | 5 min |
+| 0:20 | Act 3: The store checks the signature | 5 min |
+| 0:25 | Act 4: A real message sent again | 5 min |
+| 0:30 | Act 5: Twice, out of order, and a new secret | 5 min |
+| 0:35 | Act 6: The bill | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
 Start with the letterbox. Run act one and ask what the store would ship. In act two, ask why the body must be the raw bytes. In act three, ask why the signature alone did not stop the
-second refund. In act four, ask what the provider does after a 409. In act five, ask which events are worth a call to the provider's API.
+second refund. In act five, ask what the provider does after a 409. In act six, ask which events are worth a call to the provider's API.
 
 ## Exercises
 

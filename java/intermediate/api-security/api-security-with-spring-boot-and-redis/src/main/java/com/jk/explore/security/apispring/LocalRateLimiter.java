@@ -36,6 +36,6 @@ class LocalRateLimiter implements RateLimiter {
             return new Verdict(true, 0);
         }
         buckets.put(caller, new Bucket(tokens, now));
-        return new Verdict(false, (long) Math.ceil((1 - tokens) / perMilli));
+        return new Verdict(false, RateLimiter.retryAfterMillis(tokens, perMilli));
     }
 }

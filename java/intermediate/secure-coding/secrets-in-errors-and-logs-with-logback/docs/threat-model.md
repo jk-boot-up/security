@@ -50,6 +50,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `LoggingTest` runs the real Logback for the masker, Luhn, idempotency, the layout and exception converters, the types, the JSON events and the decorator.
+- `TeachingStepsTest` checks the Luhn steps, the line wrapping and the canaries the demo prints.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

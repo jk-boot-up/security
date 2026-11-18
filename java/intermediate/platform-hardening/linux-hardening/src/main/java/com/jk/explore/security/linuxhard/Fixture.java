@@ -97,6 +97,13 @@ public final class Fixture implements AutoCloseable {
         Files.deleteIfExists(root.resolve("tmp/.hidden-shell"));
     }
 
+    /** What a later change does to the hardened image: a deployment script opens the upload folder, an engineer adds a test account. */
+    public void regress() throws IOException {
+        Modes.set(root.resolve("var/www/uploads"), 0777);
+        replace("etc/passwd", Files.readString(root.resolve("etc/passwd")) + "test:x:1001:1001:test:/home/test:/bin/bash\n");
+        replace("etc/shadow", Files.readString(root.resolve("etc/shadow")) + "test:$6$salt$hash4:19000:0:99999:7:::\n");
+    }
+
     @Override
     public void close() throws IOException {
         try (Stream<Path> all = Files.walk(root)) {

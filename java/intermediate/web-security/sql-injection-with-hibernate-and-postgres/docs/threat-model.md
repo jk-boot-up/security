@@ -52,6 +52,8 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `SortColumnTest` needs no database and checks the sort allow-list.
+- `QueryTextTest` needs no database and checks the query text each search builds and how the demo lays it out.
+- `HibernateTranslationTest` needs no database: Hibernate translates each query into PostgreSQL's SQL with no connection behind it, and the test checks which text became code, that parameters leave only a `?`, and that the SQL printed in the golden output is exactly what Hibernate generates.
 - `HibernateInjectionTest` (tagged `integration`) checks each payload against the unsafe and the safe searches and the refusal for the search user.
 - `DemoRunsTest` (tagged `integration`) compares the whole demo with the golden output.
 

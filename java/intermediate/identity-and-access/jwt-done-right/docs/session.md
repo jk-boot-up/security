@@ -15,18 +15,19 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Three parts, and decoding is not verifying | 7 min |
-| 0:17 | Act 2: The server chooses the algorithm, never the token | 7 min |
-| 0:24 | Act 3: Every claim that matters is checked | 7 min |
-| 0:31 | Act 4: Keys by id, from a set the API already holds | 7 min |
-| 0:38 | Act 5: The bill: a token cannot be taken back | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: How the bank builds a token | 5 min |
+| 0:15 | Act 2: Decoding is not verifying | 5 min |
+| 0:20 | Act 3: The server chooses the algorithm, never the token | 5 min |
+| 0:25 | Act 4: Every claim that matters is checked | 5 min |
+| 0:30 | Act 5: Keys by id, from a set the API already holds | 5 min |
+| 0:35 | Act 6: The bill: a token cannot be taken back | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 
-Start with the cinema ticket. Decode a real token from act one by hand, with any base64url tool, to show that anyone can read it. Then run the acts. After
-act two, ask what would happen if the validator took the algorithm from the header. After act three, ask which claim stops a token for one API being
-used at another. In act five, ask how long a stolen access token is useful, and how the bank could shorten that.
+Start with the cinema ticket. Decode the real token from act one by hand, with any base64url tool, to show that anyone can read it. Then run the acts. After
+act three, ask what would happen if the validator took the algorithm from the header. After act four, ask which claim stops a token for one API being
+used at another. In act six, ask how long a stolen access token is useful, and how the bank could shorten that.
 
 ## Exercises
 

@@ -90,4 +90,30 @@ final class Provenance {
     static int inputs(JsonNode statement) {
         return statement.path("predicate").path("buildDefinition").path("resolvedDependencies").size();
     }
+
+    static String type(JsonNode statement) {
+        return statement.path("_type").asString();
+    }
+
+    static String predicateType(JsonNode statement) {
+        return statement.path("predicateType").asString();
+    }
+
+    static String subjectName(JsonNode statement) {
+        return statement.path("subject").path(0).path("name").asString();
+    }
+
+    /** The uri of each recorded input, in order: the source, build.gradle and each dependency. */
+    static List<String> inputUris(JsonNode statement) {
+        List<String> uris = new ArrayList<>();
+        for (JsonNode input : statement.path("predicate").path("buildDefinition").path("resolvedDependencies")) {
+            uris.add(input.path("uri").asString());
+        }
+        return uris;
+    }
+
+    /** The SHA-256 recorded for build.gradle. */
+    static String buildFileDigest(JsonNode statement) {
+        return statement.path("predicate").path("buildDefinition").path("resolvedDependencies").path(1).path("digest").path("sha256").asString();
+    }
 }

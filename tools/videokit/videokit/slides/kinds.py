@@ -151,7 +151,20 @@ def console(scene, img, d, cfg):
     # The largest size at which the lines, wrapped to the console's width, fit the slide.
     raw = lines
     fits = False
+    # First choice: the largest size at which no line needs wrapping.
+    longest = max((len(ln) for ln in raw), default=0)
     for size in range(CONSOLE_MAX, CONSOLE_MIN - 1, -1):
+        if longest > int((W - 272) / font(MONO, size).getlength("M")):
+            continue
+        for ratio in (1.5, 1.32):
+            lh = int(size * ratio)
+            if top + lh * len(raw) + 56 <= H - 110:
+                fits = True
+                break
+        if fits:
+            break
+    # Otherwise wrap the long lines at the largest size that still fits.
+    for size in ([] if fits else range(CONSOLE_MAX, CONSOLE_MIN - 1, -1)):
         lines = _wrap_console(raw, size)
         for ratio in (1.5, 1.32):                # tighter spacing before smaller text
             lh = int(size * ratio)

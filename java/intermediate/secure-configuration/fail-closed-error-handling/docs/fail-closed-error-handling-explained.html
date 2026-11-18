@@ -26,24 +26,28 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <p>Failing closed means that when a check cannot run, times out or throws, the answer is a refusal, half-finished changes are undone, resources are released, and the customer gets a reference instead of the error, with budgets, breakers and alerts to keep the cost in availability bearable.</p>
 <h2>The 5 acts</h2>
 <h3>1. Failing open</h3>
-<p>With the fraud check working, a payment of 1500.00 at an unknown electronics shop is refused. While the fraud check is down, the same payment is approved: an error became a yes. A payment of
-4500.00 against a daily limit of 2000.00 is refused, but when the account's spent-today value cannot be read, it is approved: an exception skipped the check. The decision started as yes,
-and each check could only take it away, so a check that never ran took nothing away.</p>
+<p>The naive rule starts from yes, and a check can only take it away. A payment of 1500.00 at unknown-electronics is refused while the fraud check works. While the fraud check is down, the
+same payment is approved: the exception was swallowed, so nothing took the yes away. A payment of 4500.00 is worked out against the daily limit: 0.00 spent today plus 4500.00 is 4500.00,
+more than 2000.00, so it is refused. When the spent-today value is unreadable ("n/a"), parsing throws, the limit check is skipped, and the payment is approved. A check that never ran took nothing away.</p>
 <h3>2. Failing closed</h3>
-<p>The decision starts as no, and only a check that ran and passed can turn it into yes. A coffee for 4.50 is approved. The risky payment is refused as fraudulent. While the fraud check is down,
-it is refused because it could not be checked, with reference REF-0003. When the fraud check takes five seconds against a budget of 300 ms, a coffee is refused. The big payment with an unreadable
-spent-today value is refused. Every refusal is in the log with its reference: four lines.</p>
+<p>The safe rule starts from no, and only a check that ran and passed turns it into yes. Five payments go in, each with what goes wrong: a coffee for 4.50 with nothing wrong, the risky 1500.00 payment
+with nothing wrong, the risky payment while the fraud check is down, a coffee while the fraud check is slow, and the 4500.00 payment with spent-today "n/a". The coffee is approved (REF-0001);
+the risky payment is refused as fraudulent; the other three are refused because they could not be checked. The time budget is worked out: the slow check needs 5000 ms, more than the 300 ms
+budget, so the call is given up at 300 ms and no answer counts as no. Every refusal is in the security log with its reference: 4 lines.</p>
 <h3>3. Failing halfway</h3>
-<p>Ana sends 250.00 to Ben, whose account is frozen. The transfer fails after the debit, so Ana has 750.00, Ben has nothing, and the bank's total falls from 1000.00 to 750.00: 250.00 vanished. As
-one unit of work, checked first and undone if the second half fails, the transfer is refused and nothing changes. Three failed updates that give a connection back only on success leave no free
-connections, and the next update fails. The same three failures with try-with-resources leave all three connections free.</p>
+<p>Before: ana has 1000.00, ben has 0.00 and his account is frozen; the bank holds 1000.00. Ana sends 250.00 to ben. Debit then credit: the debit works, 1000.00 - 250.00 = 750.00, and the credit
+fails because ben's account is frozen. Now ana has 750.00, ben 0.00, and the total is 750.00: 1000.00 - 750.00 = 250.00 vanished. As one unit of work, the transfer is checked first; ben accepts
+no credit, so nothing moves and the total stays 1000.00. A pool of three connections: three failed updates that give a connection back only on success leave 2, 1, then 0 free, and the next
+update fails with no connection available. With try-with-resources, 3 stay free after each failure.</p>
 <h3>4. What the customer is told, and what the log keeps</h3>
-<p>The raw error page names an internal server, shows the full card number and shows lines of code. The customer instead sees: the payment could not be completed, please try again later, quoting
-reference REF-0001. The log line has the reference and the reason, but not the full card number, only its last four digits. Support finds the detail from the reference, and an attacker learns nothing from the page.</p>
+<p>The failure is the fraud service's exception: fraud-db.internal:5432 connection refused for card 4111111111111111. The raw error page shows it as it came: it names an internal server, shows the full
+card number and shows lines of code. The customer instead sees: the payment could not be completed, please try again later, quoting reference REF-0001. The log line keeps the reference and the
+reason, with the card number masked: 4111111111111111 becomes ****1111, the last four digits. Support finds the detail from the reference, and an attacker learns nothing from the page.</p>
 <h3>5. The bill, and how to pay it</h3>
-<p>Failing closed costs availability: ten coffees while the fraud check is slow are all refused, after 50 seconds spent waiting. With a circuit breaker that opens after three failures, all ten are
-still refused, but the fraud check is called only three times and the waiting stops at 15 seconds; the breaker is open. The refusals are counted by reason, and an alert is raised. After the
-cool-down, with the fraud check back, a coffee is approved and the breaker closes. An open breaker still says no: it fails fast, not open, and the refusals are watched so a long outage is noticed.</p>
+<p>The outage: the fraud check needs 5000 ms and the budget is 300 ms; 10 customers each pay 4.50 for a coffee. Without a breaker, 0 of 10 are approved and the struggling fraud check is called 10
+times, waiting 10 x 300 ms = 3000 ms. With a circuit breaker that opens after 3 failures, still 0 of 10 are approved, but the fraud check is called only 3 times, the waiting is 3 x 300 ms = 900 ms,
+and the breaker is OPEN. The refusals are counted by reason: breaker open 7, fraud check too slow 3; the total of 10 is at least the alert threshold of 5, so an alert is raised. After the 30000 ms
+cool-down, with the fraud check back, one trial call approves a coffee and the breaker is CLOSED. An open breaker still says no: it fails fast, not open.</p>
 <h2>The verdict</h2>
 <p>Start every security decision as no, and approve only on an explicit, successful check. Give every call a time budget, and treat a late answer as no answer. Never write an empty catch, and
 map unexpected exceptions to a refusal. Make related changes one unit of work, and use try-with-resources. Show the customer a reference, log the detail without secrets, and alert on refusals.</p>

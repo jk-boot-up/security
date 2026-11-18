@@ -1,6 +1,8 @@
 package com.jk.explore.security.xmlinj;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,7 +39,7 @@ public final class ExpressionEngine implements TemplateEngine {
         Object value = context.get(parts[0]);
         try {
             for (int i = 1; i < parts.length && value != null; i++) {
-                value = property(value, parts[i]);
+                value = method(value, parts[i]).invoke(value);
             }
             return String.valueOf(value);
         } catch (ReflectiveOperationException e) {
@@ -45,11 +47,31 @@ public final class ExpressionEngine implements TemplateEngine {
         }
     }
 
-    private static Object property(Object target, String name) throws ReflectiveOperationException {
+    /** The same walk as {@link #render}, one step per line: the method called and what it returned. For teaching only. */
+    public List<String> trace(String path, Customer customer) throws ReflectiveOperationException {
+        String[] parts = path.split("\\.");
+        Object value = Map.<String, Object>of("customer", customer, "app", app).get(parts[0]);
+        List<String> steps = new ArrayList<>();
+        steps.add(parts[0] + " -> " + shown(value));
+        for (int i = 1; i < parts.length; i++) {
+            Method m = method(value, parts[i]);
+            value = m.invoke(value);
+            steps.add("." + parts[i] + " -> " + m.getName() + "() -> " + shown(value));
+        }
+        return steps;
+    }
+
+    private static String shown(Object value) {
+        return value instanceof String s ? s : value.getClass().getSimpleName();
+    }
+
+    /** A public method with no parameters called {@code name} or {@code getName}: any such method, on any object. */
+    private static Method method(Object target, String name) throws NoSuchMethodException {
         String getter = "get" + Character.toUpperCase(name.charAt(0)) + name.substring(1);
         for (Method m : target.getClass().getMethods()) {
-            if (m.getParameterCount() == 0 && (m.getName().equals(name) || m.getName().equals(getter))) {
-                return m.invoke(target);
+            boolean named = m.getName().equals(name) || m.getName().equals(getter);
+            if (m.getParameterCount() == 0 && named) {
+                return m;
             }
         }
         throw new NoSuchMethodException(name);

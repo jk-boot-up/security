@@ -15,11 +15,14 @@ import org.xml.sax.SAXException;
 /** The result of a test run, read from a JUnit XML file: when it ran, how many tests, which failed. */
 public record Evidence(String suite, LocalDate ran, int tests, int skipped, List<String> failed) {
 
+    /** Refusing a document type definition blocks external entities (XXE). */
+    static final String NO_DOCTYPE = "http://apache.org/xml/features/disallow-doctype-decl";
+
     public static Evidence read(Path xml) throws IOException {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature(NO_DOCTYPE, true);
             Element root = factory.newDocumentBuilder().parse(xml.toFile()).getDocumentElement();
             List<String> failed = new ArrayList<>();
             NodeList cases = root.getElementsByTagName("testcase");

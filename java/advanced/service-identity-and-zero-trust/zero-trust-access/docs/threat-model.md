@@ -54,6 +54,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `JwtTest` checks the token rules with a key made in the test.
+- `Rs256StepsTest` proves the signature check by hand gives the JDK's answer for a good token and for each forgery.
 - `ProxyTest` checks the status codes, the one record per request, the session check and the failure to decide, with no Docker.
 - `DemoRunsTest` runs Keycloak and OPA and compares the whole demo with the golden output (integrationTest).
 

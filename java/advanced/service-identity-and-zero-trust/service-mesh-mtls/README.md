@@ -10,12 +10,13 @@ src/main/java/com/jk/explore/security/meshmtls/
 ├── Metrics.java              Reads a proxy's own counters (Prometheus text) and sums one counter by the identity on the other end of the connection
 ├── Policies.java             Linkerd's policy objects: a Server names a port of a workload, an AuthorizationPolicy says which mesh identities may use it
 ├── Service.java              A workload of the bank: the namespace it runs in, its name and the ServiceAccount its pod runs as
-├── ServiceMeshMtlsDemo.java  
+├── ServiceMeshMtlsDemo.java  Runs a bank's pods on a real kind cluster with Linkerd in six numbered acts
 ├── Sh.java                   Runs a program and returns what it printed, whether it worked or not
-└── Sniffer.java              A packet capture run beside the cluster's node (sharing its network and process space), the way someone with root on the node would
+├── Sniffer.java              A packet capture run beside the cluster's node (sharing its network and process space), the way someone with root on the node would
+└── Wire.java                 Reads a packet capture (tcpdump -A, the bytes printed as text) the way a person on the node would: is the request there to read?
 ```
 
-**On a real kind cluster with Linkerd (edge-26.10.1), a call from web to payments shows the account number on the wire before the proxies (yes) and not after (no), and each proxy counts the other end by certificate: payments sees web.bank.serviceaccount.identity.linkerd.cluster.local, web sees payments, so both ends proved who they are; all 4 workloads hold a certificate named from their ServiceAccount; with mutual TLS alone 16 of 16 caller and service pairs answer (14 unwanted, 4 of 4 from a pod outside the mesh, and the node itself gets HTTP 200); a Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs (2 of 16, 0 unwanted, 0 missing) and refuse the others with HTTP 403, including the pod outside the mesh and the node; the mesh still lets an allowed web send an injection string through intact, shows the account number to root on the node between the proxy and the app, leaves a call to a pod outside the mesh readable, and gives a new pod that runs as the payments ServiceAccount payments' access (HTTP 200) while a ServiceAccount of the same name in another namespace gets 403; a certificate issued for 5 minutes (Linkerd's default is 24 hours) is renewed with the same name and no restart, and the trust anchor is valid for 365 days.**
+**On a real kind cluster (node image pinned by digest) with Linkerd (edge-26.10.1), a call from web to payments shows the account number on the wire before the proxies (yes) and not after (no), and each proxy counts the other end by certificate: payments sees web.bank.serviceaccount.identity.linkerd.cluster.local, web sees payments, so both ends proved who they are; all 4 workloads hold a certificate named from their ServiceAccount; with mutual TLS alone 16 of 16 caller and service pairs answer (14 unwanted, 4 of 4 from a pod outside the mesh, and the node itself gets HTTP 200); a Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs (2 of 16, 0 unwanted, 0 missing) and refuse the others with HTTP 403, including the pod outside the mesh and the node; the mesh still lets an allowed web send an injection string through intact, shows the account number to root on the node between the proxy and the app, leaves a call to a pod outside the mesh readable, and gives a new pod that runs as the payments ServiceAccount payments' access (HTTP 200) while a ServiceAccount of the same name in another namespace gets 403; a certificate issued for 5 minutes (Linkerd's default is 24 hours) is renewed with the same name and no restart, and the trust anchor is valid for 365 days.**
 
 A service mesh puts a proxy beside every pod. The proxies get a **certificate for the pod from its ServiceAccount**, encrypt every call between them and check each other's certificates, with no change to the application. This project installs **Linkerd** (release `edge-26.10.1`, downloaded from the project's GitHub releases into `build/` the first time) on a real **kind** cluster and measures a bank's pods before the proxies, after them, with a policy, and where the mesh stops. A Java program drives `kind`, `kubectl`, the Linkerd CLI and a packet capture; the demo is tagged `integration`: `./gradlew integrationTest` (Docker, kind, kubectl and a network once).
 
@@ -43,15 +44,16 @@ A bank's web front calls payments, and payments calls the ledger. A statements s
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Before and after the proxies | The account number can be read from the wire before the proxies and not after; each proxy counts the other end by certificate. |
-| 2. Identities from ServiceAccounts | All 4 workloads hold a certificate named from their ServiceAccount, namespace and trust domain. |
-| 3. Mutual TLS is not a decision | With no policy 16 of 16 pairs answer, 14 unwanted, including a pod outside the mesh and the node. |
-| 4. A policy names who may call | A Server and an AuthorizationPolicy per service leave exactly the 2 designed pairs; the rest get HTTP 403. |
-| 5. What the mesh does not protect | An allowed caller sends anything, root on the node reads the plaintext, and a new pod can take an identity. |
+| 1. Before and after the proxies | web calls payments with an account number in the URL. Before the proxies a capture on the node reads the request line (yes); after them it reads nothing (no), only packets to the proxy port 4143, and each proxy counted the other end by its certificate. |
+| 2. An identity from each ServiceAccount | The payments pod runs in namespace bank as ServiceAccount payments. Its proxy's certificate names payments.bank.serviceaccount.identity.linkerd.cluster.local: the ServiceAccount, the namespace, a fixed part, Linkerd's namespace and the trust domain, joined by dots. All 4 of 4 bank workloads hold the name the rule gives. |
+| 3. Mutual TLS alone does not decide | 5 callers x 4 bank services - 4 calls to itself = 16 pairs; the design allows 2. With mutual TLS and no policy 16 of 16 answer, 14 not in the design, 4 of 4 from legacy/batch which has no proxy, and the node gets HTTP 200: Linkerd's default policy is all-unauthenticated. |
+| 4. A policy names who may call | Each bank service gets a Server for its port; payments names web and ledger names payments in an AuthorizationPolicy. Now 2 of 16 answer, 0 not designed, 0 missing: the measurement equals the design. statements, web and legacy/batch get HTTP 403 from ledger; ledger's proxy counted 2 refusals for each. |
+| 5. What the mesh does not protect | The node itself is now refused (403), but root on the node reads the account number inside the payments pod, between proxy and app (yes); a call to legacy/batch, outside the mesh, is readable (yes); web may send ' OR '1'='1 and it arrives intact (yes); a new pod that runs as the payments ServiceAccount reaches ledger (200) while payments in namespace shadow gets 403; and a developer with the edit role may create pods in bank (yes). |
+| 6. Certificate lifetime and renewal | This run issues certificates for 5m0s (Linkerd's default is 24h0m0s). Payments' certificate spans Not After - Not Before = 340 s; minus 2 x 20 s clock skew = 300 s = 5 minutes. The trust anchor is valid for 365 days. After the renewal the proxy holds a newer certificate with the same name, the pod did not restart, and payments still calls ledger (HTTP 200). |
 
 ## Test
 
@@ -59,7 +61,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `CertInfoTest`, `DemoRunsTest`, `DesignTest`, `MetricsTest`, `PoliciesTest`. The identity names, the policy manifests, the counter parsing, the certificate reading and the pair scoring are tested with no tools. The demo needs Docker, kind and kubectl (./gradlew integrationTest).
+20 tests in `CertInfoTest`, `DemoRunsTest`, `DesignTest`, `MetricsTest`, `PoliciesTest`, `WireTest`. The identity parts, the policy manifests, the counter parsing, the capture reading, the certificate dates, the who-answered table and the pair scoring are tested with no tools. The demo needs Docker, kind and kubectl (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

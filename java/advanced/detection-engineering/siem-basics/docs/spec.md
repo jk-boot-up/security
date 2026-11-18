@@ -38,10 +38,10 @@ Attacks cross systems while logs are kept in separate formats and clocks, so eac
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 22 lines, identical on every run |
+| Tests | 12, all passing |
+| Demo output | 73 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:34, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:28, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

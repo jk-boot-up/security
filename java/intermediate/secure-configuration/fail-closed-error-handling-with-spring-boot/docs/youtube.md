@@ -16,17 +16,36 @@ Chapters:
 
 ```
 00:00 Introduction
-01:36 The Scenario
-01:59 Act One — Failing open
-02:26 Act Two — Failing closed
-02:58 Act Three — Failing halfway
-03:33 Act Four — What the customer is told
-04:04 Act Five — The bill, and how to pay it
-04:35 What It Costs
-04:58 Who Does What
-05:26 Where You Have Seen It
-05:42 How To Use It
-06:05 Thanks for Watching
+00:49 The Scenario
+01:17 The Words
+01:52 What the Letters Stand For
+02:54 The same failure, two answers
+03:44 One risky payment, five fraud checks, four approvals
+04:41 Act One — Failing open
+04:55 Act One — Failing open
+05:07 Start from no: six payments, one yes
+06:06 Act Two — Failing closed
+06:18 Act Two — Failing closed
+06:36 One transfer, four versions, three losses
+07:31 Act Three — Failing halfway
+07:56 Act Three — Failing halfway
+08:14 One failure, three places
+09:09 Act Four — What the customer is told, and what the log keeps
+09:27 Act Four — What the customer is told, and what the log keeps
+09:40 Ten coffees in an outage: calls that reach the fraud check
+10:33 Act Five — The bill, and how to pay it
+10:50 Act Five — The bill, and how to pay it
+11:08 What It Costs
+11:49 Where You Have Seen It
+12:23 How To Use It
+13:00 The Java Classes
+13:15 OpenPaymentService — an empty catch keeps the yes
+13:25 ClosedPaymentService — only a low-risk answer is a yes
+13:42 FraudClient — connect and read timeouts
+13:56 Transfers — rollbackFor, and the proxy
+14:15 Breaker — open means no
+14:28 ErrorHandling — a ProblemDetail with a reference
+14:43 Thanks for Watching
 ```
 
 ## Tags

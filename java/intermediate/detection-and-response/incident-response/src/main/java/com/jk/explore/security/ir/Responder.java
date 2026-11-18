@@ -13,7 +13,8 @@ public final class Responder {
     }
 
     private void log(String action, String effect) {
-        w.timeline.add(String.format("%-14s %-26s %s", w.clock(), action, effect));
+        w.timeline.add(String.format("%s  %-20s%s", w.time(), action, effect));
+        w.actions.add(action);
     }
 
     /** Waits until the alert or the complaint arrives. */
@@ -22,7 +23,7 @@ public final class Responder {
         if (wait > 0) {
             w.advance(wait);
         }
-        log("detect", w.prep.monitoringOnDatabaseReads() ? "alert: unusual database reads" : "a customer reports that their data is being sold");
+        log("detect", w.prep.monitoringOnDatabaseReads() ? "alert: unusual database reads" : "a customer says their data is sold");
         return this;
     }
 
@@ -32,7 +33,7 @@ public final class Responder {
         w.webIsolated = true;
         w.outageStart = w.outageStart < 0 ? w.minute : w.outageStart;
         w.noteIfStopped();
-        log("isolate web01", "network rule blocks it, memory kept; the route to db01 is cut");
+        log("isolate web01", "memory kept, route to db01 cut");
         return this;
     }
 
@@ -40,21 +41,21 @@ public final class Responder {
         w.advance(2);
         w.dbSessionAlive = false;
         w.noteIfStopped();
-        log("kill database sessions", "the attacker's session on db01 is ended");
+        log("kill db sessions", "attacker's db01 session ended");
         return this;
     }
 
     public Responder captureEvidence() {
         w.advance(15);
         if (!w.prep.forensicsReady()) {
-            log("capture evidence", "no tooling: only the files that were left");
+            log("capture evidence", "no tooling: only the files left");
             w.diskCaptured = !w.webRebuilt;
             return this;
         }
         w.memoryCaptured = !w.webRebuilt;
         w.diskCaptured = !w.webRebuilt;
         w.logsCollected = w.prep.logsShippedCentrally();
-        log("capture evidence", "memory and disk of web01 snapshotted, logs collected with hashes");
+        log("capture evidence", "memory, disk and logs, with hashes");
         return this;
     }
 
@@ -62,14 +63,14 @@ public final class Responder {
         w.advance(20);
         boolean covered = w.prep.logsShippedCentrally() && w.prep.logRetentionDays() * 24 * 60 >= w.detectedAt + 60;
         w.scoped = covered;
-        log("scope from logs", covered ? "start 01:00, web01 and db01 involved, svc-backup created at 01:40" : "logs from the first days are gone: start and extent unknown");
+        log("scope from logs", covered ? "start 01:00; svc-backup made 01:40" : "logs are gone: extent unknown");
         return this;
     }
 
     public Responder rotateDatabasePassword() {
         w.advance(10);
         w.dbPasswordValid = false;
-        log("rotate database password", "the stolen password no longer works");
+        log("rotate db password", "the stolen password stops working");
         return this;
     }
 
@@ -77,9 +78,9 @@ public final class Responder {
         w.advance(3);
         if (w.scoped) {
             w.adminBackdoor = false;
-            log("disable svc-backup", "the hidden admin account is removed");
+            log("disable svc-backup", "hidden admin account removed");
         } else {
-            log("disable svc-backup", "not done: nobody knows the account exists");
+            log("disable svc-backup", "not done: nobody knows it exists");
         }
         return this;
     }
@@ -90,7 +91,8 @@ public final class Responder {
         w.outageStart = w.outageStart < 0 ? w.minute : w.outageStart;
         boolean lost = !w.memoryCaptured;
         w.memoryCaptured = false;
-        log("reboot web01", (lost ? "memory evidence lost; " : "") + "cron job and SSH key survive the reboot");
+        log("reboot web01",
+                (lost ? "memory lost; " : "") + "cron job, SSH key stay");
         return this;
     }
 
@@ -104,7 +106,7 @@ public final class Responder {
     public Responder rebuildWeb01() {
         w.advance(w.prep.knownGoodImages() ? 40 : 120);
         w.webRebuilt = true;
-        log("rebuild web01", w.prep.knownGoodImages() ? "from the known-good image: cron job and SSH key are gone" : "by hand, with no image: slow, and nobody is sure it is clean");
+        log("rebuild web01", w.prep.knownGoodImages() ? "from the image: cron job, key gone" : "by hand, no image: is it clean?");
         return this;
     }
 
@@ -113,7 +115,7 @@ public final class Responder {
         w.webIsolated = false;
         w.reconnectedAt = w.minute;
         int open = w.footholdsLeft().size();
-        log("reconnect web01", open == 0 ? "back in service" : "back in service with " + open + " way(s) back in still open");
+        log("reconnect web01", "back in service, " + open + " ways in open");
         return this;
     }
 
@@ -122,9 +124,10 @@ public final class Responder {
         w.advance(120);
         if (!w.footholdsLeft().isEmpty()) {
             w.reinfected = true;
-            log("monitor for 2 hours", "THE ATTACKER IS BACK, using the " + w.footholdsLeft().get(0));
+            w.returnedVia = w.footholdsLeft().get(0);
+            log("monitor 2 hours", "THE ATTACKER IS BACK");
         } else {
-            log("monitor for 2 hours", "quiet");
+            log("monitor 2 hours", "quiet: nobody came back");
         }
         return this;
     }

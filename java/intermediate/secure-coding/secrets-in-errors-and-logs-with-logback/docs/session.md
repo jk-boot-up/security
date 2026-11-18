@@ -18,7 +18,7 @@ By the end of the session you can:
 | 0:17 | Act 2: Covering the shapes of secrets in the layout | 7 min |
 | 0:24 | Act 3: Make the secret unprintable | 7 min |
 | 0:31 | Act 4: Structured logs | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:38 | Act 5: What a mask cannot see | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

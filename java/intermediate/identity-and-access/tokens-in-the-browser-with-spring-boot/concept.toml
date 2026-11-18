@@ -64,103 +64,273 @@ test_note = "The tests that need Keycloak are tagged integration and share one c
 
 [[act]]
 title = "Tokens kept in the browser"
-summary = "A third-party script takes 2 tokens from localStorage, the stolen access token reads the balance until it expires, and the stolen refresh token gets a new one from Keycloak."
+summary = "Keycloak gives the single-page app a five-minute access token and a refresh token that lives with the session; a third-party script takes both from localStorage; the access token is refused 331 seconds later, but the refresh token gets a new one."
 detail = """
-The banking app signs Ana in and keeps its access token and refresh token in localStorage. The app reads her balance: 200. A third-party script on the page reads what scripts can read: 2 tokens taken. It sends them to its own server and Ana closes the page. From elsewhere, the stolen access token reads the balance: 200. Five minutes later the API refuses it as expired. The stolen refresh token gets a new access token from Keycloak, which reads the balance: one page visit, for as long as the session lives. Anything a script can read, a script can send away.
+The app signs Ana in at Keycloak as the public client bank-spa and writes both tokens, each a JWT signed by Keycloak, to localStorage. The access token's middle part, decoded, says sub
+a0a0a0a0-0000-4000-8000-000000000001, azp bank-spa and scope accounts.read openid payments.write; its exp is iat plus 300 seconds. The refresh token's exp is iat plus 1800 seconds, the
+session's idle time. The app reads the balance: 200, 125000 cents. A third-party script reads localStorage and sends both tokens to its own server. From elsewhere the access token reads
+the balance: 200. 331 seconds later the API refuses it: 401 invalid_token. But the refresh token gets a new access token from Keycloak, which reads the balance again.
+"""
+figure = "token_timeline"
+figure_title = "Two stolen tokens, as long as the session lives"
+figure_speech = """
+First demo: tokens kept in the browser. [[slnc 400]] At the top, the access token's claims, decoded from its middle part. [[slnc 300]] The subject is Ana's id at Keycloak. [[slnc 300]] The authorized party is the app, bank S P A. [[slnc 300]] The scope: read accounts, and make payments. [[slnc 300]] And it expires three hundred seconds after it was issued. [[slnc 700]]
+Below, a timeline of what the thief does with the two stolen tokens. [[slnc 300]] At once, the access token reads Ana's balance. [[slnc 300]] At three hundred and thirty one seconds, Spring's resource server refuses it: invalid token. [[slnc 600]]
+But the refresh token lives for the whole session, eighteen hundred seconds of idle time, and every use starts the clock again. [[slnc 300]] The thief trades it at Keycloak for a new access token, and reads the balance again. [[slnc 700]]
+One visit to a page with one bad script, for as long as the session lives.
 """
 speech = """
-First demo: tokens kept in the browser. [[slnc 400]] The app keeps its access token and refresh token in local storage. [[slnc 600]]
-A third party script on the page reads what scripts can read, and takes both. [[slnc 600]]
-The stolen access token reads the balance from elsewhere, until it expires. [[slnc 600]]
-The stolen refresh token gets a new access token from Keycloak. [[slnc 300]] One page visit, for as long as the session lives.
+Here is the real output. [[slnc 400]] The sign in, with both tokens in local storage. [[slnc 400]] The access token's claims, and its life worked out: issued at, plus three hundred seconds. [[slnc 300]] The refresh token: plus eighteen hundred. [[slnc 400]] And the app's own request: two hundred, with the balance.
+[[page]]
+The script reads local storage, and sends two tokens to its server. [[slnc 400]] The stolen access token works at once, and is refused three hundred and thirty one seconds later. [[slnc 300]] The refresh token gets a new one, and the balance again. [[slnc 400]] Anything a script can read, a script can send away.
 """
 rows = { stored = "active wrong" }
 console = [
-    ["a third-party script reads localStorage: 2 tokens taken", "bad"],
-    ["the stolen access token reads the balance -> 200", "bad"],
-    ["five minutes later -> 401 (expired)", "ok"],
-    ["the stolen refresh token gets a new access token -> true", "bad"],
+    ["THE SIGN-IN (Keycloak, client bank-spa; both go to localStorage):", "code"],
+    ["  access_token   <a JWT signed by Keycloak>", "muted"],
+    ["  refresh_token  <a JWT signed by Keycloak>", "muted"],
+    ["THE ACCESS TOKEN'S CLAIMS (its middle part, decoded):", "code"],
+    ["  sub    a0a0a0a0-0000-4000-8000-000000000001", "muted"],
+    ["  azp    bank-spa  (the client it was issued to)", "muted"],
+    ["  scope  accounts.read openid payments.write", "muted"],
+    ["  exp    = iat + 300 seconds (five minutes)", "muted"],
+    ["THE REFRESH TOKEN'S CLAIMS:", "code"],
+    ["  exp    = iat + 1800 seconds (the session's idle time)", "muted"],
+    ["THE APP'S OWN REQUEST (Authorization: Bearer <access_token>):", "code"],
+    ["  GET /accounts -> 200 balance 125000 cents", "muted"],
+    ["---", ""],
+    ["THE SCRIPT ON THE PAGE READS localStorage:", "code"],
+    ["  access_token, refresh_token -> 2 tokens sent to its server", "muted"],
+    ["THE STOLEN TOKENS, USED FROM ELSEWHERE (Ana closed the page):", "code"],
+    ["  access token, at once        -> 200 balance 125000 cents", "bad"],
+    ["  access token, 331 s later    -> 401 (invalid_token)", "ok"],
+    ["  refresh token, at Keycloak   -> a new access token", "bad"],
+    ["  the new access token         -> 200 balance 125000 cents", "bad"],
+    ["ONE PAGE VISIT, AS LONG AS THE SESSION LIVES:", "code"],
+    ["  anything a script can read, a script can send away", "muted"],
 ]
 
 [[act]]
 title = "A backend for the frontend keeps the tokens on the server"
-summary = "The BFF signs Ana in on the server, the browser gets a __Host-bff cookie, the script takes 0 tokens, a script on the open page can still act as Ana, and the BFF refreshes the token itself."
+summary = "Spring's oauth2Login signs Ana in on the BFF, which keeps 2 tokens in its OAuth2AuthorizedClientService; the browser gets a __Host-bff cookie (Secure, HttpOnly, SameSite=Strict) and an XSRF-TOKEN cookie; the script takes 0 tokens but can still use the open page."
 detail = """
-The BFF signs Ana in on the server; the browser gets a session cookie __Host-bff with Path=/, Secure, HttpOnly and SameSite=Strict, and an XSRF-TOKEN cookie its script copies into a header. The cookie keeps the __Host- rules, and the BFF holds 2 tokens, an access token and a refresh token, that the browser never sees. The app reads the balance through the BFF: 200. The same third-party script reads document.cookie: only the XSRF cookie, 0 tokens taken. While the page is open, the script can still ask the BFF for the balance: 200, a script on the page can still act as Ana. Once the page is closed, what it took works nowhere else: 401. Six minutes later Ana opens the app again and the BFF refreshes the token on the server: 200, with a new access token.
+The BFF, a Spring Boot app, signs Ana in with oauth2Login as the confidential client bank-bff. The browser gets the session cookie __Host-bff with Path=/, Secure, HttpOnly and SameSite=Strict,
+and an XSRF-TOKEN cookie that the page's own script may read and copy into a header. The BFF's OAuth2AuthorizedClientService holds 2 tokens; the browser holds 0. The app reads the balance through
+the BFF: 200. The same script reads document.cookie, sees only XSRF-TOKEN, and takes 0 tokens. While the page is open it can still ask the BFF for the balance: 200; what it took gets 401 from
+elsewhere. Six minutes later the access token has expired; the browser sends only the cookie, and the BFF refreshes the token on the server: 200, with a new access token.
+"""
+figure = "bff_layout"
+figure_title = "A cookie in the browser, the tokens on the server"
+figure_speech = """
+Second demo: a backend for the frontend, built with Spring Boot. [[slnc 400]] At the top, three parts. [[slnc 300]] Ana's browser holds no tokens. [[slnc 300]] The backend for the frontend keeps two tokens in its session, with Spring's authorized client service. [[slnc 300]] It adds the access token on every call to the accounts A P I. [[slnc 700]]
+Bottom left, the session cookie. [[slnc 300]] Its value is only a session id. [[slnc 300]] Secure: over H T T P S only. [[slnc 300]] H T T P only: scripts cannot read it. [[slnc 300]] Same site strict: it stays home when another site starts the request. [[slnc 300]] And the host prefix: no other host can set it. [[slnc 700]]
+Bottom right, the same script on the page. [[slnc 300]] While the page is open, it can still ask for the balance. [[slnc 300]] What it took is useless anywhere else.
 """
 speech = """
-Second demo: a backend for the frontend. [[slnc 400]] The B F F signs Ana in on the server. [[slnc 300]] The browser gets one cookie, http only, same site strict. [[slnc 600]]
-The same script reads the cookies it can read, and takes no tokens. [[slnc 600]]
-While the page is open, it can still ask the B F F for the balance, so it can still act as Ana. [[slnc 600]]
-Six minutes later, the B F F refreshes the token on the server.
+Here is the output. [[slnc 400]] The sign in: the session cookie, and the X S R F token cookie. [[slnc 400]] And the session cookie's four rules, each with what it means.
+[[page]]
+Where the tokens are: two on the server, none in the browser. [[slnc 400]] The app's own request carries only the cookie: two hundred.
+[[page]]
+The script reads document dot cookie, and sees only the X S R F token. [[slnc 300]] No tokens. [[slnc 300]] But while the page is open it can still read the balance. [[slnc 400]] Six minutes later the server refreshes the token, out of the browser's sight.
 """
 rows = { bff = "active ok" }
 console = [
-    ["cookie: __Host-bff; Path=/; Secure; HttpOnly; SameSite=Strict", "ok"],
-    ["document.cookie: [XSRF-TOKEN]: 0 tokens taken", "ok"],
-    ["the script on the open page asks the BFF -> 200", "amber"],
-    ["six minutes later: the BFF refreshes the token -> 200", "ok"],
+    ["THE SIGN-IN (Spring's oauth2Login on the BFF, client bank-bff):", "code"],
+    ["  Set-Cookie: __Host-bff=<session id>", "muted"],
+    ["    Path=/; Secure; HttpOnly; SameSite=Strict", "muted"],
+    ["  Set-Cookie: XSRF-TOKEN=<random>; Path=/", "muted"],
+    ["THE COOKIE'S RULES (__Host-bff):", "code"],
+    ["  Secure           sent over HTTPS only", "muted"],
+    ["  HttpOnly         scripts on the page cannot read it", "muted"],
+    ["  SameSite=Strict  not sent when another site starts it", "muted"],
+    ["  __Host- prefix   Secure, Path=/, no Domain: true", "muted"],
+    ["---", ""],
+    ["WHERE THE TOKENS ARE:", "code"],
+    ["  the BFF's OAuth2AuthorizedClientService  2 tokens", "muted"],
+    ["  the browser                              0 tokens", "muted"],
+    ["THE APP'S OWN REQUEST (only the cookie goes with it):", "code"],
+    ["  GET /api/accounts -> 200 balance 125000 cents", "muted"],
+    ["---", ""],
+    ["THE SAME SCRIPT ON THE PAGE READS document.cookie:", "code"],
+    ["  [XSRF-TOKEN] -> 0 tokens; __Host-bff is not readable: true", "muted"],
+    ["WHAT THE SCRIPT CAN STILL DO:", "code"],
+    ["  page open    GET /api/accounts -> 200 balance 125000 cents", "muted"],
+    ["    <- A SCRIPT ON THE PAGE CAN STILL ACT AS ANA", "bad"],
+    ["  page closed  what it took, from elsewhere -> 401", "ok"],
+    ["SIX MINUTES LATER (the access token has expired):", "code"],
+    ["  the browser sends the cookie -> 200 balance 125000 cents", "muted"],
+    ["  the BFF refreshed it on the server, a new token: true", "muted"],
 ]
 
 [[act]]
 title = "Requests started by another site"
-summary = "SameSite=Strict keeps the cookie off a link or form from evil.example, an older browser still needs the XSRF header, the preflight names no allowed origin, and the bank's own page transfers with the header."
+summary = "SameSite=Strict keeps the cookie off a link and a form from evil.example (401, 403); an older browser sends the cookie but not the X-XSRF-TOKEN header (403); the preflight gets no Access-Control-Allow-Origin, so the header is never sent; only the bank's page makes a transfer."
 detail = """
-A link or a hidden form on evil.example reaches the BFF, and SameSite=Strict keeps the cookie off both: the link gets 401, the form's transfer 403 with no session and no CSRF token. In an older browser that ignores SameSite, the cookie goes but the bank's request header does not: 403. A script on evil.example tries to add the header itself: the browser asks first, and the BFF names no allowed origin, so the request is never sent. The bank's own page sends the transfer with the header: 201. One transfer was made, and only the one the bank's own page asked for.
+A link on evil.example asks for the balance and a hidden form posts a transfer, both while Ana is signed in. In a modern browser SameSite=Strict keeps the cookie off both: the link gets 401,
+the form 403, with no session and no CSRF token. In an older browser that ignores SameSite the cookie goes, but the X-XSRF-TOKEN header does not: 403. A script on evil.example that adds the
+header itself makes the browser ask first in a CORS preflight; the answer has no Access-Control-Allow-Origin, so the request is never sent. The bank's own page sends the cookie and the
+XSRF-TOKEN value in the header: 201. Transfers made: 1.
+"""
+figure = "cross_site"
+figure_title = "Who starts the request, and what goes with it"
+figure_speech = """
+Third demo: requests started by another site. [[slnc 400]] Each row is one attempt, while Ana is signed in. [[slnc 300]] The middle columns say what the browser attaches: the session cookie, and the X S R F token header. [[slnc 700]]
+A link and a form on another site, in a modern browser. [[slnc 300]] Same site strict keeps the cookie off both. [[slnc 600]]
+The same form in an older browser. [[slnc 300]] The cookie goes, but a form cannot add a header, so Spring's C S R F check refuses it. [[slnc 600]]
+A script on the other site tries to add the header. [[slnc 300]] The browser asks the server first, and the answer allows no other origin. [[slnc 300]] So the request is never sent. [[slnc 600]]
+Last row: the bank's own page sends both. [[slnc 300]] One transfer is made.
 """
 speech = """
-Third demo: requests started by another site. [[slnc 400]] A link or a hidden form on another site reaches the B F F without the cookie. [[slnc 600]]
-An older browser that ignores same site sends the cookie, but not the bank's request header, so the answer is four oh three. [[slnc 600]]
-A script on the other site cannot add the header, because the preflight names no allowed origin. [[slnc 600]]
-The bank's own page sends the transfer with the header, and one transfer is made.
+Here is the output. [[slnc 400]] The requests from the other site. [[slnc 300]] In a modern browser: four oh one for the link, four oh three for the form. [[slnc 300]] In an older browser: four oh three, no C S R F token.
+[[page]]
+A script adds the header itself. [[slnc 300]] The preflight answer allows no other origin, so it is never sent. [[slnc 400]] The bank's own page: two oh one. [[slnc 300]] One transfer made.
 """
 rows = { sites = "active ok" }
 console = [
-    ["link -> 401, hidden form -> 403 (the cookie is kept off)", "ok"],
-    ["older browser: cookie sent, no header -> 403", "ok"],
-    ["preflight: no allowed origin, so the request is never sent", "ok"],
-    ["the bank's own page, with the header -> 201", "ok"],
+    ["THE REQUESTS (started on evil.example, Ana signed in):", "code"],
+    ["  a link   GET /api/accounts", "muted"],
+    ["  a form   POST /api/transfers, no X-XSRF-TOKEN header", "muted"],
+    ["THE RESPONSES (a modern browser: SameSite=Strict, no cookie):", "code"],
+    ["  the link -> 401 (not signed in)", "ok"],
+    ["  the form -> 403 (no session, no CSRF token)", "ok"],
+    ["THE SAME FORM IN AN OLDER BROWSER (it ignores SameSite):", "code"],
+    ["  the cookie goes, the header does not -> 403 (no CSRF token)", "ok"],
+    ["---", ""],
+    ["A SCRIPT ON evil.example ADDS X-XSRF-TOKEN ITSELF:", "code"],
+    ["  the browser asks first (a CORS preflight)", "muted"],
+    ["  Access-Control-Allow-Origin in the answer: false", "muted"],
+    ["    -> never sent", "ok"],
+    ["THE BANK'S OWN PAGE (the cookie, and XSRF-TOKEN in the header):", "code"],
+    ["    -> 201", "muted"],
+    ["transfers made: 1, the one the bank's own page asked for", "amber"],
 ]
 
 [[act]]
 title = "Tokens bound to a key, with DPoP"
-summary = "Keycloak binds the token to the app's key, and Spring Security's resource server refuses it as a bearer token, with another key's proof, with a reused, old or mismatched proof; a stolen refresh token needs the key too."
+summary = "The app's P-256 key, written in RFC 7638 order and hashed with SHA-256, gives the thumbprint Keycloak puts in cnf.jkt; Spring's resource server accepts the token only with a fresh proof from that key, and refuses the token alone, another key's proof, a replay, a proof for another request, an old proof and a proof without ath."
 detail = """
-The app holds a key that scripts cannot read, and the token carries the key's thumbprint in cnf.jkt; the token type is DPoP. The app sends the token with a fresh proof signed by its key: 200. A script takes the token and sends it as a plain bearer token: 401 invalid_token. With a proof from a key of its own: 401. The app's own request copied and sent again: 401, the proof was already used. The app's proof for reading the balance, used for a transfer: 401. A proof made two minutes ago, with the token still valid: 401. A proof that does not hash the token: 401. The stolen refresh token with the thief's key is refused: the DPoP confirmation does not match the proof. With no key at all it is refused; presented by the app, with its own key, it gives new tokens.
+The app's key is a P-256 key made from a fixed seed, so the thumbprint is the same on every run. Its public half written as crv, kty, x and y, with no spaces, is 126 characters; SHA-256 of that,
+in base64url, is lq6Aws5FE-qf5LOaH8K26iRrqGPFaWQ0v8IwPTXG6UU, the same as Nimbus's computeThumbprint. Keycloak, asked by the client bank-spa-dpop with a proof, returns token type DPoP and puts
+that value in cnf.jkt. Each request carries a proof: a JWT of type dpop+jwt, signed with ES256, with a random jti, htm, htu, iat and ath, the hash of the access token. With a fresh proof:
+200. The token alone: 401 invalid_token. A proof from the thief's key, the app's request sent again, the proof for GET /accounts used for a transfer, a proof made 120 seconds ago and a proof
+with no ath: 401 invalid_dpop_proof. At Keycloak the refresh token is refused with the thief's key and with no key, and gives new tokens with the app's key.
+"""
+figure = "thumbprint"
+figure_title = "The key's thumbprint, and one proof"
+figure_speech = """
+Fourth demo: tokens bound to a key, with D Pop. [[slnc 400]] On the left, how the token names the key. [[slnc 300]] The app's public key is a point on the P two fifty six curve: two numbers, x and y. [[slnc 300]] It is written as a short J son text, with the members in alphabetical order and no spaces, so everyone gets the same text. [[slnc 600]]
+That text goes through S H A two fifty six, which gives thirty two bytes. [[slnc 300]] In base sixty four U R L, forty three characters: the thumbprint. [[slnc 300]] Our hand-made value equals the library's. [[slnc 300]] And Keycloak writes the same value into the access token, as c n f dot j k t. [[slnc 700]]
+On the right, one proof. [[slnc 300]] A small token signed by the key. [[slnc 300]] A random id, used once. [[slnc 300]] The method and the address of this one request. [[slnc 300]] The time. [[slnc 300]] And the hash of the access token. [[slnc 600]]
+To use the token, you need a fresh proof from the key it names.
 """
 speech = """
-Fourth demo: tokens bound to a key, with D Po P. [[slnc 400]] The token carries the thumbprint of the app's key. [[slnc 600]]
-With a fresh proof signed by that key, the A P I answers two hundred. [[slnc 600]]
-As a plain bearer token, it is refused. [[slnc 300]] With a proof from another key, refused. [[slnc 300]] A proof used twice, refused. [[slnc 600]]
-A stolen refresh token needs the key too.
+Here is the output. [[slnc 400]] The app's public key, in the text the thumbprint hashes. [[slnc 400]] The thumbprint, worked out, and the same as the library's. [[slnc 400]] And Keycloak's token carries exactly that value.
+[[page]]
+The proof for one request, field by field. [[slnc 400]] The port, the time, the id and the hash change on every run, so they are shown as placeholders. [[slnc 400]] With the token and the proof, the app reads the balance.
+[[page]]
+The attacks, each refused by Spring's resource server. [[slnc 300]] The token alone. [[slnc 300]] A proof from the thief's key. [[slnc 300]] A copy of the app's request. [[slnc 300]] A proof for another request. [[slnc 300]] An old proof. [[slnc 300]] And a proof that does not name the token.
+[[page]]
+At Keycloak, the refresh token is bound to the same key. [[slnc 300]] The thief's key: refused. [[slnc 300]] No key: refused. [[slnc 300]] The app's key: new tokens.
 """
 rows = { dpop = "active ok" }
 console = [
-    ["the token carries the key's thumbprint (cnf.jkt), type DPoP", "ok"],
-    ["token + fresh proof from the app's key -> 200", "ok"],
-    ["as a bearer token / another key / copied / old proof -> 401", "ok"],
-    ["the stolen refresh token with the thief's key -> refused", "ok"],
+    ["THE APP'S PUBLIC KEY (P-256; scripts may sign, not read it):", "code"],
+    ["  {\"crv\":\"P-256\",\"kty\":\"EC\",", "muted"],
+    ["  \"x\":\"bOqwVI5JtA3RETwTVAbTxqNdO2aFvmnlt8HUsq-sRFQ\",", "muted"],
+    ["  \"y\":\"gSnq4nM3E1v5GhD4OErnbdU6FvBjTRCsDmfMzaLv3Pc\"}", "muted"],
+    ["THE THUMBPRINT, WORKED OUT (RFC 7638):", "code"],
+    ["  the lines above: a to z, no spaces, 126 characters", "muted"],
+    ["  SHA-256 of it, 32 bytes, in base64url:", "muted"],
+    ["  lq6Aws5FE-qf5LOaH8K26iRrqGPFaWQ0v8IwPTXG6UU", "muted"],
+    ["  the same as Nimbus's computeThumbprint(): true", "muted"],
+    ["THE TOKEN FROM KEYCLOAK (client bank-spa-dpop):", "code"],
+    ["  token_type  DPoP", "muted"],
+    ["  cnf.jkt     lq6Aws5FE-qf5LOaH8K26iRrqGPFaWQ0v8IwPTXG6UU", "muted"],
+    ["              = the thumbprint", "muted"],
+    ["---", ""],
+    ["THE PROOF FOR ONE REQUEST (a small JWT signed by the key):", "code"],
+    ["  typ dpop+jwt, alg ES256, jwk <the public key above>", "muted"],
+    ["  jti  <a random UUID>  (used once)", "muted"],
+    ["  htm  GET", "muted"],
+    ["  htu  http://127.0.0.1:<port>/accounts", "muted"],
+    ["  iat  <now>", "muted"],
+    ["  ath  <SHA-256 of the access token, in base64url>", "muted"],
+    ["THE APP'S OWN REQUEST (Authorization: DPoP <token>, DPoP: <proof>):", "code"],
+    ["  GET /accounts -> 200 balance 125000 cents", "muted"],
+    ["---", ""],
+    ["THE ATTACKS (a script took the token from localStorage):", "code"],
+    ["  the token alone, as a plain bearer token", "muted"],
+    ["    -> 401 (invalid_token)", "ok"],
+    ["  with a proof from the thief's own key", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "ok"],
+    ["  the app's own request, copied and sent again", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "ok"],
+    ["  the app's proof for GET /accounts, used for a transfer", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "ok"],
+    ["  a proof made 120 s ago (the token is still valid)", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "ok"],
+    ["  a proof with no ath (it does not name the token)", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "ok"],
+    ["---", ""],
+    ["THE REFRESH TOKEN AT KEYCLOAK, BOUND TO THE SAME KEY:", "code"],
+    ["  with the thief's key       -> refused", "ok"],
+    ["    (DPoP confirmation doesn't match DPoP proof)", "muted"],
+    ["  with no key at all         -> refused", "ok"],
+    ["  the app, with its own key  -> new tokens", "muted"],
+    ["a stolen token is useless without the key,", "amber"],
+    ["and the key never leaves the browser", "amber"],
 ]
 
 [[act]]
 title = "The bill"
-summary = "A second BFF does not know the first one's sessions, every call has one more hop, clearing storage loses the DPoP key, and a script on the open page can still ask the key for a proof."
+summary = "A second BFF with its own session store answers Ana's cookie with 401; every call takes one more hop; a cleared browser loses its DPoP key, and the new key's thumbprint does not match; and a script on the open page can still ask the key for a proof: 200."
 detail = """
-Two BFF servers, each with its own session store: the second one answers Ana's cookie with 401, so the sessions need a shared store. Every API call now passes through one more server, which must be run, scaled and kept up to date. Clearing the browser's storage loses the DPoP key; the old token with a new key gets 401, so Ana signs in again. A script on the open page can still ask the key for a proof and read the balance: 200. DPoP stops theft, not use while the page is open. So keep scripts off the page with a strict Content-Security-Policy, and keep tokens out of it with the BFF.
+Two BFF servers, each with its own session store: Ana signs in on the first, her cookie reaches the second, which answers 401, so the sessions need a shared store. Every API call passes
+through one more server, which must be run, scaled and kept up to date. Clearing the browser's storage loses the DPoP key: the token is bound to lq6Aws5FE-qf..., the new key's thumbprint is
+Vr-SIKG4_2B7..., so the API answers 401 invalid_dpop_proof and Ana signs in again. And a script on the open page can still ask the key for a proof and read the balance: 200. DPoP stops theft,
+not use while the page is open; keep scripts off the page with a strict Content-Security-Policy, and keep tokens out of it with the BFF.
+"""
+figure = "the_bill"
+figure_title = "What the defences cost"
+figure_speech = """
+Fifth demo: the bill. [[slnc 400]] Four costs, each with the demo's own answer. [[slnc 600]]
+Top left: two backend servers, each with its own session store. [[slnc 300]] Ana signs in on the first. [[slnc 300]] The second does not know her cookie. [[slnc 300]] So the sessions need a shared store. [[slnc 600]]
+Top right: one more server, on every call. [[slnc 300]] Someone has to run it, scale it, and keep it up to date. [[slnc 600]]
+Bottom left: the browser's storage is cleared, and the D Pop key is gone. [[slnc 300]] The token names the old key's thumbprint, and the new key has a different one. [[slnc 300]] So Ana signs in again. [[slnc 600]]
+Bottom right: a script on the open page asks the key for a proof. [[slnc 300]] It works. [[slnc 300]] D Pop stops theft, not use while the page is open.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Two B F F servers need a shared session store. [[slnc 600]]
-Every call has one more hop to run and keep up to date. [[slnc 600]]
-Clearing the browser's storage loses the D Po P key, and Ana signs in again. [[slnc 600]]
-And a script on the open page can still ask the key for a proof. [[slnc 300]] So keep scripts off the page, and tokens out of it.
+Here is the output. [[slnc 400]] The second server answers Ana's cookie with four oh one, so the sessions need a shared store. [[slnc 400]] And every call passes through one more server.
+[[page]]
+The storage cleared: the two thumbprints differ, so the old token is refused, and Ana signs in again. [[slnc 400]] A script on the open page still reads the balance. [[slnc 400]] So keep scripts off the page, and keep tokens out of it.
 """
 rows = { bill = "active ok" }
 console = [
-    ["the second BFF answers Ana's cookie with 401", "amber"],
-    ["the old token with a new key -> 401", "ok"],
-    ["a script on the open page asks the key for a proof -> 200", "bad"],
-    ["keep scripts off the page and tokens out of it", "ok"],
+    ["TWO BFF SERVERS, EACH WITH ITS OWN SESSION STORE:", "code"],
+    ["  Ana signs in on the first; her cookie reaches the second", "muted"],
+    ["    -> 401 (not signed in)", "amber"],
+    ["  so the sessions need a shared store", "muted"],
+    ["ONE MORE SERVER:", "code"],
+    ["  every API call passes through the BFF, which must be run,", "muted"],
+    ["  scaled and kept up to date", "muted"],
+    ["---", ""],
+    ["THE BROWSER'S STORAGE CLEARED (the DPoP key is lost):", "code"],
+    ["  the token is bound to    lq6Aws5FE-qf...", "muted"],
+    ["  the new key's thumbprint Vr-SIKG4_2B7...", "muted"],
+    ["    -> 401 (invalid_dpop_proof)", "amber"],
+    ["  so Ana signs in again", "muted"],
+    ["A SCRIPT ON THE OPEN PAGE ASKS THE KEY FOR A PROOF:", "code"],
+    ["    -> 200 balance 125000 cents", "bad"],
+    ["    <- DPOP STOPS THEFT, NOT USE WHILE THE PAGE IS OPEN", "bad"],
+    ["keep scripts off the page (a strict Content-Security-Policy),", "amber"],
+    ["and keep tokens out of it (the BFF)", "amber"],
 ]
+
+[highlight]
+console_green = ["THE COOKIE'S RULES", "WHERE THE TOKENS ARE", "THE REFRESH TOKEN AT", "THE BANK'S OWN PAGE"]
+console_rose = ["THE SCRIPT ON THE PAGE", "THE STOLEN TOKENS", "THE SAME SCRIPT", "WHAT THE SCRIPT", "A SCRIPT ON", "THE ATTACKS", "ONE PAGE VISIT"]
+console_amber = ["THE APP'S OWN REQUEST", "THE RESPONSES", "THE SAME FORM", "SIX MINUTES LATER", "TWO BFF SERVERS", "ONE MORE SERVER", "THE BROWSER'S STORAGE", "THE REQUESTS"]
+console_cyan = ["THE SIGN-IN", "THE ACCESS TOKEN", "THE REFRESH TOKEN'S", "THE APP'S PUBLIC KEY", "THE THUMBPRINT", "THE TOKEN FROM", "THE PROOF"]
 
 [animation]
 subtitle = "An online bank, a script on the page, and where the tokens live."
@@ -419,9 +589,9 @@ residual = "The store being down"
 
 [poster]
 headline = [["BFF AND DPOP", "text"], ["WITH SPRING BOOT", "accent"]]
-taglines = [["Keep the tokens on the server with a Spring Boot backend for the frontend, and bind any to", "gold"]]
-before = { code = "a third-party script reads localStorage: 2 tokens ta", note = "Tokens kept in the browser", tag = "BEFORE" }
-after = { code = "oauth2ResourceServer().dPoP()", note = "The bill", tag = "AFTER" }
+taglines = [["Keep tokens on the server, and bind the rest to a key", "gold"]]
+before = { code = "localStorage: 2 tokens taken", note = "Tokens kept in the browser", tag = "BEFORE" }
+after = { code = "oauth2ResourceServer().dPoP()", note = "A BFF, and DPoP-bound tokens", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -437,6 +607,26 @@ body = ["An online bank's single-page app", "calls its accounts API.", "", "The 
 narration = "Here is the scenario. [[slnc 400]] An online bank has a single-page web app that calls its accounts A P I. [[slnc 500]] The demo starts a real Keycloak in Docker, the real accounts A P I, and a real backend for the frontend, all on Spring Boot. [[slnc 500]] It lets a third-party script on the page do what such scripts can do, and compares what each design leaves it."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["localStorage: browser storage any script can read", "HttpOnly cookie: sent by the browser, unreadable by scripts", "BFF: a backend that holds the tokens", "DPoP: a token bound to a client key", "Proof: a signed note for one request"]
+narration = """Before the demos, the words. [[slnc 500]] Local storage is browser storage that any script on the page can read. [[slnc 500]] An H T T P only cookie is sent by the browser, but scripts cannot read it. [[slnc 500]] A backend for the frontend is a server that holds the tokens for the page. [[slnc 500]] D Pop binds a token to a key held by the client. [[slnc 500]] And a proof is a small signed note, made for one request."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-what-scripts-read"
+kind = "figure"
+title = "What a script on the page can read"
+body = "what_scripts_read"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] The same third party script runs on the bank's page, twice. [[slnc 700]] On the left, the app keeps the tokens Keycloak gave it in local storage. [[slnc 300]] Any script on the page can read local storage. [[slnc 300]] So the script takes both tokens, and sends them to its own server. [[slnc 700]] On the right, the tokens stay on the backend for the frontend. [[slnc 300]] Local storage is empty. [[slnc 300]] The session cookie is H T T P only, so document dot cookie shows only the X S R F token, which is no token at all. [[slnc 300]] The script takes nothing. [[slnc 700]] Anything a script on the page can read, it can send away. [[slnc 300]] So the safest token is one the page never holds."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -448,13 +638,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["The BFF is another server to run", "Two BFFs need a shared session store", "Cookies bring request forgery back", "DPoP needs support at Keycloak and every API", "Neither stops a script on the open page"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] The B F F is another server to run, and one more hop on every call. [[slnc 500]] Two B F F servers need a shared session store. [[slnc 500]] Cookies bring cross-site request forgery back, so the B F F needs its defences. [[slnc 500]] D Po P needs support at the sign-in server, and at every A P I. [[slnc 300]] And neither design stops a script that runs on the open page."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["KeycloakLab, bank-realm.json: the sign-in server", "ApiSecurity, AccountsController: the accounts API", "BffSecurity, BffController: the BFF", "SpaClient, DpopKey, Shopper: the page", "BffSpringDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] KeycloakLab starts Keycloak, set up by the bank realm file. [[slnc 500]] ApiSecurity and AccountsController are the accounts A P I, which also checks D Po P proofs. [[slnc 500]] BffSecurity and BffController are the backend for the frontend, which signs Ana in and keeps her tokens. [[slnc 500]] SpaClient, DpopKey, and Shopper play the page, its key, and the browser. [[slnc 300]] And BffSpringDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -471,8 +654,174 @@ body = ["A BFF for a bank's web app", "A __Host- cookie: Secure, HttpOnly, SameS
 narration = "So, how do you use it? [[slnc 400]] Use a backend for the frontend for a bank's web app. [[slnc 500]] Give the browser one host cookie: secure, http only, and same site strict. [[slnc 300]] Ask for the X S R F header on every request that changes something. [[slnc 500]] Refresh tokens on the server. [[slnc 500]] Where a token must reach the browser, bind it to a key with D Po P. [[slnc 300]] And keep untrusted scripts off the page, with a strict content security policy."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Move the BFF's tokens to a", "shared store and run two BFF servers."]
 narration = "That's tokens in the browser, with a backend for the frontend and D Po P. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] A page that holds tokens gives them to every script on it, so keep the tokens on a server, use cookies with the right attributes, and bind any token that must reach the browser to a key. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Move the B F F's tokens from memory to a shared store, and run two B F F servers behind one address. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Keycloak runs in Docker; the accounts A P I and the backend for the frontend are real Spring Boot apps. [[slnc 300]] Here are the classes that matter."""
+
+[[class]]
+name = "Running"
+what = "starts the BFF, with the session cookie's rules"
+[[class.part]]
+title = "the __Host-bff cookie"
+code = """
+"--server.servlet.session.cookie.name=__Host-bff",
+"--server.servlet.session.cookie.path=/",
+"--server.servlet.session.cookie.secure=true",
+"--server.servlet.session.cookie.http-only=true",
+"--server.servlet.session.cookie.same-site=strict");
+"""
+speech = """The session cookie's rules are five Spring Boot settings. [[slnc 300]] The host prefix, the root path, secure, H T T P only, and same site strict."""
+
+[[class]]
+name = "BffSecurity"
+what = "the BFF signs Ana in, and checks the XSRF header"
+[[class.part]]
+title = "oauth2Login, and a CSRF token in a cookie"
+code = """
+.oauth2Login(o -> o.authorizationEndpoint(
+        a -> a.authorizationRequestResolver(resolver)))
+.csrf(c -> c.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+"""
+speech = """O Auth login signs Ana in on the server, with P K C E. [[slnc 300]] The C S R F token goes into a cookie the page may read. [[slnc 300]] A change must send it back in a header, which another site cannot do."""
+
+[[class]]
+name = "BffController"
+what = "passes each call on, with the token added on the server"
+[[class.part]]
+title = "the token never leaves the server"
+code = """
+String accessToken = client.getAccessToken().getTokenValue();
+...
+        .headers(h -> h.setBearerAuth(accessToken));
+"""
+speech = """The authorized client manager gives the access token, refreshed when it has run out. [[slnc 300]] The server adds it to the call to the A P I. [[slnc 300]] The browser never sees it."""
+
+[[class]]
+name = "ApiSecurity"
+what = "the accounts API: scopes, and DPoP switched on"
+[[class.part]]
+title = "one line for DPoP"
+code = """
+.requestMatchers(HttpMethod.GET, "/accounts").hasAuthority("SCOPE_accounts.read")
+.requestMatchers(HttpMethod.POST, "/transfers").hasAuthority("SCOPE_payments.write")
+...
+.oauth2ResourceServer(o -> o
+        .jwt(Customizer.withDefaults())
+        .dPoP(Customizer.withDefaults()));
+"""
+speech = """Each address needs its scope. [[slnc 300]] And D Pop is one line in Spring Security seven. [[slnc 300]] A bound token then needs a fresh proof from its key."""
+
+[[class]]
+name = "DpopKey"
+what = "the browser's key: its thumbprint, and the proofs it signs"
+[[class.part]]
+title = "the thumbprint, by hand"
+code = '''
+return "{\"crv\":\"" + key.getCurve().getName() + "\",\"kty\":\"EC\""
+        + ",\"x\":\"" + key.getX() + "\",\"y\":\"" + key.getY() + "\"}";
+...
+byte[] hash = sha256(canonical().getBytes(StandardCharsets.UTF_8));
+return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+'''
+speech = """The thumbprint is the S H A two fifty six of a fixed text: four members, in alphabetical order, with no spaces. [[slnc 300]] A test shows it equals the library's own."""
+[[class.part]]
+title = "one proof for one request"
+code = """
+JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().jwtID(jti)
+        .claim("htm", method).claim("htu", url).issueTime(Date.from(issuedAt));
+if (accessToken != null) {
+    byte[] hash = sha256(accessToken.getBytes(StandardCharsets.US_ASCII));
+    claims.claim("ath", Base64.getUrlEncoder().withoutPadding().encodeToString(hash));
+}
+"""
+speech = """Each proof carries a random id, the method, the address and the time. [[slnc 300]] And the hash of the access token, so it works only with that token."""
+
+[[acronym]]
+short = "SPA"
+long = "Single-Page Application: one page that calls APIs from the browser"
+say = "S P A is a single page application: one web page that calls A P Is from the browser."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface: here, the bank's accounts service"
+say = "A P I is an application programming interface. Here, the bank's accounts service."
+[[acronym]]
+short = "OAuth, OAuth2"
+long = "Open Authorization 2.0: the standard for handing out access tokens"
+say = "O Auth is open authorization: the standard way to hand out access tokens."
+[[acronym]]
+short = "BFF"
+long = "Backend For the Frontend: a server that holds the tokens for the page"
+say = "B F F is a backend for the frontend: a server that holds the tokens for the page."
+[[acronym]]
+short = "DPoP"
+long = "Demonstrating Proof of Possession (RFC 9449): a token bound to a key"
+say = "D Pop is demonstrating proof of possession: a token that works only with a fresh proof from one key."
+[[acronym]]
+short = "JWT, JWK, JSON"
+long = "JSON Web Token; JSON Web Key; JavaScript Object Notation"
+say = "J W T is a J son web token, a signed token in three parts. J W K is a J son web key. J son is JavaScript object notation."
+[[acronym]]
+short = "SHA-256"
+long = "Secure Hash Algorithm, 256 bits: 32 bytes from any text"
+say = "S H A two fifty six is the secure hash algorithm: it turns any text into thirty two bytes."
+[[acronym]]
+short = "ES256, P-256, EC"
+long = "ECDSA with SHA-256 on the P-256 elliptic curve (EC)"
+say = "E S two fifty six is an elliptic curve signature with S H A two fifty six, on the curve called P two fifty six."
+[[acronym]]
+short = "ECDSA"
+long = "Elliptic Curve Digital Signature Algorithm"
+say = "E C D S A is the elliptic curve digital signature algorithm."
+[[acronym]]
+short = "base64url"
+long = "bytes written with letters, digits, - and _, safe in a URL"
+say = "Base sixty four U R L writes bytes with letters, digits, a dash and an underscore."
+[[acronym]]
+short = "iat, exp, sub, azp, jti"
+long = "issued at, expires, subject, authorized party, token id"
+say = "In a token, i a t is issued at, e x p is expires, s u b is the subject, a z p the client it was issued to, and j t i a unique id."
+[[acronym]]
+short = "cnf.jkt, htm, htu, ath"
+long = "key thumbprint; a proof's method, URL, token hash"
+say = "c n f dot j k t is the bound key's thumbprint. In a proof, h t m is the method, h t u the address, and a t h the hash of the access token."
+[[acronym]]
+short = "CSRF, XSRF"
+long = "Cross-Site Request Forgery; XSRF-TOKEN is Spring's cookie against it"
+say = "C S R F, also written X S R F, is cross site request forgery: another site making the browser send a request."
+[[acronym]]
+short = "PKCE"
+long = "Proof Key for Code Exchange: a secret that ties the sign-in to the client"
+say = "P K C E is proof key for code exchange."
+[[acronym]]
+short = "HTTP, HTTPS"
+long = "Hypertext Transfer Protocol, and its encrypted form"
+say = "H T T P is the hypertext transfer protocol. H T T P S is its encrypted form."
+[[acronym]]
+short = "URL, UUID"
+long = "Uniform Resource Locator; Universally Unique Identifier"
+say = "U R L is a uniform resource locator, a web address. U U I D is a universally unique identifier."
+[[acronym]]
+short = "CORS"
+long = "Cross-Origin Resource Sharing: the browser asks first"
+say = "Cors is cross origin resource sharing. The browser asks the server first, in a preflight, before some requests from another site."
+[[acronym]]
+short = "CSP"
+long = "Content Security Policy: which scripts a page may run"
+say = "C S P is a content security policy: the list of scripts a page may run."
+[[acronym]]
+short = "RFC"
+long = "Request for Comments: an internet standard"
+say = "R F C is request for comments: the name of an internet standard."

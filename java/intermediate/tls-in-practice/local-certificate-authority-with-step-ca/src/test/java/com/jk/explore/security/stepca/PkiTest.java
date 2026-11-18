@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 class PkiTest {
 
     // A self-signed root (CN=Shop Lab Root) and a leaf it signed (CN=shop.example.test), both valid for a century.
-    private static final String ROOT = """
+    static final String ROOT = """
             -----BEGIN CERTIFICATE-----
             MIIBZjCCAQygAwIBAgIUXgzseok3erZrF0AFwHvRlgZXWqcwCgYIKoZIzj0EAwIw
             GDEWMBQGA1UEAwwNU2hvcCBMYWIgUm9vdDAgFw0yNjEwMjQwODU2NDlaGA8yMTI2

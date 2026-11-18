@@ -1,29 +1,104 @@
 ONE. Shipping the events.
-  the morning's 8 events are pushed as JSON lines to a real Loki, each answered with 204, with two labels: app=bank and event_type
-  label names Loki now knows (service_name it adds itself): [app, event_type, service_name]; streams: 4, one for each of the 4 event types
-  a push with no tenant header: 401 no org id  <- EVERY REQUEST NAMES WHOSE LOGS IT IS ABOUT
+  ONE EVENT AS A JSON LINE (line 6 of 8, the transfer):
+    {"request_id":"req-0006","event_type":"money-movement",
+    "actor":"ana","action":"transfer",
+    "resource":"ANA-1->MAL-9","source_ip":"198.51.100.66",
+    "outcome":"success","amount":500}
+  THE PUSH (each line, with the tenant header bank):
+    header    X-Scope-OrgID: bank
+    labels    app=bank, event_type=<the event's type>
+    answers   8 x 204 (stored, nothing to return)
+  WHAT LOKI HOLDS NOW (a stream per label set):
+    {app="bank", event_type="login"}                4 lines
+    {app="bank", event_type="access-decision"}      2 lines
+    {app="bank", event_type="money-movement"}       1 line
+    {app="bank", event_type="admin-change"}         1 line
+    streams      4 (worked out: 4 distinct label sets)
+    label names  app, event_type, service_name (Loki adds the last)
+  A PUSH WITH NO TENANT HEADER:
+    answer    401 no org id  <- WHOSE LOGS? IT MUST SAY
 TWO. Asking questions in LogQL.
-  which events mention ANA-1, by a text filter: 3
-  who moved 500 or more: ana from 198.51.100.66, ANA-1->MAL-9, success, request req-0006
-  everything from that address, in time order: [login failure, login failure, login success, money-movement success]  <- SOMEONE WITH ANA'S PASSWORD, NOT ANA
-  failures by address, counted by Loki: {198.51.100.66=2.0}
-  the question that the old logger could not answer is one line of LogQL
+  QUERY 1, A TEXT FILTER (which lines mention ANA-1?):
+    {app="bank"} |= "ANA-1"
+  ITS ANSWER (3 lines):
+    req-0002  view-balance  ANA-1
+    req-0006  transfer      ANA-1->MAL-9
+    req-0008  view-account  ANA-1
+  QUERY 2, BY FIELDS (who moved 500 or more?):
+    {app="bank", event_type="money-movement"}
+      | json | action="transfer" | amount >= 500
+  ITS ANSWER:
+    actor       ana
+    source_ip   198.51.100.66
+    resource    ANA-1->MAL-9
+    outcome     success
+    request_id  req-0006
+  QUERY 3, EVERYTHING FROM THAT ADDRESS:
+    {app="bank"} | json | source_ip="198.51.100.66"
+  ITS ANSWER (in time order):
+    req-0003  ana   login           failure
+    req-0004  ana   login           failure
+    req-0005  ana   login           success
+    req-0006  ana   money-movement  success
+    2 failures, 1 success, the transfer  <- ANA'S PASSWORD, NOT ANA
+  QUERY 4, A METRIC (failures by address, counted by Loki):
+    sum by (source_ip) (count_over_time(
+      {app="bank"} | json | outcome="failure" [1h]))
+  ITS ANSWER:
+    198.51.100.66  2 failures
 THREE. Labels and content.
-  150 more logins, once with the user as a label and once as part of the line: streams 150 against 1
-  asking for one user: 1 line by the label, 1 line by the content
-  every label value makes a stream of its own and an entry in the index, so labels are for the few things you always select by (the application, the kind of event) and the rest stays in the line
+  THE INPUT (150 more logins, sent twice):
+    labelled  app=bank-labelled, event_type=login,
+              actor=user0 ... user149
+    content   app=bank-content, event_type=login;
+              the actor only inside the JSON line
+  THE STREAMS (worked out, and counted by Loki):
+    labelled  1 app x 1 type x 150 actors = 150; Loki: 150
+    content   1 app x 1 type = 1; Loki: 1
+  ASKING FOR ONE USER, user7:
+    {app="bank-labelled", actor="user7"}
+      -> 1 line, from 1 of 150 streams
+    {app="bank-content"} | json | actor="user7"
+      -> 1 line, the 1 stream read and filtered
+  THE RULE OF THUMB:
+    a label: the few things you always select by
+    the line: everything else (users, addresses, amounts)
 FOUR. Alerting.
-  two rules are loaded for the tenant, evaluated every 2 seconds: {PasswordGuessing=inactive/ok, PasswordGuessingTypo=inactive/ok}
-  alerts firing now, with ana's two failed logins from 198.51.100.66 in the logs: []
-  four failed logins from 203.0.113.9 are shipped; a moment later: [PasswordGuessing 203.0.113.9]
-  the alert's text: 203.0.113.9 failed to log in 3 times or more in 5 minutes
-  the rule with a typo in the field name, outcom: inactive/ok  <- IT RUNS WITHOUT A COMPLAINT AND NEVER FIRES
-  a rule is code: test it with a known bad event, on a schedule, and expect it to fire
+  THE RULE PasswordGuessing (checked every 2 seconds):
+    sum by (source_ip) (count_over_time(
+      {app="bank"} | json | outcome="failure" [5m])) >= 3
+  BEFORE (ana's 2 failures are in the logs):
+    PasswordGuessing      inactive/ok
+    PasswordGuessingTypo  inactive/ok
+    198.51.100.66         2 >= 3? no
+    firing                none
+  THE INPUT (4 failed logins as ben, from 203.0.113.9):
+    shipped like every other event
+  AFTER (a moment later):
+    198.51.100.66  2 >= 3? no
+    203.0.113.9    4 >= 3? yes
+    firing         PasswordGuessing 203.0.113.9
+    its text
+      203.0.113.9 failed to log in 3 times or more in 5 minutes
+  THE RULE PasswordGuessingTypo (outcom, not outcome):
+    counts  none: no line has a field outcom
+    state   inactive/ok  <- NO ERROR, AND IT NEVER FIRES
+    so test a rule with a known bad event, and expect it to fire
 FIVE. The bill.
-  another tenant, shop, asking for the bank's lines: 0 of 12; its labels: []
-  an event stamped ten days ago: 400 entry for stream '...' has timestamp too old: ..., oldest acceptable timestamp is: ...
-  asking Loki to delete the bank's lines through its API: 404, the route is not even there until retention and deletion are configured; changing a line after it was sent is not offered either
-  Grafana, with a data source that sends the tenant bank: connection OK, the same question gives 6 failures against Loki's 6; through the shop's data source: 0
-  whoever can use a data source sees that tenant's logs, so access to Grafana is access to the logs; Loki's tenants separate the data and do not log anyone in
-  Loki stores what it is sent and does not prove that it was not changed before it was sent; the hash chain of the plain project is still written by the sender
-  retention, the size of the index and what the logs may contain (see secrets-in-errors-and-logs) remain the team's to decide
+  ANOTHER TENANT, shop, ASKS FOR {app="bank"}:
+    lines   0 (the tenant bank sees 12)
+    labels  none
+  AN EVENT STAMPED TEN DAYS AGO:
+    limit   reject_old_samples_max_age 168h = 168 / 24 = 7 days
+    event   10 days old > 7 days
+    answer  400 timestamp too old  <- REFUSED
+  ASKING LOKI TO DELETE THE BANK'S LINES:
+    answer  404: no such route until deletion is configured
+    and no route at all changes a line once it is stored
+  GRAFANA, ONE DATA SOURCE PER TENANT HEADER:
+    bank   connection OK, failures 6 (Loki itself: 6)
+    shop   connection OK, bank lines 0
+  STILL THE TEAM'S JOB:
+    who may use a data source: that is who reads the logs
+    proof a line was not changed before it was sent
+    retention, index size, and no secrets in the lines

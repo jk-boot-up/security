@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> A Linux hardening checker in Java: permissions, SUID files, accounts, SSH, kernel settings and open ports, with automatic fixes for what is safe.
+> A Linux hardening checker in Java for an online store's server image: unexpected set-user-id files, loose permissions on secrets, a second root account and empty passwords, SSH root login and password authentication, kernel settings, and services listening on every interface; it applies the permission fixes a machine can make safely, leaves the decisions to a person, and runs again in every build.

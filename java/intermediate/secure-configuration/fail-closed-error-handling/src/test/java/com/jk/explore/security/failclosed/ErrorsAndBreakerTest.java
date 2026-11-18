@@ -2,6 +2,7 @@ package com.jk.explore.security.failclosed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class ErrorsAndBreakerTest {
     void anOpenBreakerRefusesWithoutCallingTheService() {
         SimClock clock = new SimClock();
         FraudService fraud = new FraudService(clock, FraudService.Mode.BROKEN);
-        ResilientAuthorizer authorizer = new ResilientAuthorizer(fraud, clock, new CircuitBreaker(clock, 3, 30_000), 3);
+        ResilientAuthorizer authorizer = new ResilientAuthorizer(fraud, new CircuitBreaker(clock, 3, 30_000), 3);
         for (int i = 0; i < 6; i++) {
             assertFalse(authorizer.authorize(COFFEE).approved());
         }
@@ -68,8 +69,16 @@ class ErrorsAndBreakerTest {
     void aFastFailureIsRetriedOnce() {
         SimClock clock = new SimClock();
         FraudService fraud = new FraudService(clock, FraudService.Mode.BROKEN);
-        ResilientAuthorizer authorizer = new ResilientAuthorizer(fraud, clock, new CircuitBreaker(clock, 5, 30_000), 100);
+        ResilientAuthorizer authorizer = new ResilientAuthorizer(fraud, new CircuitBreaker(clock, 5, 30_000), 100);
         assertFalse(authorizer.authorize(COFFEE).approved());
         assertEquals(2, fraud.calls());
+    }
+
+    @Test
+    void aSlowCallIsGivenUpWhenItsBudgetRunsOut() {
+        SimClock clock = new SimClock();
+        FraudService fraud = new FraudService(clock, FraudService.Mode.SLOW);
+        assertThrows(TimeoutException.class, () -> fraud.risky(COFFEE, 300));
+        assertEquals(300, clock.now());
     }
 }

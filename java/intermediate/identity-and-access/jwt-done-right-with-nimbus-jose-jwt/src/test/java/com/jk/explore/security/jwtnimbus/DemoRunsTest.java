@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Keys and signatures are fresh on every run and never printed. */
+/** The demo must print exactly the golden output. The keys come from fixed seeds; the random ES256 signature is printed as a placeholder. */
 class DemoRunsTest {
 
     @Test

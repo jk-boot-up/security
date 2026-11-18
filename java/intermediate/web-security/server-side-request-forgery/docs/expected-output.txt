@@ -1,31 +1,108 @@
-== 1. Importing an image from a web address ==
-honest address                  -> imported: PNG-cat
-
-== 2. The server fetches whatever it is told ==
-metadata address                -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-localhost                       -> imported: DB_PASSWORD=demo-not-real
-office admin page               -> imported: internal admin panel: 3 customers
-
-== 3. A blocklist of names is easy to walk around ==
-metadata address                -> refused: blocked host name 169.254.169.254
-decimal spelling                -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-short loopback                  -> imported: DB_PASSWORD=demo-not-real
-mapped IPv6 spelling            -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-name that points inside         -> imported: internal admin panel: 3 customers
-redirect from outside           -> imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
-
-== 4. Check the address the connection really uses ==
-honest address                  -> imported: PNG-cat
-metadata address                -> refused: 169.254.169.254 resolves to a private address 169.254.169.254
-localhost                       -> refused: localhost resolves to a private address 127.0.0.1
-decimal spelling                -> refused: 2852039166 resolves to a private address 169.254.169.254
-short loopback                  -> refused: 127.1 resolves to a private address 127.0.0.1
-mapped IPv6 spelling            -> refused: ::ffff:a9fe:a9fe resolves to a private address 169.254.169.254
-name that points inside         -> refused: intranet.attacker.example resolves to a private address 10.0.0.5
-redirect from outside           -> refused: 169.254.169.254 resolves to a private address 169.254.169.254
-user info trick                 -> refused: user info in the address
-DNS rebinding (own image only)  -> imported: PNG-attacker-cat
-two answers, one private        -> refused: dual.attacker.example resolves to a private address 10.0.0.5
-
-== 5. Why checking and then connecting is not enough ==
-check-then-connect: checked as public=true, then fetched -> internal admin panel: 3 customers
+ONE. An honest image import works.
+  THE NETWORK THE SERVER CAN REACH (address, name, what):
+    93.184.216.34    images.example    a public image host
+    203.0.113.9      attacker.example  the attacker's host
+    169.254.169.254  (no name)         cloud metadata service
+    127.0.0.1        localhost         the server itself
+    10.0.0.5         (no name)         office admin page
+  THE REQUEST (the address the seller pastes):
+    http://images.example/cat.png
+  HOW THE SERVER FETCHES IT:
+    look up images.example: 93.184.216.34
+    GET /cat.png from 93.184.216.34
+  THE RESPONSE:
+    imported: PNG-cat
+TWO. The server fetches whatever it is told.
+  THE REQUESTS (addresses the seller pastes):
+    a  http://169.254.169.254/latest/meta-data/iam/credentials
+    b  http://localhost/actuator/env
+    c  http://10.0.0.5/admin
+  THE RESPONSES (what the server imported and showed):
+    a  AccessKeyId=DEMO-NOT-A-REAL-KEY  <- THE CLOUD KEY
+    b  DB_PASSWORD=demo-not-real  <- A DATABASE PASSWORD
+    c  internal admin panel: 3 customers  <- AN ADMIN PAGE
+THREE. A blocklist of names is easy to walk around.
+  THE BLOCKLIST (compared with the host, as text):
+    localhost, 127.0.0.1, 169.254.169.254, 0.0.0.0, 10.*, 192.168.*
+  THE REQUESTS:
+    a  http://169.254.169.254/latest/meta-data/iam/credentials
+    b  http://2852039166/latest/meta-data/iam/credentials
+    c  http://127.1/actuator/env
+    d  http://[::ffff:a9fe:a9fe]/latest/meta-data/iam/credentials
+    e  http://intranet.attacker.example/admin
+    f  http://attacker.example/go
+  THE RESPONSES:
+    a  refused: blocked host name 169.254.169.254
+    b  imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+    c  imported: DB_PASSWORD=demo-not-real
+    d  imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+    e  imported: internal admin panel: 3 customers
+    f  imported: AccessKeyId=DEMO-NOT-A-REAL-KEY
+  HOW b, 2852039166, BECOMES AN ADDRESS:
+    2852039166 / 16777216 = 169, remainder 16689662
+    16689662 / 65536 = 254, remainder 43518
+    43518 / 256 = 169, remainder 254
+    -> 169.254.169.254 (Java reads it the same)
+  HOW c, 127.1, BECOMES AN ADDRESS:
+    2 parts given, 2 missing
+    the last number, 1, fills the last 3 parts
+    -> 127.0.0.1 (Java reads it the same)
+  HOW d, ::ffff:a9fe:a9fe, BECOMES AN ADDRESS:
+    ::ffff: means an IPv4 address follows
+    a9fe: hex a9 = 169, hex fe = 254
+    a9fe: hex a9 = 169, hex fe = 254
+    -> 169.254.169.254 (Java reads it the same)
+  HOW e AND f GET INSIDE:
+    look up intranet.attacker.example: 10.0.0.5
+    GET /go at attacker.example: 302, go to 169.254.169.254
+FOUR. Check the address the connection really uses.
+  THE REQUEST (f, the redirect, again):
+    http://attacker.example/go
+  THE CHECKS, AS THE IMPORTER LOGS THEM:
+    scheme http, port 80, no user info: allowed
+    look up attacker.example once: [203.0.113.9]
+    203.0.113.9 is public: connect to it
+    302 redirect to 169.254.169.254: check it again
+    scheme http, port 80, no user info: allowed
+    look up 169.254.169.254 once: [169.254.169.254]
+    refused: 169.254.169.254 is link-local
+  THE RESPONSE:
+    refused: 169.254.169.254 is link-local
+  THE REQUESTS:
+    a  http://images.example/cat.png
+    b  http://169.254.169.254/latest/meta-data/iam/credentials
+    c  http://localhost/actuator/env
+    d  http://2852039166/latest/meta-data/iam/credentials
+    e  http://127.1/actuator/env
+    f  http://[::ffff:a9fe:a9fe]/latest/meta-data/iam/credentials
+    g  http://intranet.attacker.example/admin
+    h  http://images.example@10.0.0.5/admin
+    i  http://dual.attacker.example/admin
+  THE RESPONSES:
+    a  imported: PNG-cat
+    b  refused: 169.254.169.254 is link-local
+    c  refused: localhost is 127.0.0.1, loopback
+    d  refused: 2852039166 is 169.254.169.254, link-local
+    e  refused: 127.1 is 127.0.0.1, loopback
+    f  refused: ::ffff:a9fe:a9fe is 169.254.169.254, link-local
+    g  refused: intranet.attacker.example is 10.0.0.5, private
+    h  refused: user info in the address
+    i  refused: dual.attacker.example is 10.0.0.5, private
+  ONE NAME, TWO ANSWERS (request i):
+    look up dual.attacker.example once: [93.184.216.34, 10.0.0.5]
+    refused: dual.attacker.example is 10.0.0.5, private
+FIVE. A second lookup can give a different answer.
+  THE REQUEST:
+    http://rebind.attacker.example/admin
+  CHECK, THEN CONNECT (the name is looked up twice):
+    lookup 1, for the check: 203.0.113.9, public
+    lookup 2, to connect:    10.0.0.5
+  THE RESPONSE:
+    internal admin panel: 3 customers  <- NOT CHECKED
+  THE SAFE IMPORTER (looks the name up once):
+    scheme http, port 80, no user info: allowed
+    look up rebind.attacker.example once: [203.0.113.9]
+    203.0.113.9 is public: connect to it
+    refused: the server answered 404
+  THE RESPONSE:
+    refused: the server answered 404  <- NOTHING INSIDE

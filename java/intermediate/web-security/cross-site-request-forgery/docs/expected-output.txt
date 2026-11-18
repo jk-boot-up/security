@@ -1,37 +1,107 @@
 ONE. A request Ana did not intend.
-  Ana logs in at the bank, and her browser keeps the session cookie: balance 1000
-  in another tab she opens a page on evil.example, whose hidden form posts to the bank: send 500 to mallory
-  the bank answers: 200 sent 500 to mallory  <- A TRANSFER ANA NEVER ASKED FOR
-  balances now: ana 500, mallory 500
-  the browser added Ana's cookie because the request went to the bank; the cookie proves who, not what she meant
+  ANA LOGS IN (POST https://bank.example/login):
+    200 welcome ana
+    Set-Cookie: sid=<id>; Path=/; Secure; HttpOnly; SameSite=None
+    balance: ana 1000, mallory 0
+  THE REQUEST (a hidden form on https://evil.example):
+    POST https://bank.example/transfer
+    amount=500&to=mallory
+    Cookie: sid=<Ana's id>
+    Origin: https://evil.example
+    Sec-Fetch-Site: cross-site
+  THE RESPONSE:
+    200 sent 500 to mallory  <- ANA NEVER ASKED FOR
+    balance: ana 500, mallory 500
+  the browser added the cookie because the request went
+  to the bank: it proves who asks, not what Ana meant
 TWO. A token in every form.
-  the bank's own transfer form carries a token tied to Ana's session: true
-  Ana sends 20 with the bank's form: 200 sent 20 to mallory
-  the page on evil.example posts the same form without a token: 403 no form token
-  with a real token from Mallory's own session: 403 the form token does not belong to this session
-  evil.example cannot read Ana's token: the form lives on the bank's pages, and a browser does not let another site read them
-  the token is compared in constant time, so the time an answer takes does not reveal how much of a guess was right
-  balances now: ana 980, mallory 20
+  THE BANK'S FORM (GET /transfer-form, as Ana):
+    <input type="hidden" name="csrf" value="<Ana's token>">
+  HOW THE TOKEN IS MADE:
+    32 random bytes from SecureRandom = 256 bits
+    Base64 URL text, 6 bits a character: 256 / 6 = 42.7 -> 43
+    Ana's token: 43 characters, kept in her session
+  THE REQUESTS (POST /transfer, each with Ana's cookie):
+    1 the bank's form  csrf=<Ana's token>      amount=20
+    2 evil.example     no csrf field           amount=500
+    3 evil.example     csrf=<Mallory's token>  amount=500
+  THE CHECK (the sent token against Ana's session token):
+    1 equal (MessageDigest.isEqual, in constant time)
+    2 missing
+    3 not equal: it was made for Mallory
+  THE RESPONSES:
+    1 200 sent 20 to mallory
+    2 403 no form token
+    3 403 the form token does not belong to this session
+    balance: ana 980, mallory 20
+  evil.example cannot read Ana's form: a browser does not let
+  one site read another site's pages
 THREE. SameSite cookies.
-  SameSite=Lax: the forged post from evil.example arrives without the cookie: 401 not logged in
-  SameSite=Lax: a link on evil.example to the bank still opens Ana's account: 200 balance 1000
-  SameSite=Lax: the bank's own form still works: 200 sent 20 to mallory
-  SameSite=Strict: the same link from evil.example arrives without the cookie: 401 not logged in, so Ana looks logged out
-  SameSite=Strict: typing the bank's address works: 200 balance 1000
-  no SameSite at all: a modern browser treats the cookie as Lax: 401 not logged in
+  HOW THE BROWSER FINDS THE SITE (the last two labels):
+    https://evil.example  -> evil.example
+    https://bank.example  -> bank.example
+    the sites differ, so the request is cross-site
+  THE RULE FOR A CROSS-SITE REQUEST:
+    None: the cookie goes, if it is also Secure
+    Lax: the cookie goes only on a top-level GET link
+    Strict: the cookie never goes
+  THE REQUESTS (Ana's cookie has SameSite=Lax):
+    1 a forged POST from evil.example  cookie: not sent
+    2 a link (GET) on evil.example     cookie: sent
+    3 the bank's own form (POST)       cookie: sent
+  THE RESPONSES:
+    1 401 not logged in
+    2 200 balance 1000
+    3 200 sent 20 to mallory
+  THE REQUESTS (SameSite=Strict):
+    4 a link (GET) on evil.example     cookie: not sent
+    5 Ana types the bank's address     cookie: sent
+  THE RESPONSES:
+    4 401 not logged in, so Ana looks logged out
+    5 200 balance 1000
+  THE REQUEST (no SameSite: a modern browser reads it as Lax):
+    6 a forged POST from evil.example  cookie: not sent
+  THE RESPONSE:
+    6 401 not logged in
 FOUR. Where the request came from, and GET.
-  the browser says Sec-Fetch-Site: cross-site, and the bank refuses: 403 Sec-Fetch-Site is cross-site: a state-changing request must come from the bank's own pages
-  the bank's own form says same-origin: 200 sent 20 to mallory
-  an older browser sends no Sec-Fetch-Site, so the bank reads Origin: 403 Origin is https://evil.example, not the bank
-  with neither header, only the token is left: these checks add depth, they do not replace it
-  a bank that moves money on GET, with a Lax cookie: a link on evil.example: 200 sent 100 to mallory  <- GET MUST NEVER CHANGE STATE
-  Lax lets cookies ride on top-level links, which is safe only because a link should never act
-  the same link to a bank that needs POST: 405 a transfer needs POST
+  HOW THE BROWSER PICKS Sec-Fetch-Site (a page -> bank.example):
+    https://bank.example          same origin  -> same-origin
+    https://reviews.bank.example  same site    -> same-site
+    https://evil.example          other site   -> cross-site
+  THE REQUESTS (POST /transfer; the bank reads these headers):
+    1 forged, modern browser  Sec-Fetch-Site: cross-site
+    2 the bank's own form     Sec-Fetch-Site: same-origin
+    3 forged, older browser   Origin: https://evil.example
+  THE RESPONSES:
+    1 403 Sec-Fetch-Site is cross-site, not same-origin
+    2 200 sent 20 to mallory
+    3 403 Origin is https://evil.example, not the bank
+  with neither header, only the token is left
+  THE REQUEST (a link on evil.example; the cookie is Lax):
+    GET https://bank.example/transfer?to=mallory&amount=100
+    Cookie: sid=<Ana's id>
+    Sec-Fetch-Site: cross-site
+  THE RESPONSES:
+    a bank that moves money on GET:
+      200 sent 100 to mallory  <- A LINK MOVED MONEY
+    a bank that needs POST for a transfer:
+      405 a transfer needs POST
 FIVE. The bill.
-  SameSite as the only defence, in an older browser that ignores it: 200 sent 500 to mallory
-  SameSite=Strict, and a page on reviews.bank.example, where customers post content: 200 sent 500 to mallory  <- SAME SITE, SO THE COOKIE IS SENT
-  the same page, with tokens switched on: 403 no form token
-  a bank page that forgot to include the token refuses Ana herself: 403 no form token, so the token must reach every form and client
-  the bank's API takes a token in an Authorization header; evil.example's script cannot add a header it does not know: 401 no API token
-  Ana's own app, which holds the token: 200 sent 20 to mallory
-  so APIs with bearer tokens are not exposed the same way, as long as the token is not kept in a cookie
+  THE REQUESTS (POST /transfer):
+    1 older browser, SameSite=Lax only, from evil.example
+    2 SameSite=Strict only, from reviews.bank.example
+    3 the same as 2, with tokens switched on
+    4 Ana, from a bank page that forgot the token
+  THE RESPONSES:
+    1 200 sent 500 to mallory  <- SameSite IS IGNORED
+    2 200 sent 500 to mallory  <- SAME SITE: COOKIE SENT
+    3 403 no form token
+    4 403 no form token  <- ANA HERSELF IS REFUSED
+  THE API REQUESTS (POST /api/transfer):
+    5 a script on evil.example, no Authorization header
+    6 Ana's app: Authorization: Bearer <API token>
+  THE RESPONSES:
+    5 401 no API token
+    6 200 sent 20 to mallory
+  a browser never adds that header by itself, so a bearer
+  token is safe from CSRF unless it is kept in a cookie

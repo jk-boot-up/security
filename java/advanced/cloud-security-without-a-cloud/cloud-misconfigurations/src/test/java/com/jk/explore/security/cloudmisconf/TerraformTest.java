@@ -34,14 +34,26 @@ class TerraformTest {
     }
 
     @Test
-    void catchesReportsOnlyTheIdsThatFailed() {
-        assertEquals(List.of("CKV_AWS_20"), IacScanners.catches(Set.of("CKV_AWS_20", "CKV_AWS_1"), List.of("CKV_AWS_20", "CKV_AWS_99")));
-        assertTrue(IacScanners.catches(Set.of(), List.of("CKV_AWS_20")).isEmpty());
+    void theFilesDeclareNineAndThirteenResources() {
+        assertEquals(9, Terraform.resources(Terraform.FIRST));
+        assertEquals(13, Terraform.resources(Terraform.FIXED));
+    }
+
+    @Test
+    void aReportNamesTheFirstCheckThatFiredOrADash() {
+        IacScanners.Report r = new IacScanners.Report(List.of("CKV_AWS_1 aws_s3_bucket.a", "CKV_AWS_24 aws_security_group.web"));
+        assertEquals("CKV_AWS_24", r.first(List.of("CKV_AWS_24", "CKV_AWS_25")));
+        assertEquals("-", r.first(List.of()));
+        assertTrue(r.caughtOn(List.of("CKV_AWS_24"), "aws_security_group.web"));
+        assertFalse(r.caughtOn(List.of("CKV_AWS_24"), "aws_security_group.database"));
+        assertEquals(1, r.otherThan(List.of(List.of("CKV_AWS_24"))));
+        assertEquals(Set.of("CKV_AWS_1", "CKV_AWS_24"), r.ids());
     }
 
     @Test
     void everyRuleHasAMappingForBothTools() {
         assertEquals(IacScanners.CHECKOV.keySet(), IacScanners.TRIVY.keySet());
-        assertEquals(9, IacScanners.CHECKOV.size());
+        assertEquals(Set.copyOf(IacScanners.RULES), IacScanners.CHECKOV.keySet());
+        assertEquals(9, IacScanners.RULES.size());
     }
 }

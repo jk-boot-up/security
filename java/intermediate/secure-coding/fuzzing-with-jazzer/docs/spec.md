@@ -38,10 +38,10 @@ Example tests cover the inputs someone thought of; parsers fail on the rest.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 29, all passing |
-| Demo output | 31 lines, identical on every run |
+| Tests | 34, all passing |
+| Demo output | 102 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:48, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:46, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -19,7 +19,7 @@ Cloud permissions come from several documents that interact, and mistakes in the
 | Role | Class |
 | --- | --- |
 | The policy language | `Policy`, `Conditions`, `Wild` |
-| The evaluation | `Evaluator`, `Decision`, `Request`, `Principal` |
+| The evaluation | `Evaluator`, `Decision`, `Request`, `Principal`, `Steps` |
 | Roles | `Role` |
 | The escalation search | `Escalation` |
 | Entry point | `IamModelDemo` |
@@ -38,10 +38,10 @@ Cloud permissions come from several documents that interact, and mistakes in the
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 19, all passing |
-| Demo output | 50 lines, identical on every run |
+| Tests | 22, all passing |
+| Demo output | 157 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:15, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:23, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

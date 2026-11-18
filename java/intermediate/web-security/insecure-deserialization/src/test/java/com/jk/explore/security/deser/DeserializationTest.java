@@ -87,4 +87,24 @@ class DeserializationTest {
         assertThrows(CartRefused.class, () -> c.read(c.write(new Cart().add("bad sku", 1, 1))));
         assertThrows(CartRefused.class, () -> c.read(c.write(new Cart().add("KTL-001", 0, 1))));
     }
+
+    @Test
+    void theRecordingFilterShowsTheClassesAndTheFiltersAnswers() {
+        Cart honest = new Cart().add("KTL-001", 2, 2500);
+        java.util.List<String> named = new java.util.ArrayList<>();
+        SerializedCartCookie.withFilter(DeserializationDemo.recording(null, named, false)).read(Attacker.cookieFor(honest));
+        assertEquals(java.util.List.of("Cart", "ArrayList", "Object[]", "Cart$Line"), named);
+        java.util.List<String> answers = new java.util.ArrayList<>();
+        assertThrows(CartRefused.class, () -> SerializedCartCookie.withFilter(DeserializationDemo.recording(SerializedCartCookie.allowList(), answers, true))
+                .read(Attacker.cookieFor(new TempCleaner("no-such-file"))));
+        assertEquals(java.util.List.of("TempCleaner -> REJECTED"), answers);
+    }
+
+    @Test
+    void theSignatureShownIsTheOneTheServerChecks() {
+        SignedTextCartCookie c = new SignedTextCartCookie(DeserializationDemo.DEMO_KEY, DeserializationDemo.PRICES);
+        String cookie = c.write(new Cart().add("KTL-001", 2, 2500));
+        int dot = cookie.indexOf('.');
+        assertEquals(cookie.substring(dot + 1), c.signatureOf(cookie.substring(0, dot)));
+    }
 }

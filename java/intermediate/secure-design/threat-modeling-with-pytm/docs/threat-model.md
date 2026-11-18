@@ -50,8 +50,9 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `WriterTest` checks the design and the Python it generates with no tool.
-- `PytmTest` runs the real pytm and Graphviz for the library, the counts at each stage, the draft, the refund flow, the diagram and the report.
-- `DemoRunsTest` compares the whole demo with the golden output.
+- `ConditionTest` checks the teaching class against pytm's recorded findings for 91 threats, 7 elements and 5 stages.
+- `DemoRunsTest` compares the whole demo, printed from the recording, with the golden output.
+- `PytmTest` and `RecordingsTest` run the real pytm and Graphviz: the library, the stages, the diagram, and every recorded answer.
 
 ## Where this model goes next
 

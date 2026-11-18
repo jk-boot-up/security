@@ -29,16 +29,23 @@ class ImdsTest {
     @Test
     void version2AnswersWhenTheCallerCanPutAndSetAHeader() throws Exception {
         try (Imds imds = new Imds(true)) {
-            Imds.Fetched token = Imds.webhookTester("PUT", imds.base() + "/latest/api/token", "X-aws-ec2-metadata-token-ttl-seconds", "60");
+            Imds.Fetched token = Imds.webhookTester("PUT", imds.base() + Imds.TOKEN_PATH, Imds.TTL_HEADER, "60");
             Imds.Fetched f = Imds.webhookTester("GET", imds.base() + Imds.ROLE_PATH, "X-aws-ec2-metadata-token", token.body());
             assertTrue(f.leaked());
         }
     }
 
     @Test
-    void aRequestThatPassedThroughAProxyIsRefused() throws Exception {
+    void aTokenRequestThatPassedThroughAProxyIsRefused() throws Exception {
+        try (Imds imds = new Imds(true)) {
+            assertEquals(403, Imds.throughProxy("PUT", imds.base() + Imds.TOKEN_PATH, Imds.TTL_HEADER, "60").status());
+        }
+    }
+
+    @Test
+    void version1StillAnswersThroughAProxy() throws Exception {
         try (Imds imds = new Imds(false)) {
-            assertEquals(403, Imds.webhookTester("GET", imds.base() + Imds.ROLE_PATH, "X-Forwarded-For", "203.0.113.9").status());
+            assertTrue(Imds.throughProxy("GET", imds.base() + Imds.ROLE_PATH, null, null).leaked());
         }
     }
 

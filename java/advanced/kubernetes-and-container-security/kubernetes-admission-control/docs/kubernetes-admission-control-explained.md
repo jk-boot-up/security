@@ -8,23 +8,36 @@ Admission control is the last gate before a workload exists, and a gate that is 
 
 ### 1. Policies that refuse
 
-A privileged pod, a pod with no limits, an image from another registry, an image nobody signed and a privileged Deployment are refused. A pod that breaks three rules is refused by all of them. A signed image is admitted, by digest, by tag or tagged latest. The same privileged pod in a namespace without the label is admitted: admission covers only what is labelled.
+The policies, all Deny, in namespaces labelled bank/admission=enforced: disallow-privileged (no privileged containers), require-limits (cpu and memory limits on every container), no-latest-tag (a version tag or a digest, not latest), trusted-registry (images only from the bank's registry) and signed-images-only (a valid signature with the bank's key).
+The input is ten requests, each sent with kubectl apply --dry-run=server, so the API server and its admission webhooks decide without creating anything. Refused: privileged (disallow-privileged), no limits (require-limits), nginx:1.27 from another registry (trusted-registry), bank/rogue that nobody signed (signed-images-only), a privileged Deployment (disallow-privileged, through the rule Kyverno generates for the pods it would make), and nginx:latest privileged with no limits (four policies). Admitted: the good pod, the signed image named by the tag :1, the privileged pod in scratch (no label, so no policy applies), and the signed image tagged latest.
+Why "signed, tagged latest" is admitted: signed-images-only verifies the signature and replaces the tag with the digest that was signed before the validating policies run, so no-latest-tag sees name@sha256:... and has nothing to refuse.
+How one request is decided: for nginx:latest privileged, no limits, four policies fail and signed-images-only has no objection, because it checks only images from the bank's registry. A request is admitted only when no policy fails, so it is refused.
+How no-latest-tag reads an image name: a digest (@) is always allowed; otherwise there must be a tag, a ':' after the last '/', and it must not be :latest. registry:5000/bank/payments has a ':' only in the port, so it has no tag and is refused.
 
-### 2. Audit first, then deny
+### 2. What was there before, and audit mode
 
-The legacy agent is privileged and keeps running when the policies arrive, because admission sees requests, not what already runs. A rule in audit mode admits a pod with a writable root filesystem and the policy report says fail for it and for the legacy agent. When the rule is switched to deny the next such pod is refused.
+Before the policies, a privileged pod legacy-agent was started. After the policies, it is still Running: admission sees only new requests.
+A new policy, readonly-rootfs, starts in Audit. The input is ledger, a pod with a writable root filesystem; the result is admitted.
+The policy report lists what breaks a policy, refused or not: readonly-rootfs on ledger, fail, and disallow-privileged on legacy-agent, fail. The report is how a team finds what a new rule would break, and what already runs against the rules.
+After the switch to Deny, ledger2, the same kind of pod, is refused by readonly-rootfs.
 
-### 3. Mutation and signed images
+### 3. A policy that changes the request
 
-A mutating policy adds allowPrivilegeEscalation false to containers that did not choose and keeps the settings they did choose. The image policy resolves the tag :1 of the signed image to its digest and writes the digest into the pod, so what runs is what was signed. A privileged pod is still refused after the mutation.
+Before the mutation, what the team sent: image <registry>/bank/payments:1, and securityContext with readOnlyRootFilesystem: true.
+After the mutation, what the API server would store: the image <registry>/bank/payments:1@<digest>, where the digest is the one the bank signed (yes), added by signed-images-only; and the securityContext with allowPrivilegeEscalation: false added by default-no-privilege-escalation, and readOnlyRootFilesystem: true kept.
+Mutating webhooks run before validating ones. The mutating policy skips privileged containers, and the privileged pod is still refused by disallow-privileged.
 
 ### 4. Exceptions
 
-node-agent is admitted while the exception lasts. Another pod with the same spec is refused. The same exception written in the team's own namespace is ignored, and an exception that ended in 2020 is ignored too. One request of four is admitted.
+The exception: policy disallow-privileged, applies to a pod named node-agent, read from the kyverno namespace only (the admission controller is started with --exceptionNamespace=kyverno, which developers cannot write to).
+The requests and the answers: node-agent with an exception until 2099 is admitted. another-agent, the same spec, is refused: the exception names one pod. node-agent with the exception written in the team's own namespace, payments, is refused: Kyverno does not read it there. node-agent with an exception that expired in 2020 is refused.
 
-### 5. The bill
+### 5. When the admission controller is down
 
-A stopped Kyverno removes its webhooks, and with none left the API server admits everything. Admission is also blind to what already runs and to namespaces without the label. The cost is an engine in the path of every request that must stay available.
+Before, with Kyverno running, a privileged pod is refused by disallow-privileged.
+Kyverno stopped (its admission controller scaled to zero): Kyverno removes its webhooks, so 0 policy webhooks are left in the API server. The API server asks no one: a good pod is admitted, and so is a privileged pod.
+After it is back, a good pod is admitted and a privileged pod is refused again.
+A gate that is down is no gate: run more than one replica, watch it, and decide whether the cluster should fail closed.
 
 ## The verdict
 

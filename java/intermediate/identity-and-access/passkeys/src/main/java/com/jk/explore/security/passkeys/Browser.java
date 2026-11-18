@@ -37,7 +37,7 @@ final class Browser {
 
     Result create(String pageOrigin, String rpId, String challenge, boolean userVerified) {
         if (!rpIdAllowedFor(pageOrigin, rpId)) {
-            return new Result(Optional.empty(), Optional.empty(), "the browser will not use " + rpId + " for a page at " + pageOrigin);
+            return new Result(Optional.empty(), Optional.empty(), rpId + " is not this page's site");
         }
         byte[] clientData = new ClientData(ClientData.CREATE, challenge, pageOrigin).json();
         return new Result(Optional.of(authenticator.create(rpId, clientData, userVerified)), Optional.empty(), null);
@@ -45,7 +45,7 @@ final class Browser {
 
     Result get(String pageOrigin, String rpId, String challenge, List<byte[]> allowed, boolean userVerified) {
         if (!rpIdAllowedFor(pageOrigin, rpId)) {
-            return new Result(Optional.empty(), Optional.empty(), "the browser will not use " + rpId + " for a page at " + pageOrigin);
+            return new Result(Optional.empty(), Optional.empty(), rpId + " is not this page's site");
         }
         byte[] clientData = new ClientData(ClientData.GET, challenge, pageOrigin).json();
         Optional<Authenticator.Assertion> assertion = authenticator.get(rpId, allowed, clientData, userVerified);

@@ -43,21 +43,43 @@ final class Semgrep {
         return new Scan(found, r.exit());
     }
 
-    /** semgrep --test on a rule file with its test file: how many checks passed, and how many there are. */
-    int[] test(Path rules) throws IOException, InterruptedException {
+    /** One check of semgrep --test: a rule, the lines its test file expects it to flag, and the lines it flagged. */
+    record Check(String rule, boolean passed, List<Integer> expected, List<Integer> reported) {
+    }
+
+    /** The checks of a test run, sorted by rule, and how many rule files have no test file. */
+    record TestRun(List<Check> checks, List<String> missingTests) {
+
+        long passed() {
+            return checks.stream().filter(Check::passed).count();
+        }
+    }
+
+    /** semgrep --test on a folder of rule files and their test files. */
+    TestRun test(Path rules) throws IOException, InterruptedException {
         Sh.Result r = Sh.run(venv.bin("semgrep").toString(), "--test", "--json", "--metrics=off", "--disable-version-check", rules.toString());
-        JsonNode root = new JsonMapper().readTree(r.output().substring(r.output().indexOf('{')));
-        int passed = 0;
-        int total = 0;
+        return parseTest(r.output().substring(r.output().indexOf('{')));
+    }
+
+    /** Reads the JSON that semgrep --test prints. */
+    static TestRun parseTest(String json) {
+        JsonNode root = new JsonMapper().readTree(json);
+        List<Check> checks = new ArrayList<>();
         for (JsonNode file : root.path("results")) {
-            for (JsonNode check : file.path("checks")) {
-                total++;
-                if (check.path("passed").asBoolean()) {
-                    passed++;
+            for (var check : file.path("checks").properties()) {
+                List<Integer> expected = new ArrayList<>();
+                List<Integer> reported = new ArrayList<>();
+                for (JsonNode m : check.getValue().path("matches")) {
+                    m.path("expected_lines").forEach(n -> expected.add(n.asInt()));
+                    m.path("reported_lines").forEach(n -> reported.add(n.asInt()));
                 }
+                checks.add(new Check(check.getKey(), check.getValue().path("passed").asBoolean(), expected, reported));
             }
         }
-        return new int[] {passed, total, root.path("config_missing_tests").size()};
+        checks.sort(java.util.Comparator.comparing(Check::rule));
+        List<String> missing = new ArrayList<>();
+        root.path("config_missing_tests").forEach(n -> missing.add(Path.of(n.asString()).getFileName().toString()));
+        return new TestRun(checks, missing);
     }
 
     static Path copy(Path from) throws IOException {

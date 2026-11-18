@@ -24,22 +24,36 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <main><h1>Path Traversal and File Upload with Spring Boot, Explained</h1>
 <h2>The idea in one sentence</h2>
 <p>A file name, a path and a return address from a request are the customer's words, so the shop makes its own names, checks where a path really leads, decides content from the bytes and only ever redirects to its own paths.</p>
-<h2>The 6 acts</h2>
-<h3>1. Downloading an invoice</h3>
-<p>The first version resolves the name from the query parameter against the invoice folder and returns the file. The honest name, invoice-1001.txt, returns Ana's invoice.</p>
-<h3>2. A name with dot-dot leaves the folder</h3>
-<p>Spring hands the controller the name exactly as typed. A name with dot-dot segments walks up out of the invoice folder, and the shop returns the demo database password from the secrets folder and the application's settings.</p>
-<h3>3. A text check on the path is not a path check</h3>
-<p>The second version resolves and normalises the path and then checks that its text starts with the invoice folder's text. The secrets folder is refused, but invoices-private starts with the same letters, so the payroll file is read.</p>
-<h3>4. Names, paths and links, all checked</h3>
-<p>The fixed shop accepts only names shaped like an invoice name, resolves the path and compares it element by element, and then checks that the real path, after symbolic links, is still inside the real folder. Dot-dot, an encoded spelling, the sibling folder and a link all fail, and a missing file says so.
-Spring's own static handler for the folder refuses an encoded slash with 400 and a dot-dot segment with 404, but serves a link inside the folder that points at the secrets file: it does not follow the same rule.</p>
-<h3>5. Uploads</h3>
-<p>The naive upload keeps getOriginalFilename as sent: a script called page.html is served as text/html inline, and a name with dot-dot overwrites the configuration with admin=mallory. The fixed shop makes its own name, decides the type from the first bytes, and serves the file as a download of
-the sniffed type with nosniff, so a script, even one renamed cat.png, is refused and a name with dot-dot is ignored. A photo of 1500 bytes is refused by the code, and one of 5000 bytes by Spring's multipart limit before the controller runs.</p>
-<h3>6. Where to send the customer next</h3>
-<p>After an upload the shop redirects to the return address in the request. The naive controller sends the customer to an outside address, a protocol-relative address, a backslash trick or a script address. The fixed controller accepts only a path on this site and sends everything else to the account page.
-Where an absolute address must be allowed, the host is compared exactly, so shop.example.evil.example and shop.example@evil.example are both refused.</p>
+<h2>The 8 acts</h2>
+<h3>1. An honest name downloads one invoice</h3>
+<p>The demo makes the store's folders in a temporary folder, printed as .../, and starts the real Spring Boot shop three times over it, as the naive, the prefix and the fixed version.
+The form sends GET /invoices?name=invoice-1001.txt. Spring decodes the parameter and hands the controller invoice-1001.txt; the naive version joins it to the folder, .../invoices/invoice-1001.txt, and answers 200 Invoice 1001: Ana, 42.50.</p>
+<h3>2. A name with .. climbs out of the folder</h3>
+<p>The browser encodes the slashes, so the request is GET /invoices?name=..%2Fsecrets%2Fdb.txt. Spring decodes the parameter once and the controller gets ../secrets/db.txt, exactly as typed.
+Joined to the folder, the path is .../invoices/../secrets/db.txt; the disk reads .. as the folder above and opens .../secrets/db.txt, so the shop answers 200 DB_PASSWORD=demo-not-real. The same with ../config/app.properties: 200 admin=ana.</p>
+<h3>3. A text check is not a path check</h3>
+<p>The second version resolves and normalizes the path, then checks that its text starts with the text of the folder, ".../invoices".
+../secrets/db.txt becomes .../secrets/db.txt: no as text and no as a path, so the shop answers 400 outside the invoice folder.
+../invoices-private/payroll.txt becomes .../invoices-private/payroll.txt. As text it starts with .../invoices, so the shop answers 200 payroll: demo salaries. Compared as a path, element by element, invoices-private is not invoices, so Path.startsWith says no.</p>
+<h3>4. The fixed version checks in four layers</h3>
+<p>The fixed shop checks in four layers, in order, and the first that fails refuses: decode once (Spring decodes a request parameter once; SafeDownloads never decodes again), the shape (invoice-, four digits, .txt), the path (remove .., compare with Path.startsWith), and the real path (follow links, compare again).
+GET /invoices?name=invoice-1001.txt gets 200. name=..%2Fsecrets%2Fdb.txt and name=%2e%2e%2fsecrets%2fdb.txt both reach the controller as ../secrets/db.txt and get 400 not an invoice name. The double-encoded name=%252e%252e%252fsecrets%252fdb.txt reaches it as %2e%2e%2fsecrets%2fdb.txt; it is not decoded a second time, so it too gets 400 not an invoice name. invoice-9999.txt gets 400 no such file.
+A symbolic link .../invoices/invoice-5555.txt -&gt; .../secrets/db.txt has a good shape and a path inside the folder. The naive and prefix shops answer 200 with the password; the fixed shop follows the link to .../secrets/db.txt and answers 400 link leads outside the invoice folder.</p>
+<h3>5. Spring's static handler follows a link</h3>
+<p>The fixed shop also maps the invoices folder with Spring's own static resource handler, /static-invoices/**, as a project would with addResourceLocations.
+GET /static-invoices/..%2fsecrets/db.txt gets 400 and GET /static-invoices/%2e%2e/secrets/db.txt gets 404: Spring refuses dot-dot in its encoded spellings. But GET /static-invoices/invoice-5555.txt gets 200 DB_PASSWORD=demo-not-real, because the handler follows the symbolic link out of the folder.</p>
+<h3>6. The naive upload trusts the customer's name</h3>
+<p>An upload is a multipart POST /uploads, and each part names its file: Content-Disposition: form-data; name="file"; filename="../../config/app.properties". MultipartFile.getOriginalFilename() returns that name exactly as sent.
+The first bytes show what each file is: cat.png 89 50 4e 47 (.PNG), page.html 3c 68 74 6d (&lt;htm), the settings file 61 64 6d 69 (admi).
+The naive shop saves each in .../webroot/uploads/ under its own name: cat.png gets 200 /uploads/cat.png, page.html is served back as text/html, inline, a page on the shop's own site, and the third name climbs out: .../config/app.properties now reads admin=mallory.</p>
+<h3>7. The fixed upload decides for itself</h3>
+<p>The fixed shop never uses the customer's name. Its rules: Spring's spring.servlet.multipart.max-file-size=2KB and the code's own limit of 1 to 1000 bytes; the type from the first bytes, PNG (89 50 4e 47) or JPEG (ff d8 ff); a name photo-NNNN counted by the server; storage in .../uploads-private/, outside the web root.
+cat.png gets 200 /uploads/photo-0001.png. page.html and the same script renamed cat.png get 400 not a PNG or JPEG image. ../../config/app.properties with PNG bytes gets 200 /uploads/photo-0002.png: its name was ignored. A 1500-byte photo gets 400 size not allowed from the code; a 5000-byte one gets 413 from Spring before the controller runs.
+GET /uploads/photo-0001.png answers Content-Type: image/png, Content-Disposition: attachment and X-Content-Type-Options: nosniff, and the settings still read admin=ana.</p>
+<h3>8. Return links stay on our own site</h3>
+<p>After signing in, the shop answers GET /continue?returnTo=... with a 302 redirect. The naive controller puts the link in the Location header as it is: https://evil.example/login, //evil.example and /\evil.example lead to another site, and javascript:steal() is a script.
+The fixed controller keeps /orders?page=2 and sends the rest to /account: https://evil.example/login and javascript:steal() do not start with /; //evil.example starts with //, another host; /\evil.example has a backslash, which browsers read as /.
+If an absolute link must be allowed, its host must be exactly shop.example: shop.example.evil.example is another host, and in https://shop.example@evil.example/x the host is evil.example and shop.example is only a user name.</p>
 <h2>The verdict</h2>
 <p>Use name patterns or server-made ids, compare real paths element by element, refuse links that leave the folder, decide the type from the bytes, serve uploads as downloads with nosniff, set multipart limits and keep a second limit in code, and redirect only to a path on the site.</p>
 <h2>How to recognise this in code you did not write</h2>

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeModel;
+import java.lang.classfile.Instruction;
 import java.lang.classfile.Opcode;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.constantpool.StringEntry;
@@ -50,11 +51,35 @@ public final class Pool {
     /** The first static method that takes a String, returns a boolean and compares with String.equals and a branch: the shape of a key check, whatever it is called. */
     public static MethodModel keyCheck(ClassModel cm) {
         for (MethodModel m : cm.methods()) {
-            if (m.methodTypeSymbol().descriptorString().equals("(Ljava/lang/String;)Z") && m.code().isPresent() && callsEquals(m.code().get()) && branches(m.code().get())) {
+            String type = m.methodTypeSymbol().descriptorString();
+            if (type.equals("(Ljava/lang/String;)Z") && m.code().isPresent()
+                    && callsEquals(m.code().get()) && branches(m.code().get())) {
                 return m;
             }
         }
         return null;
+    }
+
+    /** How big a method's code is: its instructions and their bytes. */
+    public record Size(int instructions, int bytes) {
+    }
+
+    public static Size size(MethodModel m) {
+        int instructions = 0;
+        int bytes = 0;
+        for (var e : m.code().orElseThrow()) {
+            if (e instanceof Instruction i) {
+                instructions++;
+                bytes += i.sizeInBytes();
+            }
+        }
+        return new Size(instructions, bytes);
+    }
+
+    /** The method of that name in a class file. */
+    public static MethodModel method(Path classFile, String name) throws IOException {
+        ClassModel cm = ClassFile.of().parse(Files.readAllBytes(classFile));
+        return cm.methods().stream().filter(m -> m.methodName().equalsString(name)).findFirst().orElseThrow();
     }
 
     static boolean callsEquals(CodeModel code) {

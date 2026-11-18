@@ -52,6 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `PinningTest` checks the pin format, validation before pinning, interception with and without pins, renewal with a new key, backup pins, report-only mode, the fleet numbers and the header-set pin store.
+- `PinStepsTest` and `ChainWalkTest` prove the by-hand pin and chain checks give the library's results.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

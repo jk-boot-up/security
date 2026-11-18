@@ -4,7 +4,7 @@ Prepared text for YouTube Studio. **Nothing is uploaded until the author has rev
 
 ## Title
 
-Cloud IAM Models: Policy Evaluation, Roles, Boundaries, the Confused Deputy and Escalation Paths (Java)
+Cloud IAM Models in Java: Policy Evaluation, Roles, the Confused Deputy and Escalation Paths
 
 ## Description
 
@@ -16,17 +16,43 @@ Chapters:
 
 ```
 00:00 Introduction
-01:52 The Scenario
-02:12 Act One — Identity policies: default deny, allow, explicit deny
-02:33 Act Two — Accounts: who has to agree
-02:54 Act Three — Roles and the layers that narrow them
-03:14 Act Four — The confused deputy
-03:34 Act Five — The bill
-04:01 What It Costs
-04:25 Who Does What
-04:49 Where You Have Seen It
-05:01 How To Use It
-05:24 Thanks for Watching
+00:56 The Scenario
+01:31 The Words
+02:15 What the Letters Stand For
+03:08 What the Letters Stand For (continued)
+03:43 What the Letters Stand For (continued)
+03:51 How one request is decided
+04:50 ana's policy, her six requests, and the answers
+05:50 Act One — Identity policies: default deny, allow, explicit deny
+06:05 Act One — Identity policies: default deny, allow, explicit deny
+06:24 Act One — Identity policies: default deny, allow, explicit deny
+06:47 Act One — Identity policies: default deny, allow, explicit deny
+07:06 One account or two: who has to say yes
+08:02 Act Two — Accounts: who has to agree
+08:21 Act Two — Accounts: who has to agree
+08:44 Eight actions through three layers
+09:37 Act Three — Roles and the layers that narrow them
+09:54 Act Three — Roles and the layers that narrow them
+10:08 Act Three — Roles and the layers that narrow them
+10:30 The deputy, before and after the external id
+11:34 Act Four — The confused deputy
+11:56 Act Four — The confused deputy
+12:21 Act Four — The confused deputy
+12:39 Three users, two paths to administrator
+13:29 Act Five — The bill
+13:42 Act Five — The bill
+14:00 Act Five — The bill
+14:22 What It Costs
+14:58 Where You Have Seen It
+15:28 How To Use It
+16:01 The Java Classes
+16:13 Evaluator — a deny anywhere wins
+16:25 Evaluator — one account, or two
+16:36 Wild — a pattern becomes a regular expression
+16:47 Role — the trust policy is the role's resource policy
+17:05 Steps — stop at the first answer that decides
+17:19 Escalation — pass an admin role to a function
+17:30 Thanks for Watching
 ```
 
 ## Tags
@@ -48,7 +74,7 @@ Uploaded Unlisted and made Public once the quality check passes (`tools/ytupload
 ## Checks before saving
 
 - [ ] description has no `http://`, `https://`, `<` or `>` — ok
-- [ ] title is at most 100 characters — FIX (103)
+- [ ] title is at most 100 characters — ok (92)
 - [ ] tags are at most 500 characters in total — ok (188)
 - [ ] description is at most 5,000 characters — ok (654)
 - [ ] chapters start at 00:00 and there are at least three

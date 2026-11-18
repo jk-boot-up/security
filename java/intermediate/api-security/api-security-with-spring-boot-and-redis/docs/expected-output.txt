@@ -1,35 +1,109 @@
-== 1. The first version: bind the body, return the record, let the caller choose ==
-PATCH displayName            -> 200 fields [balanceCents, cardNumber, creditLimitCents, displayName, email, id, pinHash, riskScore, role], role=customer, creditLimitCents=50000
-PATCH role, creditLimit      -> 200 fields [balanceCents, cardNumber, creditLimitCents, displayName, email, id, pinHash, riskScore, role], role=admin, creditLimitCents=100000000  <- NOT HERS TO CHANGE
-GET /accounts/acc-0001       -> 200 fields [balanceCents, cardNumber, creditLimitCents, displayName, email, id, pinHash, riskScore, role], role=admin, creditLimitCents=100000000
-GET /accounts?size=1000000   -> 200 300 accounts, every field  <- EVERY CUSTOMER
-1000 requests in a loop      -> 1000 answered, none slowed down
-
-== 2. A request model: the fields it names, with their limits ==
-PATCH displayName            -> 200 fields [id, displayName, email, balanceCents, cardLast4], card ****0001
-PATCH role, creditLimit      -> 400 unknown field
-role afterwards              -> customer, credit limit 50000
-PATCH email not an email     -> 400 invalid email
-PATCH name of 41 letters     -> 400 invalid displayName
-PATCH name left empty        -> 400 invalid displayName
-PATCH body is not JSON       -> 400 unreadable body
-
-== 3. A response model and a page that has a ceiling ==
-GET /accounts/acc-0001       -> 200 fields [id, displayName, email, balanceCents, cardLast4], card ****0001
-GET /accounts?size=1000000   -> 200 50 accounts, [id, displayName] only
-GET /accounts?size=0         -> 400 invalid parameter
-GET /accounts, no login      -> 401
-
-== 4. The budget runs out, and refills ==
-1000 requests in a loop      -> 50 answered, then 429 with Retry-After 1s
-after waiting that long      -> 200 fields [id, displayName, email, balanceCents, cardLast4], card ****0001
-another customer meanwhile   -> 200 5 accounts, [id, displayName] only
-the bucket in Redis          -> rate:ana and rate:ben: [rate:ana, rate:ben]
-
-== 5. The bill: one budget for every server, and a counter that must answer ==
-two servers, local budget    -> 100 of 1000 requests answered  <- A BUDGET PER SERVER, NOT PER CALLER
-two servers, redis budget    -> 50 of 1000 requests answered
-Redis stops answering        -> 503, the API refuses rather than run without a budget
-Redis answers again          -> 200
-a budget protects the service and every other caller, not the data: it does not replace the request model or the response model
-the rules: name the fields in and out, give lists a ceiling, validate the values, count requests per caller in one place that every server shares
+ONE. The first version binds the body and returns the record.
+  THE REQUEST (Ana's app, signed in as ana):
+    PATCH /accounts/me
+    {"displayName":"Ana K"}
+  THE RESPONSE (200, the stored record: 9 fields):
+    balanceCents      100001
+    cardNumber        4111 1111 1111 0001
+    creditLimitCents  50000
+    displayName       Ana K
+    email             customer1@bank.example
+    id                acc-0001
+    pinHash           sha256:1eef
+    riskScore         1
+    role              customer
+  THE REQUEST (two keys added by hand):
+    PATCH /accounts/me
+    {"role":"admin","creditLimitCents":100000000}
+  THE RESPONSE (200, every key bound onto the record):
+    role              admin  <- NOT HERS TO SET
+    creditLimitCents  100000000  <- NOT HERS TO SET
+  THE REQUEST:
+    GET /accounts?size=1000000
+  THE RESPONSE (200):
+    300 accounts x 9 fields = 2700 values  <- EVERY CUSTOMER
+  THE REQUESTS:
+    1000 x GET /accounts/acc-0001, in a loop
+  THE RESPONSES:
+    1000 answered with 200, none slowed down
+TWO. A request model names the fields, with their limits.
+  THE MODEL (UpdateProfileRequest):
+    displayName       1 to 40 characters
+    email             an e-mail address, at most 80 characters
+    any other field   refused: fail-on-unknown-properties=true
+  THE RECORD BEFORE:
+    role              customer
+    creditLimitCents  50000
+  THE REQUESTS AND RESPONSES (PATCH /accounts/me):
+    {"displayName":"Ana K"}
+      -> 200, an AccountView
+    {"role":"admin","creditLimitCents":100000000}
+      -> 400 unknown field
+    {"email":"not-an-email"}
+      -> 400 invalid email
+    {"displayName":"xxx...x"}  (41 letters)
+      -> 400 invalid displayName
+    {"displayName":""}
+      -> 400 invalid displayName
+    this is not json
+      -> 400 unreadable body
+  THE RECORD AFTER (nothing but the name changed):
+    role              customer
+    creditLimitCents  50000
+THREE. A response model, and a page with a ceiling.
+  THE REQUEST:
+    GET /accounts/acc-0001
+  THE RESPONSE (200, an AccountView: 5 fields):
+    id                acc-0001
+    displayName       Ana K
+    email             customer1@bank.example
+    balanceCents      100001
+    cardLast4         ****0001
+    no role, no limit, no risk score, no PIN hash
+  THE REQUEST:
+    GET /accounts?size=1000000
+  THE PAGE SIZE (bank.page.max=50):
+    min(1000000, 50) = 50
+  THE RESPONSE (200, a DirectoryEntry per account):
+    50 accounts x 2 fields [id, displayName]
+  THE REQUEST:
+    GET /accounts?size=0
+  THE RESPONSE:
+    400 invalid parameter  (size has @Min(1))
+  THE REQUEST:
+    GET /accounts, with no login
+  THE RESPONSE:
+    401, before any controller runs
+FOUR. The budget runs out, and refills.
+  THE BUDGET (one bucket per caller, kept in Redis):
+    holds 50 tokens, refills 1 a second; a request costs 1
+  THE REQUESTS:
+    1000 x GET /accounts/acc-0001 as ana, at one moment
+  THE RESPONSES:
+    50 answered with 200
+    950 refused with 429, Retry-After: 1
+  HOW Retry-After IS WORKED OUT:
+    tokens left 0, refill 0.001 a millisecond
+    wait = ceil((1 - 0) / 0.001) = 1000 ms
+    Retry-After = ceil(1000 / 1000) = 1 second
+  THE REQUEST, 1 SECOND LATER:
+    GET /accounts/acc-0001
+  THE RESPONSE:
+    200; tokens 0 + 1 refilled - 1 taken = 0
+  ANOTHER CUSTOMER MEANWHILE (ben, own bucket):
+    GET /accounts?size=5 -> 200, 5 accounts
+  THE KEYS IN REDIS:
+    [rate:ana, rate:ben]
+FIVE. The bill: one shared budget, and a counter that must answer.
+  TWO SERVERS, A BUDGET IN EACH ONE'S MEMORY:
+    1000 requests as ana, every other one to server B
+    -> 50 + 50 = 100 answered  <- TWICE THE BUDGET
+  TWO SERVERS, ONE BUDGET IN REDIS:
+    1000 requests as ana, every other one to server B
+    -> 25 + 25 = 50 answered
+  REDIS STOPS ANSWERING (the container is paused):
+    GET /accounts/acc-0001 -> 503, no budget, no answer
+  REDIS ANSWERS AGAIN:
+    GET /accounts/acc-0001 -> 200
+  a budget protects the service, not the data:
+  it does not replace the request or the response model

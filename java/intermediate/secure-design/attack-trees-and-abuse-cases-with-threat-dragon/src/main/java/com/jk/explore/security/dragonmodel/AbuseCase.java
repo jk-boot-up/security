@@ -15,10 +15,10 @@ public record AbuseCase(String id, String story, Predicate<BankConfig> refused) 
                 new AbuseCase("AC2", "As a thief with a leaked password I sign in as Ana", c -> c.has("otp") || c.has("passkey") || c.has("breached")),
                 new AbuseCase("AC3", "As a SIM swapper I read Ana's text-message code", c -> c.has("otp") || c.has("passkey")),
                 new AbuseCase("AC4", "As an attacker I store a script in a memo to steal Ana's session", c -> c.has("csp")),
-                new AbuseCase("AC5", "As Mallory I transfer from Ana's account by changing the account number", c -> c.has("ownership")),
-                new AbuseCase("AC6", "As an attacker I forge a transfer from another site using Ana's cookie", c -> c.has("csrf")),
+                new AbuseCase("AC5", "As Mallory I take Ana's money by changing the account number", c -> c.has("ownership")),
+                new AbuseCase("AC6", "As an attacker I forge a transfer from another site with Ana's cookie", c -> c.has("csrf")),
                 new AbuseCase("AC7", "As an insider I approve my own transfer", c -> c.has("dual")),
-                new AbuseCase("AC8", "As an attacker I exploit a library flaw that was fixed last month", c -> c.has("patched")));
+                new AbuseCase("AC8", "As an attacker I exploit a library flaw fixed last month", c -> c.has("patched")));
     }
 
     public boolean passes(BankConfig c) {

@@ -36,6 +36,7 @@ final class SoftwareAuthenticator {
     private boolean backupState;
     private String registeredRpId;
     private String userHandle;
+    private Assertion lastAssertion;
 
     SoftwareAuthenticator() {
         try {
@@ -126,15 +127,32 @@ final class SoftwareAuthenticator {
         }
         byte[] clientData = clientData("webauthn.get", challenge, origin);
         byte[] authData = authenticatorData(asRpId, userVerified, false);
-        return new Assertion(credentialId(), B64.encode(authData), B64.encode(clientData), B64.encode(signature(authData, clientData)), this.userHandle);
+        lastAssertion = new Assertion(credentialId(), B64.encode(authData), B64.encode(clientData), B64.encode(signature(authData, clientData)), this.userHandle);
+        return lastAssertion;
+    }
+
+    /** The last answer this authenticator signed, so the demo can show its bytes. */
+    Assertion lastAssertion() {
+        return lastAssertion;
+    }
+
+    /** The bytes a passkey signs: the authenticator data, then the SHA-256 of the client data (37 + 32 = 69 when signing in). */
+    static byte[] signedBytes(byte[] authData, byte[] clientData) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(clientData);
+            byte[] out = java.util.Arrays.copyOf(authData, authData.length + hash.length);
+            System.arraycopy(hash, 0, out, authData.length, hash.length);
+            return out;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     byte[] signature(byte[] authData, byte[] clientData) {
         try {
             Signature signature = Signature.getInstance("SHA256withECDSA");
             signature.initSign(pair.getPrivate());
-            signature.update(authData);
-            signature.update(MessageDigest.getInstance("SHA-256").digest(clientData));
+            signature.update(signedBytes(authData, clientData));
             return signature.sign();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
@@ -149,7 +167,9 @@ final class SoftwareAuthenticator {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             out.writeBytes(MessageDigest.getInstance("SHA-256").digest(rpId.getBytes(StandardCharsets.UTF_8)));
-            int flags = 0x01 | (userVerified ? 0x04 : 0) | (backupEligible ? 0x08 : 0) | (backupState ? 0x10 : 0) | (withCredential ? 0x40 : 0);
+            int flags = 0x01 | (userVerified ? 0x04 : 0)
+                    | (backupEligible ? 0x08 : 0) | (backupState ? 0x10 : 0)
+                    | (withCredential ? 0x40 : 0);
             out.write(flags);
             out.writeBytes(ByteBuffer.allocate(4).putInt((int) counter).array());
             if (withCredential) {
@@ -157,7 +177,9 @@ final class SoftwareAuthenticator {
                 out.writeBytes(ByteBuffer.allocate(2).putShort((short) credentialId.length).array());
                 out.writeBytes(credentialId);
                 ECPublicKey key = (ECPublicKey) pair.getPublic();
-                out.writeBytes(Cbor.map(1, 2, 3, -7, -1, 1, -2, fixed(key.getW().getAffineX().toByteArray()), -3, fixed(key.getW().getAffineY().toByteArray())));
+                byte[] x = fixed(key.getW().getAffineX().toByteArray());
+                byte[] y = fixed(key.getW().getAffineY().toByteArray());
+                out.writeBytes(Cbor.map(1, 2, 3, -7, -1, 1, -2, x, -3, y));
             }
             return out.toByteArray();
         } catch (GeneralSecurityException e) {

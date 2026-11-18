@@ -1,6 +1,7 @@
 package com.jk.explore.security.searchdetect;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -9,7 +10,14 @@ import java.util.Set;
 import java.util.TreeSet;
 import tools.jackson.databind.JsonNode;
 
+/**
+ * Runs the plain project's detections as OpenSearch queries and alerting monitors, in five numbered acts, each with its input and its result in separate, labelled
+ * sections. The day of logs is synthetic with a fixed seed and a fixed date, the image is pinned, the monitors run once with dryrun and nothing is time-ranged
+ * against the clock, so the output is the same on every run. Ports and container names are never printed.
+ */
 public class OpenSearchDetectDemo {
+
+    static final int TUNED_BRUTE_FORCE = 10;
 
     public static void main(String[] args) throws Exception {
         System.out.print(run());
@@ -31,12 +39,8 @@ public class OpenSearchDetectDemo {
         return out.toString();
     }
 
-    private static void line(StringBuilder out, String text) {
-        out.append(text).append('\n');
-    }
-
-    private static void header(StringBuilder out) {
-        line(out, String.format("%-28s %6s %5s %5s  %s", "rule", "alerts", "true", "false", "attacks noticed"));
+    private static void line(StringBuilder out, String format, Object... args) {
+        out.append(String.format(format, args)).append('\n');
     }
 
     private static Set<String> attacks(List<Hit> hits) {
@@ -45,50 +49,99 @@ public class OpenSearchDetectDemo {
         return out;
     }
 
+    private static void tableHeader(StringBuilder out) {
+        line(out, "    %-27s %6s %5s %5s  %s", "rule", "alerts", "true", "false", "attacks");
+    }
+
     private static void row(StringBuilder out, String name, List<Hit> hits) {
         long tp = hits.stream().filter(Hit::truePositive).count();
-        line(out, String.format("%-28s %6d %5d %5d  %s", name, hits.size(), tp, hits.size() - tp, attacks(hits)));
+        line(out, "    %-27s %6d %5d %5d  %s", name, hits.size(), tp, hits.size() - tp, String.join(",", attacks(hits)));
     }
 
     private static void act1(StringBuilder out, OpenSearch os, List<Event> day) throws Exception {
         line(out, "ONE. One Monday of logs, in OpenSearch.");
-        long logins = os.count("audit", Map.of("term", Map.of("type", "login")));
-        long grants = os.count("audit", Map.of("term", Map.of("type", "role-grant")));
-        long labelled = os.count("audit", Map.of("exists", Map.of("field", "attack")));
-        line(out, "  " + day.size() + " events loaded with the bulk API: " + logins + " logins, " + grants + " role grants; " + labelled + " of them belong to 4 real attacks (A: spraying, B: brute force, C: impossible travel, D: privilege change)");
-        line(out, "  the attack label is in the index only so that this lesson can score its rules; no rule reads it");
-        line(out, "  the fields the rules filter and group by are keywords and the time is a date, set by a mapping before the first event");
+        line(out, "  THE INPUT (the plain project's Monday, sent with the bulk API):");
+        line(out, "    events        %d", day.size());
+        line(out, "  THE MAPPING (set before the first event, read back):");
+        os.mapping("audit").forEach((type, fields) -> line(out, "    %-9s %s", type, String.join(", ", fields)));
+        line(out, "  ONE EVENT AS A DOCUMENT (u042's first failed login, read back):");
+        JsonNode doc = os.search("audit", Map.of("size", 1, "sort", List.of(Map.of("time", "asc")), "query",
+                Map.of("bool", Map.of("filter", List.of(Map.of("term", Map.of("user", "u042")), Map.of("term", Map.of("success", false))))))).json()
+                .get("hits").get("hits").get(0).get("_source");
+        for (String field : List.of("time", "type", "user", "ip", "city", "success", "attack")) {
+            line(out, "    %-8s %s%s", field, doc.get(field).asString(), field.equals("attack") ? "  <- FOR SCORING ONLY" : "");
+        }
+        line(out, "  THE RESULT (counted by OpenSearch, with _count):");
+        line(out, "    logins        %d", os.count("audit", Map.of("term", Map.of("type", "login"))));
+        line(out, "    role grants   %d", os.count("audit", Map.of("term", Map.of("type", "role-grant"))));
+        line(out, "    with attack   %d, of 4 attacks; no rule reads the field", os.count("audit", Map.of("exists", Map.of("field", "attack"))));
     }
 
     private static void act2(StringBuilder out, OpenSearch os) throws Exception {
         line(out, "TWO. A first version of each rule, as a query.");
-        header(out);
-        row(out, "brute-force(3)", Detections.run(os, "audit", Detections.bruteForce(3)));
-        row(out, "spraying(8)", Detections.run(os, "audit", Detections.spraying(8)));
-        row(out, "privilege-change", Detections.run(os, "audit", Detections.privilegeChange()));
-        row(out, "success-after-failures(1)", Detections.run(os, "audit", Detections.successAfterFailures(1)));
-        line(out, "  a rule is a query: a filter, a group by the subject, a bucket of time, and a threshold that keeps the buckets worth looking at");
+        line(out, "  THE QUERY (brute-force(3), its four parts):");
+        QueryParts.of(Detections.bruteForce(3)).forEach((part, value) -> line(out, "    %-10s %s", part, value));
+        List<Hit> buckets = new ArrayList<>(Detections.run(os, "audit", Detections.bruteForce(3)));
+        buckets.sort(Comparator.comparing(Hit::events).reversed().thenComparing(Hit::subject));
+        line(out, "  THE BUCKETS IT RETURNS (failures, one account, 5 minutes):");
+        for (Hit h : buckets) {
+            line(out, "    %s  %s  %2d  %s", h.subject(), h.window(), h.events(), h.truePositive() ? "attack " + String.join(",", h.attacks()) : "<- FALSE");
+        }
+        line(out, "  THE RESULT (every first rule, scored):");
+        tableHeader(out);
+        List<Hit> all = new ArrayList<>();
+        for (Object[] r : new Object[][] {{"brute-force(3)", Detections.bruteForce(3)}, {"spraying(8)", Detections.spraying(8)},
+            {"privilege-change", Detections.privilegeChange()}, {"success-after-failures(1)", Detections.successAfterFailures(1)}}) {
+            @SuppressWarnings("unchecked")
+            List<Hit> hits = Detections.run(os, "audit", (Map<String, Object>) r[1]);
+            row(out, (String) r[0], hits);
+            all.addAll(hits);
+        }
+        row(out, "together", all);
+        line(out, "  WHY success-after-failures(1) IS NOISY:");
+        QueryParts.of(Detections.successAfterFailures(1)).forEach((part, value) -> line(out, "    %-10s %s", part, value));
+        line(out, "    a query cannot say \"then\": a typo and a success from one");
+        line(out, "    address in the same hour is enough  <- MOSTLY FALSE");
     }
 
     private static void act3(StringBuilder out, OpenSearch os) throws Exception {
         line(out, "THREE. Tuning one threshold.");
-        header(out);
+        List<Hit> every = Detections.run(os, "audit", Detections.bruteForce(1));
+        Hit normal = every.stream().filter(h -> !h.truePositive()).max(Comparator.comparing(Hit::events)).orElseThrow();
+        Hit attack = every.stream().filter(Hit::truePositive).max(Comparator.comparing(Hit::events)).orElseThrow();
+        long sameAsNormal = every.stream().filter(h -> !h.truePositive() && h.events() == normal.events()).count();
+        line(out, "  THE BUCKETS (min_doc_count 1: every account's 5-minute buckets):");
+        line(out, "    buckets            %d", every.size());
+        line(out, "    largest normal     %d failures (%d buckets, e.g. %s at %s)", normal.events(), sameAsNormal, normal.subject(), normal.window());
+        line(out, "    largest attack     %d failures (%s at %s)", attack.events(), attack.subject(), attack.window());
+        line(out, "  THE SAFE RANGE (worked out):");
+        line(out, "    more than %d, at most %d: min_doc_count %d to %d; chosen: %d", normal.events(), attack.events(), normal.events() + 1, attack.events(),
+                TUNED_BRUTE_FORCE);
+        line(out, "  THE SWEEP (one number changed in the query):");
+        line(out, "    %13s %7s %5s %6s  %s", "min_doc_count", "alerts", "true", "false", "attack B");
         for (int t : new int[] {3, 5, 10, 25, 40}) {
-            row(out, "brute-force(" + t + ")", Detections.run(os, "audit", Detections.bruteForce(t)));
+            List<Hit> hits = Detections.run(os, "audit", Detections.bruteForce(t));
+            long tp = hits.stream().filter(Hit::truePositive).count();
+            line(out, "    %13d %7d %5d %6d  %s", t, hits.size(), tp, hits.size() - tp, attacks(hits).contains("B") ? "noticed" : "MISSED");
         }
-        line(out, "  changing the threshold is changing one number in the query; the table says what it costs and what it misses");
     }
 
     private static void act4(StringBuilder out, OpenSearch os) throws Exception {
         line(out, "FOUR. The tuned set as monitors of the alerting plugin.");
-        List<Hit> all = new ArrayList<>();
-        header(out);
+        Map<String, Object> shown = Monitors.bruteForce(TUNED_BRUTE_FORCE);
+        line(out, "  THE MONITOR (%s, as saved in the cluster):", shown.get("name"));
+        line(out, "    type      %s", shown.get("monitor_type"));
+        line(out, "    schedule  every %s", Monitors.schedule(shown));
+        line(out, "    input     the brute-force query, as a composite aggregation");
+        line(out, "    trigger   %s", Monitors.condition(shown));
         String[] names = {"brute-force(10)", "spraying(8)", "success-after-failures(20)", "privilege-change"};
-        List<Map<String, Object>> monitors = List.of(Monitors.bruteForce(10), Monitors.spraying(8), Monitors.successAfterFailures(20), Monitors.privilegeChange());
+        List<Map<String, Object>> monitors = List.of(shown, Monitors.spraying(8), Monitors.successAfterFailures(20), Monitors.privilegeChange());
         List<String[]> alerts = new ArrayList<>();
+        List<Hit> all = new ArrayList<>();
+        line(out, "  THE RUN (each monitor once, with dryrun: nothing is sent):");
+        tableHeader(out);
         for (int i = 0; i < monitors.size(); i++) {
-            String id = os.createMonitor(monitors.get(i));
-            JsonNode run = os.execute(id);
+            JsonNode run = os.execute(os.createMonitor(monitors.get(i)));
             List<Hit> hits;
             if (i < 3) {
                 hits = Monitors.triggered(run);
@@ -98,46 +151,75 @@ public class OpenSearchDetectDemo {
             row(out, names[i], hits);
             all.addAll(hits);
             for (Hit h : hits) {
-                alerts.add(new String[] {h.window(), names[i], i == 0 ? h.subject() + " failed " + h.events() + " times in five minutes" : i == 1 ? h.events() + " failed logins from " + h.subject() + " on many accounts in twenty minutes" : i == 2 ? "logins from " + h.subject() + ": " + h.events() + " in the hour, failures and a success" : h.subject(), h.truePositive() ? "" : "   <- FALSE POSITIVE"});
+                alerts.add(new String[] {h.window(), names[i].replaceAll("\\(.*", ""), h.subject().split(" ")[0], h.truePositive() ? String.join(",", h.attacks()) : "<- FALSE"});
             }
         }
-        line(out, "  " + os.monitors() + " monitors are saved in the cluster, each with a schedule of one minute; here each is run once with dryrun, so that nothing is sent and the result is the same every time");
         List<Event> fromIndex = os.events("audit");
-        List<Alert> travel = new ImpossibleTravelRule(900, 500, Set.of(Scenario.VPN_EGRESS)).evaluate(fromIndex);
         List<Hit> travelHits = new ArrayList<>();
-        for (Alert a : travel) {
+        for (Alert a : new ImpossibleTravelRule(900, 500, Set.of(Scenario.VPN_EGRESS)).evaluate(fromIndex)) {
             Set<String> at = new TreeSet<>();
             a.evidence().stream().map(Event::attackId).filter(x -> x != null).forEach(at::add);
-            travelHits.add(new Hit(a.subject(), a.time().toString().substring(11, 16), 2, at));
-            alerts.add(new String[] {a.time().toString().substring(11, 16), "impossible-travel", a.summary(), at.isEmpty() ? "   <- FALSE POSITIVE" : ""});
+            Hit h = new Hit(a.subject(), a.time().toString().substring(11, 16), 2, at);
+            travelHits.add(h);
+            alerts.add(new String[] {h.window(), "impossible-travel", h.subject(), h.truePositive() ? String.join(",", at) : "<- FALSE"});
         }
         row(out, "impossible-travel (code)", travelHits);
         all.addAll(travelHits);
-        long tp = all.stream().filter(Hit::truePositive).count();
-        line(out, "together: " + all.size() + " alerts for the day, " + tp + " true, " + (all.size() - tp) + " false; attacks noticed: " + attacks(all) + " of [A, B, C, D]");
-        line(out, "  impossible travel compares each login with the same person's last one: a query cannot say \"the previous one\", so the events are read back from OpenSearch in order and a few lines of code decide");
-        line(out, "the alerts, in time order:");
+        row(out, "together", all);
+        line(out, "  THE ALERTS, IN TIME ORDER (a monitor gives its bucket's start):");
         alerts.sort(Comparator.comparing((String[] a) -> a[0]).thenComparing(a -> a[1]));
-        alerts.forEach(a -> line(out, String.format("  %s %-18s %s%s", a[0], a[1], a[2], a[3])));
+        alerts.forEach(a -> line(out, "    %s  %-22s  %-12s  %s", a[0], a[1], a[2], a[3]));
+        line(out, "  WHY IMPOSSIBLE TRAVEL IS CODE:");
+        line(out, "    a query cannot say \"this person's previous login\", so the");
+        line(out, "    %d events are read back in time order (search_after)", fromIndex.size());
+        line(out, "    and ImpossibleTravelRule decides: %d alerts", travelHits.size());
+        line(out, "    %d monitors are saved, each on a 1-minute schedule", os.monitors());
     }
 
     private static void act5(StringBuilder out, OpenSearch os) throws Exception {
         line(out, "FIVE. The bill.");
         os.bulk("dynamic", Scenario.day().subList(0, 50));
+        line(out, "  THE INPUT (50 events, no mapping, grouped by user):");
         OpenSearch.Answer bad = os.search("dynamic", Map.of("size", 0, "aggs", Map.of("by_user", Map.of("terms", Map.of("field", "user")))));
-        line(out, "  the same events loaded with no mapping, grouped by user: " + bad.status() + ", " + bad.json().get("error").get("root_cause").get(0).get("reason").asString().replaceAll("\\[[^\\]]*\\]", "[...]").replaceAll("Alternatively.*", "..."));
+        String reason = bad.json().get("error").get("root_cause").get(0).get("reason").asString();
+        line(out, "    status   %d", bad.status());
+        line(out, "    reason   %s", reason.substring(0, reason.indexOf(" for operations")));
+        line(out, "             for operations that require per-document field data");
         OpenSearch.Answer good = os.search("dynamic", Map.of("size", 0, "aggs", Map.of("by_user", Map.of("terms", Map.of("field", "user.keyword", "size", 3)))));
-        line(out, "  grouped by user.keyword, which dynamic mapping adds next to the text: " + good.status() + ", " + good.json().get("aggregations").get("by_user").get("buckets").size() + " groups  <- A MAPPING DECIDES WHAT A RULE CAN SAY");
+        line(out, "  THE SAME, BY user.keyword (which dynamic mapping adds):");
+        line(out, "    status   %d, %d groups  <- THE MAPPING DECIDES", good.status(), good.json().get("aggregations").get("by_user").get("buckets").size());
+
         os.createAuditIndex("straddle");
         List<Event> burst = new ArrayList<>();
         for (int s = 0; s < 30; s++) {
             burst.add(Event.login(Scenario.at(13, 28, 0).plusSeconds(s * 8L), Scenario.user(77), "198.51.100.77", City.SINGAPORE, false, "B"));
         }
-        List<Hit> bucketed = Detections.run(os, "straddle", Detections.bruteForce(20));
+        os.bulk("straddle", burst);
+        line(out, "  THE INPUT (30 failures for %s, one every 8 seconds):", burst.getFirst().user());
+        line(out, "    from %s to %s, crossing 13:30", hms(burst.getFirst().time()), hms(burst.getLast().time()));
+        line(out, "  FIXED BUCKETS (5 minutes each, the rule: at least 20):");
+        List<Hit> perBucket = Detections.run(os, "straddle", Detections.bruteForce(1));
+        Map<Instant, Long> byHand = Buckets.fixed(burst, Duration.ofMinutes(5));
+        for (Hit h : perBucket) {
+            line(out, "    bucket %s-%s  %d failures, under 20", h.window(), hm(Instant.parse("2026-03-02T" + h.window() + ":00Z").plusSeconds(300)), h.events());
+        }
+        line(out, "    worked out by hand: %s", byHand.values());
+        line(out, "    alerts   %d  <- THE ATTACK FALLS BETWEEN TWO BUCKETS", Detections.run(os, "straddle", Detections.bruteForce(20)).size());
         List<Alert> sliding = new BruteForceRuleForStraddle().evaluate(burst);
-        line(out, "  thirty failures in four minutes that cross a five-minute boundary at 13:30, rule 'at least 20': fixed buckets " + bucketed.size() + " alerts, a sliding window " + sliding.size() + "  <- THE ATTACK FALLS BETWEEN TWO BUCKETS");
-        line(out, "  the monitors run on a schedule, so an attack is noticed up to a minute and a bucket later, and a schedule that stops, or a query that is changed in the console, leaves no trace in the code");
-        line(out, "  keep the queries as files under version control and load them with the API, test each with a known bad day, and treat the thresholds as tuned for this one Monday");
+        line(out, "  A SLIDING WINDOW (the plain project's rule, at least 20):");
+        line(out, "    alerts   %d, at %s: the 20th failure, %s + 19 x 8 s", sliding.size(), hms(sliding.getFirst().time()), hms(burst.getFirst().time()));
+        line(out, "  THE SCHEDULE:");
+        line(out, "    a monitor runs every minute on fixed buckets, so it notices");
+        line(out, "    up to a minute and a bucket late; a stopped schedule or a");
+        line(out, "    query edited in the console leaves no trace in the code");
+    }
+
+    private static String hms(Instant t) {
+        return t.toString().substring(11, 19);
+    }
+
+    private static String hm(Instant t) {
+        return t.toString().substring(11, 16);
     }
 
     /** A sliding five-minute window, as the plain project has, for comparison with fixed buckets. */

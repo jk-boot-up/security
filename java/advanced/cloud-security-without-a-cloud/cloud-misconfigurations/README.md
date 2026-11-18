@@ -3,26 +3,28 @@
 ```
 src/main/java/com/jk/explore/security/cloudmisconf/
 ├── Cloud.java                       The AWS SDK for Java v2, pointed at the emulator with made-up credentials: the same calls a real account would get
-├── CloudMisconfigurationsDemo.java  
+├── CloudMisconfigurationsDemo.java  Five acts: a bank's first cloud setup on an AWS emulator and its 13 findings, the fixes, the same setup as files read by Checkov and Trivy, the metadata endpoint attacked, and what neither the scanners nor the emulator can tell
 ├── Environment.java                 The first version of the bank's account, as a team in a hurry would leave it, and the hardened version of each resource
 ├── Finding.java                     One misconfiguration: a rule, how bad it is, the resource, and why it matters
 ├── IacScanners.java                 Checkov and Trivy reading OpenTofu/Terraform files: no cloud, no network after installation
 ├── Imds.java                        The instance metadata service as a server on a loopback port, in the two versions, and the two web features that reach it
-├── Scanner.java                     Reads the account through the SDK, the way an auditor's tool does, and reports what is exposed, unencrypted, over-broad or open to the world
+├── Rules.java                       The nine rules, run on what the scanner read
+├── Scanner.java                     Reads the account through the SDK, the way an auditor's tool does, then runs the nine rules on what it read
+├── Snapshot.java                    What the scanner read from the account: plain values, so the rules can be tested without an emulator
 ├── Terraform.java                   The same account as OpenTofu/Terraform files, in two versions: as the team first wrote it and as it should be
 └── Venv.java                        A Python virtual environment under build/ with Moto (an AWS emulator) and Checkov (an infrastructure-as-code scanner) installed with pip the first time
 ```
 
-**On Moto, an emulator of the AWS API that needs no account, a bank's first setup has 13 findings of 9 kinds: a bucket readable by everyone through its ACL, another through its policy, a developer policy that allows every action on every resource, ports 22 and 5432 open to 0.0.0.0/0, a server whose metadata service answers without a token, and disks that are not encrypted; the fixes leave none, but the server and the disks must be replaced; the same setup written as OpenTofu files fails both Checkov and Trivy, which agree on 7 of the 9 kinds and each miss something (Trivy has no check for the wildcard policy or the public bucket policy); a server-side request forgery steals the role's credentials from the metadata service of version 1, version 2 stops a simple fetch with 401 but not a request that can choose its method and headers; a scanner sees the setting, not the intent.**
+**On Moto, an emulator of the AWS API that needs no account, a bank's first setup gives 13 findings from 9 rules: two buckets anyone can read (by ACL and by bucket policy), a policy that allows * on *, ports 22 and 5432 open to 0.0.0.0/0, a metadata service that answers without a token and unencrypted disks; 7 edits and 2 replacements leave none. The same setup as OpenTofu files fails Checkov and Trivy, which agree on 7 of the 9 rules, and neither flags port 5432. A link fetch steals the role's credentials from IMDSv1; IMDSv2 stops it, but not a feature that sets the method and a header. And Moto accepts a public policy on a blocked bucket that AWS would refuse: an emulator tests the code, not the cloud.**
 
-Most cloud breaches are not clever. A bucket was public, a policy said `*`, a port was open to the world. This project makes those mistakes on purpose, in a safe place: **Moto**, an open-source emulator of the AWS API (no account, no cost, nothing leaves the machine). A Java program deploys a bank's first setup with the real AWS SDK, scans it with nine rules of its own, applies the fixes and scans again; then the same setup is written as OpenTofu files and read by two real scanners, **Checkov** and **Trivy**, before anything is deployed. LocalStack was the usual choice, but it now needs an account token, so it is not used. It needs Python 3 (a virtual environment with Moto and Checkov is built under `build/`) and Trivy (`brew install trivy`); the tests that use them are tagged `integration`: `./gradlew integrationTest`.
+Most cloud breaches are not clever. A bucket was public, a policy said `*`, a port was open to the world. This project makes those mistakes on purpose, in a safe place: **Moto**, an open-source emulator of the AWS API (no account, no cost, nothing leaves the machine). A Java program deploys a bank's first setup with the real AWS SDK, scans it with nine rules of its own, applies the fixes and scans again; then the same setup is written as OpenTofu files and read by two real scanners, **Checkov** and **Trivy**, before anything is deployed. LocalStack was the usual choice, but it now needs an account token, so it is not used. It needs Python 3 (a virtual environment with Moto and Checkov, pinned, is built under `build/`) and Docker (Trivy runs from the pinned image `aquasec/trivy:0.76.0` with its built-in checks); the tests that use them are tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
-- **The first version.** Two buckets readable by everyone (one by ACL, one by bucket policy), a third that is fine, a policy that allows every action on every resource, ports 22 and 5432 open to `0.0.0.0/0`, a server whose metadata service answers without a token and disks that are not encrypted: **13 findings of 9 kinds**.
-- **The fixes.** Public access blocked, encryption and versioning on, a least-privilege policy, ports closed, a server with IMDSv2 and encrypted disks: **0 findings**. Two of the nine fixes mean replacing resources, not editing them.
-- **Before deploy.** The same setup as `.tf` files fails Checkov and Trivy. **7 of the 9 kinds** are found by both; Checkov alone finds the wildcard policy and the public bucket policy. The fixed files still draw advice: both ask for a customer-managed key where the rule accepts AES256.
-- **The metadata endpoint.** A server-side request forgery against IMDSv1 returns the role's credentials; IMDSv2 answers a simple fetch with 401, a request through a proxy with 403, but a feature that lets the visitor choose the method and a header gets the token and the credentials anyway.
-- **The bill.** A scanner sees settings, not intent; an emulator is not the cloud; exceptions need an owner and a date; code and the cloud drift apart.
+- **The first version.** Two buckets readable by everyone (one by ACL, one by bucket policy), a third that is fine, a policy that allows every action on every resource, ports 22 and 5432 open to `0.0.0.0/0`, a server whose metadata service answers without a token and disks that are not encrypted: **13 findings from 9 rules** (3 CRITICAL + 5 HIGH + 3 MEDIUM + 2 LOW).
+- **The fixes.** Nine SDK calls, each logged: **7 edits** in place (including IMDSv2 on the running server) and **2 replacements**, because a disk is encrypted only when it is made. **0 findings.**
+- **Before deploy.** The same setup as `.tf` files fails Checkov (37 checks) and Trivy (26). **7 of the 9 rules** are matched by both; only Checkov has checks for the public bucket policy and the wildcard policy, and **neither flags port 5432** open to the world. The fixed files still draw advice: both want a customer-managed key where the rule accepts AES256.
+- **The metadata endpoint.** A link fetch reads the role's credentials from IMDSv1 and gets 401 from IMDSv2; a webhook tester that sets the method and a header gets a token and the credentials from IMDSv2 too; through a proxy that adds `X-Forwarded-For`, IMDSv2 refuses the token request with 403.
+- **What the tools cannot tell.** Moto accepts a public policy and a public ACL on a blocked bucket, where AWS answers 403; the scan of the account still sees them. Replacement, intent and drift are left for people.
 
 **Maps to:** NIST CSF 2.0 Protect (PR.PS configuration) · CIS AWS Foundations Benchmark · CWE-732, CWE-918 (SSRF), CWE-311 · MITRE ATT&CK T1530 (data from cloud storage) and T1552.005 (cloud instance metadata API).
 
@@ -44,11 +46,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The first version | Deployed with the AWS SDK to Moto, the setup has 13 findings of 9 kinds. |
-| 2. The fixes | Public access blocked, least privilege, ports closed, IMDSv2, encryption: 0 findings, and two resources replaced. |
-| 3. Before deploy: Checkov and Trivy | The same setup as OpenTofu files fails both scanners, which agree on 7 of the 9 kinds. |
-| 4. The metadata endpoint | A request forgery reads the role's credentials from IMDSv1; IMDSv2 stops a simple fetch but not a forgery that sets headers. |
-| 5. The bill | Scanners see settings, not intent; the emulator is not the cloud; two fixes replace resources. |
+| 1. The first version, deployed to the emulator | Deployed with the AWS SDK to Moto, the bank's first setup gives 13 findings: 3 CRITICAL + 5 HIGH + 3 MEDIUM + 2 LOW = 13, from 9 rules, 4 of which fire twice (9 + 4 = 13). |
+| 2. The fixes, made with the same SDK | Nine changes, 7 edits in place and 2 replacements, take the account from 13 findings to 0. Switching on IMDSv2 is an edit; encrypting a disk means a new disk, and for the root disk a new server. |
+| 3. Before deploy: the same setup as files, read by two scanners | Written as OpenTofu files, the first version fails Checkov 3.3.30 (37 checks) and Trivy 0.76.0 (26). Both fire a check for 7 of our 9 rules; only Checkov has one for the public bucket policy and the wildcard policy, and neither flags port 5432. In the fixed files one rule is left: both want a key of your own. |
+| 4. The metadata endpoint, reached through the web server | A link fetch reads the role's credentials from IMDSv1 (200) and gets 401 from IMDSv2. A webhook tester that lets the visitor set the method and a header gets a 36-character token with PUT and the credentials with GET, even from IMDSv2. Through a proxy that adds X-Forwarded-For, IMDSv2 refuses the token request with 403; IMDSv1 still answers. |
+| 5. What the scanners and the emulator cannot tell | On bank-audit, whose public access is blocked, Moto accepts a public bucket policy and a public-read ACL with 200, where AWS refuses both with 403 AccessDenied; the scan of the account afterwards shows 2 CRITICAL findings. Replacement, intent and drift are left for people. |
 
 ## Test
 
@@ -56,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-14 tests in `CloudTest`, `DemoRunsTest`, `ImdsTest`, `TerraformTest`. The metadata service and the file mapping are tested with no tools. The rest start Moto, Checkov and Trivy (./gradlew integrationTest).
+26 tests in `CloudTest`, `DemoRunsTest`, `ImdsTest`, `RulesTest`, `TerraformTest`. The rules, the policy parsing, the report mapping, the metadata service and the files are tested with no tools (./gradlew test). The rest start Moto, Checkov and Trivy in Docker (./gradlew integrationTest); the golden output never prints an id that changes between runs.
 
 ## What the simulation got right, and what it left out
 
@@ -101,7 +103,7 @@ The setup is deployed, scanned, fixed and scanned; the files are scanned before.
 
 ### Where each piece sits
 
-A cloud, an environment and a scanner.
+The scanner only reads; the rules judge plain values.
 
 ![The classes and what they hold](docs/images/class-diagram.png)
 

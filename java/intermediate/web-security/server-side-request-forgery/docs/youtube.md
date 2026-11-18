@@ -16,16 +16,38 @@ Chapters:
 
 ```
 00:00 Introduction
-00:58 The Scenario
-01:28 Act One — Importing an image
-01:40 Act Two — The server fetches whatever it is told
-02:03 Act Three — A blocklist of names is easy to walk around
-02:31 Act Four — Check the address the connection really uses
-02:58 Act Five — Why checking and then connecting is not enough
-03:24 What It Costs
-04:07 Who Does What
-04:45 How To Use It
-05:26 Thanks for Watching
+01:00 The Scenario
+01:36 The Words
+02:35 What the Letters Stand For
+03:36 What the Letters Stand For (continued)
+04:09 The server stands inside
+05:06 One address, one lookup, one request
+05:52 Act One — An honest import works
+06:15 Three addresses that point inside
+07:07 Act Two — The server fetches whatever it is told
+07:23 One address, many spellings
+08:26 Act Three — A blocklist of names is easy to walk around
+08:37 Act Three — A blocklist of names is easy to walk around
+08:47 Act Three — A blocklist of names is easy to walk around
+09:14 Act Three — A blocklist of names is easy to walk around
+09:36 Check every answer, connect to the one you checked
+10:30 Act Four — Check the address the connection really uses
+10:47 Act Four — Check the address the connection really uses
+10:57 Act Four — Check the address the connection really uses
+11:16 Two lookups, two answers
+12:15 Act Five — A second lookup can give a different answer
+12:36 Act Five — A second lookup can give a different answer
+12:49 What It Costs
+13:33 Where You Have Seen It
+14:12 How To Use It
+14:54 The Java Classes
+15:07 NaiveImporter — look up, connect, follow
+15:23 BlocklistImporter — the text of the host
+15:38 Spelling — one number, four parts
+15:55 SafeImporter — every answer must be public
+16:11 SafeImporter — every redirect is checked again
+16:21 AddressPolicy — inside kinds
+16:37 Thanks for Watching
 ```
 
 ## Tags

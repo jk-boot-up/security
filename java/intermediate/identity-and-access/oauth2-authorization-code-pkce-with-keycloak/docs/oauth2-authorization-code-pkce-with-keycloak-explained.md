@@ -8,23 +8,51 @@ The authorization code flow lets an app act for a user without their password, a
 
 ### 1. The flow, step by step
 
-Ana's browser goes to Keycloak's authorization endpoint with response type code, the client id, the exact registered redirect address, the scope, a state and an S256 code challenge. Ana signs in at Keycloak, never at the app, and a consent page asks whether budget-app may read her accounts. Keycloak redirects the browser to the registered address with the state, a session state, the issuer and the code. The app checks the state, then calls the token endpoint directly with the code and the verifier. Keycloak answers with an access token for 300 seconds, a refresh token and an ID token. The accounts API accepts the access token: 200, ana, 2 accounts. The token is for accounts-api, asked for by budget-app, carries Ana's id and no password or e-mail, and without a token the API answers 401.
+Step 1, the request: Ana's browser goes to <keycloak>/realms/bank/protocol/openid-connect/auth with response_type=code, client_id=budget-app,
+redirect_uri=https://budget.example/callback, scope=openid accounts.read, a random state, code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM and
+code_challenge_method=S256. Step 2: Ana signs in at Keycloak, never at the app, and the consent page asks for "Read your accounts". Step 3, the response:
+302 to the registered address with state, session_state, iss (the bank realm) and code; the state comes back unchanged. Step 4, the request: the app posts
+grant_type=authorization_code, its client id, the code, the redirect address and code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk to the token
+endpoint. Step 5, the response: an access token that lives 300 seconds, a refresh token, an ID token and the scope openid accounts.read. Inside the access
+token, a JWT signed by Keycloak: aud=accounts-api, azp=budget-app, the bank realm as issuer, Ana's id as subject, and no password or e-mail. Step 6:
+GET /accounts with the token answers 200, ana: 2 accounts; without a token, 401.
 
 ### 2. PKCE: a code is useless without the verifier
 
-The RFC 7636 example verifier gives the published S256 challenge. Only the challenge travels through the browser. A code leaks, and another app redeems it with no verifier: refused, PKCE code verifier not specified. Then the budgeting app, with the real verifier, is refused too: Code not valid, because a failed try burns the code. The leak is useless, and Ana signs in again. A new code with a verifier the thief made up is refused: PKCE verification failed. A new code with the real verifier gives tokens. A request with the plain method, or with no challenge at all, is refused with invalid_request.
+The verifier is the RFC 7636 example, dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk. The S256 challenge is made in steps: the 43 characters as 43 ASCII
+bytes (64 42 6a 66 ...); SHA-256 of those bytes, 32 bytes (13 d3 1e 96 ...); base64url, where 13 d3 1e is 000100 111101 001100 011110, the numbers
+4 61 12 30, the characters E9Me; all 32 bytes give E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM, the published value. Only the challenge travels through
+the browser. A thief who redeems a leaked code with no verifier is refused with invalid_grant, PKCE code verifier not specified, and the failed try burns
+the code: the budgeting app with the real verifier then gets Code not valid, and Ana signs in again. A new code with a made-up verifier of 43 x's is
+refused with PKCE verification failed: Code mismatch; with the real verifier, tokens are issued. Keycloak refuses code_challenge_method=plain and a request
+with no code_challenge with invalid_request.
 
-### 3. Exact redirects, state, and codes that work once
+### 3. Exact redirect addresses, state, and codes that work once
 
-The app registered exactly https://budget.example/callback. That address gets a code. The path trick, the lookalike host, the query, the upper-case host and the trailing slash are refused by Keycloak with an error page and no redirect. A prefix or wildcard match would have sent Ana's code to the others. Mallory's link carries her own code; the app checks the state against Ana's browser session and refuses it. A code is redeemed once and the access token works. The same code redeemed again is refused, and Keycloak's own check of the first access token now gives 401, a reused code ends the session. The API, which checks the signature and dates itself, still gives 200: a local check cannot know. A code redeemed after 6 seconds, in a realm that gives codes 5, is refused.
+The budgeting app registered exactly https://budget.example/callback and Keycloak compares the requested address with it exactly. Only that address gets a
+code; ../steal, budget.example.evil.test, ?next=evil, an upper-case host and a trailing slash each get the page Invalid parameter: redirect_uri, with no
+redirect. A check that the address starts with https://budget.example would have sent the code away four times. In a login forgery, Ana's browser opens a
+callback link with the attacker's code and state; the app compares the state with Ana's browser session and refuses it. A code redeemed once gives tokens
+and GET /accounts answers 200; the same code again is refused with Code not valid, and Keycloak ends the session: its userinfo check of the first access
+token answers 401, while the API, which checks the signature and the dates itself, still answers 200 until the token expires. In this realm a code lives
+10 seconds; redeemed 11 seconds later, even with the real verifier, it is refused.
 
 ### 4. Scopes and refresh tokens
 
-The token carries openid accounts.read. GET /accounts is 200, and POST /payments with the same token is 403 insufficient_scope. Asking for payments.write, which the app never registered, is refused with invalid_scope. The app refreshes the token and gets a new access token and a new refresh token. The old refresh token, copied by a thief and used again, is refused: the maximum allowed reuse was exceeded. The newest refresh token, held by the real app, is refused too, the session no longer has the client, and the newest access token fails Keycloak's own check with 401. One reuse ends the session, so the theft is contained. An access token 5 minutes and 31 seconds old is refused by the API.
+The app asked for openid accounts.read and the token carries exactly that. GET /accounts answers 200 and POST /payments answers 403 insufficient_scope.
+Asking for payments.write too, which the client was never given, is refused with invalid_scope. When access token A1 runs out, the app sends refresh
+token R1 and gets A2 and R2, both new. A thief who copied R1 replays it: refused with Maximum allowed refresh token reuse exceeded, and Keycloak ends the
+session. R2, held by the real app, is refused with Session doesn't have required client, and Keycloak's userinfo check of A2 answers 401. An access
+token 331 seconds old is refused by the API: it lives 300 seconds, and the API allows 30 seconds for clocks that differ.
 
 ### 5. Current practice, and the bill
 
-The implicit flow, which put the access token in the address bar, is refused: the client is not allowed to initiate browser login with that response type. The password grant, which gives the app Ana's password, is refused: the client is not allowed direct access grants. Both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1. The statements service is a confidential client, so it also authenticates; with a wrong secret it is refused. With its secret and a code it does not have, it is refused. With its secret and a real code but no verifier, it is refused too: a secret does not replace PKCE. A public app on a phone cannot keep a secret, which is why PKCE protects its code.
+The implicit flow, response_type=token, is refused: Client is not allowed to initiate browser login with given response_type, Implicit flow is disabled
+for the client. The password grant is refused: Client not allowed for direct access grants. Both are removed by RFC 9700 and by OAuth 2.1, and here they
+are switched off on the client. The statements service is a confidential client: a wrong client secret is refused with Invalid client or Invalid client
+credentials; the right secret with a code it was never given gets Code not valid; and the right secret with a real code but no verifier gets PKCE code
+verifier not specified, because a secret does not replace PKCE. The accounts API keeps no session and checks Keycloak's signing key, the issuer, the
+audience accounts-api, the dates and the scope of every token. In production: TLS, backups, key rotation and monitoring of logins.
 
 ## The verdict
 

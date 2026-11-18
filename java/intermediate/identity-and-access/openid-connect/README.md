@@ -59,11 +59,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. OAuth gives access; OpenID Connect adds who signed in | With the openid scope the bank returns an ID token for the store and an access token for its API; the ID token names Ana as https://bank.example | ana-0001, an access token offered as a sign-in is refused, and a reply without openid signs nobody in. |
-| 2. Checking the ID token, as OpenID Connect Core requires | The bank's own token is accepted; a foreign signature, an issuer with an extra slash or another issuer, another audience, two audiences without azp, thirty seconds past expiry, another sign-in's nonce, no nonce and alg none are each refused. |
-| 3. Discovery and keys | From one configured issuer the store reads the metadata and keys; a document naming another issuer or keys on another site is refused; a second key is added, the old one retired, and the same discovery works over real HTTP. |
-| 4. Who signed in: issuer and subject, never the email | The bank and wallet.example both name the email ana@mail.example; a store keyed by email gives Mallory Ana's account, keyed by issuer and subject there are two accounts and the unverified email is not used; userinfo answers only a valid access token. |
-| 5. Signing out, and the bill | Ana's sign-out ends the store's session and sends her to the bank's logout with id_token_hint; a back-channel logout token ends the laptop's session and leaves the phone's; a token with a nonce, without the event, or an ID token is refused. |
+| 1. OAuth gives access; OpenID Connect adds who signed in | The store asks the bank for the scopes openid and email, with a state and a nonce kept for Ana's browser; the bank returns an ID token for store-web and an access token for its API; Ana is signed in as https://bank.example | ana-0001; an access token offered as a sign-in is refused, and a reply without openid signs nobody in. |
+| 2. Checking the ID token, as OpenID Connect Core requires | The bank signs a header and twelve claims with Ed25519 into a 510-character token; the store checks the algorithm, the key id, the signature, the exact issuer, the audience, the time and the nonce; then one thing is changed at a time and each change is refused, except a second audience with azp store-web and a token twenty-nine seconds past expiry. |
+| 3. Discovery and keys | From one configured issuer the store builds the metadata address, reads the endpoints and jwks_uri, checks the issuer and the key set's site, and loads the key bank-2026-a; forged metadata naming another issuer or keys elsewhere is refused; a second key is added and the first retired; the same discovery works over real HTTP. |
+| 4. Who signed in: issuer and subject, never the email | The bank and wallet.example both say ana@mail.example, only the bank verified; a store that keys accounts by email puts Mallory into Ana's account; keyed by issuer and subject there are two accounts and the unverified email is not kept; userinfo answers only a valid access token. |
+| 5. Signing out, and the bill | Ana's sign-out ends the store's session and sends her browser to the bank's logout with id_token_hint, an encoded post_logout_redirect_uri and a state; a back-channel logout token for sid-3 ends the laptop's session and leaves the phone's; a token with a nonce, without the event, or an ID token is refused. |
 
 ## Test
 
@@ -71,7 +71,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-27 tests in `DemoRunsTest`, `DiscoveryTest`, `IdTokenValidatorTest`, `StoreTest`. Ed25519 key derivation is checked against RFC 8032 test 1. Every ID token check, every discovery check and every logout-token check is a test with its exact refusal reason; the sign-in flow, state binding, single-use codes, account keys and userinfo have their own tests.
+28 tests in `DemoRunsTest`, `DiscoveryTest`, `IdTokenValidatorTest`, `StoreTest`. Ed25519 key derivation is checked against RFC 8032 test 1. Every ID token check, every discovery check and every logout-token check is a test with its exact refusal reason; the sign-in flow, state binding, single-use codes, account keys and userinfo have their own tests.
 
 ## What the simulation got right, and what it left out
 

@@ -11,6 +11,7 @@ import java.util.Locale;
  */
 final class ContentSecurityPolicy {
 
+    static final int NONCE_BYTES = 16;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private ContentSecurityPolicy() {
@@ -18,7 +19,7 @@ final class ContentSecurityPolicy {
 
     /** 128 random bits, Base64: unguessable, and different for every response. */
     static String newNonce() {
-        byte[] bytes = new byte[16];
+        byte[] bytes = new byte[NONCE_BYTES];
         RANDOM.nextBytes(bytes);
         return Base64.getEncoder().encodeToString(bytes);
     }

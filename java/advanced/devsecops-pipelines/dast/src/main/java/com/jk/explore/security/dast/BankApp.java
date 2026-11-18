@@ -59,7 +59,11 @@ public final class BankApp implements AutoCloseable {
     }
 
     private String out(String text) {
-        return fixed ? text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;") : text;
+        if (!fixed) {
+            return text;
+        }
+        return text.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     private static String page(String title, String body) {

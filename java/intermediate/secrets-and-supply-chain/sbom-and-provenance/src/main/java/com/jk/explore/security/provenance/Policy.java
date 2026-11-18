@@ -12,37 +12,41 @@ import java.util.Map;
  */
 record Policy(Map<String, PublicKey> trustedKeys, String builderId, String repository, String ref) {
 
+    /** The checks, in the order the gate runs them; a refusal names the number of the one that failed. */
+    static final List<String> CHECKS = List.of("provenance", "signature", "statement", "subject", "builder", "repository", "branch");
+
     Verdict check(String envelope, String artifactName, byte[] artifact) {
         if (envelope == null) {
-            return Verdict.refuse("no provenance");
+            return Verdict.refuse(1, "no provenance");
         }
         Dsse.Opened opened;
         try {
             opened = Dsse.open(envelope, trustedKeys);
         } catch (Dsse.BadEnvelopeException e) {
-            return Verdict.refuse(e.getMessage());
+            return Verdict.refuse(2, e.getMessage());
         }
         Object statement;
         try {
             statement = Json.read(new String(opened.payload(), StandardCharsets.UTF_8));
         } catch (Json.BadJsonException e) {
-            return Verdict.refuse("the statement is not valid JSON");
+            return Verdict.refuse(3, "the statement is not valid JSON");
         }
         if (!Provenance.STATEMENT_TYPE.equals(Json.text(statement, "_type"))
                 || !Provenance.PREDICATE_TYPE.equals(Json.text(statement, "predicateType"))) {
-            return Verdict.refuse("not a SLSA provenance statement");
+            return Verdict.refuse(3, "not a SLSA provenance statement");
         }
         if (!subjectMatches(statement, artifactName, artifact)) {
-            return Verdict.refuse("the statement is about another artifact");
+            return Verdict.refuse(4, "the statement is about another artifact");
         }
-        if (!builderId.equals(Json.text(statement, "predicate", "runDetails", "builder", "id"))) {
-            return Verdict.refuse("built by a builder that is not trusted");
+        if (!builderId.equals(
+                Json.text(statement, "predicate", "runDetails", "builder", "id"))) {
+            return Verdict.refuse(5, "built by a builder that is not trusted");
         }
         if (!repository.equals(Json.text(statement, "predicate", "buildDefinition", "externalParameters", "repository"))) {
-            return Verdict.refuse("built from another repository");
+            return Verdict.refuse(6, "built from another repository");
         }
         if (!ref.equals(Json.text(statement, "predicate", "buildDefinition", "externalParameters", "ref"))) {
-            return Verdict.refuse("built from another branch");
+            return Verdict.refuse(7, "built from another branch");
         }
         return Verdict.allow();
     }

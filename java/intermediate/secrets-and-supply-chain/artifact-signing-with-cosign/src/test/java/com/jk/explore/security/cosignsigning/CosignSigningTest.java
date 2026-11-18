@@ -50,7 +50,7 @@ class CosignSigningTest {
         String digest = lab.push(Lab.RELEASE_IMAGE, "signed/app", "1");
         assertTrue(cosign.sign("release", digest, Map.of()).ok());
         assertTrue(cosign.verify("release", digest, Map.of()).ok());
-        assertEquals("refused (no signature that this key made)", cosign.verify("attacker", digest, Map.of()).reason());
+        assertEquals("refused (not signed by this key)", cosign.verify("attacker", digest, Map.of()).reason());
     }
 
     @Test
@@ -63,9 +63,9 @@ class CosignSigningTest {
     void aMovedTagLosesItsSignature() throws Exception {
         String digest = lab.push(Lab.RELEASE_IMAGE, "moved/app", "1");
         cosign.sign("release", digest, Map.of());
-        assertEquals("accepted (signed by the release key)", CosignSigningDemo.gate(lab, cosign, "1", List.of("release"), Map.of(), "moved/app"));
+        assertEquals("accepted (signed by the release key)", CosignSigningDemo.gate(lab, cosign, "1", List.of("release"), Map.of(), "moved/app").toString());
         lab.push(Lab.ATTACKER_IMAGE, "moved/app", "1");
-        assertEquals("refused (no signature for this digest)", CosignSigningDemo.gate(lab, cosign, "1", List.of("release"), Map.of(), "moved/app"));
+        assertEquals("refused (no signature for this digest)", CosignSigningDemo.gate(lab, cosign, "1", List.of("release"), Map.of(), "moved/app").toString());
     }
 
     @Test
@@ -73,7 +73,7 @@ class CosignSigningTest {
         String digest = lab.push(Lab.BETA_IMAGE, "claims/app", "1");
         cosign.sign("release", digest, Map.of("channel", "beta"));
         assertTrue(cosign.verify("release", digest, Map.of("channel", "beta")).ok());
-        assertEquals("refused (the signed claims do not say what the gate requires)", cosign.verify("release", digest, Map.of("channel", "stable")).reason());
+        assertEquals("refused (claims do not match the gate)", cosign.verify("release", digest, Map.of("channel", "stable")).reason());
     }
 
     @Test

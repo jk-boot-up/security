@@ -28,11 +28,17 @@ final class AbsoluteTimeoutFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         HttpSession session = request.getSession(false);
-        if (session != null && Instant.ofEpochMilli(session.getCreationTime()).plus(limit).isBefore(clock.instant())) {
+        if (session != null && tooOld(session)) {
             session.invalidate();
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "session too old, sign in again");
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    /** True when the session's creation time plus the limit is before now. */
+    private boolean tooOld(HttpSession session) {
+        Instant created = Instant.ofEpochMilli(session.getCreationTime());
+        return created.plus(limit).isBefore(clock.instant());
     }
 }

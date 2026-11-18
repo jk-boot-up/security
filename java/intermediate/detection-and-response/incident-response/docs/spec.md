@@ -40,10 +40,10 @@ Teams improvise during incidents, and the improvised steps destroy evidence, mis
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 15, all passing |
-| Demo output | 48 lines, identical on every run |
+| Tests | 20, all passing |
+| Demo output | 109 lines, identical on every run |
 | Acts | 6 |
-| Video | 07:38, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:49, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -3,7 +3,7 @@
 ## Required
 
 - Java basics
-- SoftHSM2 (brew install softhsm)
+- SoftHSM2 2.7.0 (brew install softhsm); the golden output was made with 2.7.0
 - Public-key signatures basics
 
 ## Explicitly not required

@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Container hardening in Java: what a compromised process can reach as root, and the settings that remove each attack, from docker run defaults to the Restricted level.
+> Container hardening in Java for a containerised web shop: an attacker model asks thirteen questions of a container's settings (read secrets, tamper with the app, become root, use the Docker socket, reach the host, exhaust memory...); docker run defaults allow 7, a tutorial configuration all 13, and one setting at a time (no host access, seccomp, no capabilities, non-root, no new privileges, read-only root, limits) brings it to 1, at the Restricted Pod Security level, printed as Docker flags and a Kubernetes securityContext.

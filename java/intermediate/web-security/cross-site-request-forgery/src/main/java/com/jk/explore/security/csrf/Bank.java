@@ -15,6 +15,8 @@ import java.util.Optional;
 final class Bank {
 
     static final String ORIGIN = "https://bank.example";
+    /** Session ids, form tokens and API tokens are this many random bytes, written as Base64 URL text. */
+    static final int TOKEN_BYTES = 32;
 
     private record Session(String user, String token) {
     }
@@ -54,7 +56,7 @@ final class Bank {
     }
 
     private String randomText() {
-        byte[] bytes = new byte[32];
+        byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
@@ -140,7 +142,7 @@ final class Bank {
         String site = r.header("sec-fetch-site");
         if (site != null) {
             return site.equals("same-origin") || site.equals("none") ? Optional.empty()
-                    : Optional.of("Sec-Fetch-Site is " + site + ": a state-changing request must come from the bank's own pages");
+                    : Optional.of("Sec-Fetch-Site is " + site + ", not same-origin");
         }
         String origin = r.header("origin");
         if (origin != null && !origin.equals(ORIGIN)) {

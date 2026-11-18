@@ -10,8 +10,9 @@ final class StartupGate {
         if (!"prod".equals(config.profile())) {
             return;
         }
-        if (Secrets.isKnownDefault(config.adminPassword())) {
-            throw new InsecureConfigException("the admin password is empty, short or a known default");
+        String weakness = Secrets.weakness(config.adminPassword());
+        if (!weakness.isEmpty()) {
+            throw new InsecureConfigException("admin password " + weakness);
         }
         if (config.debugEndpoint() || config.detailedErrors() || config.traceAllowed()) {
             throw new InsecureConfigException("a debugging switch is on in production");

@@ -9,47 +9,51 @@ one configured issuer: exact issuer, its own audience, the time and its own nonc
 
 ### 1. OAuth gives access; OpenID Connect adds who signed in
 
-The store sends Ana to the bank with the scope "openid email", and keeps a state and a nonce for her browser. The bank's reply holds two tokens:
-an ID token for the store, and an access token for the bank's API. The ID token's claims are iss, sub, aud, exp, iat, auth_time, nonce, acr, amr,
-sid, email and email_verified. The ID token is for store-web; the access token is for https://api.bank.example. Ana is signed in to the store as
-https://bank.example | ana-0001, at level urn:example:loa:2 with a password and a one-time code. The access token handed to the store as proof of
-sign-in is refused: its type is at+jwt, not an ID token. A sign-in that asks without the openid scope is refused too: the reply gives API access,
-not a sign-in.
+The request: the store sends Ana's browser to https://bank.example/authorize with client_id store-web, redirect_uri https://shop.example/callback,
+scope "openid email", and a random state and nonce kept for her browser. The response from the bank's token endpoint holds two tokens: an ID token
+(typ JWT, aud store-web) and an access token (typ at+jwt, aud https://api.bank.example). The ID token's claims: iss https://bank.example, sub
+ana-0001, aud store-web, iat 1800000000, exp 1800000300 (iat + 300 seconds), auth_time, the nonce that was kept, acr urn:example:loa:2 with amr
+[pwd, otp], sid sid-1, and the verified email. The result: Ana is signed in as https://bank.example | ana-0001. The access token offered as proof of
+sign-in is refused (not an ID token, typ at+jwt), and a sign-in that asks only for accounts.read gets no ID token at all.
 
 ### 2. Checking the ID token, as OpenID Connect Core requires
 
-The bank's own ID token is accepted. The same claims signed with a key the bank never published, under the bank's key id, are refused: the signature
-does not match. The issuer https://bank.example/, with one extra slash, is refused, because the issuer must equal the configured issuer exactly, and
-so is https://wallet.example signed by the bank. The audience budget-app is refused. Audiences store-web and budget-app with no azp are refused;
-with azp store-web they are accepted. Twenty-nine seconds past its expiry the token is accepted, inside the 30-second skew; thirty seconds past, it is
-refused. A nonce from another sign-in is refused, so a token from another login cannot be replayed into this one, and so is a token with no nonce at
-all. A header saying alg none is refused before anything else is read.
+Before signing: the header {"alg":"EdDSA","typ":"JWT","kid":"bank-2026-a"} and the claims as JSON. The bank base64url-encodes each, joins them with
+a dot into the signing input, and signs that with the Ed25519 private key bank-2026-a: 64 bytes, 86 characters in base64url. The token is the three
+parts joined by dots. The store checks in this order: alg is EdDSA (its own choice), the key id is published, the Ed25519 signature verifies, iss
+equals https://bank.example exactly, aud contains store-web, now is before exp plus 30 seconds of skew, and the nonce is the one this browser was
+given. Then one thing at a time: a foreign key, an issuer with an extra slash, another issuer, another audience, two audiences without azp, a nonce
+from another sign-in, no nonce and a header saying alg none are refused; two audiences with azp store-web are accepted. Twenty-nine seconds past exp
+the token is accepted (exp + 30 is still after now); thirty seconds past it is refused as expired.
 
 ### 3. Discovery and keys
 
-The store is configured with one value, the issuer https://bank.example. It reads https://bank.example/.well-known/openid-configuration, which names
-the issuer https://bank.example, and loads the key bank-2026-a from https://bank.example/jwks.json. A document at that address naming the issuer
-https://wallet.example is refused, so one provider cannot pose as another, and so is a document whose keys are on https://keys.example. The bank adds
-a second key and signs new tokens with it; after a reload the store holds bank-2026-a and bank-2026-b, and tokens signed with either are accepted.
-The bank retires bank-2026-a; after a reload, the old key's token is refused as an unknown key id and a new token is accepted. Over real HTTP on this
-machine, metadata and keys load and an ID token from that provider is accepted.
+The configuration is one value, the issuer https://bank.example. The request is GET https://bank.example/.well-known/openid-configuration. The
+response names the issuer, the authorization, token, userinfo and end-session endpoints, jwks_uri https://bank.example/jwks.json and the signing
+algorithm EdDSA. The store checks that the issuer equals the configured one and that jwks_uri is on the issuer's own site. The key set holds
+bank-2026-a, an OKP Ed25519 signing key whose x value the bank made from its private 32-byte seed. Metadata at the same address naming
+https://wallet.example is refused, so one provider cannot pose as another, and so is metadata whose keys are on https://keys.example. Key rotation:
+the bank adds bank-2026-b; after a reload both keys are there and both tokens are accepted; the bank retires bank-2026-a; after the next reload the
+old token is refused (unknown key id) and the new one is accepted. Over real HTTP on this machine the metadata and the key loop-1 load and a token is
+accepted.
 
 ### 4. Who signed in: issuer and subject, never the email
 
-The bank says ana-0001 has the email ana@mail.example, verified. wallet.example says its user mal-3301 also has the email ana@mail.example, not
-verified. A store that keys accounts by email lets Mallory sign in with the wallet and get Ana's account: an account takeover. Keyed by issuer and
-subject there are 2 accounts, https://bank.example | ana-0001 and https://wallet.example | mal-3301, and Mallory's account has no email, because
-the wallet did not verify it. Userinfo with Ana's access token returns sub ana-0001 and her email, with the same subject as the ID token. Userinfo
-with the ID token instead is refused, and so is the access token after it expires.
+The bank says its user ana-0001 has the email ana@mail.example, verified. wallet.example says its user mal-3301 has the same email, not verified.
+Before the fix the store keys accounts by email: Ana's account is ana@mail.example, and when Mallory signs in with the wallet she gets the same account:
+one account, an account takeover. After the fix accounts are keyed by issuer and subject: https://bank.example | ana-0001 with her email, and
+https://wallet.example | mal-3301 with no email, because an unverified email is not kept: two accounts. Userinfo with Ana's access token returns sub
+ana-0001 and her email, the same subject as the ID token; the ID token instead is refused (not an access token), and so is the access token 301 seconds
+later (expired).
 
 ### 5. Signing out, and the bill
 
-Ana signs out at the store: the store's session ends, and her browser is sent to https://bank.example/logout with id_token_hint,
-post_logout_redirect_uri and state. Ana is then signed in on a laptop and a phone: 2 store sessions. The bank ends the laptop's session and sends a
-back-channel logout token, typed logout+jwt, with the logout event, a sid and no nonce: accepted. One store session is left; the laptop is signed out
-and the phone still signed in. A logout token with a nonce is refused, so is one without the logout event, and so is an ID token sent as a logout
-token. The bill: OpenID Connect has many checks and options, so production code uses a certified library and a real provider; the ID token is for
-the store only; and signing out must reach every party.
+Ana signs out at the store (RP-initiated logout): the store's session ends, and her browser is sent to https://bank.example/logout with
+id_token_hint, post_logout_redirect_uri https%3A%2F%2Fshop.example%2Fsigned-out (the address, URL-encoded) and a random state. Then Ana is signed in on
+a laptop (sid-3) and a phone (sid-5): two store sessions. The bank ends the laptop's session and sends a logout token: header typ logout+jwt, alg
+EdDSA, kid bank-2026-a; claims iss, aud store-web, sub ana-0001, sid sid-3, jti lt-7, the back-channel logout event, and no nonce. It is accepted;
+one store session is left, the laptop is signed out and the phone is not. A logout token with a nonce, one without the event, and an ID token sent as
+a logout token are refused. The bill: use a certified library, keep the ID token in the store, and make sign-out reach every party.
 
 ## The verdict
 

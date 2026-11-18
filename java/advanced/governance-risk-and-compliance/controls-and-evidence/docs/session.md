@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The catalogue and its maps | 7 min |
-| 0:17 | Act 2: What the evidence says today | 7 min |
-| 0:24 | Act 3: The trail for one control | 7 min |
-| 0:31 | Act 4: When a test starts to fail | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: One control, mapped to two frameworks | 7 min |
+| 0:17 | Act 2: The maps: every control, both frameworks | 7 min |
+| 0:24 | Act 3: Evidence from a test report | 7 min |
+| 0:31 | Act 4: Every control today | 7 min |
+| 0:38 | Act 5: When a test starts to fail | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

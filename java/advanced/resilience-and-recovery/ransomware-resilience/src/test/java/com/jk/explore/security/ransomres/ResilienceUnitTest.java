@@ -118,4 +118,34 @@ class ResilienceUnitTest {
         assertEquals(300, Ledger.total(file));
         assertEquals(2, Ledger.rowCount(file));
     }
+
+    @Test
+    void entropyWorkedOutTermByTermIsExactlyTheGuardsEntropy() throws Exception {
+        byte[] block = java.util.Arrays.copyOf(Ledger.dayFile(1), Entropy.BLOCK);
+        EntropySteps.Worked text = EntropySteps.of(block);
+        assertEquals(Entropy.bits(block), text.total());
+        assertEquals(text.distinct(), text.terms().size());
+        assertEquals(Entropy.BLOCK, text.terms().stream().mapToInt(EntropySteps.Term::count).sum());
+        assertTrue(text.terms().get(0).count() >= text.terms().get(1).count());
+
+        byte[] encrypted = EntropySteps.encryptedForExample(block);
+        assertArrayEquals(encrypted, EntropySteps.encryptedForExample(block));
+        EntropySteps.Worked cipher = EntropySteps.of(encrypted);
+        assertEquals(Entropy.bits(encrypted), cipher.total());
+        assertTrue(text.total() < Entropy.LIMIT && cipher.total() > Entropy.LIMIT);
+    }
+
+    @Test
+    void byteValuesAreShownAsAReaderWouldRecogniseThem() {
+        assertEquals("','", EntropySteps.show(','));
+        assertEquals("'\\n'", EntropySteps.show('\n'));
+        assertEquals("0xea", EntropySteps.show(0xea));
+        assertEquals("0x20", EntropySteps.show(' '));
+    }
+
+    @Test
+    void theWriterPolicyListsOnlyAddAndList() {
+        assertEquals(java.util.List.of("s3:PutObject", "s3:ListBucket"), Policies.WRITER);
+        assertTrue(Policies.writerOnly("v").contains("\"s3:PutObject\",\"s3:ListBucket\""));
+    }
 }

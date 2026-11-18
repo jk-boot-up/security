@@ -46,7 +46,7 @@ class ReviewTest {
 
     @Test
     void strideQuestionsFollowTheKindOfEachPartAndTheFlows() {
-        assertEquals(3 * 2 + 4 * 6 + 2 * 4 + 3 * 9, Rules.strideQuestions(v1));
+        assertEquals(3 * 2 + 4 * 6 + 2 * 4 + 3 * 9, Stride.questions(v1));
     }
 
     @Test
@@ -92,5 +92,42 @@ class ReviewTest {
         Planted hidden = Planted.FIRST_DESIGN.get(Planted.FIRST_DESIGN.size() - 1);
         assertEquals(null, hidden.rule());
         assertFalse(hidden.reportedBy(Rules.run(v1, adrs1, Rules.ALL)));
+    }
+
+    @Test
+    void theFlowCheckFiresExactlyTheFlowRulesOfRulesForEveryFlowOfBothDesigns() throws Exception {
+        List<String> flowRules = List.of("no-direct-path-to-data", "cross-zone-encrypted", "cross-zone-authenticated", "every-flow-encrypted-and-authenticated");
+        for (String v : List.of("v1", "v2")) {
+            Design d = load("design/" + v + "/bank.dsl");
+            List<Finding> findings = Rules.run(d, Map.of(), flowRules);
+            for (Design.Flow f : d.flows()) {
+                List<String> byRules = findings.stream().filter(x -> x.subject().equals(f.id())).map(Finding::rule).sorted().toList();
+                assertEquals(byRules, new FlowCheck(f).rulesThatFire().stream().sorted().toList(), v + " " + f.id());
+            }
+        }
+    }
+
+    @Test
+    void strideAsksTwoSixFourAndThreeLetters() {
+        assertEquals(List.of("S", "R"), Stride.letters(Design.Kind.EXTERNAL));
+        assertEquals(6, Stride.letters(Design.Kind.PROCESS).size());
+        assertEquals(List.of("T", "R", "I", "D"), Stride.letters(Design.Kind.DATASTORE));
+        assertEquals(62, Stride.questions(load("design/v2/bank.dsl")));
+    }
+
+    @Test
+    void theChangesBetweenTheDesignsAreListed() throws Exception {
+        Design v2 = load("design/v2/bank.dsl");
+        assertEquals(List.of(), Changes.parts(v1, v1));
+        assertEquals(4, Changes.parts(v1, v2).size());
+        assertTrue(Changes.flows(v1, v2).contains(new Changes.Change("web -> ledgerdb", "flow", "drawn", "removed")));
+        assertEquals(6, Changes.flows(v1, v2).size());
+        assertEquals(List.of(new Changes.Change("0003", "status", "Superseded by 5", "removed"), new Changes.Change("0004", "status", "Proposed", "Accepted"),
+                new Changes.Change("0005", "status", "-", "Accepted")), Changes.decisions(adrs1, adrs("design/v2/adr")));
+    }
+
+    @Test
+    void partsKeepTheOrderOfTheDslFile() {
+        assertEquals(List.of("customer", "staff", "cards", "web", "api", "ledger", "ledgerdb", "sessions", "reports"), v1.parts().stream().map(Design.Part::id).toList());
     }
 }

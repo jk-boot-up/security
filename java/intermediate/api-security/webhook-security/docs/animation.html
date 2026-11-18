@@ -39,6 +39,8 @@
   #console-lines span.bad { color: var(--vk-f87171, #f87171); }
   #console-lines span.amber { color: var(--vk-fbbf24, #fbbf24); }
   #console-lines span.muted { color: var(--vk-94a3b8, #94a3b8); }
+  .figure { margin-bottom: 16px; display: none; }
+  .figure img { width: 100%; border-radius: 10px; border: 1px solid var(--vk-334155, #334155); display: block; }
   .narration { background: var(--vk-1e293b, #1e293b); border: 1px solid var(--vk-334155, #334155); border-radius: 10px;
                padding: 14px 18px; margin-bottom: 16px; min-height: 3.2em; }
   .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -63,6 +65,8 @@
     <div id="narration">Press Step or Play to begin.</div>
   </div>
 
+  <div class="figure" id="figure"><img id="figure-img" alt=""></div>
+
   <div class="stage">
     <div class="boxes" id="boxes">
       <div class="row" id="row-trust">
@@ -70,8 +74,12 @@
         <div class="job">acts on any posted message</div>
       </div>
       <div class="row" id="row-sign">
-        <div class="name">Signatures</div>
+        <div class="name">Signing</div>
         <div class="job">HMAC over the time and the raw body</div>
+      </div>
+      <div class="row" id="row-check">
+        <div class="name">Checking</div>
+        <div class="job">recompute v1, compare in constant time</div>
       </div>
       <div class="row" id="row-replay">
         <div class="name">Replays</div>
@@ -104,174 +112,824 @@
 <script>
 const STEPS = [
  {
+  "label": "Before we start — what the letters stand for",
+  "narration": "H mac is a hash based message authentication code: a hash that only someone with the secret key can make. S H A two fifty six is the secure hash algorithm with two hundred and fifty six bits: a thirty two byte fingerprint of any data. X O R is exclusive or. Each bit of the result is one when the two input bits differ. Hex is short for hexadecimal: every byte is written as two characters, from zero zero to f f. H T T P is the hypertext transfer protocol. Two hundred means accepted; four hundred and above means refused. Post is the H T T P method that sends data to an address. Jason, J S O N, is JavaScript object notation: the text form of each event. A P I is an application programming interface: here, the provider's own service the store can ask. J D K is the Java development kit: Java and its standard library. Oh wasp, O W A S P, is the open worldwide application security project. C W E is the common weakness enumeration. Number three four five is insufficient verification of data authenticity.",
+  "rows": {},
+  "console": [
+   [
+    "HMAC    Hash-based Message Authentication Code: a keyed hash",
+    "code"
+   ],
+   [
+    "SHA-256  Secure Hash Algorithm, 256 bits: a 32-byte fingerprint",
+    "code"
+   ],
+   [
+    "XOR     exclusive or: a bit is 1 when the two bits differ",
+    "code"
+   ],
+   [
+    "hex     hexadecimal: each byte as two characters, 00 to ff",
+    "code"
+   ],
+   [
+    "HTTP    Hypertext Transfer Protocol: requests and status codes",
+    "code"
+   ],
+   [
+    "POST    the HTTP method that sends data to an address",
+    "code"
+   ],
+   [
+    "JSON    JavaScript Object Notation: the text form of the event",
+    "code"
+   ],
+   [
+    "API     Application Programming Interface: the provider's own service",
+    "code"
+   ],
+   [
+    "JDK     Java Development Kit: Java and its standard library",
+    "code"
+   ],
+   [
+    "OWASP   Open Worldwide Application Security Project",
+    "code"
+   ],
+   [
+    "CWE     Common Weakness Enumeration: CWE-345 is weak data verification",
+    "code"
+   ]
+  ]
+ },
+ {
   "label": "Act 1 — An endpoint that trusts whatever is posted",
-  "narration": "First demo: an endpoint that trusts whatever is posted to it. Anyone posts a message saying payment succeeded for an order. With no signature. The store marks the order paid. The provider's own records say: no payment. The order is marked paid, and was never paid. The webhook address is public, so a message to it proves nothing about who sent it.",
+  "narration": "First demo: an endpoint that trusts whatever is posted to it. On the left, the request. It is a post to the store's webhook address. The body says: payment succeeded, for order A ten oh one, four thousand two hundred cents. There is no signature. Anyone could have typed it. On the right, the store's response. Two hundred: order A ten oh one is now paid. The store would ship the goods. Below, the payment provider's own records for that order. No payment. The order is marked paid, and was never paid. The address is public. So a message to it, on its own, proves nothing about who sent it. Here is the real output. The request, posted by anyone, with no signature. The response: two hundred, order A ten oh one is now paid. And the provider's records: no payment. Marked paid, never paid.",
   "rows": {
    "trust": "active wrong"
   },
   "console": [
    [
-    "anyone posts {\"type\":\"payment.succeeded\",\"order\":\"A-1001\"} to the store's webhook address, with no signature",
+    "THE REQUEST (posted by anyone, with no signature):",
+    "code"
+   ],
+   [
+    "  POST /webhooks/payments",
     "muted"
    ],
    [
-    "the store answers: 200 order A-1001 is now paid",
+    "  {\"id\":\"evt_forged1\",\"type\":\"payment.succeeded\",",
+    "muted"
+   ],
+   [
+    "  \"order\":\"A-1001\",\"amount\":4200}",
+    "muted"
+   ],
+   [
+    "THE RESPONSE:",
+    "code"
+   ],
+   [
+    "  200 order A-1001 is now paid",
     "bad"
    ],
    [
-    "the provider's own records for A-1001: no payment  <- MARKED PAID, NEVER PAID",
+    "THE PROVIDER'S OWN RECORDS FOR A-1001:",
+    "code"
+   ],
+   [
+    "  no payment  <- MARKED PAID, NEVER PAID",
     "bad"
    ],
    [
-    "the webhook address is public, so a message to it proves nothing about who sent it",
+    "the address is public: a message to it proves nothing",
     "amber"
    ]
-  ]
+  ],
+  "figure": "figures/forged_request.png",
+  "figure_title": "A forged payment, and what the provider really knows"
  },
  {
-  "label": "Act 2 — A signature over the exact bytes",
-  "narration": "Second demo: a signature over the exact bytes. The provider signs each message with a secret it shares with the store. An H MAC, over the time and the raw body. The real event is accepted. The same signature on a body changed to another order is refused. A message with no signature is refused. A message signed with any other secret is refused. The comparison takes the same time however many bytes match, so timing gives nothing away. And the real server gives the same answers.",
+  "label": "Act 2 — How the provider signs a message",
+  "narration": "Second demo: how the provider signs a message. Top left, the inputs. A secret, shared only by the provider and the store. The time, in seconds since nineteen seventy. And the raw body, exactly as it will be sent. Step one. What is signed is the time, a dot, and the raw body, joined together. Step two, on the right. The secret is padded with zeros to one block of sixty four bytes. Each byte is mixed with the value three six, to make an inner key. And with five c, to make an outer key. Step three. An S H A two fifty six hash of the inner key and the signed text. Then a second hash, of the outer key and that first result. That second hash is v one, the signature. At the bottom, the header sent with the body: the time, and v one. Without the secret, nobody can make that value. Here is the output. The inputs: the secret, the time, and the seventy nine byte body. Step one, the text that is signed. Step two, the padded key, and the two mixed keys. Only the first eight bytes are shown. Step three, the two hashes, with all thirty two bytes in hex. Then the header, with the time and v one. And a check: the value made by hand is the same as the one from the Java library.",
   "rows": {
    "sign": "active ok"
   },
   "console": [
    [
-    "the provider signs HMAC-SHA256 of the timestamp and the raw body with the secret it shares with the store",
+    "THE INPUTS:",
+    "code"
+   ],
+   [
+    "  secret  whsec-demo-shop-2026  (20 bytes, shared)",
     "muted"
    ],
    [
-    "the real event, as signed: 200 order A-1001 is now paid",
-    "ok"
+    "  time t  1800000000  (seconds since 1 January 1970)",
+    "muted"
    ],
    [
-    "the same signature on a body changed to order A-1002: 401 refused: the signature does not match",
-    "ok"
+    "  raw body (79 bytes):",
+    "muted"
    ],
    [
-    "a forged event with no signature: 400 refused: no signature",
-    "ok"
+    "    {\"id\":\"evt_1001paid\",\"type\":\"payment.succeeded\",",
+    "muted"
    ],
    [
-    "a forged event signed with a secret that is not the provider's: 401 refused: the signature does not match",
-    "ok"
+    "    \"order\":\"A-1001\",\"amount\":4200}",
+    "muted"
    ],
    [
-    "the same checks over the local HTTP server: real event 200, changed body 401, no signature 400",
-    "ok"
+    "STEP 1, WHAT IS SIGNED: t, a dot, the raw body",
+    "code"
+   ],
+   [
+    "  1800000000.{\"id\":\"evt_1001paid\",\"type\":\"payment.succeeded\",",
+    "muted"
+   ],
+   [
+    "  \"order\":\"A-1001\",\"amount\":4200}",
+    "muted"
+   ],
+   [
+    "STEP 2, THE KEY PADDED WITH ZEROS TO 64 BYTES, THEN MIXED:",
+    "code"
+   ],
+   [
+    "  padded key   77 68 73 65 63 2d 64 65 ...",
+    "muted"
+   ],
+   [
+    "  XOR 36 each  41 5e 45 53 55 1b 52 53 ...  inner key",
+    "muted"
+   ],
+   [
+    "  XOR 5c each  2b 34 2f 39 3f 71 38 39 ...  outer key",
+    "muted"
+   ],
+   [
+    "STEP 3, TWO SHA-256 HASHES:",
+    "code"
+   ],
+   [
+    "  inner = SHA-256(inner key + what is signed)",
+    "muted"
+   ],
+   [
+    "        = 3f6f142eb2d9aa2755f74c1540b0e948",
+    "muted"
+   ],
+   [
+    "          0685dff163afa27ff975ff5ea5f93936",
+    "muted"
+   ],
+   [
+    "  v1    = SHA-256(outer key + inner)",
+    "muted"
+   ],
+   [
+    "        = dc14c6ef9d7ef5d1fd993788607f660a",
+    "muted"
+   ],
+   [
+    "          df0d0e8e177d6a0e2f5748dcce6c5cc3",
+    "muted"
+   ],
+   [
+    "THE HEADER SENT WITH THE BODY (Shop-Signature):",
+    "code"
+   ],
+   [
+    "  t=1800000000,",
+    "muted"
+   ],
+   [
+    "  v1=dc14c6ef9d7ef5d1fd993788607f660a",
+    "muted"
+   ],
+   [
+    "     df0d0e8e177d6a0e2f5748dcce6c5cc3",
+    "muted"
+   ],
+   [
+    "the same as the JDK's Mac HmacSHA256: true",
+    "amber"
    ]
-  ]
+  ],
+  "figure": "figures/hmac_steps.png",
+  "figure_title": "An HMAC, step by step, with the real values"
  },
  {
-  "label": "Act 3 — A real message sent again",
-  "narration": "Third demo: a real message sent again. With signatures only, a real refund pays the customer back. Someone who saw that message sends a copy an hour later. It is still correctly signed. So it is paid again. Two refunds, for one order. Now add a short window on the signed time, and a record of the events already processed. The same message after thirty seconds changes nothing. An hour later it is refused. And editing its time breaks the signature, because the time is signed too. One refund, as it should be.",
+  "label": "Act 3 — The store checks the signature",
+  "narration": "Third demo: the store checks the signature. The store has the same secret. So it makes v one again, from the time and the bytes it actually received. Then it compares that with the v one in the header. Row one, the real event. Both values are the same. Two hundred, accepted. Row two, the same header, but the body now says order A ten oh two. One changed character gives a completely different value. Four oh one, refused. Row three has no header at all: four hundred. Row four is signed with a secret that is not the provider's: four oh one. The comparison takes the same time however many bytes match, so timing gives nothing away. Here is the output. The store's three steps. Then the real event: the sent and computed values match, two hundred. And the changed body: they differ, four oh one. No header: four hundred. Another secret: four oh one. And the real H T T P server on this machine gives the same three answers.",
+  "rows": {
+   "check": "active ok"
+  },
+  "console": [
+   [
+    "THE STORE'S STEPS:",
+    "code"
+   ],
+   [
+    "  read t and v1 from the header",
+    "muted"
+   ],
+   [
+    "  compute the HMAC of t, a dot and the raw body received",
+    "muted"
+   ],
+   [
+    "  compare it with v1 in constant time (MessageDigest.isEqual)",
+    "muted"
+   ],
+   [
+    "THE MESSAGES AND RESPONSES:",
+    "code"
+   ],
+   [
+    "  1 the real event, as signed",
+    "muted"
+   ],
+   [
+    "    v1 sent dc14c6ef9d7ef5d1...  computed dc14c6ef9d7ef5d1...",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now paid",
+    "ok"
+   ],
+   [
+    "  2 the body changed to A-1002, the same header",
+    "muted"
+   ],
+   [
+    "    v1 sent dc14c6ef9d7ef5d1...  computed 8dfb52122bf9f611...",
+    "muted"
+   ],
+   [
+    "    401 refused: the signature does not match",
+    "ok"
+   ],
+   [
+    "  3 a forged event with no header",
+    "muted"
+   ],
+   [
+    "    400 refused: no signature",
+    "ok"
+   ],
+   [
+    "  4 a forged event signed with another secret",
+    "muted"
+   ],
+   [
+    "    v1 sent c45635178c433d5b...  computed dab5c7f482e4636c...",
+    "muted"
+   ],
+   [
+    "    401 refused: the signature does not match",
+    "ok"
+   ],
+   [
+    "THE SAME OVER THE LOCAL HTTP SERVER (POST only, 4096 bytes):",
+    "code"
+   ],
+   [
+    "  1 real 200, 2 changed 401, 3 no header 400",
+    "muted"
+   ]
+  ],
+  "figure": "figures/signature_checks.png",
+  "figure_title": "The v1 sent, the v1 computed, and the answer"
+ },
+ {
+  "label": "Act 4 — A real message sent again",
+  "narration": "Fourth demo: a real message sent again. Someone has seen a real refund message, in a log perhaps. Its signature is genuine. Top row, a store that checks signatures only. The real refund is paid. An hour later, the same message is sent again. It is still correctly signed, so it is paid again. Eight thousand four hundred cents, for a four thousand two hundred cent order. Bottom row, with two more checks. The age of a message is now, minus its signed time, and it must be at most three hundred seconds. And the store remembers every event id it has processed. After thirty seconds, the age is fine, but the id is known: nothing changes. After an hour, the age is far too large: refused. And if someone edits the time to now, the signature no longer matches, because the time is signed too. Here is the output. The refund message, signed at time t. With signatures only: paid at t, and paid again an hour later. Two refunds. With a window and a record of ids. Paid once. At thirty seconds: already processed. At three thousand six hundred and thirty seconds: signed too long ago. With an edited time: the signature does not match. One refund.",
   "rows": {
    "replay": "active amber"
   },
   "console": [
    [
-    "with signatures only, a real refund: 200 order A-1001 is now refunded, 4200 cents paid back",
+    "THE MESSAGE (a real refund, t=1800000000):",
+    "code"
+   ],
+   [
+    "  {\"id\":\"evt_1001refund\",\"type\":\"payment.refunded\",",
     "muted"
    ],
    [
-    "someone who saw that message sends a copy an hour later: 200 order A-1001 is now refunded, 4200 cents paid back",
-    "bad"
-   ],
-   [
-    "refunds paid for A-1001: 2, 8400 cents for a 4200-cent order  <- A REAL MESSAGE, REPLAYED",
-    "bad"
-   ],
-   [
-    "with a 300-second window on the signed time, and a record of processed event ids:",
+    "  \"order\":\"A-1001\",\"amount\":4200}",
     "muted"
    ],
    [
-    "  the same message again after 30 seconds: 200 already processed evt_1001refund, nothing changed",
+    "WITH SIGNATURES ONLY:",
+    "code"
+   ],
+   [
+    "  the real refund, at t + 0 seconds:",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now refunded, 4200 cents paid back",
     "ok"
    ],
    [
-    "  the same message again an hour later: 400 refused: signed too long ago",
+    "  a copy, sent again at t + 3600 seconds:",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now refunded, 4200 cents paid back",
+    "bad"
+   ],
+   [
+    "  refunds paid: 2, 8400 cents for a 4200-cent order  <- REPLAYED",
+    "bad"
+   ],
+   [
+    "WITH A 300-SECOND WINDOW AND A RECORD OF EVENT IDS:",
+    "code"
+   ],
+   [
+    "  the real refund, at t + 0 seconds:",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now refunded, 4200 cents paid back",
     "ok"
    ],
    [
-    "  the same message with its time edited to now: 401 refused: the signature does not match",
+    "  the copy at t + 30 (age 30 <= 300, id already seen):",
+    "muted"
+   ],
+   [
+    "    200 already processed evt_1001refund, nothing changed",
     "ok"
    ],
    [
-    "  refunds paid for A-1001: 1, 4200 cents",
+    "  the copy at t + 3630 (age 3630 > 300):",
+    "muted"
+   ],
+   [
+    "    400 refused: signed too long ago",
     "ok"
+   ],
+   [
+    "  the copy with its t edited to 1800003630 (age 0):",
+    "muted"
+   ],
+   [
+    "    401 refused: the signature does not match",
+    "ok"
+   ],
+   [
+    "  refunds paid: 1, 4200 cents",
+    "muted"
+   ],
+   [
+    "the time is signed too, so it cannot be changed",
+    "amber"
    ]
-  ]
+  ],
+  "figure": "figures/replay_timeline.png",
+  "figure_title": "One real refund, sent again"
  },
  {
-  "label": "Act 4 — Twice, out of order, and a new secret",
-  "narration": "Fourth demo: the same event twice, events out of order, and a new secret. Providers retry, so the same event can arrive twice. The order changes once. A refund arrives before its payment. The store answers, not yet, try again, and does not record it as done. Then the payment arrives. And the retried refund is applied. When the secret is changed, the store accepts both for a while. Once the old one is removed, a message signed with it is refused.",
+  "label": "Act 5 — Twice, out of order, and a new secret",
+  "narration": "Fifth demo: the same event twice, events out of order, and a new secret. Providers retry, and the network does not keep order. Event one, a payment for an order that is new. Applied. Event two is the same payment again. Its id is known, so nothing changes. Event three is a refund, for an order that is still new. A refund is allowed only from paid. So the store answers four oh nine: not yet, try again. And it does not record the event as done. Event four, the payment, makes that order paid. Event five, the provider's retry of the refund, is now applied. At the bottom, changing the secret. For a while, the store accepts both the old and the new secret. Then the old one is removed, and only the new one works. Here is the output. The five events, in the order they arrive. Then each reply, with the order's state before it. Paid, already processed, try again later, paid, refunded. Three changes in all. Changing the secret. Before, during the changeover, and after. During the changeover, both secrets give two hundred. After it, the old secret gives four oh one.",
   "rows": {
    "idempotent": "active ok",
    "rotate": "active ok"
   },
   "console": [
    [
-    "the provider retries the payment event, so it arrives twice: order changes 1 time, A-1001 is paid",
+    "THE EVENTS, IN THE ORDER THEY ARRIVE:",
+    "code"
+   ],
+   [
+    "  1 evt_1001paid   A-1001 payment.succeeded",
+    "muted"
+   ],
+   [
+    "  2 evt_1001paid   A-1001 payment.succeeded  (a retry)",
+    "muted"
+   ],
+   [
+    "  3 evt_1002refund A-1002 payment.refunded  (before its payment)",
+    "muted"
+   ],
+   [
+    "  4 evt_1002paid   A-1002 payment.succeeded",
+    "muted"
+   ],
+   [
+    "  5 evt_1002refund A-1002 payment.refunded  (a retry)",
+    "muted"
+   ],
+   [
+    "THE RESPONSES (event, the order's state before, reply):",
+    "code"
+   ],
+   [
+    "  1 new  200 order A-1001 is now paid",
     "ok"
    ],
    [
-    "a refund for A-1002 arrives before its payment: 409 not applied: order is new, try again later",
+    "  2 paid 200 already processed evt_1001paid, nothing changed",
+    "ok"
+   ],
+   [
+    "  3 new  409 not applied: order is new, try again later",
     "amber"
    ],
    [
-    "then the payment: 200 order A-1002 is now paid",
+    "  4 new  200 order A-1002 is now paid",
     "ok"
    ],
    [
-    "then the provider's retry of the refund: 200 order A-1002 is now refunded, 1999 cents paid back",
+    "  5 paid 200 order A-1002 is now refunded, 1999 cents paid back",
     "ok"
    ],
    [
-    "changing the secret: old secret 200, new secret 200 during the changeover",
+    "the orders changed 3 times; A-1001 is paid, A-1002 is refunded",
+    "amber"
+   ],
+   [
+    "CHANGING THE SECRET, THE SECRETS THE STORE ACCEPTS:",
+    "code"
+   ],
+   [
+    "  before      whsec-demo-shop-2026",
+    "muted"
+   ],
+   [
+    "  changeover  whsec-demo-shop-2026, whsec-demo-shop-2027",
+    "muted"
+   ],
+   [
+    "  after       whsec-demo-shop-2027",
+    "muted"
+   ],
+   [
+    "THE MESSAGES AND RESPONSES:",
+    "code"
+   ],
+   [
+    "  changeover, signed with whsec-demo-shop-2026:",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now paid",
     "ok"
    ],
    [
-    "after the old secret is removed, a message signed with it: 401 refused: the signature does not match",
+    "  changeover, signed with whsec-demo-shop-2027:",
+    "muted"
+   ],
+   [
+    "    200 order A-1002 is now paid",
+    "ok"
+   ],
+   [
+    "  after, signed with whsec-demo-shop-2026:",
+    "muted"
+   ],
+   [
+    "    401 refused: the signature does not match",
     "ok"
    ]
-  ]
+  ],
+  "figure": "figures/event_order.png",
+  "figure_title": "Events twice and out of order, and a change of secret"
  },
  {
-  "label": "Act 5 — The bill",
-  "narration": "Fifth demo: the bill. A framework that parses the body and writes it again, before checking, breaks every real signature. So keep the raw bytes, and check them first. For anything valuable, like shipping goods, still ask the provider's own A P I. The shared secret lives outside the code, and is changed on a schedule. A leaked secret lets anyone forge a payment. And because events arrive late, twice, or out of order, every handler must be safe to run again.",
+  "label": "Act 6 — The bill",
+  "narration": "Sixth demo: the bill. Top, the raw body, exactly as the provider signed it. Seventy nine bytes. The store computes the same v one as the header: accepted. Below, the same event, after a framework has parsed it and written it out again, with spaces. It means the same, but it is eighty eight bytes. So its v one is different, and the real event is refused. That is the first cost. Keep the raw bytes, and check them before anything parses them. And for anything valuable, like shipping goods, the store still asks the provider's own A P I. Here it confirms the payment. Here is the output. The raw body, and the same event written again. With the same header, the written copy is refused, and the raw body is accepted. The provider's A P I confirms the payment before shipping. Keep the raw bytes. Keep the secret outside the code, and change it on a schedule. And make every handler safe to run twice.",
   "rows": {
    "bill": "active amber"
   },
   "console": [
    [
-    "a framework that parses the body and writes it again with other spacing, then checks the signature: 401 refused",
-    "bad"
+    "THE RAW BODY, AS SIGNED (79 bytes):",
+    "code"
    ],
    [
-    "so the raw bytes must be kept, and checked, before anything parses them",
-    "amber"
+    "  {\"id\":\"evt_1001paid\",\"type\":\"payment.succeeded\",",
+    "muted"
    ],
    [
-    "before shipping, the store asks the provider's API about A-1001: payment.succeeded 4200, which matches the event",
+    "  \"order\":\"A-1001\",\"amount\":4200}",
+    "muted"
+   ],
+   [
+    "THE SAME EVENT, PARSED AND WRITTEN AGAIN (88 bytes):",
+    "code"
+   ],
+   [
+    "  { \"id\": \"evt_1001paid\", \"type\": \"payment.succeeded\",",
+    "muted"
+   ],
+   [
+    "  \"order\": \"A-1001\", \"amount\": 4200 }",
+    "muted"
+   ],
+   [
+    "THE RESPONSES (the header's v1 is dc14c6ef9d7ef5d1...):",
+    "code"
+   ],
+   [
+    "  written again: computed v1 909d1bd03dc6ecc1...",
+    "muted"
+   ],
+   [
+    "    401 refused: the signature does not match",
     "ok"
    ],
    [
-    "the shared secret lives outside the code, is changed on a schedule with a changeover, and leaks are a forged-payment risk",
+    "  raw body:      computed v1 dc14c6ef9d7ef5d1...",
+    "muted"
+   ],
+   [
+    "    200 order A-1001 is now paid",
+    "ok"
+   ],
+   [
+    "THE PROVIDER'S API, ASKED BEFORE SHIPPING A-1001:",
+    "code"
+   ],
+   [
+    "  payment.succeeded 4200, which matches the event",
+    "muted"
+   ],
+   [
+    "keep the raw bytes, and check them before parsing",
     "amber"
    ],
    [
-    "events can arrive late, twice or out of order, so every handler must be idempotent and check the order's state",
+    "keep the secret outside the code; change it on a schedule",
     "amber"
+   ],
+   [
+    "events come late, twice or out of order: handlers are idempotent",
+    "amber"
+   ]
+  ],
+  "figure": "figures/raw_bytes.png",
+  "figure_title": "The same event, different bytes, a different v1"
+ },
+ {
+  "label": "Code — The Java Classes",
+  "narration": "Now, a quick look at the code. Everything runs inside the Java development kit, with a simulated clock, so every run is the same. Here are the classes that matter.",
+  "rows": {},
+  "console": [
+   [
+    "Signatures: the header: t, and v1 over t and the body",
+    "muted"
+   ],
+   [
+    "HmacSteps: the HMAC by hand, checked against the JDK",
+    "muted"
+   ],
+   [
+    "Receiver: the store's endpoint: the checks, in order",
+    "muted"
+   ],
+   [
+    "Orders: new to paid, paid to refunded, nothing else",
+    "muted"
+   ],
+   [
+    "WebhookServer: the real local endpoint: the raw bytes",
+    "muted"
+   ]
+  ]
+ },
+ {
+  "label": "Code — Signatures — what is signed, and the header",
+  "narration": "The header carries the time and v one. V one is the H mac of the time, a dot, and the body exactly as it was sent.",
+  "rows": {},
+  "console": [
+   [
+    "// Signatures: the header: t, and v1 over t and the body",
+    "muted"
+   ],
+   [
+    "static String header(byte[] secret, long timestamp, byte[] rawBody) {",
+    "code"
+   ],
+   [
+    "    byte[] mac = hmacSha256(secret, signedContent(timestamp, rawBody));",
+    "code"
+   ],
+   [
+    "    return \"t=\" + timestamp + \",v1=\" + HexFormat.of().formatHex(mac);",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — Signatures — a constant-time comparison, under any secret",
+  "narration": "The store makes v one again from the bytes it received. It compares in constant time, and tries every secret it accepts, which is how a changeover works.",
+  "rows": {},
+  "console": [
+   [
+    "// Signatures: the header: t, and v1 over t and the body",
+    "muted"
+   ],
+   [
+    "byte[] content = signedContent(parsed.timestamp(), rawBody);",
+    "code"
+   ],
+   [
+    "for (byte[] secret : secrets) {",
+    "code"
+   ],
+   [
+    "    any |= MessageDigest.isEqual(hmacSha256(secret, content), parsed.mac());",
+    "code"
+   ],
+   [
+    "}",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — HmacSteps — pad, mix, hash twice",
+  "narration": "The key is padded to one block of sixty four bytes. Mixed with three six for the inner hash, and with five c for the outer hash. The outer hash is the H mac.",
+  "rows": {},
+  "console": [
+   [
+    "// HmacSteps: the HMAC by hand, checked against the JDK",
+    "muted"
+   ],
+   [
+    "byte[] padded = Arrays.copyOf(key.length > BLOCK ? sha256(key) : key, BLOCK);",
+    "code"
+   ],
+   [
+    "byte[] innerKey = xor(padded, 0x36);",
+    "code"
+   ],
+   [
+    "byte[] inner = sha256(concat(innerKey, message));",
+    "code"
+   ],
+   [
+    "byte[] outerKey = xor(padded, 0x5c);",
+    "code"
+   ],
+   [
+    "byte[] mac = sha256(concat(outerKey, inner));",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — Receiver — signature, time, then event id",
+  "narration": "The receiver refuses a message signed too long ago, then one whose signature does not match. Only then does it parse the body. An event id it has already processed changes nothing.",
+  "rows": {},
+  "console": [
+   [
+    "// Receiver: the store's endpoint: the checks, in order",
+    "muted"
+   ],
+   [
+    "long age = Math.abs(clock.now() - parsed.get().timestamp());",
+    "code"
+   ],
+   [
+    "if (policy.toleranceSeconds() > 0 && age > policy.toleranceSeconds()) {",
+    "code"
+   ],
+   [
+    "    return new Reply(400, \"refused: signed too long ago\");",
+    "code"
+   ],
+   [
+    "}",
+    "code"
+   ],
+   [
+    "if (!Signatures.matchesAny(secrets, parsed.get(), rawBody)) {",
+    "code"
+   ],
+   [
+    "    return new Reply(401, \"refused: the signature does not match\");",
+    "code"
+   ],
+   [
+    "...",
+    "code"
+   ],
+   [
+    "if (policy.rememberEvents() && processed.contains(event.get().id())) {",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — Receiver — not yet: try again later",
+  "narration": "An event that arrives too early gets four oh nine, and is not remembered. So the provider's retry can still apply it. An event is remembered only once it has been applied.",
+  "rows": {},
+  "console": [
+   [
+    "// Receiver: the store's endpoint: the checks, in order",
+    "muted"
+   ],
+   [
+    "if (outcome.startsWith(\"not applied\")) {",
+    "code"
+   ],
+   [
+    "    ...",
+    "code"
+   ],
+   [
+    "    return new Reply(409, outcome + \", try again later\");",
+    "code"
+   ],
+   [
+    "}",
+    "code"
+   ],
+   [
+    "...",
+    "code"
+   ],
+   [
+    "processed.add(event.get().id());",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — Orders — a state check",
+  "narration": "A payment moves an order only from new to paid. A refund only from paid to refunded. So a second refund can never be paid.",
+  "rows": {},
+  "console": [
+   [
+    "// Orders: new to paid, paid to refunded, nothing else",
+    "muted"
+   ],
+   [
+    "State expected = payment ? State.NEW : State.PAID;",
+    "code"
+   ],
+   [
+    "State now = order.state();",
+    "code"
+   ],
+   [
+    "if (now != expected) {",
+    "code"
+   ],
+   [
+    "    return \"not applied: order is \" + now.name().toLowerCase(Locale.ROOT);",
+    "code"
+   ]
+  ]
+ },
+ {
+  "label": "Code — WebhookServer — keep the raw bytes",
+  "narration": "The server reads at most four thousand and ninety six bytes. It hands the receiver the raw bytes and the signature header, untouched.",
+  "rows": {},
+  "console": [
+   [
+    "// WebhookServer: the real local endpoint: the raw bytes",
+    "muted"
+   ],
+   [
+    "body = in.readNBytes(MAX_BODY + 1);",
+    "code"
+   ],
+   [
+    "...",
+    "code"
+   ],
+   [
+    "String signature = exchange.getRequestHeaders().getFirst(Signatures.HEADER);",
+    "code"
+   ],
+   [
+    "reply = body.length > MAX_BODY ? new Reply(413, \"refused: body too large\")",
+    "code"
+   ],
+   [
+    "        : receiver.receive(body, signature);",
+    "code"
    ]
   ]
  }
 ];
-const rowIds = ["trust", "sign", "replay", "idempotent", "rotate", "bill"];
+const rowIds = ["trust", "sign", "check", "replay", "idempotent", "rotate", "bill"];
 const stepLabel = document.getElementById("step-label");
 const narrationEl = document.getElementById("narration");
 const consoleEl = document.getElementById("console-lines");
 const progressEl = document.getElementById("progress");
 const playBtn = document.getElementById("play");
+const figureEl = document.getElementById("figure");
+const figureImg = document.getElementById("figure-img");
 let i = -1, timer = null;
 
 function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -282,6 +940,7 @@ function render() {
     stepLabel.textContent = "Ready";
     narrationEl.textContent = "Press Step or Play to begin.";
     consoleEl.innerHTML = "";
+    figureEl.style.display = "none";
     progressEl.textContent = "0 / " + STEPS.length;
     return;
   }
@@ -292,6 +951,8 @@ function render() {
     const cls = s.rows[id];
     document.getElementById("row-" + id).className = "row " + (cls ? cls : "dim");
   }
+  if (s.figure) { figureImg.src = s.figure; figureImg.alt = s.figure_title || ""; figureEl.style.display = "block"; }
+  else figureEl.style.display = "none";
   consoleEl.innerHTML = s.console.map(([t, c]) => '<span class="' + c + '">' + esc(t) + "</span>").join("\n");
   progressEl.textContent = (i + 1) + " / " + STEPS.length;
 }
@@ -328,7 +989,7 @@ render();
    If the page already plays its own clips, only the pause button is added. */
 (function () {
   "use strict";
-  var STEPS = ["First demo: an endpoint that trusts whatever is posted to it. Anyone posts a message saying payment succeeded for an order. With no signature. The store marks the order paid. The provider's own records say: no payment. The order is marked paid, and was never paid. The webhook address is public, so a message to it proves nothing about who sent it.", "Second demo: a signature over the exact bytes. The provider signs each message with a secret it shares with the store. An H MAC, over the time and the raw body. The real event is accepted. The same signature on a body changed to another order is refused. A message with no signature is refused. A message signed with any other secret is refused. The comparison takes the same time however many bytes match, so timing gives nothing away. And the real server gives the same answers.", "Third demo: a real message sent again. With signatures only, a real refund pays the customer back. Someone who saw that message sends a copy an hour later. It is still correctly signed. So it is paid again. Two refunds, for one order. Now add a short window on the signed time, and a record of the events already processed. The same message after thirty seconds changes nothing. An hour later it is refused. And editing its time breaks the signature, because the time is signed too. One refund, as it should be.", "Fourth demo: the same event twice, events out of order, and a new secret. Providers retry, so the same event can arrive twice. The order changes once. A refund arrives before its payment. The store answers, not yet, try again, and does not record it as done. Then the payment arrives. And the retried refund is applied. When the secret is changed, the store accepts both for a while. Once the old one is removed, a message signed with it is refused.", "Fifth demo: the bill. A framework that parses the body and writes it again, before checking, breaks every real signature. So keep the raw bytes, and check them first. For anything valuable, like shipping goods, still ask the provider's own A P I. The shared secret lives outside the code, and is changed on a schedule. A leaked secret lets anyone forge a payment. And because events arrive late, twice, or out of order, every handler must be safe to run again."];
+  var STEPS = ["H mac is a hash based message authentication code: a hash that only someone with the secret key can make. S H A two fifty six is the secure hash algorithm with two hundred and fifty six bits: a thirty two byte fingerprint of any data. X O R is exclusive or. Each bit of the result is one when the two input bits differ. Hex is short for hexadecimal: every byte is written as two characters, from zero zero to f f. H T T P is the hypertext transfer protocol. Two hundred means accepted; four hundred and above means refused. Post is the H T T P method that sends data to an address. Jason, J S O N, is JavaScript object notation: the text form of each event. A P I is an application programming interface: here, the provider's own service the store can ask. J D K is the Java development kit: Java and its standard library. Oh wasp, O W A S P, is the open worldwide application security project. C W E is the common weakness enumeration. Number three four five is insufficient verification of data authenticity.", "First demo: an endpoint that trusts whatever is posted to it. On the left, the request. It is a post to the store's webhook address. The body says: payment succeeded, for order A ten oh one, four thousand two hundred cents. There is no signature. Anyone could have typed it. On the right, the store's response. Two hundred: order A ten oh one is now paid. The store would ship the goods. Below, the payment provider's own records for that order. No payment. The order is marked paid, and was never paid. The address is public. So a message to it, on its own, proves nothing about who sent it. Here is the real output. The request, posted by anyone, with no signature. The response: two hundred, order A ten oh one is now paid. And the provider's records: no payment. Marked paid, never paid.", "Second demo: how the provider signs a message. Top left, the inputs. A secret, shared only by the provider and the store. The time, in seconds since nineteen seventy. And the raw body, exactly as it will be sent. Step one. What is signed is the time, a dot, and the raw body, joined together. Step two, on the right. The secret is padded with zeros to one block of sixty four bytes. Each byte is mixed with the value three six, to make an inner key. And with five c, to make an outer key. Step three. An S H A two fifty six hash of the inner key and the signed text. Then a second hash, of the outer key and that first result. That second hash is v one, the signature. At the bottom, the header sent with the body: the time, and v one. Without the secret, nobody can make that value. Here is the output. The inputs: the secret, the time, and the seventy nine byte body. Step one, the text that is signed. Step two, the padded key, and the two mixed keys. Only the first eight bytes are shown. Step three, the two hashes, with all thirty two bytes in hex. Then the header, with the time and v one. And a check: the value made by hand is the same as the one from the Java library.", "Third demo: the store checks the signature. The store has the same secret. So it makes v one again, from the time and the bytes it actually received. Then it compares that with the v one in the header. Row one, the real event. Both values are the same. Two hundred, accepted. Row two, the same header, but the body now says order A ten oh two. One changed character gives a completely different value. Four oh one, refused. Row three has no header at all: four hundred. Row four is signed with a secret that is not the provider's: four oh one. The comparison takes the same time however many bytes match, so timing gives nothing away. Here is the output. The store's three steps. Then the real event: the sent and computed values match, two hundred. And the changed body: they differ, four oh one. No header: four hundred. Another secret: four oh one. And the real H T T P server on this machine gives the same three answers.", "Fourth demo: a real message sent again. Someone has seen a real refund message, in a log perhaps. Its signature is genuine. Top row, a store that checks signatures only. The real refund is paid. An hour later, the same message is sent again. It is still correctly signed, so it is paid again. Eight thousand four hundred cents, for a four thousand two hundred cent order. Bottom row, with two more checks. The age of a message is now, minus its signed time, and it must be at most three hundred seconds. And the store remembers every event id it has processed. After thirty seconds, the age is fine, but the id is known: nothing changes. After an hour, the age is far too large: refused. And if someone edits the time to now, the signature no longer matches, because the time is signed too. Here is the output. The refund message, signed at time t. With signatures only: paid at t, and paid again an hour later. Two refunds. With a window and a record of ids. Paid once. At thirty seconds: already processed. At three thousand six hundred and thirty seconds: signed too long ago. With an edited time: the signature does not match. One refund.", "Fifth demo: the same event twice, events out of order, and a new secret. Providers retry, and the network does not keep order. Event one, a payment for an order that is new. Applied. Event two is the same payment again. Its id is known, so nothing changes. Event three is a refund, for an order that is still new. A refund is allowed only from paid. So the store answers four oh nine: not yet, try again. And it does not record the event as done. Event four, the payment, makes that order paid. Event five, the provider's retry of the refund, is now applied. At the bottom, changing the secret. For a while, the store accepts both the old and the new secret. Then the old one is removed, and only the new one works. Here is the output. The five events, in the order they arrive. Then each reply, with the order's state before it. Paid, already processed, try again later, paid, refunded. Three changes in all. Changing the secret. Before, during the changeover, and after. During the changeover, both secrets give two hundred. After it, the old secret gives four oh one.", "Sixth demo: the bill. Top, the raw body, exactly as the provider signed it. Seventy nine bytes. The store computes the same v one as the header: accepted. Below, the same event, after a framework has parsed it and written it out again, with spaces. It means the same, but it is eighty eight bytes. So its v one is different, and the real event is refused. That is the first cost. Keep the raw bytes, and check them before anything parses them. And for anything valuable, like shipping goods, the store still asks the provider's own A P I. Here it confirms the payment. Here is the output. The raw body, and the same event written again. With the same header, the written copy is refused, and the raw body is accepted. The provider's A P I confirms the payment before shipping. Keep the raw bytes. Keep the secret outside the code, and change it on a schedule. And make every handler safe to run twice.", "Now, a quick look at the code. Everything runs inside the Java development kit, with a simulated clock, so every run is the same. Here are the classes that matter.", "The header carries the time and v one. V one is the H mac of the time, a dot, and the body exactly as it was sent.", "The store makes v one again from the bytes it received. It compares in constant time, and tries every secret it accepts, which is how a changeover works.", "The key is padded to one block of sixty four bytes. Mixed with three six for the inner hash, and with five c for the outer hash. The outer hash is the H mac.", "The receiver refuses a message signed too long ago, then one whose signature does not match. Only then does it parse the body. An event id it has already processed changes nothing.", "An event that arrives too early gets four oh nine, and is not remembered. So the provider's retry can still apply it. An event is remembered only once it has been applied.", "A payment moves an order only from new to paid. A refund only from paid to refunded. So a second refund can never be paid.", "The server reads at most four thousand and ninety six bytes. It hands the receiver the raw bytes and the signature header, untouched."];
   var norm = function (s) { return String(s || "").replace(/\s+/g, " ").trim(); };
   var box = document.getElementById("narration") || document.querySelector(".narration");
   if (!box || !STEPS.length) return;

@@ -14,15 +14,16 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: One Monday of logs | 8 min |
-| 0:18 | Act 2: A first version of each rule | 8 min |
-| 0:26 | Act 3: Tuning one threshold | 8 min |
-| 0:34 | Act 4: The tuned set, and what it tells the analyst | 8 min |
-| 0:42 | Exercises | 18 min |
+| 0:10 | Act 1: One Monday of logs | 7 min |
+| 0:17 | Act 2: Two attacks, worked out | 7 min |
+| 0:24 | Act 3: A first version of each rule | 7 min |
+| 0:31 | Act 4: Tuning one threshold | 7 min |
+| 0:38 | Act 5: The tuned set, and what it tells the analyst | 7 min |
+| 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run act two and ask which alerts a person would actually read. In act three, ask what the right threshold would be if the attacker went ten times slower. In act four, ask whether the two false alerts should be removed from the rule or left in.
+In act two, work out the travel speed for another pair of cities by hand. Run act three and ask which alerts a person would actually read. In act four, ask what the safe range would be if the attacker went ten times slower. In act five, ask whether the two false alerts should be removed from the rule or left in.
 
 ## Exercises
 

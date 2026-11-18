@@ -1,6 +1,8 @@
 package com.jk.explore.security.uploadspring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -118,5 +120,32 @@ class FilesSpringTest {
         assertFalse(ReturnLink.isOwnHost("https://shop.example.evil.example/x"));
         assertFalse(ReturnLink.isOwnHost("https://shop.example@evil.example/x"));
         assertFalse(ReturnLink.isOwnHost("http://shop.example/x"));
+    }
+
+    @Test
+    void theReturnLinkGivesTheReasonItRefused() {
+        assertNull(ReturnLink.reason("/orders?page=2"));
+        assertEquals("does not start with /", ReturnLink.reason("https://evil.example/login"));
+        assertEquals("starts with //: another host", ReturnLink.reason("//evil.example"));
+        assertEquals("has a backslash: browsers read /\\ as //", ReturnLink.reason("/\\evil.example"));
+    }
+
+    @Test
+    void springDecodesTheNameOnceAndTheFixedDownloadNeverAgain() throws Exception {
+        try (Layout layout = Layout.create(); var shop = FilesSpringDemo.start(layout, "safe")) {
+            // Spring decodes %2e%2e%2f into ../ once; the shape check refuses it
+            assertEquals("refused: not an invoice name", Wire.get(shop.port(), "/invoices?name=%2e%2e%2fsecrets%2fdb.txt").body());
+            // double encoding leaves %2e%2e%2f after Spring's one decode; it is not decoded again, and the shape check refuses it
+            assertEquals("refused: not an invoice name", Wire.get(shop.port(), "/invoices?name=%252e%252e%252fsecrets%252fdb.txt").body());
+            // an invoice name sent with an encoded dot is decoded by Spring and read as usual
+            assertEquals("Invoice 1001: Ana, 42.50", Wire.get(shop.port(), "/invoices?name=invoice-1001%2etxt").body());
+            // called directly, a still-encoded name is not decoded: it simply has the wrong shape
+            assertEquals("not an invoice name", assertThrows(Refused.class, () -> new SafeDownloads(layout).read("invoice-1001%2etxt")).getMessage());
+        }
+    }
+
+    @Test
+    void firstBytesShowHexAndCharacters() {
+        assertEquals("89 50 4e 47  .PNG", FilesSpringDemo.firstBytes(FilesSpringDemo.PNG));
     }
 }

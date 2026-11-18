@@ -44,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. No policy: a page may send, but not read | With no CORS policy, the bank's own page reads the account, evil.example cannot read it, its simple POST still moves money, and its JSON PUT never reaches the bank. |
-| 2. Policies that look like fixes | A wildcard with credentials is refused by Spring, the usual workaround reflects every origin, a list with null lets sandboxed frames read, and a pattern without a dot matches the lookalike. |
-| 3. An exact allow-list | Only partner.example reads and writes; every other origin gets a 403 from Spring before the controller runs; public rates are readable by all; Vary: Origin is sent. |
-| 4. Where the policy is registered | The same exact list fails for a JSON PUT when it is registered in Spring MVC, because the preflight meets the login check first (401), and works when it is registered with http.cors() (200). |
-| 5. The bill | A wildcard is fine for public data without credentials and refused with them; a POST with no Origin header still moves money, because CORS is a browser rule and not a defence. |
+| 1. With no policy, a page may send but not read | With no CORS policy, evil.example cannot read the account, but its simple POST still reaches the bank and runs; its JSON PUT needs a preflight, which gets 401 and no Allow-Origin, so it is never sent; the bank's own page reads the account. |
+| 2. Four policies that look like fixes | allowedOrigins * with credentials makes Spring answer 500; allowedOriginPatterns * reflects every origin; a list with null lets the null origin read; the pattern https://*bank.example matches evilbank.example. |
+| 3. An exact allow-list names one partner | The policy lists only https://partner.example; its preflight gets 200 with the partner's origin, methods, headers, credentials and max age; the partner reads and sends; every other origin gets 403 from Spring before the controller runs; answers carry Vary headers. |
+| 4. The policy must sit before the login check | Registered in Spring MVC, the partner's preflight meets the login check first and gets 401, so its JSON PUT is never sent; registered with http.cors in Spring Security, the preflight gets 200 and the PUT works. |
+| 5. CORS is a browser rule, not a defence | The public /rates sends *, which the browser accepts without credentials and refuses with them; a POST from evil.example's page never reaches the bank, but the same POST from a server script with no Origin header gets 200 and moves money. |
 
 ## Test
 
@@ -56,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-16 tests in `CorsSpringTest`, `DemoRunsTest`. Each test starts a real bank on a free loopback port and stops it. Nothing is printed that changes between runs.
+18 tests in `CorsSpringTest`, `DemoRunsTest`. Each test starts a real bank on a free loopback port and stops it. Nothing is printed that changes between runs.
 
 ## What the simulation got right, and what it left out
 

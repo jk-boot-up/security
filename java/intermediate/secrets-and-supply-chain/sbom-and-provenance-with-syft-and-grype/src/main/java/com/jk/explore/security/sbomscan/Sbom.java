@@ -56,6 +56,27 @@ record Sbom(String json, Map<String, Object> document, List<Map<String, Object>>
         return component.get("name") + ":" + component.get("version");
     }
 
+    /** The hash the bill records for one file in the image, such as /app/lib/x.jar, by algorithm ("SHA-1"), or "" if it has none. */
+    @SuppressWarnings("unchecked")
+    String fileHash(String path, String algorithm) {
+        for (Map<String, Object> c : components) {
+            if ("file".equals(c.get("type")) && path.equals(c.get("name")) && c.get("hashes") instanceof List<?> hashes) {
+                for (Object h : hashes) {
+                    Map<String, Object> m = (Map<String, Object>) h;
+                    if (algorithm.equals(m.get("alg"))) {
+                        return String.valueOf(m.get("content"));
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    /** The operating system packages (Alpine's apk packages) as package URLs. */
+    List<String> osPackages() {
+        return libraries().stream().filter(p -> p.startsWith("pkg:apk/")).toList();
+    }
+
     boolean mentions(String text) {
         return json.contains(text);
     }

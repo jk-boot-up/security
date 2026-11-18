@@ -5,6 +5,7 @@ src/main/java/com/jk/explore/security/sessions/
 ├── Answer.java          What the bank answers to a request that carries a session id
 ├── BankClient.java      A real HTTP client that keeps its cookies in a {@link Browser}, so the session cookie is handled the way the demo describes
 ├── BankServer.java      The bank's sign-in, account and sign-out pages on a real HTTP server on this machine's loopback address
+├── Base64Steps.java     Redoes base64url by hand, so the demo can show how 16 bytes become 22 characters: the bytes are read as one long row of bits, the row is cut into groups of 6 bits, and each group, a number from 0 to 63, picks one character of the alphabet
 ├── Browser.java         A browser's cookie jar, enough to follow what happens to the session cookie
 ├── Cookies.java         The session cookie, written with every attribute that protects it, and a check that lists what a Set-Cookie header is missing
 ├── Session.java         One session as the server stores it
@@ -54,11 +55,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A session id: random, and never stored as itself | An id is 128 random bits in 22 base64url characters, a thousand are all different, the store keeps only hashes so a copy of it opens no session, and a changed id is refused. |
-| 2. A new id at every sign-in and step-up | A bank that keeps the id at sign-in lets a stranger's planted id read Ana's account; a new id at sign-in and at step-up makes every earlier id worthless. |
-| 3. How long a session lives | Idle for 14 minutes is fine and 16 ends the session; a busy session ends at 8 hours after 47 requests; a payment after 6 minutes asks for the password again. |
-| 4. Signing out, everywhere, and the cookie | On a real server the cookie has no problems, and a copy made before sign-out gets 401; a sign-out that only clears the cookie leaves the session alive; everywhere, password change and a limit end other sessions. |
-| 5. The bill | Two servers with separate session memories refuse each other's sessions; a shared store fixes it; a 20-minute pause costs a sign-in. |
+| 1. A session id: random, and never stored as itself | Sixteen random bytes become a 22-character base64url id, 6 bits a character; the store keeps only the id's SHA-256, so a stolen copy of its 3 keys opens 0 sessions, and an id with one character changed is refused. |
+| 2. A new id at every sign-in and step-up | A stranger plants a visitor id in Ana's browser; a bank that keeps the id at sign-in lets the stranger read her account (session fixation); a bank that issues a new id at sign-in and step-up refuses every earlier id. |
+| 3. How long a session lives | Idle for 14 minutes is fine and 16 ends the session; a busy session ends at 8:00, because 480 minutes over 10 puts request 48 at the limit; a payment 6 minutes after the password asks for it again. |
+| 4. Signing out, everywhere, and the cookie | On a real local server the cookie carries __Host-, Path=/, Secure, HttpOnly and SameSite=Strict with 0 problems; after sign-out a copy of the cookie gets 401; a sign-out that only clears the browser leaves the copy working; sign out everywhere, a password change and a limit of 3 end other sessions. |
+| 5. The bill | Two servers with separate session memories refuse each other's sessions and one shared store fixes it; a 20-minute pause costs a sign-in; a stolen id works for at most 15 idle minutes or 8 hours. |
 
 ## Test
 
@@ -66,7 +67,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-25 tests in `CookieAndServerTest`, `DemoRunsTest`, `SessionIdsTest`, `SessionManagerTest`. SHA-256 is checked against the FIPS 180-2 value for "abc". The clock is simulated and ids are never printed, so the output is the same on every run; the loopback server is tested with a real HTTP client.
+27 tests in `CookieAndServerTest`, `DemoRunsTest`, `SessionIdsTest`, `SessionManagerTest`. SHA-256 is checked against the FIPS 180-2 value for "abc". The clock is simulated and ids are never printed, so the output is the same on every run; the loopback server is tested with a real HTTP client.
 
 ## What the simulation got right, and what it left out
 

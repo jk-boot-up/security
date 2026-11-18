@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Attack trees and abuse cases in Java: cost and likelihood of each attacker step, which defence cuts the cheapest path, and abuse cases that fail until the defence exists.
+> Attack trees and abuse cases in Java for an online bank: one goal (move money out of Ana's account), fourteen attacker steps with a cost and a chance, AND and OR gates that give the cheapest path (50 EUR: change the account number) and the chance that some path works; eight priced defences, none enough on its own; a plan that cuts the cheapest path and looks again; and abuse cases written as checks that fail until the defence exists.

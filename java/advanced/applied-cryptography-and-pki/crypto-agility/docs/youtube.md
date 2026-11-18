@@ -16,17 +16,39 @@ Chapters:
 
 ```
 00:00 Introduction
-02:09 The Scenario
-02:30 Act One — What the code asks for
-02:43 Act Two — A value that says how it was protected
-02:56 Act Three — Moving the data
-03:10 Act Four — Retiring a key
-03:21 Act Five — Tampering and downgrade
-03:34 What It Costs
-04:06 Who Does What
-04:27 Where You Have Seen It
-04:48 How To Use It
-05:10 Thanks for Watching
+00:49 The Scenario
+01:24 The Words
+02:06 What the Letters Stand For
+03:29 What the Letters Stand For (continued)
+04:44 What the Letters Stand For (continued)
+05:13 One record, sealed in three suites
+06:25 Ten files, twenty names, and what the policy says
+07:26 Act One — What the code asks for
+07:40 Act One — What the code asks for
+08:06 Act One — What the code asks for
+08:22 Old and new records, and two readers
+09:23 Act Two — A value that says how it was protected
+09:52 Act Two — A value that says how it was protected
+10:10 From key 1 to key 2, in two steps
+11:11 Act Three — Moving the data
+11:32 Act Three — Moving the data
+11:45 No live record needs key 1, but a backup does
+12:44 Act Four — The next rotation, and retiring a key
+13:05 Act Four — The next rotation, and retiring a key
+13:24 Three changed headers, three refusals
+14:30 Act Five — Tampering and downgrade
+14:56 What It Costs
+15:31 Where You Have Seen It
+16:03 How To Use It
+16:36 The Java Classes
+16:46 Inventory — a pattern for every getInstance call
+17:03 Policy — a status for every name
+17:17 Envelope — seal: the header, then the suite it names
+17:39 Envelope — open: the policy first
+17:53 KeyRing — derive a key from the master key
+18:13 Store — read-repair
+18:29 Layout — the parts follow from the version
+18:44 Thanks for Watching
 ```
 
 ## Tags

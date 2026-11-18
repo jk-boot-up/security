@@ -8,23 +8,32 @@ Encryption hides the content and not the conversation, and the secrets that open
 
 ### 1. What the wire shows
 
-A login to the shop over TLS 1.3 is copied by a tap and read with tshark and no secrets. The Client Hello names www.shop.localhost in the clear and the Server Hello chooses TLS_AES_256_GCM_SHA384. The certificate is not in the capture, no HTTP request can be read, and the encrypted application data records are there. The bytes of the capture do not contain the word password. A watcher still learns the name, the times and the sizes.
+The shopper's client sends POST /login with user=ana&password=hunter2, inside TLS 1.3. A tap copies the connection to login.pcap, and tshark reads it with no secrets. The Client Hello names www.shop.localhost and the Server Hello chooses TLS_AES_256_GCM_SHA384; the certificate is not visible, no HTTP request can be read, and the word password is not in the file's bytes.
+ClientHello reads the first record by hand: record type 22 (handshake), message type 1 (Client Hello), a 32-byte random that is new for every connection, and the server_name extension, in the clear.
+The size still shows: the request is 163 bytes; TLS 1.3 adds one content-type byte and a 16-byte AES-GCM tag, so its record is 163 + 1 + 16 = 180 bytes, which is exactly the largest record tshark finds from the client.
 
 ### 2. A key log: the secrets of one connection
 
-openssl s_client -keylogfile writes five lines, as a browser does when SSLKEYLOGFILE is set: the handshake and traffic secrets of both sides and the exporter secret. Each line is a label, the connection's client random (32 bytes) and a secret (48 bytes), which ties it to one connection and nothing else. The file holds no private key.
+openssl s_client -keylogfile keys.log writes five lines, as a browser does when SSLKEYLOGFILE is set. In TLS 1.3 each side has a handshake secret and a traffic secret: CLIENT_HANDSHAKE_TRAFFIC_SECRET, SERVER_HANDSHAKE_TRAFFIC_SECRET, CLIENT_TRAFFIC_SECRET_0 and SERVER_TRAFFIC_SECRET_0; EXPORTER_SECRET opens no traffic.
+One line taken apart: the label, the client random (32 bytes, 64 hex digits) and the secret (48 bytes, 96 hex digits). The secret is as long as the suite's hash: TLS_AES_256_GCM_SHA384 uses SHA-384, and 384 / 8 = 48 bytes.
+KeyLog checks by hand whose connection it is: every line carries the same client random, and it is the random from the Client Hello in the capture. There is no private key in the file.
 
 ### 3. The same capture, read with the key log
 
-With the key log, tshark shows POST /login with the form fields user and password, ana and hunter2; the response 200 with the Set-Cookie header and the page; and the encrypted handshake opens too, so the certificate, for www.shop.localhost, is visible. In TLS 1.3 the certificate is encrypted, and the key log opens it.
+tshark -o tls.keylog_file:keys.log reads the same login.pcap. The request opens with CLIENT_TRAFFIC_SECRET_0: POST /login, user = ana, password = hunter2. The response opens with SERVER_TRAFFIC_SECRET_0: 200, welcome ana, and Set-Cookie: session=7f3a; Secure; HttpOnly.
+The certificate opens with SERVER_HANDSHAKE_TRAFFIC_SECRET: it is for www.shop.localhost, issued by Shop Lab Root. In TLS 1.3 the certificate is encrypted, so without the log it was not visible at all.
 
 ### 4. A key log opens its own connection and no other
 
-A second login read with the first login's key log has 0 HTTP packets; with its own key log it opens. One file with both logs opens both captures. A log with only the client's lines opens the requests and not the responses.
+A second login writes login2.pcap and keys2.log. KeyLog matches by hand: keys.log does not carry login2's client random, keys2.log does, and both.log (the two logs in one file) does.
+tshark agrees: keys.log on login2.pcap opens 0 HTTP packets, keys2.log opens it, and both.log opens both captures.
+Before: with all the lines of keys.log, requests and responses open. After: with only its two CLIENT_ lines, the requests open and the responses stay closed, because each side encrypts with its own secret.
 
 ### 5. The server's own key is a different matter
 
-Over TLS 1.2 the certificate is visible without any secret; over TLS 1.3 it is not. A recording made with ephemeral key exchange (ECDHE) stays closed when the server's private key leaks: 0 HTTP packets opened. A recording made with RSA key exchange opens, password and all: a leaked key opens everything recorded before. A key log is as good as the password it protects. Nothing here needed a network card.
+Three recordings and the suite each Server Hello chose: TLS 1.3 nginx with TLS_AES_256_GCM_SHA384, TLS 1.2 nginx with TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, and an old-style TLS 1.2 server (LegacyServer, in the JDK) with TLS_RSA_WITH_AES_128_CBC_SHA. Over TLS 1.2 the certificate is visible with no secret; over TLS 1.3 it is not.
+Suites reads the key exchange from the name. TLS 1.3 is always ephemeral. ECDHE: both sides make a one-time key and the server's key only signs, so the secret never crosses the wire. RSA: the client sends the secret locked to the server's public key. So by hand, a leaked server key opens the RSA recording and nothing of the ECDHE one.
+tshark with the server's private key (rsa.key) agrees: the ECDHE recording stays closed (0 HTTP packets) and the RSA recording opens, password hunter2. A leaked key opens everything ever recorded with RSA key exchange.
 
 ## The verdict
 

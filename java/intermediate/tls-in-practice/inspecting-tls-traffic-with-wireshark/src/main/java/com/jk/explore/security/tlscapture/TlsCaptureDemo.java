@@ -1,9 +1,11 @@
 package com.jk.explore.security.tlscapture;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+/** Five demos: what a capture of a login shows, what a key log is, what it opens, what it does not, and what a leaked server key opens. */
 public class TlsCaptureDemo {
 
     public static void main(String[] args) throws Exception {
@@ -25,7 +27,7 @@ public class TlsCaptureDemo {
             Path keys = work.resolve("keys.log");
             login(modern.port(), ca, "-tls1_3", pcap, keys);
             act1(out, pcap);
-            act2(out, keys);
+            act2(out, pcap, keys);
             act3(out, pcap, keys);
             Path pcap2 = work.resolve("login2.pcap");
             Path keys2 = work.resolve("keys2.log");
@@ -34,95 +36,192 @@ public class TlsCaptureDemo {
             Path tls12 = work.resolve("tls12.pcap");
             login(rsa.port(), ca, "-tls1_2", tls12, null);
             Path rsaKex = work.resolve("rsakex.pcap");
-            legacyLogin(legacy.port(), ca, rsaKex);
-            act5(out, pcap, tls12, rsaKex, rsa.port(), legacy.port(), ca);
+            try (Tap tap = new Tap(legacy.port(), rsaKex)) {
+                Client.rsaLogin(tap.port(), ca.root());
+                tap.awaitCapture();
+            }
+            act5(out, pcap, tls12, rsaKex, ca);
         }
         return out.toString();
     }
 
-    private static void line(StringBuilder out, String text) {
+    private static void head(StringBuilder out, String text) {
         out.append(text).append('\n');
     }
 
+    private static void line(StringBuilder out, String text) {
+        out.append("  ").append(text).append('\n');
+    }
+
+    private static String pad(String text, int width) {
+        return String.format("%-" + width + "s", text);
+    }
+
     /** One login through a tap, which writes {@code pcap}; the client writes its secrets to {@code keys} when that is not null. */
-    private static String login(int serverPort, LocalCa ca, String protocol, Path pcap, Path keys) throws Exception {
+    private static void login(int serverPort, LocalCa ca, String protocol, Path pcap, Path keys) throws Exception {
         try (Tap tap = new Tap(serverPort, pcap)) {
-            String page = Client.login(tap.port(), ca.root(), protocol, keys);
+            Client.login(tap.port(), ca.root(), protocol, keys);
             tap.awaitCapture();
-            return page;
         }
     }
 
-    private static void legacyLogin(int serverPort, LocalCa ca, Path pcap) throws Exception {
-        try (Tap tap = new Tap(serverPort, pcap)) {
-            javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
-            javax.net.ssl.TrustManagerFactory trust = javax.net.ssl.TrustManagerFactory.getInstance("PKIX");
-            java.security.KeyStore store = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
-            store.load(null, null);
-            try (var in = Files.newInputStream(ca.root())) {
-                store.setCertificateEntry("root", java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in));
-            }
-            trust.init(store);
-            context.init(null, trust.getTrustManagers(), null);
-            try (javax.net.ssl.SSLSocket socket = (javax.net.ssl.SSLSocket) context.getSocketFactory().createSocket(java.net.InetAddress.getLoopbackAddress(), tap.port())) {
-                socket.setEnabledProtocols(new String[] {"TLSv1.2"});
-                socket.setEnabledCipherSuites(new String[] {"TLS_RSA_WITH_AES_128_CBC_SHA"});
-                socket.startHandshake();
-                socket.getOutputStream().write(("POST /login HTTP/1.1\r\nHost: " + HOST + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + Client.BODY.length() + "\r\nConnection: close\r\n\r\n" + Client.BODY).getBytes());
-                socket.getInputStream().readAllBytes();
-            }
-            tap.awaitCapture();
-        }
+    private static String suite(Path pcap) throws Exception {
+        return Suites.name(Tshark.fields(pcap, "tls.handshake.type == 2", List.of(), "tls.handshake.ciphersuite").get(0).get(0));
+    }
+
+    private static String yesNo(boolean b) {
+        return b ? "yes" : "no";
     }
 
     private static void act1(StringBuilder out, Path pcap) throws Exception {
-        line(out, "ONE. What the wire shows.");
-        line(out, "  a login to the shop over TLS 1.3, copied by a tap that sees only what a machine on the path sees, then read with tshark and no secrets");
-        List<List<String>> hello = Tshark.fields(pcap, "tls.handshake.type == 1", List.of(), "tls.handshake.extensions_server_name");
-        line(out, "  the Client Hello names the shop in the clear: " + hello.get(0).get(0));
-        line(out, "  the Server Hello chooses: " + Tshark.fields(pcap, "tls.handshake.type == 2", List.of(), "tls.handshake.ciphersuite").get(0).get(0).replace("0x1302", "TLS_AES_256_GCM_SHA384").replace("0x1301", "TLS_AES_128_GCM_SHA256"));
-        line(out, "  the certificate is in the capture: " + (Tshark.count(pcap, "tls.handshake.type == 11", List.of()) > 0) + "; HTTP requests tshark can read: " + Tshark.count(pcap, "http", List.of()) + "; encrypted application data records: " + (Tshark.count(pcap, "tls.app_data", List.of()) > 0));
-        line(out, "  the bytes of the capture contain the word password: " + new String(Files.readAllBytes(pcap), java.nio.charset.StandardCharsets.ISO_8859_1).contains("password") + "  <- THE PASSWORD IS THERE ONLY AS NOISE");
-        line(out, "  what a watcher learns anyway: the name, the times and the sizes");
+        head(out, "ONE. What the wire shows.");
+        head(out, "THE LOGIN (what the client sends, inside TLS 1.3):");
+        line(out, "POST /login  Host: " + HOST);
+        line(out, Client.BODY);
+        head(out, "THE CAPTURE, READ WITH NO SECRETS (tshark -r login.pcap):");
+        String name = Tshark.fields(pcap, "tls.handshake.type == 1", List.of(), "tls.handshake.extensions_server_name").get(0).get(0);
+        line(out, "Client Hello  server name " + name);
+        line(out, "Server Hello  " + suite(pcap));
+        line(out, "certificate   " + (Tshark.count(pcap, "tls.handshake.type == 11", List.of()) > 0 ? "visible" : "not visible"));
+        line(out, "HTTP          " + Tshark.count(pcap, "http", List.of()) + " requests readable");
+        boolean word = new String(Files.readAllBytes(pcap), StandardCharsets.ISO_8859_1).contains("password");
+        line(out, "the word password in the file's bytes: " + yesNo(word));
+        head(out, "THE CLIENT HELLO, BY HAND (the first record's bytes):");
+        ClientHello hello = ClientHello.read(pcap);
+        line(out, "record type   " + hello.recordType() + " (handshake)");
+        line(out, "message type  " + hello.messageType() + " (Client Hello)");
+        line(out, "random        " + hello.random().length() / 2 + " bytes, new for every connection");
+        line(out, "server_name   " + hello.serverName() + "  <- IN THE CLEAR");
+        head(out, "THE REQUEST'S SIZE, WORKED OUT (what a watcher still sees):");
+        int request = Client.REQUEST.length();
+        line(out, "request " + request + " + type 1 + tag 16 = " + (request + 1 + 16) + " bytes");
+        line(out, "on the wire (tshark)  " + requestRecord(pcap) + " bytes");
     }
 
-    private static void act2(StringBuilder out, Path keys) throws Exception {
-        line(out, "TWO. A key log: the secrets of one connection.");
-        List<String> lines = Files.readAllLines(keys).stream().filter(l -> !l.startsWith("#")).toList();
-        line(out, "  openssl s_client -keylogfile wrote " + lines.size() + " lines, as a browser does when SSLKEYLOGFILE is set: " + lines.stream().map(l -> l.split(" ")[0]).sorted().toList());
-        line(out, "  each line is a label, the connection's client random (" + lines.get(0).split(" ")[1].length() / 2 + " bytes) and a secret (" + lines.get(0).split(" ")[2].length() / 2 + " bytes), which ties it to one connection and nothing else");
-        line(out, "  the file holds no private key: " + !String.join("", lines).contains("BEGIN"));
+    /** The largest encrypted record the client sent: the login request. */
+    private static int requestRecord(Path pcap) throws Exception {
+        String client = Tshark.fields(pcap, "tls.handshake.type == 1", List.of(), "tcp.srcport").get(0).get(0);
+        int largest = 0;
+        for (List<String> row : Tshark.fields(pcap, "tcp.srcport == " + client + " && tls.app_data", List.of(), "tls.record.length")) {
+            for (String length : row.get(0).split(",")) {
+                largest = Math.max(largest, Integer.parseInt(length));
+            }
+        }
+        return largest;
+    }
+
+    private static void act2(StringBuilder out, Path pcap, Path keys) throws Exception {
+        head(out, "TWO. A key log: the secrets of one connection.");
+        KeyLog log = KeyLog.read(keys);
+        head(out, "THE INPUT (openssl s_client -keylogfile keys.log):");
+        line(out, log.lines().size() + " lines, as a browser writes with SSLKEYLOGFILE set");
+        head(out, "THE KEY LOG (each label, and what its secret opens):");
+        KeyLog.OPENS.forEach((label, opens) -> {
+            if (log.lines().stream().anyMatch(l -> l.label().equals(label))) {
+                line(out, pad(label, 33) + opens);
+            }
+        });
+        head(out, "ONE LINE, TAKEN APART:");
+        KeyLog.Line one = log.line("CLIENT_TRAFFIC_SECRET_0");
+        line(out, "label          " + one.label());
+        line(out, "client random  " + one.clientRandom().length() / 2 + " bytes (" + one.clientRandom().length() + " hex digits)");
+        line(out, "secret         " + one.secret().length() / 2 + " bytes (" + one.secret().length() + " hex digits)");
+        head(out, "THE SECRET'S SIZE, WORKED OUT (from the suite's hash):");
+        String suite = suite(pcap);
+        String hash = Suites.hash(suite);
+        line(out, suite + " -> " + hash + " -> " + hash.substring(3) + " / 8 = " + Suites.secretBytes(suite) + " bytes");
+        head(out, "THE MATCH, BY HAND (whose connection is it?):");
+        line(out, "one client random in all lines  " + yesNo(log.lines().stream().map(KeyLog.Line::clientRandom).distinct().count() == 1));
+        line(out, "the Client Hello's random       " + yesNo(log.opens(ClientHello.read(pcap).random())));
+        line(out, "a private key in the file       " + yesNo(Files.readString(keys).contains("PRIVATE KEY")));
     }
 
     private static void act3(StringBuilder out, Path pcap, Path keys) throws Exception {
-        line(out, "THREE. The same capture, read with the key log.");
+        head(out, "THREE. The same capture, read with the key log.");
         List<String> keyLog = Tshark.keyLog(keys);
-        List<List<String>> request = Tshark.fields(pcap, "http.request", keyLog, "http.request.method", "http.request.uri", "urlencoded-form.key", "urlencoded-form.value");
-        line(out, "  request: " + request.get(0).get(0) + " " + request.get(0).get(1) + ", form fields " + request.get(0).get(2) + " = " + request.get(0).get(3));
-        List<List<String>> response = Tshark.fields(pcap, "http.response", keyLog, "http.response.code", "http.set_cookie", "http.file_data");
-        line(out, "  response: " + response.get(0).get(0) + ", " + response.get(0).get(1) + ", " + Tshark.text(response.get(0).get(2)));
-        line(out, "  the encrypted handshake opens too: the certificate is for " + Tshark.fields(pcap, "tls.handshake.type == 11", keyLog, "x509ce.dNSName").get(0).get(0).split(",")[0] + "  <- IN TLS 1.3 THE CERTIFICATE IS ENCRYPTED, AND THE KEY LOG OPENS IT");
+        head(out, "THE INPUT (tshark -o tls.keylog_file:keys.log):");
+        line(out, "the same login.pcap, and the lines of keys.log");
+        head(out, "THE REQUEST (opened with CLIENT_TRAFFIC_SECRET_0):");
+        List<String> request = Tshark.fields(pcap, "http.request", keyLog, "http.request.method", "http.request.uri", "urlencoded-form.key", "urlencoded-form.value").get(0);
+        line(out, request.get(0) + " " + request.get(1));
+        String[] names = request.get(2).split(",");
+        String[] values = request.get(3).split(",");
+        for (int i = 0; i < names.length; i++) {
+            line(out, pad(names[i], 9) + "= " + values[i]);
+        }
+        head(out, "THE RESPONSE (opened with SERVER_TRAFFIC_SECRET_0):");
+        List<String> response = Tshark.fields(pcap, "http.response", keyLog, "http.response.code", "http.set_cookie", "http.file_data").get(0);
+        line(out, response.get(0) + "  " + Tshark.text(response.get(2)));
+        line(out, "Set-Cookie: " + response.get(1));
+        head(out, "THE CERTIFICATE (opened with SERVER_HANDSHAKE_TRAFFIC_SECRET):");
+        List<String> cert = Tshark.fields(pcap, "tls.handshake.type == 11", keyLog, "x509ce.dNSName", "x509sat.printableString").get(0);
+        line(out, "for        " + cert.get(0).split(",")[0] + "  <- ENCRYPTED IN TLS 1.3");
+        line(out, "issued by  " + cert.get(1).split(",")[0]);
     }
 
     private static void act4(StringBuilder out, Path work, Path pcap, Path keys, Path pcap2, Path keys2) throws Exception {
-        line(out, "FOUR. A key log opens its own connection and no other.");
-        line(out, "  a second login, read with the first login's key log: " + Tshark.count(pcap2, "http", Tshark.keyLog(keys)) + " HTTP packets; with its own key log: " + (Tshark.count(pcap2, "http", Tshark.keyLog(keys2)) > 0 ? "opened" : "closed"));
-        Path both = work.resolve("both.log");
-        Files.writeString(both, Files.readString(keys) + Files.readString(keys2));
-        line(out, "  one file with both logs opens both captures: " + (Tshark.count(pcap, "http", Tshark.keyLog(both)) > 0 && Tshark.count(pcap2, "http", Tshark.keyLog(both)) > 0));
+        head(out, "FOUR. A key log opens its own connection and no other.");
+        KeyLog log1 = KeyLog.read(keys);
+        KeyLog log2 = KeyLog.read(keys2);
+        KeyLog both = log1.plus(log2);
+        Path bothFile = work.resolve("both.log");
+        Files.writeString(bothFile, both.text());
+        String random2 = ClientHello.read(pcap2).random();
+        head(out, "THE INPUT (a second login, with its own key log):");
+        line(out, "login.pcap   keys.log    the first login");
+        line(out, "login2.pcap  keys2.log   the second login");
+        head(out, "THE MATCH, BY HAND (the log has login2's client random?):");
+        line(out, "keys.log   " + yesNo(log1.opens(random2)));
+        line(out, "keys2.log  " + yesNo(log2.opens(random2)));
+        line(out, "both.log   " + yesNo(both.opens(random2)) + "  (keys.log and keys2.log in one file)");
+        head(out, "THE RESULT (tshark on login2.pcap):");
+        line(out, "keys.log   " + opened(Tshark.count(pcap2, "http", Tshark.keyLog(keys))));
+        line(out, "keys2.log  " + opened(Tshark.count(pcap2, "http", Tshark.keyLog(keys2))));
+        line(out, "both.log   " + opened(Tshark.count(pcap2, "http", Tshark.keyLog(bothFile))) + ", and login.pcap: "
+                + opened(Tshark.count(pcap, "http", Tshark.keyLog(bothFile))).split(":")[0]);
+        head(out, "BEFORE (all the lines of keys.log, on login.pcap):");
+        sides(out, pcap, keys);
         Path clientOnly = work.resolve("client-only.log");
-        Files.writeString(clientOnly, Files.readAllLines(keys).stream().filter(l -> l.startsWith("CLIENT_TRAFFIC_SECRET_0") || l.startsWith("CLIENT_HANDSHAKE")).reduce("", (a, b) -> a + b + "\n"));
-        line(out, "  only the client's lines: requests opened: " + (Tshark.count(pcap, "http.request", Tshark.keyLog(clientOnly)) > 0) + ", responses opened: " + (Tshark.count(pcap, "http.response", Tshark.keyLog(clientOnly)) > 0));
+        Files.writeString(clientOnly, log1.only("CLIENT_").text());
+        head(out, "AFTER (only its two CLIENT_ lines, on login.pcap):");
+        sides(out, pcap, clientOnly);
     }
 
-    private static void act5(StringBuilder out, Path tls13, Path tls12, Path rsaKex, int rsaPort, int legacyPort, LocalCa ca) throws Exception {
-        line(out, "FIVE. The server's own key is a different matter.");
-        line(out, "  the same login over TLS 1.2: the certificate is visible without any secret: " + (Tshark.count(tls12, "tls.handshake.type == 11", List.of()) > 0) + "; over TLS 1.3 it is not: " + (Tshark.count(tls13, "tls.handshake.type == 11", List.of()) == 0));
-        int ecdhe = Tshark.count(tls12, "http", Tshark.serverKey(ca.key("rsa")));
-        line(out, "  recorded with ephemeral key exchange (ECDHE), then the server's private key leaks: HTTP packets opened: " + ecdhe);
-        List<List<String>> opened = Tshark.fields(rsaKex, "http.request", Tshark.serverKey(ca.key("rsa")), "urlencoded-form.value");
-        line(out, "  recorded with RSA key exchange, then the same kind of key leaks: " + (opened.isEmpty() ? "closed" : "opened, password " + opened.get(0).get(0).split(",")[1]) + "  <- A LEAKED KEY OPENS EVERYTHING RECORDED BEFORE");
-        line(out, "  a key log is as good as the password it protects: where it is written, who can read it and when it is deleted are part of the bill");
-        line(out, "  nothing here needed a network card: the tap wrote the capture, because reading a card needs rights that a test should not ask for");
+    private static String opened(int httpPackets) {
+        return httpPackets > 0 ? "opened" : "closed: " + httpPackets + " HTTP packets";
+    }
+
+    private static void sides(StringBuilder out, Path pcap, Path keys) throws Exception {
+        boolean requests = Tshark.count(pcap, "http.request", Tshark.keyLog(keys)) > 0;
+        boolean responses = Tshark.count(pcap, "http.response", Tshark.keyLog(keys)) > 0;
+        line(out, "requests " + (requests ? "opened" : "closed") + ", responses " + (responses ? "opened" : "closed") + (responses ? "" : "  <- ONE SECRET PER SIDE"));
+    }
+
+    private static void act5(StringBuilder out, Path tls13, Path tls12, Path rsaKex, LocalCa ca) throws Exception {
+        head(out, "FIVE. The server's own key is a different matter.");
+        List<String> who = List.of("TLS 1.3, nginx", "TLS 1.2, nginx", "TLS 1.2, old");
+        List<Path> recordings = List.of(tls13, tls12, rsaKex);
+        head(out, "THE RECORDINGS (the suite each Server Hello chose):");
+        for (int i = 0; i < 3; i++) {
+            line(out, pad(who.get(i), 16) + suite(recordings.get(i)));
+        }
+        head(out, "THE CERTIFICATE, WITH NO SECRETS:");
+        line(out, "TLS 1.3  " + (Tshark.count(tls13, "tls.handshake.type == 11", List.of()) > 0 ? "visible" : "not visible"));
+        line(out, "TLS 1.2  " + (Tshark.count(tls12, "tls.handshake.type == 11", List.of()) > 0 ? "visible" : "not visible"));
+        head(out, "THE KEY EXCHANGE, BY HAND (read from the suite's name):");
+        for (int i = 0; i < 3; i++) {
+            line(out, pad(who.get(i), 16) + Suites.keyExchange(suite(recordings.get(i))));
+        }
+        head(out, "THE RULE, BY HAND (did the secret cross the wire?):");
+        for (int i = 1; i < 3; i++) {
+            line(out, pad(who.get(i), 16) + (Suites.serverKeyOpens(suite(recordings.get(i))) ? "yes, so the key opens it" : "no, so the key opens nothing"));
+        }
+        head(out, "THE LEAK (tshark with the server's private key, rsa.key):");
+        List<String> serverKey = Tshark.serverKey(ca.key("rsa"));
+        for (int i = 1; i < 3; i++) {
+            List<List<String>> form = Tshark.fields(recordings.get(i), "http.request", serverKey, "urlencoded-form.value");
+            String result = form.isEmpty() ? "closed: 0 HTTP packets" : "opened: password " + form.get(0).get(0).split(",")[1] + "  <- THE PAST IS OPEN";
+            line(out, pad(who.get(i), 16) + result);
+        }
     }
 }

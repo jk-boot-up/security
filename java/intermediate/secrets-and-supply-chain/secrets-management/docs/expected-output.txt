@@ -1,38 +1,95 @@
 ONE. Where secrets leak.
-  the scanner reads the 3 files the team committed and finds 3 secrets:
-    config/application.properties:3 (a setting named db.password)
-    config/application.properties:4 (a setting named payment.api-key)
-    scripts/refund.sh:2 (a random-looking value)
-  production.properties names where its secrets come from, ${DB_PASSWORD} and a file, so it holds none
-  a key in an environment variable is read by any program the store starts: true  <- AND BY CRASH REPORTS AND DEBUG PAGES THAT PRINT THE ENVIRONMENT
-  an image built with the key, which a later layer deletes: 3 layers
-    the running container sees the key: false
-    anyone with the image file reads it from layer two: true  <- DELETING IN A LATER LAYER HIDES, IT DOES NOT REMOVE
+  THE FILES THE TEAM COMMITTED (3):
+    config/application.properties  4 lines
+    config/production.properties   2 lines
+    scripts/refund.sh              2 lines
+  WHAT THE SCANNER FINDS (3 secrets, values never printed):
+    config/application.properties:3  a setting named db.password
+    config/application.properties:4  a setting named payment.api-key
+    scripts/refund.sh:2              a random-looking value
+  WHAT IT SKIPS (a placeholder says where a secret comes from):
+    config/production.properties:1   ${DB_PASSWORD}
+    config/production.properties:2   file:/run/secrets/payment-key
+  HOW THE TOKEN'S ENTROPY IS WORKED OUT (32 characters, not shown):
+    21 characters once        21 x 1/32 x log2(32/1) = 3.28
+    4 characters twice        4 x 2/32 x log2(32/2) = 1.00
+    1 character three times   1 x 3/32 x log2(32/3) = 0.32
+    entropy  3.28 + 1.00 + 0.32 = 4.60, at least 4.0: flagged
+  THE SAME SUM FOR A CLASS NAME, ProductCatalogueController:
+    5 characters once         5 x 1/26 x log2(26/1) = 0.90
+    4 characters twice        4 x 2/26 x log2(26/2) = 1.14
+    3 characters three times  3 x 3/26 x log2(26/3) = 1.08
+    1 character four times    1 x 4/26 x log2(26/4) = 0.42
+    entropy  0.90 + 1.14 + 1.08 + 0.42 = 3.54, under 4.0: not flagged
+  A KEY IN AN ENVIRONMENT VARIABLE:
+    the store sets  SHOP_PAYMENT_KEY, then starts printenv
+    printenv reads  the key: true
+    so does any crash report that prints the environment
+  THE IMAGE, LAYER BY LAYER (3 layers):
+    layer 1  app/shop.jar
+    layer 2  app/config/payment.key
+    layer 3  app/config/.wh.payment.key  (hides the file)
+  WHAT THE RUNNING CONTAINER SEES:
+    files [app/shop.jar], the key: false
+  WHAT ANYONE WITH THE IMAGE FILE READS:
+    layer 2 still holds the key: true  <- HIDDEN, NOT REMOVED
 TWO. Secrets injected at run time.
-  a secret file with permissions rw-r--r--: refused at startup, because others can read it
-  the same file with permissions rw-------: read once at startup, 24 characters, nothing in the code or the image
-  the secret written into a log line: "connecting with password [redacted]"
-  once the connection pool has its copy, the startup copy is wiped: true, and using it now fails: true
+  BEFORE THE FIX, the mounted file run/secrets/db-password:
+    permissions  rw-r--r--
+    by whom      owner rw-  group r--  others r--
+    at startup   refused: group and others can read it
+  AFTER THE FIX, the same file:
+    permissions  rw-------
+    by whom      owner rw-  group ---  others ---
+    at startup   read once, 24 characters, not in the code or image
+  THE SECRET WRITTEN INTO A LOG LINE:
+    the code  "connecting with password " + password
+    the log   connecting with password [redacted]
+  ONCE THE CONNECTION POOL HAS ITS COPY:
+    the startup copy is wiped: true, using it fails: true
 THREE. A secrets service that hands out leased logins.
-  shop-api proves who it is and gets a database login of its own: v-shop-api-1, for 900 seconds
-  reports gets a different login: v-reports-2; no two applications share one: true
-  a wrong application credential: refused
-  at t=600 the shop's login works: true
-  the shop renews its lease at t=600: now until t=1500
-  at t=900 the reports lease ends, it was never renewed: 1 login removed, reports can log in: false
-  renewing every few minutes, the lease stops at the maximum of 3600 seconds after issue: until t=3600
-  at t=3600 the shop's lease has ended and the database refuses the login: true, so the shop asks for a new one
-  the audit trail records every request: 10 entries, the first: t=0 shop-api leased v-shop-api-1 until t=900
+  THE REQUESTS (time to live 900 s, maximum 3600 s):
+    t=0  shop-api, its credential  v-shop-api-1 until t=900
+    t=0  reports, its credential   v-reports-2 until t=900
+    t=0  shop-api, a wrong one     refused
+  THE LEASES OVER TIME (a renewal: min(now + ttl, issued + max)):
+    t=600   v-shop-api-1 works: true
+    t=600   min(600 + 900, 0 + 3600) = min(1500, 3600) = 1500
+    t=900   the reports lease ends, never renewed: 1 login removed
+            v-reports-2 works: false
+    t=1400  min(1400 + 900, 0 + 3600) = min(2300, 3600) = 2300
+    t=2100  min(2100 + 900, 0 + 3600) = min(3000, 3600) = 3000
+    t=2800  min(2800 + 900, 0 + 3600) = min(3700, 3600) = 3600
+    t=3500  min(3500 + 900, 0 + 3600) = min(4400, 3600) = 3600
+  AT t=3600, THE MAXIMUM:
+    v-shop-api-1 works: false, so the shop asks for a new lease
+  THE AUDIT TRAIL (10 entries):
+    t=0 shop-api leased v-shop-api-1 until t=900
+    t=0 reports leased v-reports-2 until t=900
+    t=0 shop-api refused: wrong application credential
+    t=600 shop-api renewed v-shop-api-1 until t=1500
+    t=900 reports lease ended, v-reports-2 removed
+    t=1400 shop-api renewed v-shop-api-1 until t=2300
+    t=2100 shop-api renewed v-shop-api-1 until t=3000
+    t=2800 shop-api renewed v-shop-api-1 until t=3600
+    t=3500 shop-api renewed v-shop-api-1 until t=3600
+    t=3600 shop-api lease ended, v-shop-api-1 removed
 FOUR. Rotation without downtime, and the blast radius of a leak.
-  the store calls the payment provider with key v1: true
-  the provider issues v2, and during the changeover it accepts [v1, v2]: v1 true, v2 true
-  every server of the store switches to v2, then v1 is revoked: v1 false, v2 true
-  a leased login copied at t=600 works for at most 300 more seconds, or 3000 if the thief can renew it
-  and once the leak is noticed, revoking the lease ends it at once: the login works: false
-  a static database password copied at t=600 still works three years later, until someone remembers to change it: true
+  THE PAYMENT KEY, STEP BY STEP (what the provider accepts):
+    1 v1 in use              [v1]      v1 true  v2 false
+    2 v2 issued              [v1, v2]  v1 true  v2 true
+    3 all on v2, v1 revoked  [v2]      v1 false v2 true
+  A LOGIN A THIEF COPIES AT t=600:
+    leased   ends at t=900: 900 - 600 = 300 s more
+    renewed  at most t=3600: 3600 - 600 = 3000 s more
+    revoked  the login works right after: false
+  A STATIC PASSWORD THE THIEF COPIES AT THE SAME TIME:
+    three years later it works: true  <- UNTIL SOMEONE CHANGES IT
 FIVE. The bill.
-  the secrets service holds every secret, so it needs its own access control, audit and backups
-  the application still needs a first credential to prove who it is; platform identity, in the advanced track, removes it
-  leases and rotation need applications that can reconnect with a new login without a restart
-  a scanner finds only what it has patterns for, so it is one check, not a guarantee, and history must be scanned too
-  the -with-openbao version runs the same leases against a real secrets server
+  WHAT IT COSTS:
+    the secrets service holds every secret: guard, audit, back up
+    the first credential remains: platform identity removes it
+    applications must take a new login without a restart
+    a scanner finds only its patterns: scan history and images
+  NEXT:
+    the -with-openbao version runs the leases on a real server

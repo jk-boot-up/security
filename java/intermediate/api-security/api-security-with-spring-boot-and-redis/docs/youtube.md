@@ -16,17 +16,37 @@ Chapters:
 
 ```
 00:00 Introduction
-01:39 The Scenario
-02:00 Act One — The first version
-02:33 Act Two — A request model
-02:59 Act Three — A response model and a page ceiling
-03:26 Act Four — The budget runs out, and refills
-03:54 Act Five — The bill
-04:26 What It Costs
-04:51 Who Does What
-05:20 Where You Have Seen It
-05:41 How To Use It
-06:05 Thanks for Watching
+01:05 The Scenario
+01:33 The Words
+02:09 What the Letters Stand For
+03:16 What the Letters Stand For (continued)
+03:26 Four checks on one request
+04:26 Every key in, every field out
+05:23 Act One — The first version
+05:39 Act One — The first version
+05:57 Two named fields, and every other body refused
+06:55 Act Two — A request model
+07:09 Act Two — A request model
+07:21 Act Two — A request model
+07:33 Five fields out, and a ceiling on every page
+08:28 Act Three — A response model and a page ceiling
+08:38 Act Three — A response model and a page ceiling
+08:51 A bucket per caller, kept in Redis
+09:51 Act Four — The budget runs out, and refills
+10:13 Act Four — The budget runs out, and refills
+10:26 One budget for every server
+11:17 Act Five — The bill
+11:42 What It Costs
+12:17 Where You Have Seen It
+12:49 How To Use It
+13:23 The Java Classes
+13:37 NaiveAccountsController — @RequestBody on the entity
+13:53 UpdateProfileRequest — named fields, Bean Validation
+14:09 AccountView — what the app may see
+14:24 SafeAccountsController — validate, and cap the page
+14:40 RateLimitFilter — 429, or 503 when the counter is down
+14:57 RedisRateLimiter — refill, take, or say how long
+15:15 Thanks for Watching
 ```
 
 ## Tags

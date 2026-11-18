@@ -21,7 +21,8 @@ public final class NaiveApi implements Api {
         if (account.isEmpty()) {
             return ApiResponse.error(404, "not found");
         }
-        body.forEach(account.get()::set); // every key the caller sends becomes a field: "role", "creditLimitCents", ...
+        // every key the caller sends becomes a field: "role", "creditLimitCents", ...
+        body.forEach(account.get()::set);
         return ApiResponse.ok(account.get().all());
     }
 

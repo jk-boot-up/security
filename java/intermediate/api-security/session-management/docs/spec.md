@@ -42,10 +42,10 @@ Sessions are often treated as plumbing, so ids are kept across sign-in, sessions
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 25, all passing |
-| Demo output | 40 lines, identical on every run |
+| Tests | 27, all passing |
+| Demo output | 92 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:04, 1920×1080, narrated in the amy-slow voice |
+| Video | 17:26, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

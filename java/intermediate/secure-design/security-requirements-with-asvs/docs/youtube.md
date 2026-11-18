@@ -16,18 +16,39 @@ Chapters:
 
 ```
 00:00 Introduction
-01:01 The Scenario
-01:20 The Words
-01:55 Act One — Choosing a level
-02:42 Act Two — Requirements written down as data
-03:25 Act Three — Checks that ask the running store
-04:15 Act Four — Coverage and gaps
-05:00 Act Five — The bill
-05:41 From Standard to Gate
-06:06 Who Does What
-06:32 Where You Have Seen It
-06:54 How To Use It
-07:17 Thanks for Watching
+00:59 The Scenario
+01:17 The Words
+01:52 What the Letters Stand For
+02:41 What the Letters Stand For (continued)
+03:17 One requirement, from a row to a verdict
+04:20 Three applications, three levels
+05:24 Act One — Choosing a level
+05:40 Act One — Choosing a level
+05:58 Fourteen requirements, as data
+06:56 Act Two — Requirements written down as data
+07:07 Act Two — Requirements written down as data
+07:19 Act Two — Requirements written down as data
+07:31 Ten questions, and the password check worked out
+08:37 Act Three — Checks that ask the running store
+08:47 Act Three — Checks that ask the running store
+08:59 Act Three — Checks that ask the running store
+09:18 Coverage at L2, and the release gate
+10:21 Act Four — Coverage and gaps
+10:34 Act Four — Coverage and gaps
+10:45 Act Four — Coverage and gaps
+11:04 The bill: people, editions, and what is not said
+12:00 Act Five — The bill
+12:15 Act Five — The bill
+12:28 From Standard to Gate
+12:52 Where You Have Seen It
+13:14 How To Use It
+13:37 The Java Classes
+13:48 LevelChooser — each step up has a reason
+14:02 Requirement — a manual requirement names no check
+14:18 Checks — the password check reads the stored value
+14:30 Assessment — four outcomes per requirement
+14:44 Assessment — the release gate
+14:57 Thanks for Watching
 ```
 
 ## Tags

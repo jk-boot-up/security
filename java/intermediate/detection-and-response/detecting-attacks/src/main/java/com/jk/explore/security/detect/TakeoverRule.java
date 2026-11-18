@@ -31,6 +31,11 @@ public final class TakeoverRule implements Rule {
     }
 
     @Override
+    public String describe() {
+        return "success after " + failures + (failures == 1 ? " failure" : " failures") + (history.isEmpty() ? ", new address" : ", unusual address");
+    }
+
+    @Override
     public List<Alert> evaluate(List<Event> log) {
         Map<String, List<Event>> fails = new HashMap<>();
         Map<String, Set<String>> knownIps = new HashMap<>();

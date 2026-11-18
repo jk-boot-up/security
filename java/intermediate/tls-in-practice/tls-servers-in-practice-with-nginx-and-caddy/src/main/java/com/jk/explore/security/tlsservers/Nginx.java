@@ -36,7 +36,8 @@ final class Nginx implements AutoCloseable {
         }
     }
 
-    static final String HSTS = "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;";
+    static final String HSTS = "add_header Strict-Transport-Security"
+            + " \"max-age=31536000; includeSubDomains\" always;";
 
     private final Path dir;
     private final int httpPort;
@@ -112,13 +113,11 @@ final class Nginx implements AutoCloseable {
     void start(Settings settings) throws IOException, InterruptedException {
         Files.writeString(dir.resolve("nginx.conf"), config(settings));
         if (process != null && process.isAlive()) {
-            Procs.run(java.util.List.of("nginx", "-p", dir.toString(), "-c", dir.resolve("nginx.conf").toString(), "-e", dir.resolve("error.log").toString(), "-s", "reload"));
-            Thread.sleep(500);
+            reload();
             return;
         }
         Files.deleteIfExists(dir.resolve("error.log"));
-        process = new ProcessBuilder("nginx", "-p", dir.toString(), "-c", dir.resolve("nginx.conf").toString(), "-e", dir.resolve("error.log").toString()).redirectErrorStream(true)
-                .redirectOutput(dir.resolve("stdout.log").toFile()).start();
+        process = new ProcessBuilder(command()).redirectErrorStream(true).redirectOutput(dir.resolve("stdout.log").toFile()).start();
         for (int i = 0; i < 100; i++) {
             try (java.net.Socket s = new java.net.Socket(java.net.InetAddress.getLoopbackAddress(), httpsPort)) {
                 return;
@@ -135,9 +134,18 @@ final class Nginx implements AutoCloseable {
         start(settings);
     }
 
+    /** nginx -s reload: the running nginx reads its configuration and its certificate files again. */
     void reload() throws IOException, InterruptedException {
-        Procs.run(java.util.List.of("nginx", "-p", dir.toString(), "-c", dir.resolve("nginx.conf").toString(), "-e", dir.resolve("error.log").toString(), "-s", "reload"));
+        Procs.run(command("-s", "reload"));
         Thread.sleep(500);
+    }
+
+    /** nginx with its own prefix, configuration and error log, followed by {@code extra}. */
+    private java.util.List<String> command(String... extra) {
+        java.util.List<String> command = new java.util.ArrayList<>(java.util.List.of("nginx", "-p", dir.toString(),
+                "-c", dir.resolve("nginx.conf").toString(), "-e", dir.resolve("error.log").toString()));
+        command.addAll(java.util.List.of(extra));
+        return command;
     }
 
     private void stop() throws InterruptedException {

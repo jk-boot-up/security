@@ -42,8 +42,15 @@ final class DpopKey {
      * those are crv, kty and x, as RFC 8037 appendix A.3 shows.
      */
     static String thumbprint(Map<String, Object> jwk) {
-        String canonical = "{\"crv\":\"" + jwk.get("crv") + "\",\"kty\":\"" + jwk.get("kty") + "\",\"x\":\"" + jwk.get("x") + "\"}";
-        return Base64Url.encode(Bytes.sha256(canonical.getBytes(StandardCharsets.UTF_8)));
+        byte[] text = canonical(jwk).getBytes(StandardCharsets.UTF_8);
+        return Base64Url.encode(Bytes.sha256(text));
+    }
+
+    /** The text the thumbprint hashes: crv, kty and x, in that (alphabetical) order, with no spaces. */
+    static String canonical(Map<String, Object> jwk) {
+        return "{\"crv\":\"" + jwk.get("crv")
+                + "\",\"kty\":\"" + jwk.get("kty")
+                + "\",\"x\":\"" + jwk.get("x") + "\"}";
     }
 
     /**

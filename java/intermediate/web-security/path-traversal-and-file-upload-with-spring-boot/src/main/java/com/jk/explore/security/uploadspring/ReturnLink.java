@@ -22,20 +22,34 @@ public final class ReturnLink {
      * anything unusable becomes the home page instead of an error.
      */
     public static String safe(String returnTo) {
-        if (returnTo == null || returnTo.isEmpty() || returnTo.length() > 200) {
-            return HOME;
+        return reason(returnTo) == null ? returnTo : HOME;
+    }
+
+    /** Why a link is not a path on this site, or {@code null} when it is one. */
+    public static String reason(String returnTo) {
+        if (returnTo == null || returnTo.isEmpty()) {
+            return "empty";
         }
-        if (!returnTo.startsWith("/") || returnTo.startsWith("//") || returnTo.contains("\\") || returnTo.chars().anyMatch(c -> c < 0x20)) {
-            return HOME;
+        if (returnTo.length() > 200) {
+            return "too long";
+        }
+        if (!returnTo.startsWith("/")) {
+            return "does not start with /";
+        }
+        if (returnTo.startsWith("//")) {
+            return "starts with //: another host";
+        }
+        if (returnTo.contains("\\")) {
+            return "has a backslash: browsers read /\\ as //";
+        }
+        if (returnTo.chars().anyMatch(c -> c < 0x20)) {
+            return "has a control character";
         }
         try {
             URI uri = new URI(returnTo);
-            if (uri.getScheme() != null || uri.getAuthority() != null) {
-                return HOME;
-            }
-            return uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+            return uri.getScheme() != null || uri.getAuthority() != null ? "names a scheme or a host" : null;
         } catch (java.net.URISyntaxException e) {
-            return HOME;
+            return "not a valid link";
         }
     }
 
@@ -43,7 +57,9 @@ public final class ReturnLink {
     public static boolean isOwnHost(String address) {
         try {
             URI uri = new URI(address);
-            return "https".equals(uri.getScheme()) && uri.getUserInfo() == null && OWN_HOSTS.contains(uri.getHost());
+            return "https".equals(uri.getScheme())
+                    && uri.getUserInfo() == null
+                    && OWN_HOSTS.contains(uri.getHost());
         } catch (java.net.URISyntaxException e) {
             return false;
         }

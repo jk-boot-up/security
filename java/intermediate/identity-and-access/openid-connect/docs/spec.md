@@ -41,10 +41,10 @@ Learners often meet OpenID Connect through a library and a "sign in with" button
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 27, all passing |
-| Demo output | 50 lines, identical on every run |
+| Tests | 28, all passing |
+| Demo output | 172 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:41, 1920×1080, narrated in the amy-slow voice |
+| Video | 21:01, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

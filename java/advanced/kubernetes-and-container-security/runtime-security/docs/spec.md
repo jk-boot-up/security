@@ -39,10 +39,10 @@ Preventive controls are bypassed by a taken-over container, and without runtime 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 27, all passing |
-| Demo output | 28 lines, identical on every run |
-| Acts | 6 |
-| Video | 05:51, 1920×1080, narrated in the amy-slow voice |
+| Tests | 32, all passing |
+| Demo output | 84 lines, identical on every run |
+| Acts | 5 |
+| Video | 14:31, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

@@ -28,7 +28,8 @@ public record Role(String account, String name, Policy trust, List<Policy> polic
         ctx.putIfAbsent("aws:PrincipalArn", caller.arn());
         Request withContext = new Request(caller, "sts:AssumeRole", arn(), ctx);
         if (!Evaluator.matches(trust, withContext, true, false)) {
-            return new Session(new Decision(false, "implicit deny: the trust policy does not allow it"), null);
+            Decision no = new Decision(false, "implicit deny: the trust policy does not allow it");
+            return new Session(no, null);
         }
         boolean namesCaller = trust.statements().stream().anyMatch(st -> st.allow() && st.principals().contains(caller.arn()));
         if (!(namesCaller && caller.account().equals(account))) {

@@ -16,18 +16,43 @@ Chapters:
 
 ```
 00:00 Introduction
-01:02 The Scenario
-01:21 The Words
-01:50 Act One — The authorization code flow, step by step
-02:42 Act Two — PKCE: a code is useless without the verifier
-03:35 Act Three — Exact redirect addresses, state, and codes that work once
-04:34 Act Four — Scopes and refresh tokens
-05:28 Act Five — Current practice, and the bill
-06:18 Who Sees What
-06:46 Who Does What
-07:20 Where You Have Seen It
-07:44 How To Use It
-08:12 Thanks for Watching
+01:13 The Scenario
+01:48 The Words
+02:33 What the Letters Stand For
+03:53 What the Letters Stand For (continued)
+04:42 Two roads: the hash through the browser, the secret direct
+05:37 Six messages between four parties
+06:51 Act One — The authorization code flow, step by step
+07:17 Act One — The authorization code flow, step by step
+07:43 Act One — The authorization code flow, step by step
+08:09 From the verifier to the challenge, step by step
+09:24 Act Two — PKCE: a code is useless without the verifier
+09:38 Act Two — PKCE: a code is useless without the verifier
+10:00 Act Two — PKCE: a code is useless without the verifier
+10:16 Act Two — PKCE: a code is useless without the verifier
+10:29 Exact match, state, and a code that works once
+11:31 Act Three — Exact redirect addresses, state, and codes that work once
+11:48 Act Three — Exact redirect addresses, state, and codes that work once
+12:02 Act Three — Exact redirect addresses, state, and codes that work once
+12:22 One scope, and one family of tokens
+13:24 Act Four — Scopes and refresh tokens
+13:46 Act Four — Scopes and refresh tokens
+14:05 What current practice removes, and what it keeps
+15:08 Act Five — Current practice, and the bill
+15:27 Act Five — Current practice, and the bill
+15:57 Who Sees What
+16:25 Where You Have Seen It
+16:50 How To Use It
+17:20 The Java Classes
+17:33 Pkce — a hash of the secret, compared in constant time
+17:51 ChallengeSteps — every 3 bytes become 4 characters of 6 bits
+18:10 BudgetApp — the callback must carry this browser's state
+18:24 ClientRegistration — exact redirect matching
+18:36 AuthorizationServer — a code works once
+18:53 AuthorizationServer — in time, and with the verifier
+19:06 AuthorizationServer — refresh token rotation and reuse detection
+19:19 BankApi — read is not pay
+19:32 Thanks for Watching
 ```
 
 ## Tags

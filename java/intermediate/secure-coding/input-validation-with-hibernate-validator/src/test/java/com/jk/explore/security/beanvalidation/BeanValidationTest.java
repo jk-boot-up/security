@@ -71,7 +71,7 @@ class BeanValidationTest {
     @Test
     void thePostalCodeMustFitTheCountryAndTheViolationIsOnThePostalCode() {
         List<String> bad = checks.check(with("ben@shop.example", "DE", "1011", "ben.k", List.of(new Line("SHO-1042", 1))));
-        assertEquals(List.of("postalCode: does not look like a postal code of that country"), bad);
+        assertEquals(List.of("postalCode: not a postal code of that country"), bad);
         assertEquals(List.of(), checks.check(with("ben@shop.example", "IN", "110001", "ben.k", List.of(new Line("SHO-1042", 1)))));
     }
 

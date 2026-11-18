@@ -50,11 +50,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A profile call that works | Ana changes her display name and gets her account back. |
-| 2. Whatever the caller sends becomes a field | Adding role and creditLimitCents to the JSON makes Ana an admin with a limit of a million dollars. |
-| 3. The response is the whole record, and a list has no end | The account response includes the card number and PIN hash; a page size of a million returns 300 accounts; 1000 requests are all answered. |
-| 4. Explicit models, a page cap and a budget | Unknown fields are refused with 400 and nothing changes; the response shows five fields with the card masked; a page is capped at 50 and shows only ids and names. |
-| 5. The budget runs out, and refills | Of 1000 requests in a loop 49 are answered and the rest get 429 with Retry-After 1s; after waiting the call works again, and another customer is not affected. |
+| 1. A profile call that works | Ana's app sends one field, her new display name; the API answers 200 with the account record itself: eight fields, card number and PIN hash included. |
+| 2. Whatever the caller sends becomes a field | The same call with role and creditLimitCents added by hand makes Ana an admin with a limit of 100000000 cents, because the API copies every key onto the record. |
+| 3. The response is the whole record, and a list has no end | The account response carries the full card number, the PIN hash and the risk score; a page size of a million returns 300 accounts x 8 fields = 2400 values; 1000 requests in a loop are all answered. |
+| 4. Explicit models and a page cap | The request model names displayName and email only, so role and creditLimitCents get 400 unknown field and the record is unchanged; the response is a five-field AccountView with the card masked; a page is capped at min(1000000, 50) = 50 directory entries. |
+| 5. The budget runs out, and refills | Ana's read bucket holds 100 tokens; 1 + 50 were used, so of 1000 requests 49 are answered and 951 get 429 with Retry-After: 1, worked out as ceil((1 - 0.00) / 1.67) = 1; one second later she has 1.67 tokens and the call works; user2 has her own bucket. |
 
 ## Test
 
@@ -62,7 +62,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-10 tests in `ApiSecurityTest`, `DemoRunsTest`. Time is simulated and the data is fixed, so the demo prints the same text on every run.
+12 tests in `ApiSecurityTest`, `DemoRunsTest`. Time is simulated and the data is fixed, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 

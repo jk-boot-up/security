@@ -48,11 +48,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The system as a data-flow model | The bank is 2 external entities, 3 processes, 2 data stores, 8 flows and 3 trust boundaries with no problems; an earlier draft has 2: a flow that skips a boundary and a store with no owner. |
-| 2. STRIDE per element | Rules turn the model into 20 candidate threats: spoofing 4, tampering 5, repudiation 4, information disclosure 2, denial of service 1, elevation of privilege 4. |
-| 3. Rating and deciding | The highest risks score 5 x 5 = 25 at the internet boundary; the 20 threats are decided as mitigate 17, accept 1, transfer 1 and avoid 1, with none undecided. |
-| 4. Mitigations as tests | 8 checks, one for every mitigation, pass on the bank as built; adding an unencrypted refund flow fails the TLS check and brings 2 undecided threats, and the old draft fails 3 checks. |
-| 5. The bill, and the habit | 7 elements, 8 flows and 20 threats stay small enough to keep current; one accepted risk is already past its review day; the four questions are asked on every design change. |
+| 1. The system as a data-flow model | The bank is 7 elements in 4 zones (trust 0 to 2), 3 trust boundaries and 8 flows, of which F2 crosses the internet boundary, F3 and F8 the gateway boundary, and F6 and F7 the partner boundary; the check finds 0 problems. An earlier draft adds a card vault S3 and a flow D1 from the app straight into it: 2 problems. |
+| 2. STRIDE per element | Asked of F2, three of the six STRIDE questions apply: T (it crosses the internet boundary), R (it moves money) and E (device, trust 0, to dmz, trust 1). On the whole model the rules find 20 candidate threats: S 4, T 5, R 4, I 2, D 1, E 4. |
+| 3. Rating and deciding | T:F2 is rated likelihood 5 (its weaker end is the device zone) x impact 5 (it moves money) = 25. On the risk matrix, the top cell (5, 5) holds 3 threats: E:F2, R:F2 and T:F2. People decide: mitigate 17, accept 1 (R:F6, owner payments lead, review on day 90), transfer 1 (D:P2), avoid 1 (I:S2), undecided 0. |
+| 4. Mitigations as tests | Before the change: 0 of 8 checks fail, 0 threats undecided. The change adds F9, an unencrypted refund from P3 to E2 across the partner boundary. After it: 1 of 8 checks fails (TLS: F9 refund is not encrypted) and 2 new threats (T:F9, R:F9) have no decision. The early draft fails 3 checks. |
+| 5. The bill, and the habit | The model is 7 elements, 8 flows, 3 boundaries, 20 threats and 8 checks. The accepted risk R:F6 was due for review on day 90; today is day 120, so it is 120 - 90 = 30 days overdue. Open the model on every new flow, store, boundary or third party, and ask the four questions. |
 
 ## Test
 
@@ -60,7 +60,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-17 tests in `ChecksTest`, `DemoRunsTest`, `ModelTest`, `StrideTest`. The model, the STRIDE rules, the ratings, the register and the checks are all deterministic Java, so the golden output is the same on every run and needs only a JDK.
+19 tests in `ChecksTest`, `DemoRunsTest`, `ModelTest`, `StrideTest`. The model, the STRIDE rules, the ratings, the register and the checks are all deterministic Java, so the golden output is the same on every run and needs only a JDK.
 
 ## What the simulation got right, and what it left out
 

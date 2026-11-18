@@ -1,5 +1,7 @@
 package com.jk.explore.security.jazzerfuzz;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -12,6 +14,11 @@ public final class Minimizer {
     }
 
     public static String minimize(Consumer<String> parser, String input) {
+        return minimize(parser, input, new ArrayList<>());
+    }
+
+    /** As {@link #minimize(Consumer, String)}, and adds every smaller or plainer input that still crashed to {@code steps}, in order. */
+    public static String minimize(Consumer<String> parser, String input, List<String> steps) {
         String signature = Crashes.signature(parser, input);
         if (signature == null) {
             return input;
@@ -25,6 +32,7 @@ public final class Minimizer {
                     String shorter = current.substring(0, i) + current.substring(i + chunk);
                     if (signature.equals(Crashes.signature(parser, shorter))) {
                         current = shorter;
+                        steps.add(current);
                         changed = true;
                         i--;
                     }
@@ -37,6 +45,7 @@ public final class Minimizer {
                     String simpler = current.substring(0, i) + plainer + current.substring(i + 1);
                     if (signature.equals(Crashes.signature(parser, simpler))) {
                         current = simpler;
+                        steps.add(current);
                         changed = true;
                     }
                 }

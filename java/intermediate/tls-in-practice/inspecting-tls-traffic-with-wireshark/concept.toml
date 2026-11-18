@@ -21,11 +21,11 @@ youtube_tags = ["wireshark", "tshark", "tls", "key log", "sslkeylogfile", "tls 1
 
 [readme]
 intro = """
-The plain [inspecting-tls-traffic](../inspecting-tls-traffic) project decrypts a recorded TLS 1.3 session in Java with HKDF. This one uses the real tools: **nginx**, the **openssl** client with `-keylogfile`, and **tshark** (`brew install nginx step wireshark`). Nothing is captured from a network card, which needs rights a test should not ask for: a small **tap** in Java sits between the client and the server on loopback, forwards every byte and writes a capture file (pcap) of what went through, which is all that a machine on the path would see. The tests are tagged `integration` (the capture-file test is not): `./gradlew integrationTest`.
+The plain [inspecting-tls-traffic](../inspecting-tls-traffic) project decrypts a recorded TLS 1.3 session in Java with HKDF. This one uses the real tools: **nginx**, the **openssl** client with `-keylogfile`, and **tshark** (`brew install nginx step wireshark`). Nothing is captured from a network card, which needs rights a test should not ask for: a small **tap** in Java sits between the client and the server on loopback, forwards every byte and writes a capture file (pcap) of what went through, which is all that a machine on the path would see. The tests that run the tools are tagged `integration` (`./gradlew integrationTest`); `./gradlew test` checks the capture writer and three small classes that redo by hand what tshark reads: the Client Hello, the key log match and the key exchange.
 
 What it shows:
-- **What the wire shows.** The Client Hello names the shop in the clear, the Server Hello picks `TLS_AES_256_GCM_SHA384`, the rest is encrypted records: no certificate, no HTTP, no password.
-- **A key log.** `openssl s_client -keylogfile` writes five lines (the client random and a secret each), the same format a browser writes when `SSLKEYLOGFILE` is set. It holds no private key.
+- **What the wire shows.** The Client Hello, read by hand, names the shop in the clear; the Server Hello picks `TLS_AES_256_GCM_SHA384`; the rest is encrypted records: no certificate, no HTTP, no password. The size still shows: a 163-byte request becomes a 163 + 1 + 16 = 180-byte record.
+- **A key log.** `openssl s_client -keylogfile` writes five lines (a label, the client random and a secret each; the secret is 384 / 8 = 48 bytes for a SHA-384 suite), the same format a browser writes when `SSLKEYLOGFILE` is set. It holds no private key.
 - **The same capture with the key log.** tshark shows `POST /login`, the form fields, the cookie, and the encrypted certificate.
 - **One connection only.** A second login is closed to the first login's key log; one file with both logs opens both; a log with only the client's lines opens the requests and not the responses.
 - **The server's own key.** A TLS 1.2 certificate is visible in the clear. With the server's private key, a recording made with ECDHE stays closed and a recording made with RSA key exchange opens, password and all.
@@ -57,93 +57,218 @@ where = """
 This is the tools version of [inspecting-tls-traffic](../inspecting-tls-traffic), in the [tls-in-practice](..) module. The certificates come from the kind of authority built in [local-certificate-authority-with-step-ca](../local-certificate-authority-with-step-ca).
 """
 twin = """
-nginx, openssl and tshark are the real programs; the tap writes a real pcap file. Secrets, ports and packet counts are never printed; the demo takes about half a minute.
+nginx, openssl and tshark are the real programs; the tap writes a real pcap file. Secrets, randoms, ports and packet counts are never printed, only their sizes and whether they match; the demo takes about half a minute.
 """
-test_note = "The capture-file writer is tested with no program. The other tests need nginx, openssl, step and tshark (./gradlew integrationTest)."
+test_note = "The unit tests (./gradlew test) need no program: the capture-file writer, the Client Hello read by hand from one the JDK writes, the key log match and the suite rules. The other tests need nginx, openssl, step and tshark (./gradlew integrationTest), and check the by-hand values against tshark."
 
 [[act]]
 title = "What the wire shows"
-summary = "The capture shows the server name, the chosen cipher and encrypted records; the certificate, the request and the password are not there."
+summary = "With no secrets, the capture shows the server name, the chosen cipher and encrypted records of known sizes; the certificate, the request and the password are not there."
 detail = """
-A login to the shop over TLS 1.3 is copied by a tap and read with tshark and no secrets. The Client Hello names www.shop.localhost in the clear and the Server Hello chooses TLS_AES_256_GCM_SHA384. The certificate is not in the capture, no HTTP request can be read, and the encrypted application data records are there. The bytes of the capture do not contain the word password. A watcher still learns the name, the times and the sizes.
+The shopper's client sends POST /login with user=ana&password=hunter2, inside TLS 1.3. A tap copies the connection to login.pcap, and tshark reads it with no secrets. The Client Hello names www.shop.localhost and the Server Hello chooses TLS_AES_256_GCM_SHA384; the certificate is not visible, no HTTP request can be read, and the word password is not in the file's bytes.
+ClientHello reads the first record by hand: record type 22 (handshake), message type 1 (Client Hello), a 32-byte random that is new for every connection, and the server_name extension, in the clear.
+The size still shows: the request is 163 bytes; TLS 1.3 adds one content-type byte and a 16-byte AES-GCM tag, so its record is 163 + 1 + 16 = 180 bytes, which is exactly the largest record tshark finds from the client.
+"""
+figure = "client_hello_bytes"
+figure_title = "The first record, and the size of the login"
+figure_speech = """
+First demo: what the wire shows. [[slnc 400]] Before any key exists, the client sends its client hello, and anyone on the path can read it. [[slnc 600]]
+Here it is, read by hand from the capture's bytes. [[slnc 300]] A record type of twenty two, which means handshake. [[slnc 300]] A message type of one, which means client hello. [[slnc 300]] Thirty two random bytes, new for every connection. [[slnc 300]] Remember them, they come back in the key log. [[slnc 300]] And the server name: w w w dot shop dot localhost, in the clear. [[slnc 700]]
+Encryption hides the bytes, but not how many there are. [[slnc 300]] The login request is one hundred and sixty three bytes. [[slnc 300]] T L S one point three adds one byte for the content type, and a sixteen byte A E S G C M tag. [[slnc 300]] One hundred and sixty three, plus one, plus sixteen, is one hundred and eighty. [[slnc 400]] And tshark finds a record of exactly one hundred and eighty bytes from the client. [[slnc 300]] A watcher can tell that a login happened.
 """
 speech = """
-First demo: what the wire shows. [[slnc 400]] The client hello names the shop in the clear. [[slnc 600]]
-After that, only encrypted records. [[slnc 300]] No certificate, no request, no password.
+Here is the real output. [[slnc 400]] The login, as the client sends it inside T L S. [[slnc 400]] Then the capture, read by tshark with no secrets. [[slnc 300]] It sees the name and the cipher. [[slnc 300]] No certificate, no readable request, and the word password is nowhere in the file.
+[[page]]
+The client hello, by hand: type twenty two, type one, thirty two random bytes, and the name in the clear. [[slnc 400]] And the size worked out: one hundred and sixty three, plus one, plus sixteen, is one hundred and eighty, which is what tshark sees on the wire.
 """
 rows = { wire = "active ok" }
 console = [
-    ["Client Hello: SNI www.shop.localhost", "bad"],
-    ["Server Hello: TLS_AES_256_GCM_SHA384", "ok"],
-    ["HTTP requests tshark can read: 0", "ok"],
+    ["THE LOGIN (what the client sends, inside TLS 1.3):", "code"],
+    ["  POST /login  Host: www.shop.localhost", "muted"],
+    ["  user=ana&password=hunter2", "muted"],
+    ["THE CAPTURE, READ WITH NO SECRETS (tshark -r login.pcap):", "code"],
+    ["  Client Hello  server name www.shop.localhost", "muted"],
+    ["  Server Hello  TLS_AES_256_GCM_SHA384", "muted"],
+    ["  certificate   not visible", "ok"],
+    ["  HTTP          0 requests readable", "ok"],
+    ["  the word password in the file's bytes: no", "ok"],
+    ["---", ""],
+    ["THE CLIENT HELLO, BY HAND (the first record's bytes):", "code"],
+    ["  record type   22 (handshake)", "muted"],
+    ["  message type  1 (Client Hello)", "muted"],
+    ["  random        32 bytes, new for every connection", "muted"],
+    ["  server_name   www.shop.localhost  <- IN THE CLEAR", "bad"],
+    ["THE REQUEST'S SIZE, WORKED OUT (what a watcher still sees):", "code"],
+    ["  request 163 + type 1 + tag 16 = 180 bytes", "muted"],
+    ["  on the wire (tshark)  180 bytes", "muted"],
 ]
 
 [[act]]
 title = "A key log: the secrets of one connection"
-summary = "The client writes five lines, each tied to one connection by its client random, and no private key."
+summary = "The openssl client writes five lines; each is a label, the connection's client random and a 48-byte secret, and none is a private key."
 detail = """
-openssl s_client -keylogfile writes five lines, as a browser does when SSLKEYLOGFILE is set: the handshake and traffic secrets of both sides and the exporter secret. Each line is a label, the connection's client random (32 bytes) and a secret (48 bytes), which ties it to one connection and nothing else. The file holds no private key.
+openssl s_client -keylogfile keys.log writes five lines, as a browser does when SSLKEYLOGFILE is set. In TLS 1.3 each side has a handshake secret and a traffic secret: CLIENT_HANDSHAKE_TRAFFIC_SECRET, SERVER_HANDSHAKE_TRAFFIC_SECRET, CLIENT_TRAFFIC_SECRET_0 and SERVER_TRAFFIC_SECRET_0; EXPORTER_SECRET opens no traffic.
+One line taken apart: the label, the client random (32 bytes, 64 hex digits) and the secret (48 bytes, 96 hex digits). The secret is as long as the suite's hash: TLS_AES_256_GCM_SHA384 uses SHA-384, and 384 / 8 = 48 bytes.
+KeyLog checks by hand whose connection it is: every line carries the same client random, and it is the random from the Client Hello in the capture. There is no private key in the file.
+"""
+figure = "key_log_line"
+figure_title = "One line of a key log, taken apart"
+figure_speech = """
+Second demo: a key log. [[slnc 400]] The open S S L client was started with dash keylogfile. [[slnc 300]] A browser does the same when the S S L key log file variable is set. [[slnc 700]]
+Here is one line, taken apart. [[slnc 300]] First a label, which says which secret this is. [[slnc 300]] Then the client random: the same thirty two bytes the client hello carried in the clear. [[slnc 300]] That is how a line names its connection. [[slnc 300]] Then the secret itself. [[slnc 700]]
+Why forty eight bytes? [[slnc 300]] The server chose T L S A E S two fifty six G C M S H A three eighty four. [[slnc 300]] In T L S one point three, a secret is as long as the suite's hash. [[slnc 300]] S H A three eighty four gives three hundred and eighty four bits, divided by eight, forty eight bytes. [[slnc 700]]
+At the bottom, the five labels. [[slnc 300]] Each side has a handshake secret, and a traffic secret for its data. [[slnc 300]] The exporter secret opens no traffic at all.
 """
 speech = """
-Second demo: a key log. [[slnc 400]] The client writes five lines. [[slnc 600]]
-Each line names one connection by its client random. [[slnc 300]] There is no private key in the file.
+The output. [[slnc 400]] Five lines in the key log. [[slnc 300]] Two handshake secrets, two traffic secrets, one for each side, and the exporter secret.
+[[page]]
+One line taken apart: a label, thirty two bytes of client random, and forty eight bytes of secret. [[slnc 400]] Forty eight, because S H A three eighty four divided by eight is forty eight. [[slnc 400]] And the match by hand: one client random in every line, the same as the client hello's. [[slnc 300]] No private key anywhere in the file.
 """
 rows = { keylog = "active ok" }
 console = [
-    ["5 lines: handshake, traffic and exporter secrets", "ok"],
-    ["each tied to one client random", "ok"],
-    ["no private key in the file", "ok"],
+    ["THE INPUT (openssl s_client -keylogfile keys.log):", "code"],
+    ["  5 lines, as a browser writes with SSLKEYLOGFILE set", "muted"],
+    ["THE KEY LOG (each label, and what its secret opens):", "code"],
+    ["  CLIENT_HANDSHAKE_TRAFFIC_SECRET  the client's handshake", "muted"],
+    ["  SERVER_HANDSHAKE_TRAFFIC_SECRET  the server's handshake", "muted"],
+    ["  CLIENT_TRAFFIC_SECRET_0          the client's data", "muted"],
+    ["  SERVER_TRAFFIC_SECRET_0          the server's data", "muted"],
+    ["  EXPORTER_SECRET                  no traffic", "muted"],
+    ["---", ""],
+    ["ONE LINE, TAKEN APART:", "code"],
+    ["  label          CLIENT_TRAFFIC_SECRET_0", "muted"],
+    ["  client random  32 bytes (64 hex digits)", "muted"],
+    ["  secret         48 bytes (96 hex digits)", "muted"],
+    ["THE SECRET'S SIZE, WORKED OUT (from the suite's hash):", "code"],
+    ["  TLS_AES_256_GCM_SHA384 -> SHA384 -> 384 / 8 = 48 bytes", "muted"],
+    ["THE MATCH, BY HAND (whose connection is it?):", "code"],
+    ["  one client random in all lines  yes", "ok"],
+    ["  the Client Hello's random       yes", "ok"],
+    ["  a private key in the file       no", "muted"],
 ]
 
 [[act]]
 title = "The same capture, read with the key log"
-summary = "tshark with the key log shows the request, the form fields, the cookie and the certificate."
+summary = "With the key log, tshark opens the request and its form, the response and its cookie, and the certificate that TLS 1.3 encrypts."
 detail = """
-With the key log, tshark shows POST /login with the form fields user and password, ana and hunter2; the response 200 with the Set-Cookie header and the page; and the encrypted handshake opens too, so the certificate, for www.shop.localhost, is visible. In TLS 1.3 the certificate is encrypted, and the key log opens it.
+tshark -o tls.keylog_file:keys.log reads the same login.pcap. The request opens with CLIENT_TRAFFIC_SECRET_0: POST /login, user = ana, password = hunter2. The response opens with SERVER_TRAFFIC_SECRET_0: 200, welcome ana, and Set-Cookie: session=7f3a; Secure; HttpOnly.
+The certificate opens with SERVER_HANDSHAKE_TRAFFIC_SECRET: it is for www.shop.localhost, issued by Shop Lab Root. In TLS 1.3 the certificate is encrypted, so without the log it was not visible at all.
+"""
+figure = "opened_by_secret"
+figure_title = "Each secret opens its own part"
+figure_speech = """
+Third demo: the same capture file, read again, now with the key log. [[slnc 400]] Not one byte of the capture has changed. [[slnc 700]]
+At the top, the request, opened with the client's traffic secret. [[slnc 300]] A post to slash login, user ana, password hunter two. [[slnc 600]]
+In the middle, the response, opened with the server's traffic secret. [[slnc 300]] Two hundred, welcome ana, and the session cookie. [[slnc 300]] Whoever holds this cookie is logged in as ana. [[slnc 600]]
+At the bottom, the certificate, opened with the server's handshake secret. [[slnc 300]] In T L S one point three, the certificate travels encrypted. [[slnc 300]] So without the log, a watcher could not even see it. [[slnc 300]] With the log, it is all there: w w w dot shop dot localhost, issued by Shop Lab Root.
 """
 speech = """
-Third demo: the same capture, read with the key log. [[slnc 400]] Now tshark shows the post to slash login. [[slnc 600]]
-The form fields, the cookie, and even the certificate, which T L S one point three encrypts.
+The output. [[slnc 400]] The request opens: a post to slash login, with ana and hunter two. [[slnc 400]] The response opens, with the session cookie. [[slnc 400]] And the encrypted certificate opens too, for w w w dot shop dot localhost, issued by Shop Lab Root.
 """
 rows = { read = "active wrong" }
 console = [
-    ["POST /login: user=ana, password=hunter2", "bad"],
-    ["200 with Set-Cookie: session=7f3a; Secure; HttpOnly", "ok"],
-    ["the encrypted certificate is visible", "ok"],
+    ["THE INPUT (tshark -o tls.keylog_file:keys.log):", "code"],
+    ["  the same login.pcap, and the lines of keys.log", "muted"],
+    ["THE REQUEST (opened with CLIENT_TRAFFIC_SECRET_0):", "code"],
+    ["  POST /login", "muted"],
+    ["  user     = ana", "muted"],
+    ["  password = hunter2", "bad"],
+    ["THE RESPONSE (opened with SERVER_TRAFFIC_SECRET_0):", "code"],
+    ["  200  welcome ana", "muted"],
+    ["  Set-Cookie: session=7f3a; Secure; HttpOnly", "muted"],
+    ["THE CERTIFICATE (opened with SERVER_HANDSHAKE_TRAFFIC_SECRET):", "code"],
+    ["  for        www.shop.localhost  <- ENCRYPTED IN TLS 1.3", "muted"],
+    ["  issued by  Shop Lab Root", "muted"],
 ]
 
 [[act]]
 title = "A key log opens its own connection and no other"
-summary = "A second login is closed to the first key log; one file with both opens both; a log with only the client's lines opens only requests."
+summary = "A second login stays closed to the first login's key log, because the client random does not match; one file with both logs opens both; the client's two lines open only the requests."
 detail = """
-A second login read with the first login's key log has 0 HTTP packets; with its own key log it opens. One file with both logs opens both captures. A log with only the client's lines opens the requests and not the responses.
+A second login writes login2.pcap and keys2.log. KeyLog matches by hand: keys.log does not carry login2's client random, keys2.log does, and both.log (the two logs in one file) does.
+tshark agrees: keys.log on login2.pcap opens 0 HTTP packets, keys2.log opens it, and both.log opens both captures.
+Before: with all the lines of keys.log, requests and responses open. After: with only its two CLIENT_ lines, the requests open and the responses stay closed, because each side encrypts with its own secret.
+"""
+figure = "one_connection"
+figure_title = "A log matches by client random"
+figure_speech = """
+Fourth demo: a key log opens its own connection, and no other. [[slnc 400]] The shopper logs in a second time, and the client writes a second key log. [[slnc 700]]
+On each row, a log, and the question asked by hand: does it carry the second login's client random? [[slnc 300]] The first log does not. [[slnc 300]] tshark agrees: zero H T T P packets, closed. [[slnc 300]] The second log does, and it opens. [[slnc 300]] Both logs in one file carry it, and open both logins. [[slnc 700]]
+At the bottom, half a log. [[slnc 300]] Before, with all five lines, requests and responses open. [[slnc 300]] After, with only the client's two lines, the requests open, and the responses stay closed. [[slnc 300]] Each side encrypts with its own secret. [[slnc 300]] A key log opens exactly what it lists.
 """
 speech = """
-Fourth demo: a key log opens its own connection and no other. [[slnc 400]] The second login stays closed to the first log. [[slnc 600]]
-A log with only the client's lines opens the requests, and not the responses.
+The output. [[slnc 400]] The two logins and their logs. [[slnc 400]] By hand, only the second log, and the joined file, carry the second login's client random.
+[[page]]
+And tshark agrees: the first log opens nothing of the second login, its own log opens it, the joined file opens both. [[slnc 400]] With only the client's lines, the responses stay closed.
 """
 rows = { own = "active ok" }
 console = [
-    ["login two with log one: 0 HTTP packets", "ok"],
-    ["one file with both logs opens both", "ok"],
-    ["client lines only: requests open, responses closed", "ok"],
+    ["THE INPUT (a second login, with its own key log):", "code"],
+    ["  login.pcap   keys.log    the first login", "muted"],
+    ["  login2.pcap  keys2.log   the second login", "muted"],
+    ["THE MATCH, BY HAND (the log has login2's client random?):", "code"],
+    ["  keys.log   no", "muted"],
+    ["  keys2.log  yes", "ok"],
+    ["  both.log   yes  (keys.log and keys2.log in one file)", "ok"],
+    ["---", ""],
+    ["THE RESULT (tshark on login2.pcap):", "code"],
+    ["  keys.log   closed: 0 HTTP packets", "ok"],
+    ["  keys2.log  opened", "ok"],
+    ["  both.log   opened, and login.pcap: opened", "ok"],
+    ["BEFORE (all the lines of keys.log, on login.pcap):", "code"],
+    ["  requests opened, responses opened", "ok"],
+    ["AFTER (only its two CLIENT_ lines, on login.pcap):", "code"],
+    ["  requests opened, responses closed  <- ONE SECRET PER SIDE", "ok"],
 ]
 
 [[act]]
 title = "The server's own key is a different matter"
-summary = "A TLS 1.2 certificate is in the clear; a leaked server key opens an RSA key exchange recording and not an ECDHE one."
+summary = "A TLS 1.2 certificate travels in the clear; a leaked server key opens a recording made with RSA key exchange, password and all, and nothing of one made with ECDHE."
 detail = """
-Over TLS 1.2 the certificate is visible without any secret; over TLS 1.3 it is not. A recording made with ephemeral key exchange (ECDHE) stays closed when the server's private key leaks: 0 HTTP packets opened. A recording made with RSA key exchange opens, password and all: a leaked key opens everything recorded before. A key log is as good as the password it protects. Nothing here needed a network card.
+Three recordings and the suite each Server Hello chose: TLS 1.3 nginx with TLS_AES_256_GCM_SHA384, TLS 1.2 nginx with TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, and an old-style TLS 1.2 server (LegacyServer, in the JDK) with TLS_RSA_WITH_AES_128_CBC_SHA. Over TLS 1.2 the certificate is visible with no secret; over TLS 1.3 it is not.
+Suites reads the key exchange from the name. TLS 1.3 is always ephemeral. ECDHE: both sides make a one-time key and the server's key only signs, so the secret never crosses the wire. RSA: the client sends the secret locked to the server's public key. So by hand, a leaked server key opens the RSA recording and nothing of the ECDHE one.
+tshark with the server's private key (rsa.key) agrees: the ECDHE recording stays closed (0 HTTP packets) and the RSA recording opens, password hunter2. A leaked key opens everything ever recorded with RSA key exchange.
+"""
+figure = "key_exchange"
+figure_title = "Ephemeral keys, or a secret that travels"
+figure_speech = """
+Fifth demo: the server's own private key. [[slnc 400]] Suppose it leaks, a year after a watcher recorded the traffic. [[slnc 700]]
+On the left, nginx over T L S one point two, with E C D H E. [[slnc 300]] Each side makes a one time key, and the server's key only signs its part. [[slnc 300]] Each side works out the secret, and the secret never crosses the wire. [[slnc 300]] So the leaked key opens nothing: zero H T T P packets. [[slnc 700]]
+On the right, an old style server with R S A key exchange. [[slnc 300]] The client picks the secret, locks it with the server's public key, and sends it. [[slnc 300]] The secret is in the recording, locked. [[slnc 300]] And the leaked private key unlocks it. [[slnc 300]] tshark opens the login, password hunter two. [[slnc 700]]
+That is forward secrecy. [[slnc 300]] T L S one point three always uses one time keys, so it has no R S A key exchange at all.
 """
 speech = """
-Fifth demo: the server's own key is a different matter. [[slnc 400]] With ephemeral keys, a leaked server key opens nothing. [[slnc 600]]
-With R S A key exchange, it opens every recording. [[slnc 300]] That is why forward secrecy matters.
+The output. [[slnc 400]] Three recordings, and the suite each server chose. [[slnc 400]] Over T L S one point two, the certificate is visible, with no secret. [[slnc 300]] Over one point three, it is not.
+[[page]]
+The key exchange, read by hand from the name. [[slnc 400]] Only the R S A one sends the secret across the wire, so only it should open. [[slnc 400]] And tshark, with the leaked key, agrees: the E C D H E recording stays closed, the R S A recording opens, password and all.
 """
 rows = { serverkey = "active ok" }
 console = [
-    ["ECDHE recording + leaked server key: closed", "ok"],
-    ["RSA key exchange recording + leaked server key: opened", "bad"],
+    ["THE RECORDINGS (the suite each Server Hello chose):", "code"],
+    ["  TLS 1.3, nginx  TLS_AES_256_GCM_SHA384", "muted"],
+    ["  TLS 1.2, nginx  TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", "muted"],
+    ["  TLS 1.2, old    TLS_RSA_WITH_AES_128_CBC_SHA", "muted"],
+    ["THE CERTIFICATE, WITH NO SECRETS:", "code"],
+    ["  TLS 1.3  not visible", "ok"],
+    ["  TLS 1.2  visible", "bad"],
+    ["---", ""],
+    ["THE KEY EXCHANGE, BY HAND (read from the suite's name):", "code"],
+    ["  TLS 1.3, nginx  ephemeral: a new key pair per connection", "ok"],
+    ["  TLS 1.2, nginx  ephemeral (ECDHE): the server key only signs", "ok"],
+    ["  TLS 1.2, old    RSA: the secret is sent locked to the server key", "bad"],
+    ["THE RULE, BY HAND (did the secret cross the wire?):", "code"],
+    ["  TLS 1.2, nginx  no, so the key opens nothing", "ok"],
+    ["  TLS 1.2, old    yes, so the key opens it", "bad"],
+    ["THE LEAK (tshark with the server's private key, rsa.key):", "code"],
+    ["  TLS 1.2, nginx  closed: 0 HTTP packets", "ok"],
+    ["  TLS 1.2, old    opened: password hunter2  <- THE PAST IS OPEN", "bad"],
 ]
+
+[highlight]
+console_amber = ["THE LOGIN", "THE INPUT", "THE RECORDINGS", "THE REQUEST (", "BEFORE"]
+console_rose = ["THE LEAK", "THE RESPONSE ("]
+console_green = ["THE RESULT", "AFTER", "THE CAPTURE"]
+console_cyan = ["THE CLIENT HELLO", "THE REQUEST'S SIZE", "THE KEY LOG", "ONE LINE", "THE SECRET'S", "THE MATCH", "THE CERTIFICATE", "THE KEY EXCHANGE", "THE RULE"]
 
 [animation]
 subtitle = "An online store, a tap on the wire, and what a capture can show."
@@ -224,7 +349,7 @@ nongoals = [
 problem = """
 People either think a TLS recording is useless or that it can be read at will; both are wrong in specific ways.
 """
-roles = [["The tap", "`Tap`, `Pcap`"], ["The servers", "`Nginx`, `LegacyServer`"], ["The client", "`Client`"], ["The reader", "`Tshark`"], ["Entry point", "`TlsCaptureDemo`"]]
+roles = [["The tap", "`Tap`, `Pcap`"], ["The servers", "`Nginx`, `LegacyServer`, `LocalCa`"], ["The clients", "`Client`"], ["The reader", "`Tshark`"], ["Teaching classes, by hand", "`ClientHello`, `KeyLog`, `Suites`"], ["Entry point", "`TlsCaptureDemo`"]]
 requirements = [
     "A tap forwards a connection and writes a valid capture file.",
     "tshark reads the capture with and without secrets.",
@@ -353,6 +478,7 @@ out_of_scope = [
 ]
 tests = [
     "`PcapTest` reads back the capture file the tap writes, byte by byte.",
+    "`ClientHelloTest`, `KeyLogTest` and `SuitesTest` check the by-hand classes with no program; `ClientHelloTest` parses a Client Hello the JDK writes.",
     "`TlsCaptureTest` runs nginx, the openssl client, a tap and tshark for what the capture shows, the key log, one connection only and the server key.",
     "`DemoRunsTest` compares the whole demo with the golden output.",
 ]
@@ -394,15 +520,15 @@ residual = "Anyone with the server's rights"
 
 [poster]
 headline = [["TLS TRAFFIC", "text"], ["WITH TSHARK", "accent"]]
-taglines = [["A capture shows a name, times and sizes, a key log opens exactly the connections it lists,", "gold"]]
-before = { code = "Client Hello: SNI www.shop.localhost", note = "What the wire shows", tag = "BEFORE" }
-after = { code = "tshark -o tls.keylog_file:keys.log", note = "The server's own key is a different matt", tag = "AFTER" }
+taglines = [["A key log opens one connection; a leaked key opens only RSA", "gold"]]
+before = { code = "server name www.shop.localhost", note = "What the wire shows", tag = "BEFORE" }
+after = { code = "tshark -o tls.keylog_file:keys.log", note = "What a key log opens", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
 kind = "poster"
 title = "Inspecting TLS Traffic with Wireshark"
-narration = "Hello, and welcome. [[slnc 400]] This video explains inspecting T L S traffic with Wireshark's command line tool, tshark. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A recording of a real T L S login shows the shop's name, the times, and the sizes, but not the password. [[slnc 300]] With the key log that the client wrote, tshark opens that one connection, and no other. [[slnc 300]] A stolen server key opens only recordings made without ephemeral keys. [[slnc 600]] Think of a sealed envelope. [[slnc 300]] Anyone sees the address and the weight, but only the right letter opener reads it. [[slnc 600]] Our example is an online store."
+narration = "Hello, and welcome. [[slnc 400]] This video explains inspecting T L S, transport layer security, traffic with Wireshark's command line tool, tshark. [[slnc 300]] This video is presented by Jayasekhar Konduru. [[slnc 600]] First, a simple definition. [[slnc 300]] A recording of a real T L S login shows the shop's name, the times, and the sizes, but not the password. [[slnc 300]] With the key log that the client wrote, tshark opens that one connection, and no other. [[slnc 300]] A stolen server key opens only recordings made without one time keys. [[slnc 600]] Think of a sealed envelope. [[slnc 300]] Anyone sees the address and the weight, but only the right letter opener reads it. [[slnc 600]] Our example is an online store."
 
 [[scene]]
 key = "02-scenario"
@@ -410,6 +536,26 @@ kind = "bullets"
 title = "The Scenario"
 body = ["A shopper signs in to an online store", "over TLS 1.3.", "", "The demo runs a real nginx, the openssl client", "with a key log, and a small tap", "that records every byte to a capture file.", "", "tshark reads the file, with and without keys."]
 narration = "Here is the scenario. [[slnc 400]] A shopper signs in to an online store over T L S one point three. [[slnc 500]] The demo runs a real nginx, and the open S S L client, which writes a key log. [[slnc 300]] A small tap, written in Java, sits between them and records every byte to a capture file, so no network card or special rights are needed. [[slnc 500]] Then tshark reads that file, with no keys, with the key log, and with the server's own key."
+
+[[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Capture: a file of every packet that passed", "Client Hello: the client's first message, in the clear", "Client random: 32 new bytes in every Client Hello", "Key log: the secrets of a connection, written down", "Key exchange: how both sides get the same secret"]
+narration = """Before the demos, the words. [[slnc 500]] A capture is a file of every packet that passed, as a watcher on the path would record it. [[slnc 500]] The client hello is the client's first message, sent before any key exists, so it is in the clear. [[slnc 500]] The client random is thirty two new bytes in every client hello. [[slnc 500]] A key log is a file where the client writes down the secrets of a connection. [[slnc 500]] And the key exchange is how client and server end up with the same secret."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-wire-and-key-log"
+kind = "figure"
+title = "The same login, two ways"
+body = "wire_and_key_log"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] At the top, the login the shopper's client sends: a post to slash login, with user ana and password hunter two, inside T L S one point three. [[slnc 700]] On the left, the capture read with no secrets. [[slnc 300]] The server name, in the clear. [[slnc 300]] The cipher the server chose. [[slnc 300]] No certificate, no H T T P, and a login record of one hundred and eighty bytes. [[slnc 700]] On the right, the very same bytes, read with the key log the client wrote. [[slnc 300]] The request, the password, the response, the session cookie, and even the certificate. [[slnc 700]] Every value here comes from the demo's real output. [[slnc 300]] Without the log, a name, a cipher and sizes. [[slnc 300]] With it, everything."""
 
 [[scene]]
 key = "03-acts"
@@ -423,13 +569,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["A key log opens every connection it lists", "Names, times and sizes stay visible", "Capturing a real network needs rights", "Decryption tempts teams to leave logging on"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] A key log opens every connection it lists, so it is as sensitive as the passwords inside them. [[slnc 500]] Encryption hides the content, but the names, the times and the sizes stay visible. [[slnc 500]] Recording a real network needs rights that a test should not ask for. [[slnc 300]] And once decryption makes debugging easy, a team is tempted to leave key logging on."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Tap, Pcap: records the bytes to a capture file", "Nginx, LegacyServer: the servers", "Client: the openssl client, with a key log", "Tshark: reads the capture", "TlsCaptureDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Tap sits between the client and the server, and Pcap writes what passes into a capture file. [[slnc 500]] Nginx is the modern server, and LegacyServer is an old style one, which uses R S A key exchange. [[slnc 500]] Client runs the open S S L client, which writes the key log. [[slnc 500]] Tshark runs Wireshark's reader on the capture. [[slnc 300]] And TlsCaptureDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -446,8 +585,156 @@ body = ["Keep key logs out of production; delete them", "Ephemeral key exchange 
 narration = "So, how do you use it? [[slnc 400]] Keep key logs out of production, and delete them after use. [[slnc 500]] Offer only ephemeral key exchange, so a leaked server key opens nothing that was recorded. [[slnc 500]] Remember that names, times, and sizes stay visible to anyone on the path. [[slnc 300]] And treat every capture as sensitive, even when it is encrypted."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a third login and a key", "log with only its server lines."]
 narration = "That's inspecting T L S traffic with Wireshark. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Encryption hides the content and not the conversation, and the secrets that open it are kept per connection, by whoever wrote them down. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a third login, and a key log with only its server lines, and see which half opens. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Three small classes redo by hand what tshark decides: the client hello, the key log match, and the key exchange. [[slnc 300]] Around them, a tap that writes the capture, and the real tools. [[slnc 300]] Here they are."""
+
+[[class]]
+name = "ClientHello"
+what = "reads the first record by hand, as anyone on the path can"
+[[class.part]]
+title = "the random and the server name"
+code = '''
+int recordType = b.get() & 0xff;
+...
+byte[] random = new byte[32];
+b.get(random);
+...
+if (type == SERVER_NAME) {
+...
+name = new String(host, StandardCharsets.US_ASCII);
+'''
+speech = """It walks the bytes of the first record: the record type, the message type, then thirty two bytes of random. [[slnc 300]] It skips the session, the suites and the compression, then reads the extensions until it finds the server name. [[slnc 300]] A test proves it gives the same random and name as tshark."""
+
+[[class]]
+name = "KeyLog"
+what = "the key log file, and which connection a line opens"
+[[class.part]]
+title = "a log names connections by client random"
+code = '''
+boolean opens(String clientRandom) {
+    return lines.stream()
+            .anyMatch(l -> l.clientRandom().equalsIgnoreCase(clientRandom));
+}
+...
+KeyLog only(String prefix) {
+'''
+speech = """Each line is a label, a client random and a secret. [[slnc 300]] A log opens a capture only when one of its lines carries that capture's client random. [[slnc 300]] Only keeps the lines of one side, for the half log of the fourth demo."""
+
+[[class]]
+name = "Suites"
+what = "what a suite name says about the key exchange"
+[[class.part]]
+title = "ephemeral, or RSA"
+code = '''
+if (!name.contains("_WITH_")) {
+    return "ephemeral: a new key pair per connection";
+}
+...
+static boolean serverKeyOpens(String name) {
+    return name.startsWith("TLS_RSA_WITH_");
+}
+...
+return Integer.parseInt(hash(name).substring(3)) / 8;
+'''
+speech = """The name of a T L S one point three suite has no key exchange in it, because it is always ephemeral. [[slnc 300]] A server key opens a recording only for names that start with T L S R S A with. [[slnc 300]] And a secret is as long as the hash: three eighty four bits divided by eight."""
+
+[[class]]
+name = "Tap"
+what = "forwards every byte and writes it to a capture file"
+[[class.part]]
+title = "copy, then forward"
+code = '''
+while ((n = in.read(buffer)) > 0) {
+    pcap.data(fromClient, buffer, n);
+    out.write(buffer, 0, n);
+'''
+speech = """The tap sits between the client and the server on loopback. [[slnc 300]] Every chunk it reads is written to the capture, then passed on. [[slnc 300]] Pcap wraps the chunks in I P and T C P headers, so tshark reads it like any recording."""
+
+[[class]]
+name = "Tshark"
+what = "runs tshark on a capture, with or without secrets"
+[[class.part]]
+title = "a key log, or the server's key"
+code = '''
+static List<String> keyLog(Path keys) {
+    return List.of("tls.keylog_file:" + keys);
+}
+...
+return List.of("uat:rsa_keys:\"" + key + "\",\"\"");
+'''
+speech = """tshark is given one extra setting. [[slnc 300]] The key log file, for the third and fourth demos. [[slnc 300]] Or the server's private key, for the fifth."""
+
+[[class]]
+name = "Client"
+what = "the openssl client with a key log, and a JDK client for RSA"
+[[class.part]]
+title = "write the secrets, or offer only RSA"
+code = '''
+command.addAll(List.of("-keylogfile", keyLog.toString()));
+...
+String[] rsaOnly = {"TLS_RSA_WITH_AES_128_CBC_SHA"};
+socket.setEnabledCipherSuites(rsaOnly);
+'''
+speech = """The open S S L client writes its secrets when it is given dash keylogfile. [[slnc 300]] The second client is the J D K's, told to offer only R S A key exchange, for the old style server."""
+
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: the encrypted, checked connection under https"
+say = "T L S is transport layer security: the encrypted and checked connection that https runs on."
+[[acronym]]
+short = "SSL"
+long = "Secure Sockets Layer: the old name of TLS, kept in names like SSLKEYLOGFILE"
+say = "S S L is secure sockets layer, the old name of T L S. It lives on in names like the S S L key log file variable."
+[[acronym]]
+short = "HTTP"
+long = "Hypertext Transfer Protocol: the requests and responses of the web"
+say = "H T T P is the hypertext transfer protocol: the requests and responses of the web."
+[[acronym]]
+short = "pcap"
+long = "packet capture: the file format of a recording"
+say = "pcap is short for packet capture: the file format of a recording."
+[[acronym]]
+short = "IP, TCP"
+long = "Internet Protocol and Transmission Control Protocol: the packets under TLS"
+say = "I P is the internet protocol, and T C P the transmission control protocol: the packets that carry T L S."
+[[acronym]]
+short = "RSA"
+long = "Rivest, Shamir, Adleman: a public key algorithm"
+say = "R S A is named after Rivest, Shamir and Adleman: a public key algorithm."
+[[acronym]]
+short = "ECDHE"
+long = "Elliptic Curve Diffie-Hellman Ephemeral: a key exchange with one-time keys"
+say = "E C D H E is elliptic curve Diffie Hellman ephemeral: a key exchange with one time keys."
+[[acronym]]
+short = "AES, GCM"
+long = "Advanced Encryption Standard, in Galois/Counter Mode, which adds a tag"
+say = "A E S is the advanced encryption standard. G C M is Galois counter mode, which adds a tag that detects changes."
+[[acronym]]
+short = "SHA, SHA384"
+long = "Secure Hash Algorithm: SHA384 gives 384 bits"
+say = "S H A is the secure hash algorithm. S H A three eighty four gives three hundred and eighty four bits."
+[[acronym]]
+short = "CBC"
+long = "Cipher Block Chaining: an older AES mode"
+say = "C B C is cipher block chaining, an older mode of A E S."
+[[acronym]]
+short = "hex"
+long = "hexadecimal: each byte written as two digits from 0 to f"
+say = "hex is hexadecimal: each byte written as two digits, from zero to f."
+[[acronym]]
+short = "JDK"
+long = "Java Development Kit"
+say = "J D K is the Java development kit."

@@ -21,6 +21,7 @@ Static analysis tools report a lot, rules are written without tests, and nobody 
 | The planted truth | `Marker` |
 | The scan and the rule tests | `Semgrep` |
 | The scoring | `Score` |
+| A rule's patterns, and taint followed by hand | `RuleFile`, `TaintSteps` |
 | The suppression check | `Suppressions` |
 | The tool install | `Venv` |
 | Entry point | `SastDemo` |
@@ -38,10 +39,10 @@ Static analysis tools report a lot, rules are written without tests, and nobody 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 24 lines, identical on every run |
+| Tests | 16, all passing |
+| Demo output | 91 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:33, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:11, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

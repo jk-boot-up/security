@@ -84,4 +84,33 @@ class EncodingTest {
         byte[] cut = new AuthenticatorData(new byte[32], 0x41, 0, new byte[8]).encode();
         assertThrows(IllegalArgumentException.class, () -> AuthenticatorData.decode(java.util.Arrays.copyOf(cut, cut.length - 1)));
     }
+
+    @Test
+    void theSignedBytesAreTheAuthenticatorDataThenTheClientDataHash() throws Exception {
+        byte[] data = new AuthenticatorData(Sha256.of("bank.example"), AuthenticatorData.USER_PRESENT, 1, null).encode();
+        byte[] json = new ClientData(ClientData.GET, "Zm9v", "https://bank.example").json();
+        byte[] signed = Authenticator.signedBytes(data, json);
+        assertEquals(69, signed.length);
+        assertArrayEquals(data, java.util.Arrays.copyOfRange(signed, 0, 37));
+        assertArrayEquals(Sha256.of(json), java.util.Arrays.copyOfRange(signed, 37, 69));
+        // a signature over the 69 bytes verifies with the library fed the two parts separately, as WebAuthn describes it
+        java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("EC");
+        generator.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
+        java.security.KeyPair keys = generator.generateKeyPair();
+        byte[] signature = Authenticator.sign(keys, data, json, new java.security.SecureRandom());
+        java.security.Signature verifier = java.security.Signature.getInstance("SHA256withECDSA");
+        verifier.initVerify(keys.getPublic());
+        verifier.update(data);
+        verifier.update(Sha256.of(json));
+        assertTrue(verifier.verify(signature));
+    }
+
+    @Test
+    void theDemoRandomRepeatsOnEveryRun() {
+        byte[] a = new byte[32];
+        byte[] b = new byte[32];
+        new FixedRandom(PasskeysDemo.SEED).nextBytes(a);
+        new FixedRandom(PasskeysDemo.SEED).nextBytes(b);
+        assertArrayEquals(a, b);
+    }
 }

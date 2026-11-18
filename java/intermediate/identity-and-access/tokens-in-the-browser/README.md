@@ -55,11 +55,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Tokens kept in the browser | The app keeps its access and refresh tokens in localStorage; a third-party script takes both; the stolen access token works until it expires five minutes later, and the stolen refresh token gets a new one ten days later. |
-| 2. A backend for the frontend keeps the tokens on the server | The BFF signs Ana in on the server and gives the browser one __Host- cookie (Secure, HttpOnly, SameSite=Strict); the script takes 0 tokens; it can still read the balance while the page is open, and nothing after it closes. |
+| 1. Tokens kept in the browser | The app keeps a five-minute access token and a thirty-day refresh token in localStorage; a third-party script takes both; the stolen access token works until exp, iat plus 300 seconds, and the stolen refresh token gets a new one ten days later. |
+| 2. A backend for the frontend keeps the tokens on the server | The BFF signs Ana in on the server and gives the browser one __Host- cookie (Secure, HttpOnly, SameSite=Strict); the BFF holds 2 tokens, the browser 0; the script takes nothing, but can still read the balance while the page is open. |
 | 3. Requests started by another site | A hidden form on evil.example gets 401 because SameSite=Strict keeps the cookie off; an older browser sends the cookie but not the request header, so 403; adding the header needs a preflight the BFF refuses; one transfer is made, the bank's own. |
-| 4. Tokens bound to a key, with DPoP | The token carries the browser key's thumbprint; with a fresh proof it works; as a plain bearer token, with another key's proof, replayed, for another request or two minutes late it is refused; a bound refresh token works only with the app's key. |
-| 5. The bill | A second BFF with its own store answers Ana's cookie with 401; every call takes one more hop; a cleared browser loses its DPoP key and Ana signs in again; and a script on the open page can still use the key. |
+| 4. Tokens bound to a key, with DPoP | The thumbprint of the app's key, SHA-256 over its canonical JWK, is in the token's cnf.jkt; each request carries a proof signed by the key; the token alone, another key's proof, a replay, a proof for another request or an old proof all get 401. |
+| 5. The bill | A second BFF with its own store answers Ana's cookie with 401; every call takes one more hop; a cleared browser loses its DPoP key and the old token is refused; and a script on the open page can still use the key: 200. |
 
 ## Test
 

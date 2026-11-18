@@ -41,7 +41,7 @@ public final class StepCa implements AutoCloseable {
                 return "the token was issued for another name";
             }
             if (output.contains("remote error: tls")) {
-                return "the key does not match the certificate, so the TLS call to the CA fails";
+                return "the key does not match: the TLS call fails";
             }
             if (output.contains("lacked necessary authorization")) {
                 return "not authorized";
@@ -78,7 +78,8 @@ public final class StepCa implements AutoCloseable {
         ObjectNode ca = (ObjectNode) json.readTree(file.toFile());
         ObjectNode crl = ca.putObject("crl");
         crl.put("enabled", true).put("generateOnRevoke", true).put("cacheDuration", "5m").put("idpURL", "https://localhost:" + port + "/1.0/crl");
-        ArrayNode dns = ((ObjectNode) ((ObjectNode) ((ObjectNode) ca.get("authority")).putObject("policy")).putObject("x509").putObject("allow")).putArray("dns");
+        ObjectNode policy = ((ObjectNode) ca.get("authority")).putObject("policy");
+        ArrayNode dns = policy.putObject("x509").putObject("allow").putArray("dns");
         dns.add("localhost").add("*.shop.localhost");
         json.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), ca);
     }
@@ -110,6 +111,18 @@ public final class StepCa implements AutoCloseable {
 
     Path rootKey() {
         return home.resolve("secrets/root_ca_key");
+    }
+
+    Path intermediateKey() {
+        return home.resolve("secrets/intermediate_ca_key");
+    }
+
+    /** The DNS names the CA's x509 policy allows, read back from its ca.json. */
+    List<String> allowedNames() throws IOException {
+        List<String> names = new ArrayList<>();
+        JsonNode dns = new ObjectMapper().readTree(home.resolve("config/ca.json").toFile()).path("authority").path("policy").path("x509").path("allow").path("dns");
+        dns.forEach(n -> names.add(n.asString()));
+        return names;
     }
 
     String url() {

@@ -51,7 +51,8 @@ final class Build {
                     doLast {
                         files.artifacts.each { a ->
                             def id = a.id.componentIdentifier
-                            def origin = new java.util.zip.ZipFile(a.file).withCloseable { z -> z.getInputStream(z.getEntry('origin.txt')).text }
+                            def origin = new java.util.zip.ZipFile(a.file).withCloseable { z ->
+                                z.getInputStream(z.getEntry('origin.txt')).text }
                             println "RESOLVED ${id.group}:${id.module}:${id.version} from ${origin}"
                         }
                     }

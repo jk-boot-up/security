@@ -20,7 +20,7 @@ Teams issue certificates by hand with no policy, long lifetimes and no plan for 
 | --- | --- |
 | The authority and its policy | `CertificateAuthority`, `Profile`, `RefusedException` |
 | Requests and keys | `Csr`, `Keys`, `Issued` |
-| Clients | `Validator` |
+| Clients | `Validator`, and `ChainSteps`, which redoes its checks by hand |
 | Lifetime | `ShortLived`, `Inventory` |
 | Entry point | `LocalCaDemo` |
 
@@ -38,10 +38,10 @@ Teams issue certificates by hand with no policy, long lifetimes and no plan for 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 16, all passing |
-| Demo output | 39 lines, identical on every run |
+| Tests | 20, all passing |
+| Demo output | 131 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:58, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:09, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

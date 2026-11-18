@@ -33,7 +33,7 @@ class RealmFileTest {
     void theRealmIsTheBankRealmWithShortLivedTokensAndCodes() {
         assertEquals("bank", realm.get("realm"));
         assertEquals(300, realm.get("accessTokenLifespan"));
-        assertEquals(5, realm.get("accessCodeLifespan"));
+        assertEquals((int) OAuthKeycloakDemo.CODE_LIFETIME, realm.get("accessCodeLifespan"));
         assertEquals("external", realm.get("sslRequired"));
     }
 

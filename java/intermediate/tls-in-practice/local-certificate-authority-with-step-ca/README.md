@@ -4,7 +4,8 @@
 src/main/java/com/jk/explore/security/stepca/
 ├── Pki.java         What a client does with a certificate: build the path to the root it trusts, and check revocation if it was written to
 ├── StepCa.java      A real step-ca in a folder of its own, and the real step command as its client
-└── StepCaDemo.java  A real step-ca: what it issues to whom, how a service gets and renews a certificate, and what revocation does and does not do
+├── StepCaDemo.java  A real step-ca: what it issues to whom, how a service gets and renews a certificate, and what revocation does and does not do
+└── Token.java       The one-time token step-ca hands out, opened up
 ```
 
 **A real step-ca issues day-long certificates to services that ask with a one-time token or through ACME, only for the names its policy allows; a service renews with its own certificate and key, a stolen key is revoked at the CA and listed in a signed revocation list, but a client that never checks the list still accepts the certificate, and everything rests on the machine and the password that hold the issuing key.**
@@ -38,11 +39,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. A certificate authority that runs | A root, an issuing authority, an https endpoint that only a client with the root can trust, and a root key in an encrypted file. |
-| 2. A certificate for a service, with a token | A one-time token gives a day-long certificate for its own name; reuse, another name, a long lifetime and a name outside the policy are refused. |
-| 3. A certificate for a service, with ACME | The service asks through the ACME provisioner, the CA calls its name back on port 80, and the same policy applies. |
-| 4. Renewing before it ends | Renewal with the certificate and its key gives a new serial number; rekeying gives a new key; another key cannot renew. |
-| 5. Revocation, and the bill | A revoked certificate cannot be renewed and appears in a signed list; only a client that checks refuses it, and the whole thing rests on one machine and one password. |
+| 1. A certificate authority that runs | step ca init makes a root (self-signed, 10 years, key file encrypted) and an issuing authority (path length 0); the CA's policy allows localhost and *.shop.localhost; only a client given the root can read /health. |
+| 2. A certificate with a token | The one-time token is a JWT whose claims name www.shop.localhost, the tokens provisioner, the CA, 300 seconds and the root's SHA-256; it buys a 24-hour EC certificate; a second use, another name, 2000 hours and pay.example are refused. |
+| 3. A certificate with ACME | Through the ACME provisioner the CA calls www.shop.localhost back on port 80 before it signs a 24-hour certificate; evil.example is refused by the same policy. |
+| 4. Renewing before it ends | step ca renew gives a new serial with the same key and a later end; step ca rekey gives a different key; a service that lost its key cannot renew, because the call to the CA is authenticated by that key. |
+| 5. Revocation, and the bill | The revoked acme certificate cannot be renewed and is the one entry of a list signed by the intermediate, current for 5 minutes; a checking client refuses it, a client that never checks accepts it, one without a list fails closed; both CA keys sit on the CA's disk. |
 
 ## Test
 
@@ -50,11 +51,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `StepCaTest`. The tests start one CA for the whole class and stop it (./gradlew integrationTest). They need the step command and step-ca (brew install step) and a free port 80.
+17 tests in `DemoRunsTest`, `PkiTest`, `StepCaTest`, `TokenTest`. ./gradlew test runs the tool-free Token and Pki tests. The integration tests start one CA for the whole class and stop it (./gradlew integrationTest). They need the step command and step-ca (brew install step) and a free port 80.
 
 ## What the simulation got right, and what it left out
 
-step-ca and step are the real programs. The CA runs in a temporary folder on a free loopback port; the ACME challenge is answered on port 80 by the step command itself. Serial numbers, keys, ports and folders are never printed; the demo takes about half a minute.
+step-ca and step are the real programs. The CA runs in a temporary folder on a free loopback port; the ACME challenge is answered on port 80 by the step command itself. Serial numbers, keys, ports and folders are never printed (a random value shows as `<random>`), and lifetimes are printed rather than dates, so the output is the same on every run; the demo takes about half a minute. `Token`, which opens the one-time token, and `Pki` are tested without the tool.
 
 ## Technologies and versions
 

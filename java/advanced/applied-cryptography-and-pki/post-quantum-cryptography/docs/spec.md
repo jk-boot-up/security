@@ -21,9 +21,10 @@ Key exchange that is safe today is recorded and opened later, and nobody knows w
 | --- | --- |
 | Byte sizes of keys, ciphertexts, signatures | `Sizes` |
 | Hybrid X25519 plus ML-KEM exchange | `Hybrid` |
+| Teaching class: HKDF by hand | `HkdfSteps` |
 | ML-DSA signing and verifying | `Signatures` |
 | Mosca's inequality | `Mosca` |
-| Inventory of the earlier projects | `Inventory` |
+| Inventory of a bank's source files | `Inventory` |
 | Bouncy Castle cross-check | `Interop` |
 | Entry point | `PostQuantumDemo` |
 
@@ -33,18 +34,19 @@ Key exchange that is safe today is recorded and opened later, and nobody knows w
 2. Sizes are measured from real objects.
 3. The hybrid key needs both secrets and the transcript.
 4. A tampered ciphertext gives a different key and no error.
-5. The inventory is counted from the source tree.
-6. The output has no keys, random values or timings and is the same on every run.
+5. HKDF worked by hand gives the JDK's exact key.
+6. The inventory orders a fixed sample of source files by use.
+7. The output has no keys, random values or timings and is the same on every run.
 
 ## Measured
 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 17, all passing |
-| Demo output | 74 lines, identical on every run |
+| Tests | 19, all passing |
+| Demo output | 106 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:56, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

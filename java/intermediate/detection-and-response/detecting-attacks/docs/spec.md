@@ -20,7 +20,7 @@ Logs are kept and never turned into alerts, or turned into so many alerts that n
 | --- | --- |
 | Data | `Event`, `City`, `Scenario` |
 | Rules | `Rule`, `BruteForceRule`, `SprayingRule`, `ImpossibleTravelRule`, `TakeoverRule`, `PrivilegeChangeRule` |
-| Results | `Alert`, `Score` |
+| Results | `Alert`, `Score`, `Peaks` |
 | Entry point | `DetectionDemo` |
 
 ## Requirements
@@ -28,18 +28,20 @@ Logs are kept and never turned into alerts, or turned into so many alerts that n
 1. Each rule fires on its attack in a hand-made log and not on its near misses.
 2. The scenario is repeatable and contains four attacks with ground truth.
 3. First versions notice the attacks with many false alerts; tuning removes them; a threshold above the attack misses it.
-4. The tuned set notices all four attacks with 9 alerts, 7 of them true.
-5. The demo prints the same output on every run.
+4. The brute-force threshold's safe range is worked out from the normal day's peak (6) and the attack's (30), and both ends behave as printed.
+5. Every act prints its input and its result in separate, labelled sections.
+6. The tuned set notices all four attacks with 9 alerts, 7 of them true.
+7. The demo prints the same output on every run.
 
 ## Measured
 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 37 lines, identical on every run |
-| Acts | 4 |
-| Video | 06:04, 1920×1080, narrated in the amy-slow voice |
+| Tests | 19, all passing |
+| Demo output | 113 lines, identical on every run |
+| Acts | 5 |
+| Video | 19:26, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

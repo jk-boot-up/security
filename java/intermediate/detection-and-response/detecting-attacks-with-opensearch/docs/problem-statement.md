@@ -2,7 +2,7 @@
 
 ## The scenario
 
-An online store has an audit log and four attacks hidden in one day of it, and wants alerts that a person can trust.
+An online bank has an audit log and four attacks hidden in one day of it, and wants alerts that a person can trust.
 
 ## The naive version
 

@@ -5,7 +5,7 @@ src/main/java/com/jk/explore/security/iacscan/
 ├── Baseline.java         The findings a team has accepted so far: the build fails on a finding that is not in it, so the number can only go down
 ├── Engine.java           Reads the manifests (several documents in one text) and applies the rules to every container
 ├── Finding.java          One rule that one container of one resource breaks
-├── IacScanningDemo.java  
+├── IacScanningDemo.java  Five acts on an online store's Kubernetes manifests: eight rules written in Java, the rules' own tests, three scanners on the same files, exceptions, and a baseline in the build
 ├── Manifests.java        The online store's Kubernetes manifests, as first written and as fixed
 ├── Rule.java             A rule is a question about one container: true means it breaks the rule
 ├── RuleTester.java       Tests a rule with its own two samples: the bad one must fire it, the good one must not
@@ -17,12 +17,12 @@ src/main/java/com/jk/explore/security/iacscan/
 
 **An online store's Kubernetes manifests break 8 rules written in Java (13 findings: a privileged container, root, a latest tag, no limits, a password written in the file, the host network, a writable filesystem, privilege escalation); each rule has a bad and a good sample, 8 of 8 pass, and a rule that only knows :latest fails its own test on an untagged image; Checkov, Trivy and KICS agree on 7 of the 8 and all three miss the password written in the file while two flag the good practice of reading it from a Secret; all three still give advice on the fixed files; an exception is a waiver with an owner, a reason and an end date, an expired one brings the finding back, and a waiver with no owner hides nothing; Checkov's annotation and Trivy's ignore file do the same inside the tools; a baseline fails the build on a new finding, here 5 from a new service.**
 
-Scanning infrastructure code is cheap and early, which makes it easy to do badly: hundreds of findings nobody reads, a rule nobody tested, an exception nobody owns. This project works on the three parts that decide whether a scanner helps. A store's Kubernetes manifests are read by **eight rules written in Java** (each with a bad and a good sample that test the rule itself), then by **Checkov, Trivy and KICS** (KICS runs from its Docker image), then handled with **waivers** and a **baseline**. It needs Python 3, Trivy (`brew install trivy`) and Docker; the tests that use them are tagged `integration`: `./gradlew integrationTest`.
+Scanning infrastructure code is cheap and early, which makes it easy to do badly: hundreds of findings nobody reads, a rule nobody tested, an exception nobody owns. This project works on the three parts that decide whether a scanner helps. A store's Kubernetes manifests are read by **eight rules written in Java** (each with a bad and a good sample that test the rule itself), then by **Checkov, Trivy and KICS** (KICS runs from its Docker image), then handled with **waivers** and a **baseline**. It needs Python 3 (Checkov, pinned, is installed under `build/`) and Docker (Trivy from the pinned image `aquasec/trivy:0.76.0` with its built-in checks, KICS pinned by digest); the tests that use them are tagged `integration`: `./gradlew integrationTest`.
 
 What it shows:
 - **Writing a rule.** A rule is a question about one container. The eight: privileged, may run as root, latest or untagged image, no limits, a password in the file, the host network, a writable filesystem, privilege escalation. The first manifests give **13 findings**, the fixed ones 1.
 - **Testing the rule.** Every rule has a bad and a good sample; **8 of 8** fire on the first and stay quiet on the second. A rule that only looks for `:latest` fails its own test on an image with no tag.
-- **Three scanners.** They agree on **7 of the 8** rules. **All three miss a password written in the file**, and Checkov and KICS flag the good practice of reading it from a Secret. All three still give advice on the fixed files.
+- **Three scanners.** All three fire a check for **7 of the 8** rules, each with its own id or name (CKV_K8S_16, KSV-0017, Container Is Privileged). **All three miss a password written in the file**, and Checkov and KICS flag the good practice of reading it from a Secret. On the fixed files 12, 8 and 14 checks still fail: advice beyond the eight rules.
 - **Exceptions.** A waiver names an owner, a reason and an end date; an expired one brings the finding back; one with no owner hides nothing. Checkov's annotation and Trivy's ignore file do the same inside the tools.
 - **A baseline.** The build fails on a finding that is not in the accepted list, so a new service with a latest tag shows **5 new findings** while old ones do not block anyone.
 - **The bill.** Every scanner has a blind spot; noise is a cost; an exception without an owner and an end date is a hole.
@@ -47,11 +47,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Eight rules in Java | A rule is a question about one container; the first manifests break them 13 times, the fixed ones once. |
-| 2. Testing the rules | Each rule has a bad and a good sample; 8 of 8 pass, and a rule that only knows :latest fails its own test. |
-| 3. Three scanners on the same files | They agree on 7 of 8 rules; all three miss the password written in the file. |
-| 4. Exceptions | A waiver has an owner, a reason and an end date; an expired one brings the finding back. |
-| 5. A baseline, and the bill | The build fails on new findings only; every scanner has a blind spot and an exception is a hole until it ends. |
+| 1. Eight rules in Java, on the store's manifests | Three containers, eight rules: web breaks 6, orders 6 and the metrics agent 1, so 6 + 6 + 1 = 13 findings. After the fixes (a pinned tag, limits, a read-only filesystem, no escalation, the password from a Secret) 1 is left: K6, the agent's host network. |
+| 2. Testing the rules with their own samples | Every rule carries a bad sample that must fire it and a good one that must not: 8 of 8 pass. A K3 written as 'ends with :latest' does not fire on its bad sample, image: shop/orders, because an image with no tag has nothing after its last part; the real K3 reads the tag as none, so Kubernetes pulls latest, and fires. |
+| 3. Three scanners on the same files | Checkov 3.3.30, Trivy 0.76.0 and KICS (pinned by digest) read the same manifests. All three fire a check for 7 of our 8 rules; none flags K5, the password written in the file, while Checkov and KICS flag the password read from a Secret. On the fixed files 12, 8 and 14 checks still fail: advice beyond our rules. |
+| 4. Exceptions: a waiver with an owner and an end | The agent's K6 is waived by the platform team until 2026-12-31: on 2026-10-22 it leaves 0 findings, on 2027-01-01 the finding is back with 1 stale waiver; a waiver with no owner, or for another resource, hides nothing. Checkov's annotation and Trivy's ignore file turn CKV_K8S_19 and KSV-0009 from failing to passing. |
+| 5. A baseline in the build | The baseline is the 1 accepted finding. A new Deployment/cart with shop/cart:latest makes the scan 6 findings: 6 now - 1 accepted = 5 new (K2, K3, K4, K7, K8 on cart), so the build fails; 0 were fixed since the baseline. |
 
 ## Test
 
@@ -59,11 +59,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-14 tests in `DemoRunsTest`, `EngineTest`, `ScannersTest`. The rules, waivers and baseline are tested with no tools. The rest run the three scanners (./gradlew integrationTest).
+18 tests in `DemoRunsTest`, `EngineTest`, `ScannersTest`. The rules, their samples, the tag reading, the matrix, waivers and baseline are tested with no tools (./gradlew test). The rest run the three scanners (./gradlew integrationTest). Dates are fixed, so the output does not depend on the day.
 
 ## What the simulation got right, and what it left out
 
-The tools are real: Checkov from pip, Trivy from Homebrew and KICS from its image. The demo prints which checks fail, never how many, because each tool's rule set changes with its version.
+The tools are real and pinned: Checkov 3.3.30 from pip, Trivy 0.76.0 from its image with the checks built into it, and KICS from its image by digest. A tool's rule set changes with its version, so pinning is what keeps the golden output, and its counts, stable.
 
 ## Technologies and versions
 

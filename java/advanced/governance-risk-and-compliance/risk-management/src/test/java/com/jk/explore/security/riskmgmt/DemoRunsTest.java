@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs only the JDK. Cluster, registry and image names are never printed. */
+/** The demo must print exactly the golden output. Needs only the JDK: the simulation is seeded and nothing depends on the date. */
 
 class DemoRunsTest {
 

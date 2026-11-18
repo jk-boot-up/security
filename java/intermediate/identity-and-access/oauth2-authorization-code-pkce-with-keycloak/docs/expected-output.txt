@@ -1,60 +1,165 @@
 ONE. The authorization code flow, step by step.
-  1. the budgeting app sends Ana's browser to the bank's authorization server:
-     GET <keycloak>/realms/bank/protocol/openid-connect/auth?response_type=code&client_id=budget-app&redirect_uri=https://budget.example/callback&scope=openid accounts.read&state=<state>&code_challenge=<code challenge>&code_challenge_method=S256
-  2. Ana signs in at Keycloak, never at the app, and is asked: budget-app wants to "Read your accounts": the consent page said so: true. Ana agrees
-  3. Keycloak sends the browser back: 302 https://budget.example/callback?state=<state>&session_state=<session>&iss=<keycloak>/realms/bank&code=<code>
-     the address starts with the registered redirect address: true, the state comes back unchanged: true, it names the issuer: true
-  4. the app checks the state, then calls Keycloak directly, not through the browser:
-     POST <keycloak>/realms/bank/protocol/openid-connect/token grant_type=authorization_code&code=<code>&redirect_uri=https://budget.example/callback&client_id=budget-app&code_verifier=<code verifier>
-  5. Keycloak answers with an access token for 300 seconds, scope "openid accounts.read", a refresh token and an ID token: true
-  6. the app reads Ana's accounts: GET /accounts with the access token: 200, ana: 2 accounts
-  the access token is for accounts-api, asked for by budget-app, issued by the bank realm: true, for Ana's id: true, and carries no password and no e-mail address: true
-  the app never saw Ana's password, and the browser never saw the access token
-  without a token: GET /accounts: 401
+  STEP 1, THE REQUEST (the app sends Ana's browser to Keycloak):
+    GET <keycloak>/realms/bank/protocol/openid-connect/auth
+      ?response_type=code
+      &client_id=budget-app
+      &redirect_uri=https://budget.example/callback
+      &scope=openid accounts.read
+      &state=<state>
+      &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+      &code_challenge_method=S256
+  STEP 2, AT KEYCLOAK (never at the app):
+    Ana signs in with her bank password
+    the consent page asks for "Read your accounts": true
+    Ana agrees
+  STEP 3, THE RESPONSE (Keycloak sends the browser back):
+    302 Location: https://budget.example/callback
+      ?state=<state>
+      &session_state=<session>
+      &iss=<keycloak>/realms/bank
+      &code=<code>
+    the state comes back unchanged: true
+    iss names the bank realm: true
+  STEP 4, THE REQUEST (the app calls Keycloak directly):
+    POST <keycloak>/realms/bank/protocol/openid-connect/token
+      grant_type=authorization_code
+      client_id=budget-app
+      code=<code>
+      redirect_uri=https://budget.example/callback
+      code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+  STEP 5, THE RESPONSE (to the app, not to the browser):
+    access_token=<access token>  lives 300 s (exp - iat)
+    refresh_token=<refresh token>
+    id_token=<id token>
+    scope=openid accounts.read
+  INSIDE THE ACCESS TOKEN (a JWT signed by Keycloak):
+    aud=accounts-api  azp=budget-app
+    iss=<keycloak>/realms/bank
+    sub=a0a0a0a0-0000-4000-8000-000000000001 (Ana)
+    scope=openid accounts.read
+    no password, no e-mail address: true
+  STEP 6, THE APP CALLS THE BANK'S API:
+    GET /accounts  Authorization: Bearer <access token>
+    -> 200 ana: 2 accounts
+    GET /accounts with no token
+    -> 401
+  WHO SAW WHAT:
+    the app never saw Ana's password
+    the browser never saw the access token
 TWO. PKCE: a code is useless without the verifier.
-  the RFC 7636 example verifier dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
-  gives the S256 challenge E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM: the published value: true
-  only the challenge travels through the browser: the request carries it: true, and the verifier: false
-  the code leaks, say through a log or a browser history, and another app redeems it:
-    with no verifier: refused (invalid_grant: PKCE code verifier not specified)
-    then the budgeting app, with the real verifier: refused (invalid_grant: Code not valid)  <- A FAILED TRY BURNS THE CODE: THE LEAK IS USELESS, AND ANA SIGNS IN AGAIN
-  a new code and a verifier the thief made up, as long as a real one: refused (invalid_grant: PKCE verification failed: Code mismatch)
-  a new code, redeemed by the budgeting app with the real verifier: tokens issued
-  a request with code_challenge_method=plain, which sends the verifier itself: refused (invalid_request: Invalid parameter: code challenge method is not matching the configured one)
-  a request with no challenge at all: refused (invalid_request: Missing parameter: code_challenge_method)
+  THE VERIFIER (made by the app for one sign-in, kept secret):
+    dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+    43 characters from A-Z a-z 0-9 - . _ ~ (the RFC 7636 example)
+  HOW THE S256 CHALLENGE IS MADE:
+    1. the 43 characters as 43 ASCII bytes:
+       64 42 6a 66 74 4a 65 5a 34 43 56 50 2d 6d 42 39 ...
+    2. SHA-256 of those bytes, always 32 bytes:
+       13 d3 1e 96 1a 1a d8 ec 2f 16 b1 0c 4c 98 2e 08
+       76 a8 78 ad 6d f1 44 56 6e e1 89 4a cb 70 f9 c3
+    3. base64url: every 3 bytes become 4 characters of 6 bits
+       13 d3 1e = 000100 111101 001100 011110 = 4 61 12 30 = E9Me
+    4. 32 bytes become 43 characters, with no = padding:
+       E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+    the same as the challenge RFC 7636 publishes: true
+    the same as OAuthClient.challenge, with Java's Base64: true
+  WHAT TRAVELS THROUGH THE BROWSER (step 1):
+    the challenge: true
+    the verifier: false
+  THE LEAK (a thief redeems a copied code before the app):
+    the thief, with no verifier
+      -> refused: invalid_grant
+         PKCE code verifier not specified
+    then the budgeting app, with the real verifier
+      -> refused: invalid_grant
+         Code not valid
+  a failed try burns the code: the leak is useless, Ana signs in again
+  A NEW CODE, AND A VERIFIER THE THIEF MADE UP (43 x's):
+    -> refused: invalid_grant
+       PKCE verification failed: Code mismatch
+  A NEW CODE, AND THE REAL VERIFIER:
+    -> tokens issued
+  WEAKER REQUESTS, REFUSED BY KEYCLOAK:
+    code_challenge_method=plain (the verifier itself travels)
+      -> refused: invalid_request
+         Invalid parameter: code challenge method is not matching the
+         configured one
+    no code_challenge at all
+      -> refused: invalid_request
+         Missing parameter: code_challenge_method
 THREE. Exact redirect addresses, state, and codes that work once.
-  the budgeting app registered exactly https://budget.example/callback
-    https://budget.example/callback: a code is sent there
-    https://budget.example/callback/../steal: refused at Keycloak, no redirect (Invalid parameter: redirect_uri)
-    https://budget.example.evil.test/callback: refused at Keycloak, no redirect (Invalid parameter: redirect_uri)
-    https://budget.example/callback?next=evil: refused at Keycloak, no redirect (Invalid parameter: redirect_uri)
-    https://BUDGET.example/callback: refused at Keycloak, no redirect (Invalid parameter: redirect_uri)
-    https://budget.example/callback/: refused at Keycloak, no redirect (Invalid parameter: redirect_uri)
-  a prefix or wildcard match would have sent Ana's code to the second, third or fourth address
-  Mallory sends Ana a link to the app's callback carrying Mallory's own code, to sign Ana into Mallory's account:
-    the app checks the state against Ana's browser session: refused (invalid_state: this browser did not start this sign-in)
-  the code is redeemed once: the access token works: 200
-  the same code redeemed again: refused (invalid_grant: Code not valid)
-  and the access token from the first redemption, at Keycloak's own check: 401  <- A REUSED CODE ENDS THE SESSION
-  at the API, which checks the signature and the dates itself: 200  <- A LOCAL CHECK CANNOT KNOW; THE TOKEN LIVES UNTIL IT EXPIRES
-  a code redeemed 6 seconds after it was issued, in a realm that gives codes 5 seconds: refused (invalid_grant: Code not valid)
+  THE REGISTERED ADDRESS (Keycloak compares it exactly):
+    https://budget.example/callback
+  THE ADDRESS IN THE REQUEST:                  EXACT    PREFIX
+    https://budget.example/callback            code     code
+    https://budget.example/callback/../steal   refused  code
+    https://budget.example.evil.test/callback  refused  code
+    https://budget.example/callback?next=evil  refused  code
+    https://BUDGET.example/callback            refused  refused
+    https://budget.example/callback/           refused  code
+  each refusal is a page at Keycloak, with no redirect:
+    Invalid parameter: redirect_uri
+  a prefix check on https://budget.example sends the code away 4 times
+  THE ATTACK (login forgery):
+    Ana's browser opens a callback link with the attacker's code
+    and state, to sign Ana in to the attacker's account
+  THE APP'S CHECK (the state against Ana's browser session):
+    -> refused: invalid_state
+       this browser did not start this sign-in
+  ONE CODE, REDEEMED TWICE:
+    first: tokens issued, GET /accounts -> 200
+    second, by whoever copied the code:
+      -> refused: invalid_grant
+         Code not valid
+    the first access token now:
+      at Keycloak (userinfo) -> 401  <- THE SESSION IS ENDED
+      at the API (own signature check) -> 200  <- UNTIL IT EXPIRES
+  ONE CODE, REDEEMED 11 SECONDS LATER (this realm gives codes 10):
+    by the budgeting app, with the real verifier
+      -> refused: invalid_grant
+         Code not valid
 FOUR. Scopes and refresh tokens.
-  the app asked for accounts.read, Ana agreed to that, and the token carries: openid accounts.read
-  GET /accounts: 200
-  POST /payments with the same token: 403 insufficient_scope
-  asking for payments.write too, which the app never registered: refused (invalid_scope: Invalid scopes: openid accounts.read payments.write)
-  the access token runs out, so the app refreshes it: a new access token, and a new refresh token: true
-  the old refresh token, copied by a thief and used again: refused (invalid_grant: Maximum allowed refresh token reuse exceeded)
-  the newest refresh token, held by the real app: refused (invalid_grant: Session doesn't have required client)
-  and the newest access token, at Keycloak's own check: 401  <- ONE REUSE ENDS THE SESSION, SO THE THEFT IS CONTAINED
-  an access token 5 minutes and 31 seconds old, at the API: 401
+  THE SCOPE (asked for, agreed to, carried by the token):
+    openid accounts.read
+  THE API CALLS WITH THAT TOKEN:
+    GET /accounts -> 200
+    POST /payments -> 403 insufficient_scope
+  ASKING FOR payments.write TOO (never registered):
+    -> refused: invalid_scope
+       Invalid scopes: openid accounts.read payments.write
+  THE REFRESH (access token A1 ran out; the app sends R1):
+    R1 -> a new access token A2 and a new refresh token R2
+    R2 differs from R1, and A2 from A1: true
+  THE THEFT (a thief copied R1 and replays it):
+    R1 again
+      -> refused: invalid_grant
+         Maximum allowed refresh token reuse exceeded
+    R2, held by the real app
+      -> refused: invalid_grant
+         Session doesn't have required client
+    A2 at Keycloak (userinfo) -> 401  <- THE SESSION IS ENDED
+  AN ACCESS TOKEN 331 SECONDS OLD (300, plus 30 for clock skew):
+    GET /accounts -> 401
 FIVE. Current practice, and the bill.
-  the implicit flow, which put the access token in the address bar (response_type=token): refused (unauthorized_client: Client is not allowed to initiate browser login with given response_type. Implicit flow is disabled for the client.)
-  the password grant, which gives the app Ana's password: refused (unauthorized_client: Client not allowed for direct access grants)
-  both are removed by OAuth 2.0 Security Best Current Practice, RFC 9700, and by OAuth 2.1
-  the statements service is a confidential client, so it also authenticates: with a wrong secret: refused (unauthorized_client: Invalid client or Invalid client credentials)
-  with its secret, and a code it does not have: refused (invalid_grant: Code not valid)
-  with its secret and a real code but no verifier: refused (invalid_grant: PKCE code verifier not specified)  (a secret does not replace PKCE)
-  a public app on a phone cannot keep a secret, which is why PKCE, not a secret, protects its code
-  the resource server holds no passwords and no session: it checks the key, the issuer, the audience, the dates and the scope of every token
-  in production the authorization server is operated as a service, with TLS, backups, rotation of its keys, and monitoring of its logins
+  THE IMPLICIT FLOW (response_type=token: a token in the address):
+    -> refused: unauthorized_client
+       Client is not allowed to initiate browser login with given
+       response_type. Implicit flow is disabled for the client.
+  THE PASSWORD GRANT (the app would hold Ana's password):
+    -> refused: unauthorized_client
+       Client not allowed for direct access grants
+  both are removed by RFC 9700 and by OAuth 2.1
+  A CONFIDENTIAL CLIENT (statements-service, on a server):
+    a wrong client secret
+      -> refused: unauthorized_client
+         Invalid client or Invalid client credentials
+    the right secret, but a code it was never given
+      -> refused: invalid_grant
+         Code not valid
+    the right secret and a real code, but no verifier
+      -> refused: invalid_grant
+         PKCE code verifier not specified
+  a secret does not replace PKCE; a phone app has no secret at all
+  WHAT THE API CHECKS ON EVERY TOKEN (it keeps no session):
+    Keycloak's signing key, the issuer, the audience accounts-api,
+    the dates and the scope
+  in production: TLS, backups, key rotation, login monitoring

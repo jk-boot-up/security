@@ -22,7 +22,9 @@ Rules for workloads that live in documents are not enforced, and rules enforced 
 | The admission controller | `Kyverno` |
 | The registry and signatures | `Registry` |
 | The requests | `Pods` |
+| The policy files | `Policies` |
 | The answer | `Verdict` |
+| Teaching class | `TagRule` |
 | Entry point | `KubernetesAdmissionControlDemo` |
 
 ## Requirements
@@ -38,10 +40,10 @@ Rules for workloads that live in documents are not enforced, and rules enforced 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 12, all passing |
-| Demo output | 33 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 77 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:57, 1920×1080, narrated in the amy-slow voice |
+| Video | 15:58, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

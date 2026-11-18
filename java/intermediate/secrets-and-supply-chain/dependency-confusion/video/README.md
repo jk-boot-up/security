@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Dependency confusion in Java: how a private package name is shadowed by a public one, and how repository content filtering and locked digests stop it.
+> Dependency confusion in Java, for an online store's build: an attacker registers the store's internal package name in a public registry, a resolver that takes the highest version installs it and its install script runs on the build machine, repository order fails for a new or copied name, and the fixes: names decide which repository may supply them and fail closed, a lockfile with digests, and a watch for internal names in public.

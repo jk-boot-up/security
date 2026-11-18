@@ -1,53 +1,100 @@
-== 1. No policy: a page may send, but not read ==
-bank's own page reads /account           -> reached the bank, readable: balance: 125000 cents
-evil.example reads /account              -> reached the bank, answer blocked
-evil.example POSTs /transfer (simple)    -> reached the bank, answer blocked
-evil.example PUTs /transfer              -> never reached the bank, answer blocked
-requests the bank processed              -> [GET /account, POST /transfer]  <- CORS DID NOT STOP THE POST
-
-== 2. Policies that look like fixes ==
-allowedOrigins("*") with credentials     -> Spring answers the first cross-origin request with 500 and sends no Allow-Origin header: true
-allowedOriginPatterns("*") with credentials
-  evil.example reads /account            -> reached the bank, readable: balance: 125000 cents
-  evilbank.example reads /account        -> reached the bank, readable: balance: 125000 cents
-  null origin reads /account             -> reached the bank, readable: balance: 125000 cents
-exact list that also allows null
-  evil.example reads /account            -> never reached the bank, answer blocked
-  evilbank.example reads /account        -> never reached the bank, answer blocked
-  null origin reads /account             -> reached the bank, readable: balance: 125000 cents
-pattern https://*bank.example
-  evil.example reads /account            -> never reached the bank, answer blocked
-  evilbank.example reads /account        -> reached the bank, readable: balance: 125000 cents
-  null origin reads /account             -> never reached the bank, answer blocked
-
-== 3. An exact allow-list ==
-partner.example reads /account           -> reached the bank, readable: balance: 125000 cents
-partner.example PUTs JSON                -> reached the bank, readable: sent 500 to mallory
-evil.example reads /account              -> never reached the bank, answer blocked
-evilbank.example reads /account          -> never reached the bank, answer blocked
-null origin reads /account               -> never reached the bank, answer blocked
-evil.example PUTs JSON                   -> never reached the bank, answer blocked
-evil.example reads public /rates         -> reached the bank, readable: rates: 4.1%
-bank's own page PUTs JSON                -> reached the bank, readable: sent 500 to mallory
-Spring's own answer to evil.example      -> 403 Invalid CORS request, before the controller ran
-Vary header on /account                  -> Origin
-
-== 4. Where the policy is registered ==
-the same exact list, registered in Spring MVC (addCorsMappings)
-  partner.example preflight for PUT      -> 401
-  partner.example reads /account         -> reached the bank, readable: balance: 125000 cents
-  partner.example PUTs JSON              -> never reached the bank, answer blocked
-the same exact list, registered in Spring Security (http.cors)
-  partner.example preflight for PUT      -> 200
-  partner.example reads /account         -> reached the bank, readable: balance: 125000 cents
-  partner.example PUTs JSON              -> reached the bank, readable: sent 500 to mallory
-
-== 5. The bill ==
-public /rates sends                      -> Allow-Origin *
-browser accepts * without credentials    -> true
-browser accepts * with credentials       -> false
-evil.example POSTs /transfer (simple)    -> never reached the bank, answer blocked
-the same POST with no Origin header      -> 200 sent 500 to mallory  <- CORS IS A BROWSER RULE, NOT A DEFENCE
-requests the bank processed              -> [POST /transfer]
-every allowed origin needs a test, and so do the lookalike, the null origin and the preflight
-a policy decides who may read an answer; who may act still needs a login and a token
+ONE. With no policy, a page may send but not read.
+  THE REQUESTS (a script on https://evil.example, with login):
+    GET  /account                     simple
+    POST /transfer  text/plain        simple
+    PUT  /transfer  application/json  needs a preflight
+  THE PREFLIGHT ANSWER (OPTIONS /transfer, asking for PUT):
+    401, Access-Control-Allow-Origin: (none)
+  WHAT THE PAGE GETS:
+    GET  /account   reached the bank, answer blocked
+    POST /transfer  reached the bank, answer blocked
+    PUT  /transfer  never reached the bank
+  THE BANK'S LOG (the requests it ran):
+    [GET /account, POST /transfer]  <- CORS DID NOT STOP THE POST
+  the bank's own page: read: balance: 125000 cents
+TWO. Four policies that look like fixes.
+  THE POLICY (allowCredentials true):
+    allowedOrigins [*]
+  THE ANSWER TO https://evil.example:
+    500, Access-Control-Allow-Origin: (none)
+  Spring refuses * with credentials, at the first request
+  THE POLICY (allowCredentials true):
+    allowedOriginPatterns [*]
+  THE ANSWERS:
+    origin sent               Allow-Origin back         answer
+    https://evil.example      https://evil.example      200 reads
+    https://evilbank.example  https://evilbank.example  200 reads
+    null                      null                      200 reads
+  THE POLICY (allowCredentials true):
+    allowedOrigins [https://partner.example, null]
+  THE ANSWERS:
+    origin sent               Allow-Origin back         answer
+    https://evil.example      (none)                    403 blocked
+    https://evilbank.example  (none)                    403 blocked
+    null                      null                      200 reads
+  THE POLICY (allowCredentials true):
+    allowedOriginPatterns [https://*bank.example]
+  THE ANSWERS:
+    origin sent               Allow-Origin back         answer
+    https://evil.example      (none)                    403 blocked
+    https://evilbank.example  https://evilbank.example  200 reads
+    null                      (none)                    403 blocked
+  HOW THE PATTERN DECIDES (* may be any text, even "evil"):
+    https://partner.example   no match
+    https://evil.example      no match
+    https://evilbank.example  matches
+  each page that reads gets: balance: 125000 cents
+THREE. An exact allow-list names one partner.
+  THE POLICY (CorsSettings.accounts):
+    allowedOrigins [https://partner.example]
+    allowedMethods [GET, POST, PUT]
+    allowedHeaders [Content-Type]
+    allowCredentials true, maxAge 600
+  THE PREFLIGHT ANSWER (the partner asks before a JSON PUT):
+    200
+    Access-Control-Allow-Origin: https://partner.example
+    Access-Control-Allow-Methods: GET,POST,PUT
+    Access-Control-Allow-Headers: content-type
+    Access-Control-Allow-Credentials: true
+    Access-Control-Max-Age: 600
+  WHAT EACH PAGE GETS:
+    partner.example  GET /account   read: balance: 125000 cents
+    partner.example  PUT /transfer  read: sent 500 to mallory
+    evil.example     GET /account   never reached the bank
+    evilbank.example GET /account   never reached the bank
+    null             GET /account   never reached the bank
+    evil.example     PUT /transfer  never reached the bank
+    evil.example     GET /rates     read: rates: 4.1%  (public: *)
+    own page         PUT /transfer  read: sent 500 to mallory
+  SPRING'S OWN ANSWER TO https://evil.example:
+    403 Invalid CORS request; the bank's log grew by 0
+  THE Vary HEADERS ON /account (asked by the partner):
+    Vary: Origin
+    Vary: Access-Control-Request-Method
+    Vary: Access-Control-Request-Headers
+FOUR. The policy must sit before the login check.
+  THE ORDER A REQUEST GOES THROUGH:
+    1. Spring Security: http.cors, then the login check
+    2. Spring MVC: addCorsMappings, then the controller
+  REGISTERED IN SPRING MVC (addCorsMappings):
+    preflight for PUT (no login)  401
+    GET  /account                 read: balance: 125000 cents
+    PUT  /transfer                never reached the bank
+  REGISTERED IN SPRING SECURITY (http.cors):
+    preflight for PUT (no login)  200
+    GET  /account                 read: balance: 125000 cents
+    PUT  /transfer                read: sent 500 to mallory
+  a preflight never carries a login, so it must pass before one
+FIVE. CORS is a browser rule, not a defence.
+  THE PUBLIC ANSWER (GET /rates):
+    Access-Control-Allow-Origin: *
+  THE BROWSER'S CHECK OF *:
+    without credentials  -> accepted
+    with credentials     -> refused
+  A POST /transfer FROM A PAGE ON https://evil.example:
+    never reached the bank
+  THE SAME POST FROM A SERVER SCRIPT (no Origin header):
+    200 sent 500 to mallory  <- NO BROWSER, NO CORS
+  THE BANK'S LOG (the requests it ran):
+    [POST /transfer]
+  who may act still needs a login and a CSRF token

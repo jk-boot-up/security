@@ -1,6 +1,7 @@
 package com.jk.explore.security.securitychaos;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,5 +40,29 @@ class ExperimentTest {
     @Test
     void queryParsing() {
         assertEquals("b", Backends.query("a=1&x=b").get("x"));
+    }
+
+    @Test
+    void aTrickledAnswerTakesLongerThanTheDeadline() {
+        int bytes = Backends.bodyLength("score=10");
+        assertEquals(4009, bytes);
+        assertTrue(bytes * 1000L / Fault.TRICKLE_BYTES_PER_SECOND > Lab.DEADLINE_MS);
+    }
+
+    @Test
+    void faultLabelsAreShortAndDistinct() {
+        assertEquals(Fault.values().length, java.util.Arrays.stream(Fault.values()).map(Fault::label).distinct().count());
+        for (Fault f : Fault.values()) {
+            assertTrue(f.label().length() <= 11);
+        }
+    }
+
+    @Test
+    void theSteadyStateNeedsTwoApprovalsTwoRefusalsAndFourRecords() {
+        List<Decision> right = List.of(Decision.approve(true, "screened"), Decision.approve(true, "screened"),
+                Decision.deny("fraud score"), Decision.deny("certificate"));
+        assertTrue(Lab.steadyHolds(right, 4));
+        assertFalse(Lab.steadyHolds(right, 3));
+        assertFalse(Lab.steadyHolds(List.of(right.get(0), right.get(1), right.get(0), right.get(3)), 4));
     }
 }

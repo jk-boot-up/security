@@ -8,28 +8,35 @@ A certificate authority is a signing policy plus a key: the policy decides what 
 
 ### 1. Running a certificate authority
 
-The root may certify one level below it and is kept offline. The issuing authority has path length zero (it cannot create more authorities) and a name constraint for `shop.internal`. A server certificate for `www.shop.internal` is issued for 90 days with the serverAuth purpose,
-digital signature only, and it is not an authority. Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would: the certificate is signed, but clients refuse it because of the name constraint.
+The root (serial 1, valid twenty years) may certify one level below it and is kept offline. The issuing authority (serial 2, five years) has path length 0, so it cannot create more authorities, and a name constraint: names only under `shop.internal`.
+web-team asks for www.shop.internal for 90 days. The certificate is serial 1000, valid 2026-01-05 09:00 to 2026-04-05 09:00, serverAuth, digital signature only, and not an authority.
+A client checks the chain by hand in the JDK's order, from the root down: the trusted root, the issuing CA's signature and dates, the name constraint, the path length, the leaf's signature and dates. All seven are true, and `ChainSteps` reaches the same verdict as the JDK's validator: accepted.
+Requests with no name, 400 days or a name outside the domain are refused. Then the policy is skipped, as a buggy or stolen issuer would, and pay.example is signed as serial 1001; the client's step 4 is false and both the hand check and the JDK say refused (INVALID_NAME).
 
 ### 2. Issuing from a signing request
 
-payments-team signs a request with its own key. The request carries the public key only, so the authority never sees the private key, and the signature proves the sender holds it. The issued certificate carries exactly that public key. A request that claims
-payments-team's public key but is signed by another key is refused, web-team may not ask for payments.shop.internal, and one forbidden name in a mixed request refuses the whole request. orders-team gets a client certificate (clientAuth) to call other services.
+payments-team makes a key pair and signs a request for payments.shop.internal with its private key. The request carries the names and the public key (EC, 256-bit curve); the private key stays with the team.
+The authority checks, in order: the signature verifies with the request's own key (proof of possession), there is at least one name, the name is inside shop.internal, payments-team may ask for it, and 90 days is within the server profile. All true, so it signs serial 1002, whose public key is exactly the request's.
+A request carrying payments-team's public key but signed by another key is refused: not signed by the key it carries. web-team asking for payments.shop.internal is refused, and one forbidden name refuses a mixed request. orders-team gets serial 1003 for clientAuth, 30 days, and the chain check accepts it.
 
 ### 3. Revocation: taking a certificate back
 
-payments.shop.internal's key is reported stolen on day 10, and serial 1002 goes into a list valid for a week. On day 11 a checking client refuses it and still accepts www; a client that never checks accepts the revoked certificate. On day 20, the day-10 list is past its next update:
-the strict client refuses even the healthy certificate, failing closed, until a fresh list is fetched. Revocation only works if the authority publishes on time and every client fetches and checks.
+payments.shop.internal's key is reported stolen on day 10. The issuing CA signs a revocation list: this update 2026-01-15 (day 10), next update 2026-01-22 (day 17), revoked serial 1002 for key compromise. The root's own list (day 0 to day 365) revokes nothing, so it covers the issuing CA.
+On day 11 a client that checks the lists refuses payments (REVOKED) and accepts www; a client that never checks still accepts the revoked certificate.
+On day 20 the day-10 list is past its next update. A strict client refuses even the healthy www certificate (UNDETERMINED_REVOCATION_STATUS): with no current list it fails closed. With a fresh list from day 20 it accepts again.
 
 ### 4. Short-lived certificates instead of revocation
 
-cart.shop.internal gets 24-hour certificates and a job that renews at two thirds of the lifetime, with a new key each time. Over 72 hours, checked every hour, there are 4 renewals and 0 failed checks. If the job stops, the certificate is refused as EXPIRED 25 hours after the last renewal,
-with no list at all. A stolen 24-hour key works for at most a day. The inventory on day 65 flags the 90-day certificates as RENEW_NOW and the stopped one as EXPIRED: most certificate outages are expiries nobody saw coming.
+cart.shop.internal gets serial 1004, valid 2026-02-04 09:00 to 2026-02-05 09:00. The renewal time is worked out from the certificate itself: a lifetime of 24 hours, two thirds is 24 x 2 / 3 = 16 hours, so it renews at 2026-02-05 01:00.
+Over 72 hours, checked every hour, it renews at hours 16, 32, 48 and 64: 5 certificates, 5 different keys, 0 failed checks.
+The job stops. The last certificate, serial 1008, ends 2026-02-08 01:00; 25 hours after it began it is refused (EXPIRED), with no list at all.
+The inventory on day 65 flags the two 90-day certificates as RENEW_NOW with 25 days left, and the stopped cart certificate as EXPIRED. A stolen 24-hour key works for at most a day; a stolen 90-day key, for up to 90 days unless every client checks.
 
 ### 5. The bill
 
-Running an authority has costs. The root key signed three times in all (the issuing authority, itself and its revocation lists) and belongs offline, ideally in hardware. If the issuing authority's key is stolen, the offline root revokes it, and www.shop.internal and every certificate below it
-are refused. The audit log holds every decision, 18 in the demo and 6 of them refusals. Every service also needs a request, a renewal job and a deployment step, which is why this is automated in practice with ACME.
+The root key signed four times: its own certificate, the issuing authority's certificate, its revocation list of day 0, and on day 40 a list that revokes the issuing CA. Each signature is a ceremony with an offline key, ideally in hardware.
+The day-40 list revokes serial 2 (Shop Issuing CA) for CA compromise, so on day 41 www.shop.internal is refused (REVOKED), and so is every certificate below the issuing CA.
+The audit log holds 18 decisions, 6 of them refusals, each with its reason. Every service still needs a request, a renewal job and a deployment step: ACME automates them, as the -with-step-ca version shows.
 
 ## The verdict
 

@@ -16,17 +16,41 @@ Chapters:
 
 ```
 00:00 Introduction
-01:35 The Scenario
-02:01 Act One — Decoding is not verifying
-02:28 Act Two — The server chooses the algorithm
-02:58 Act Three — Every claim that matters
-03:36 Act Four — Keys by id, from one URL
-04:13 Act Five — The bill: a token cannot be taken back
-04:42 What It Costs
-05:10 Who Does What
-05:35 Where You Have Seen It
-05:54 How To Use It
-06:20 Thanks for Watching
+00:53 The Scenario
+01:29 What the Letters Stand For
+02:38 What the Letters Stand For (continued)
+03:40 What the Letters Stand For (continued)
+04:22 One real token, three parts
+05:22 ES256: a hash, then a signature with a random number
+06:36 Act One — The bank signs a token with Nimbus
+06:52 Act One — The bank signs a token with Nimbus
+07:06 Act One — The bank signs a token with Nimbus
+07:15 Act One — The bank signs a token with Nimbus
+07:25 Ana's signature on mallory's claims
+08:19 Act Two — Parsing is not verifying
+08:39 Four headers against the API's own settings
+09:49 Act Three — The server chooses the algorithm, never the token
+09:59 Act Three — The server chooses the algorithm, never the token
+10:08 The clock, and one changed claim at a time
+11:14 Act Four — Every claim that matters is checked
+11:29 Act Four — Every claim that matters is checked
+11:37 One URL, a cache, and a retired key
+12:52 Act Five — Keys by id, from the one URL in the settings
+13:03 Act Five — Keys by id, from the one URL in the settings
+13:13 Act Five — Keys by id, from the one URL in the settings
+13:27 After the bank revokes, until the token expires
+14:20 Act Six — The bill: a token cannot be taken back
+14:46 What It Costs
+15:23 Where You Have Seen It
+15:59 How To Use It
+16:40 The Java Classes
+16:53 AccessTokenValidator — keys from one URL, cached
+17:06 AccessTokenValidator — the algorithm and the type, fixed
+17:20 AccessTokenValidator — the claims: the library's, then ours
+17:37 BankIssuer — an ES256 header with a key id
+17:49 JwksServer — public halves only, and a counter
+18:02 DemoKeys — a fixed seed instead of random bytes
+18:13 Thanks for Watching
 ```
 
 ## Tags

@@ -1,31 +1,89 @@
-== 1. Signing in through the bank ==
-the shop sends the shopper to the bank with an authentication request: from http://127.0.0.1:<port>/saml2/service-provider-metadata/keycloak, to answer at http://127.0.0.1:<port>/login/saml2/sso/keycloak, unsigned, with an id of its own
-ana signs in at the bank, never at the shop; the bank answers with a response signed as a whole and an assertion signed on its own: 2 signatures
-the response answers the shop's request: true, is addressed to the shop's address: true, comes from the bank's realm: true
-the assertion names ana: ana, is for the shop's entity id only: true, and lasts seconds: true
-the shopper's browser posts it to the shop: signed in as ana
-the shop's page for her: {"name":"ana","email":"ana@bank.example","registration":"keycloak","sessionIndexes":n}
-== 2. A valid signature is not the same as the bank's signature ==
-the bank's response with the name edited to admin   -> refused (invalid_signature)
-admin, signed correctly with the attacker's own key -> refused (invalid_signature)  (2 signatures, every one of them valid XML)
-a genuine response from the wallet, signed by the wallet -> refused (invalid_signature)  (answers the shop's request: true)
-the shop trusts the key in the bank's metadata, and no other key, however valid the signature
-== 3. A valid signature on one assertion, and another one read ==
-response unsigned, an admin assertion first, the bank's signed one second -> refused (invalid_signature)
-response unsigned, the bank's signed assertion first, an admin one second -> refused (invalid_signature)
-no signature anywhere, admin -> refused (invalid_signature)
-a response with a DOCTYPE that reads a file -> refused (malformed_response_data)
-the shop reads the assertion that a trusted key signed, and only that one; a library does this and is kept patched
-== 4. The statement itself is checked ==
-genuine response, first time -> signed in as ana
-the same response replayed from another browser -> refused (invalid_in_response_to)
-the same response replayed from the same browser -> refused (invalid_in_response_to)  (the shop's request was used up)
-a response posted 4 seconds after it was issued, to an assertion that lasts 2 -> refused (invalid_assertion)
-a genuine response the bank signed for another shop -> refused (invalid_assertion)  (the signature is the bank's, the audience is not this shop)
-a signature says who wrote the statement; the checks above say whether it is for this shop, this request, now
-== 5. The bill: keys, metadata and XML ==
-the shop reads the bank's metadata once, when it starts; a sign-in now -> signed in as ana
-the bank adds a new signing key (201) and signs with it from now on; the next sign-in -> refused (invalid_signature)  <- EVERY SHOPPER IS REFUSED
-the shop restarts and reads the metadata again; the next sign-in -> signed in as ana
-so a bank that rotates its key needs the shop to reload its metadata first, and a plan for the hours between
-XML signatures are hard to get right, which is why the shop uses OpenSAML through Spring Security, and why its patches matter
+ONE. Signing in through the bank.
+  THE REQUEST (the shop sends Ana's browser to the bank):
+    shop          http://127.0.0.1:<port>
+    AuthnRequest  ID <random>, signed: false
+    Issuer        <shop>/saml2/service-provider-metadata/keycloak
+    answer at     <shop>/login/saml2/sso/keycloak
+  THE RESPONSE (Ana signs in at the bank, never at the shop):
+    Issuer        <keycloak>/realms/bank  (the realm)
+    InResponseTo  the shop's request ID: true
+    Destination   <shop>/login/saml2/sso/keycloak
+    NameID        ana  (who signed in)
+    Audience      <shop>/saml2/service-provider-metadata/keycloak
+    lifetime      NotOnOrAfter - NotBefore = 2 seconds
+    signatures    2: the Response, and the Assertion on its own
+  HOW THE SIGNATURES ARE CHECKED (redone by hand):
+    the bank's key, from its metadata: RSA, 2048 bits
+    SignatureMethod rsa-sha256, DigestMethod sha256
+    CanonicalizationMethod xml-exc-c14n
+    Response:  SHA-256 = DigestValue: true, RSA verify: true
+    Assertion: SHA-256 = DigestValue: true, RSA verify: true
+  THE RESULT:
+    the browser posts it to the shop -> signed in as ana
+    the shop's page /me: name ana, email ana@bank.example
+TWO. A valid signature is not the same as the bank's signature.
+  ONE NAME EDITED IN THE BANK'S RESPONSE (the input):
+    NameID ana -> admin, both signatures left in place
+    Response:  SHA-256 = DigestValue: false
+    Assertion: SHA-256 = DigestValue: false
+  THE RESULT:
+    -> refused (invalid_signature)
+  THE ATTACKER'S RESPONSE (admin, signed with the attacker's key):
+    2 signatures, KeyInfo: the attacker's public key
+    RSA verify with the attacker's key: true, true
+    RSA verify with the bank's key:     false, false
+  THE RESULT:
+    -> refused (invalid_signature)
+    <- THE KEY IN THE MESSAGE IS NEVER TRUSTED
+  A GENUINE RESPONSE FROM THE WALLET (another identity provider):
+    Issuer        <keycloak>/realms/wallet
+    InResponseTo  the shop's request ID: true
+    signed by the wallet's own key, valid XML
+  THE RESULT:
+    -> refused (invalid_signature)
+    the shop trusts the key in the bank's metadata, and no other
+THREE. Signature wrapping: one assertion checked, another read.
+  THE WRAPPED RESPONSE (the attacker's edit of a genuine one):
+    samlp:Response, its own signature removed
+      saml:Assertion NameID admin, unsigned
+      saml:Assertion NameID ana, signed by the bank
+  THE RESULT (Spring Security with OpenSAML):
+    -> refused (invalid_signature)
+    the signed assertion is not the one a reader would take first
+  ONE THING CHANGED AT A TIME (the input, then the result):
+    the bank's signed assertion first, an unsigned admin one second
+      -> refused (invalid_signature)
+    no signature anywhere, NameID admin
+      -> refused (invalid_signature)
+    <!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]>
+      -> refused (malformed_response_data)
+  THE RESULT:
+    the shop reads only what a trusted key signed; keep it patched
+FOUR. The statement itself is checked.
+  A GENUINE RESPONSE, POSTED ONCE:
+    -> signed in as ana
+  ONE THING CHANGED AT A TIME (the input, then the result):
+    the same response, replayed from another browser
+      -> refused (invalid_in_response_to)
+    the same response, replayed from the same browser
+      -> refused (invalid_in_response_to)  (request used up)
+    posted 4 seconds after issue; lifetime 2 s, skew 1 s
+      -> refused (invalid_assertion)
+    signed by the bank, Audience other-shop.example/saml/metadata
+      -> refused (invalid_assertion)
+  THE RESULT:
+    a signature says who wrote it; these checks say whether it is
+    for this shop, this request, and now
+FIVE. The bill: keys, metadata and XML.
+  BEFORE THE KEY CHANGE (metadata read once, at start):
+    a sign-in -> signed in as ana
+  THE BANK ADDS A NEW SIGNING KEY (HTTP 201) AND USES IT:
+    the next sign-in -> refused (invalid_signature)
+    <- EVERY SHOPPER IS REFUSED
+  AFTER THE SHOP RELOADS THE BANK'S METADATA:
+    the next sign-in -> signed in as ana
+  THE BILL:
+    a key rotation needs the shop to reload metadata first,
+      and a plan for the hours between
+    XML signatures are hard: the shop uses OpenSAML through
+      Spring Security, and its patches matter

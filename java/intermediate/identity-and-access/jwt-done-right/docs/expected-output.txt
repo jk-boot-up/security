@@ -1,40 +1,128 @@
-ONE. Three parts, and decoding is not verifying.
-  the bank's authorization server issues ana an access token of 347 characters in 3 parts
-  header: {"alg":"EdDSA","typ":"at+jwt","kid":"bank-2026-01"}
-  claims: {"iss":"https://auth.bank.example","sub":"ana","aud":"accounts-api","scope":"accounts:read","iat":1800000000,"nbf":1800000000,"exp":1800000300}
-  the third part is a 64-byte Ed25519 signature over the first two
-  anyone can read the claims: base64url is an encoding, not encryption, so no secret belongs in them
-  the claims edited to sub=mallory, with ana's signature kept: a reader that only decodes says mallory  <- DECODING IS NOT VERIFYING
-  the validator: refused (signature does not match)
-TWO. The server chooses the algorithm, never the token.
-  the RFC 8037 example token verifies with its published key: true, and signing it again gives the same signature: true
-  the JDK derives the published public key from the published private key: true
-  ana's token with the bank's key: accepted for ana
-  the same claims with a header that says none and no signature: refused (algorithm none is not EdDSA)
-  a header that says HS256: refused (algorithm HS256 is not EdDSA)
-  a correctly signed token of another type, offered as an access token: refused (type id+jwt is not at+jwt)
-  the algorithm and the type are settings of the API; the header is only checked against them
-THREE. Every claim that matters is checked.
-  at the moment of issue: accepted for ana
-  20 seconds after exp, inside the 30 seconds allowed for clock skew: accepted for ana
-  30 seconds after exp: refused (expired)
-  a token that starts in 2 minutes, presented now: refused (not valid yet)
-  issued by another authorization server: refused (another issuer)
-  meant for the loyalty API, sent to the accounts API: refused (another audience)
-  with only the scope cards:read: refused (missing scope accounts:read)
-  a valid signature proves who wrote the token; only the claims say whether it is for this API, now
-FOUR. Keys by id, from a set the API already holds.
-  during the changeover the API trusts 2 keys: bank-2026-01 and bank-2026-07
-  a token signed with the old key: accepted for ana
-  a token signed with the new key: accepted for ana
-  after the old key is retired, the old token: refused (unknown key id bank-2026-01)
-  a token naming a key id the API has never seen: refused (unknown key id attacker-key)
-  a token signed with another key but naming the bank's key id: refused (signature does not match)
-  an unknown key id is refused; the API never fetches a key because a token asked it to
-FIVE. The bill: a token cannot be taken back.
-  ana's access is removed 2 minutes after her token was issued
-  2 minutes later her access token: accepted for ana  <- STILL WORKS UNTIL IT EXPIRES
-  her refresh token, which the server looks up: refused (revoked)
-  at 5 minutes and 30 seconds the access token: refused (expired)
-  so access tokens live for minutes, and a token asking for more than 15 is refused: refused (lifetime longer than the policy allows)
-  where a browser should keep tokens is the tokens-in-the-browser project; in production, use a maintained library
+ONE. The bank's authorization server builds ana's access token.
+  THE HEADER (JSON, 51 bytes):
+    {"alg":"EdDSA","typ":"at+jwt","kid":"bank-2026-01"}
+  THE CLAIMS (JSON, 143 bytes, one member per line):
+    "iss":"https://auth.bank.example"
+    "sub":"ana"
+    "aud":"accounts-api"
+    "scope":"accounts:read"
+    "iat":1800000000            issued at 2027-01-15 08:00:00 UTC
+    "nbf":1800000000            not before: the same second
+    "exp":1800000300            iat + 300 seconds = 5 minutes
+  STEP 1. BASE64URL: EVERY 3 BYTES BECOME 4 CHARACTERS:
+    {"a  = bytes 7b 22 61
+        = bits 011110 110010 001001 100001
+        = characters e y J h
+    header 51 bytes -> 68 characters, claims 143 bytes -> 191
+  STEP 2. THE SIGNING INPUT (header part, a dot, claims part):
+    260 ASCII bytes, starting eyJhbGciOiJFZERTQSIsInR5...
+  STEP 3. ED25519 SIGNS IT WITH THE PRIVATE KEY bank-2026-01:
+    64 bytes, starting bfc541c4e748d9be77c8f36303d4b402...
+    base64url -> 86 characters
+  THE TOKEN (347 characters = 68 + 1 + 191 + 1 + 86):
+    PART 1, THE HEADER:
+      eyJhbGciOiJFZERTQSIsInR5cCI6ImF0K2p3dCIsImtpZCI6ImJhbmst
+      MjAyNi0wMSJ9
+    PART 2, THE CLAIMS:
+      eyJpc3MiOiJodHRwczovL2F1dGguYmFuay5leGFtcGxlIiwic3ViIjoi
+      YW5hIiwiYXVkIjoiYWNjb3VudHMtYXBpIiwic2NvcGUiOiJhY2NvdW50
+      czpyZWFkIiwiaWF0IjoxODAwMDAwMDAwLCJuYmYiOjE4MDAwMDAwMDAs
+      ImV4cCI6MTgwMDAwMDMwMH0
+    PART 3, THE SIGNATURE:
+      v8VBxOdI2b53yPNjA9S0AoH039STIktHt5d6JJdxD0GEcPmUje8fz5da
+      wG0S9GhgBluiXwa_Z5pgwJesO2icBQ
+  the same as the issuer's output: true
+TWO. Decoding is not verifying.
+  THE EDIT (only the claims part is replaced):
+    "sub":"ana"  ->  "sub":"mallory"
+  THE TOKEN SENT:
+    part 1, the header     68 characters, unchanged
+    part 2, the claims     196 characters, was 191
+    part 3, the signature  86 characters, ana's, unchanged
+  A READER THAT ONLY DECODES (splits, decodes part 2, reads sub):
+    -> mallory  <- DECODING IS NOT VERIFYING
+  THE VALIDATOR (verifies part 3 over parts 1 and 2 first):
+    Ed25519 verify with bank-2026-01's public key -> false
+    -> refused (signature does not match)
+  anyone can read the claims: base64url is an encoding, not
+  encryption, so no secret belongs in them
+THREE. The server chooses the algorithm, never the token.
+  THE API'S SETTINGS (fixed in Policy, never read from a token):
+    algorithm EdDSA, type at+jwt
+  CHECKED AGAINST THE PUBLISHED EXAMPLE (RFC 8037, appendix A):
+    the example verifies with its published public key: true
+    signing it again gives the same 64 bytes: true
+    the public key derived from the private key matches: true
+  THE HEADERS SENT (alg, typ), all with ana's claims:
+    1. EdDSA  at+jwt  ana's token, signed by the bank
+    2. none   at+jwt  no signature at all
+    3. HS256  at+jwt  another algorithm, signed by the bank
+    4. EdDSA  id+jwt  an ID token offered as an access token
+  THE RESULTS:
+    1. accepted for ana
+    2. refused (algorithm none is not EdDSA)
+    3. refused (algorithm HS256 is not EdDSA)
+    4. refused (type id+jwt is not at+jwt)
+  the header is only checked against the API's own settings
+FOUR. Every claim that matters is checked.
+  THE API EXPECTS:
+    iss https://auth.bank.example, aud accounts-api
+    scope accounts:read, clock skew 30 seconds
+  THE TIMES IN ana's TOKEN (seconds since 1970-01-01 UTC):
+    iat 1800000000   nbf 1800000000   exp 1800000300
+    accepted while now < exp + 30 = 1800000330
+  THE MOMENTS TRIED:
+    1. now 1800000000  (the moment of issue)
+    2. now 1800000320  (exp + 20)
+    3. now 1800000330  (exp + 30)
+  THE RESULTS:
+    1. accepted for ana
+    2. accepted for ana
+    3. refused (expired)
+  ONE CLAIM CHANGED PER TOKEN (signed by the bank, now 1800000000):
+    1. nbf   1800000120  (starts in 2 minutes)
+    2. iss   https://auth.partner.example
+    3. aud   loyalty-api
+    4. scope cards:read
+  THE RESULTS:
+    1. refused (not valid yet)
+    2. refused (another issuer)
+    3. refused (another audience)
+    4. refused (missing scope accounts:read)
+  the signature proves who wrote the token; only the claims say
+  whether it is for this API, now
+FIVE. Keys by id, from a set the API already holds.
+  THE KEY SET THE API HOLDS (kid and public key x):
+    bank-2026-01  11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo
+    bank-2026-07  hzkVm1OxJqR_zCsTiRXWKgrjO6y3CwcAKFfl-zWd4_o
+  THE TOKENS SENT (the kid in the header, the key that signed):
+    1. kid bank-2026-01   signed with bank-2026-01
+    2. kid bank-2026-07   signed with bank-2026-07
+  THE RESULTS:
+    1. accepted for ana
+    2. accepted for ana
+  THE KEY SET AFTER bank-2026-01 IS RETIRED:
+    bank-2026-07
+  THE TOKENS SENT:
+    3. kid bank-2026-01   signed with bank-2026-01
+    4. kid attacker-key   signed with an intruder's key
+    5. kid bank-2026-07   signed with an intruder's key
+  THE RESULTS:
+    3. refused (unknown key id bank-2026-01)
+    4. refused (unknown key id attacker-key)
+    5. refused (signature does not match)
+  the API never fetches a key because a token asked it to
+SIX. The bill: a token cannot be taken back.
+  WHAT ana HOLDS (seconds after issue):
+    the access token, which stops working at 300 + 30 of skew = 330
+    the refresh token rt-1, which the bank looks up each time
+  THE EVENT:
+    at 120 the bank removes ana's access and revokes rt-1
+  THE RESULTS:
+    at 240 the access token:  accepted for ana  <- STILL WORKS
+    at 240 the refresh token: refused (revoked)
+    at 330 the access token:  refused (expired)
+  THE POLICY THAT FOLLOWS (at most 900 seconds = 15 minutes):
+    a token with exp = iat + 3600:
+    -> refused (lifetime longer than the policy allows)
+  in production, use a maintained library, configured strictly

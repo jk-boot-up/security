@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs Docker, kind, kubectl and cosign; takes about ten minutes. Cluster, registry and image names are never printed. */
+/** The demo must print exactly the golden output. Needs Docker, kind and kubectl; takes about ten minutes. Cluster names and addresses are never printed. */
 @Tag("integration")
 class DemoRunsTest {
 

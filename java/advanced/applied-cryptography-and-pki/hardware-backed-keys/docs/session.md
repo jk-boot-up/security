@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The key ceremony | 7 min |
-| 0:17 | Act 2: Five ways out | 7 min |
-| 0:24 | Act 3: PINs and a file for contrast | 7 min |
-| 0:31 | Act 4: Rate, approvers and audit | 7 min |
-| 0:38 | Act 5: A compromised host | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: The key ceremony | 5 min |
+| 0:15 | Act 2: Five ways out, and signing | 5 min |
+| 0:20 | Act 3: The PIN, a key in a file, and a copied token | 5 min |
+| 0:25 | Act 4: Rate, approvers and audit | 5 min |
+| 0:30 | Act 5: A compromised host | 5 min |
+| 0:35 | Act 6: A key that can be backed up, and the limits | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

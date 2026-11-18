@@ -172,4 +172,18 @@ class CorsSpringTest {
             assertEquals(List.of(), bank.processed().list());
         }
     }
+
+    @Test
+    void simpleRequestsAreGetHeadOrPostWithAFormOrTextBody() {
+        assertTrue(Browser.isSimple("POST", "text/plain"));
+        assertFalse(Browser.isSimple("POST", "application/json"));
+        assertFalse(Browser.isSimple("PUT", null));
+    }
+
+    @Test
+    void theStarInThePatternMatchesAnyTextBeforeBank() {
+        var suffix = new CorsSettings("suffix", "security").accounts();
+        assertEquals(LOOKALIKE, suffix.checkOrigin(LOOKALIKE));
+        assertNull(suffix.checkOrigin(PARTNER));
+    }
 }

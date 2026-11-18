@@ -16,18 +16,41 @@ Chapters:
 
 ```
 00:00 Introduction
-01:52 The Scenario
-02:14 Act One — One shared secret
-02:26 Act Two — Identity by registration
-02:40 Act Three — Two services check each other
-02:53 Act Four — Rotation without a restart
-03:05 Act Five — A stolen SVID
-03:19 Act Six — No entry, no identity
-03:33 What It Costs
-04:16 Who Does What
-04:39 Where You Have Seen It
-04:58 How To Use It
-05:17 Thanks for Watching
+00:48 The Scenario
+01:18 The Words
+02:06 What the Letters Stand For
+02:59 What the Letters Stand For (continued)
+03:40 Who decides a workload's name
+04:36 One key, and the caller's own word
+05:36 Act One — One shared secret in three services
+06:03 Act One — One shared secret in three services
+06:18 A SPIFFE ID and an SVID's dates, part by part
+07:13 Act Two — SPIRE decides who a workload is
+07:40 Act Two — SPIRE decides who a workload is
+07:58 Both ends check the other's SPIFFE ID
+08:53 Act Three — Two Java services check each other's SPIFFE ID
+09:14 Act Three — Two Java services check each other's SPIFFE ID
+09:25 Fifty seconds of calls, and SVIDs that live twenty
+10:17 Act Four — Rotation: an SVID that lives 20 seconds
+10:49 The stolen copy against the clock
+11:42 Act Five — A stolen SVID
+12:06 No entry, no identity
+12:58 Act Six — A workload that matches no entry
+13:20 What it takes to evict the attacker
+14:12 Act Seven — Evicting the attacker
+14:35 What It Costs
+15:11 Who Does What
+15:54 Where You Have Seen It
+16:25 How To Use It
+16:51 The Java Classes
+17:05 LegacyLedger — the key, then the claimed name
+17:14 Lab — a registration entry: a user number and an ID
+17:28 Workload — the ledger reads the ID from the certificate
+17:39 Workload — the client accepts one server ID
+17:54 Policy — anything not listed is refused
+18:05 SpiffeIds — trust domain, then path
+18:18 Rotations — count the serial number changes
+18:28 Thanks for Watching
 ```
 
 ## Tags

@@ -1,23 +1,106 @@
-== 1. An invoice upload ==
-honest invoice                  -> accepted: customer=Ana, total=42.50, note=Thanks & see you soon
-
-== 2. The parser reads what the file tells it to ==
-external entity (file)          -> accepted: customer=Mallory, total=1.00, note=demo-secret-from-the-server
-entity bomb                     -> refused: stopped by the parser's entity expansion limit
-
-== 3. Refuse the DOCTYPE ==
-honest invoice                  -> accepted: customer=Ana, total=42.50, note=Thanks & see you soon
-external entity (file)          -> refused: a DOCTYPE is not allowed in an invoice
-entity bomb                     -> refused: a DOCTYPE is not allowed in an invoice
-
-== 4. A template engine that evaluates expressions ==
-the owner's template            -> Hello Ana, your order shipped.
-name pasted into the template   -> Hello demo-smtp-password, your order shipped.
-class name of the customer      -> com.jk.explore.security.xmlinj.Customer
-name passed as data             -> Hello ${app.config.smtpPassword}
-
-== 5. A logic-less engine keeps data as data ==
-the owner's template            -> Hello Ana, your order shipped.
-name pasted into the template   -> Hello ${app.config.smtpPassword}, your order shipped.
-name passed as data             -> Hello ${app.config.smtpPassword}
-a name with markup              -> Hello &lt;script&gt;x&lt;/script&gt;
+ONE. An invoice upload works for honest suppliers.
+  THE UPLOAD (the XML file the supplier sends):
+    <invoice>
+      <customer>Ana</customer>
+      <total>42.50</total>
+      <note>Thanks &amp; see you soon</note>
+    </invoice>
+  WHAT THE PARSER DOES:
+    &amp; is a built-in entity: it is replaced by &
+  THE RESULT (the fields the shop stores):
+    customer  Ana
+    total     42.50
+    note      Thanks & see you soon
+TWO. The parser reads what the file tells it to.
+  THE UPLOAD (a DOCTYPE defines the entity xxe):
+    <!DOCTYPE invoice [
+      <!ENTITY xxe SYSTEM "file:///.../secret.txt">
+    ]>
+    <invoice><customer>Mallory</customer><total>1.00</total>
+      <note>&xxe;</note></invoice>
+  WHAT THE PARSER DOES:
+    opens the file that xxe names, on the server,
+    and puts its text where &xxe; stands
+  THE RESULT (the fields the shop stores):
+    customer  Mallory
+    total     1.00
+    note      demo-secret-from-the-server  <- A SERVER FILE
+  THE UPLOAD (an entity bomb, 464 characters):
+    <!ENTITY a0 "lol">
+    <!ENTITY a1 "&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;">
+    ... a2 to a5 the same way, ten of the level below
+    <!ENTITY a6 "&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;">
+    <note>&a6;</note>
+  WHAT IT WOULD EXPAND TO (worked out):
+    a6 = 10 x 10 x 10 x 10 x 10 x 10 = 1,000,000 copies of lol
+    1,000,000 x 3 letters = 3,000,000 characters
+  THE RESULT:
+    refused: stopped by the parser's entity expansion limit
+  stopped by luck: the JDK's default limit, not our setting
+THREE. Refuse the DOCTYPE.
+  THE PARSER SETTINGS (read back from SafeInvoiceParser):
+    disallow-doctype-decl     true  <- THE FIX
+    secure processing         true
+    external DTDs allowed     "" (none)
+    external schemas allowed  "" (none)
+    XInclude                  false
+    expand entity references  false
+    largest upload            10,000 characters
+  THE UPLOADS AND RESULTS (the same three files):
+    honest invoice
+      -> accepted: customer=Ana, total=42.50
+    external entity (file)
+      -> refused: a DOCTYPE is not allowed in an invoice
+    entity bomb
+      -> refused: a DOCTYPE is not allowed in an invoice
+    an invoice of 10,095 characters
+      -> refused: upload too large
+FOUR. A template engine that evaluates expressions.
+  WHAT EVERY TEMPLATE CAN REACH (customer and app):
+    customer.name            Ana
+    customer.email           ana@example.test
+    app.version              3.4.1
+    app.config.smtpPassword  demo-smtp-password  <- SECRET
+  THE OWNER'S TEMPLATE:
+    Hello ${customer.name}, your order shipped.
+  THE RESULT:
+    Hello Ana, your order shipped.
+  THE CUSTOMER'S NAME (typed at sign-up):
+    ${app.config.smtpPassword}
+  THE TEMPLATE AS BUILT (the name pasted in):
+    Hello ${app.config.smtpPassword}, your order shipped.
+  HOW THE ENGINE WORKS IT OUT (step by step):
+    app -> App
+    .config -> config() -> AppConfig
+    .smtpPassword -> smtpPassword() -> demo-smtp-password
+  THE RESULT:
+    Hello demo-smtp-password, your order shipped.  <- THE SECRET
+  ANOTHER PASTED NAME:
+    ${customer.class.name}
+  HOW THE ENGINE WORKS IT OUT (step by step):
+    customer -> Customer
+    .class -> getClass() -> Class
+    .name -> getName() -> com.jk.explore.security.xmlinj.Customer
+  THE SAME NAME PASSED AS DATA (fixed template):
+    Hello ${customer.name}  name = ${app.config.smtpPassword}
+      -> Hello ${app.config.smtpPassword}
+  data is not evaluated twice; pasted text is
+FIVE. A logic-less engine keeps data as data.
+  THE VALUES (a flat list; nothing else is reachable):
+    {{name}}    {{email}}
+  WHAT THE ENGINE DOES:
+    fills each {{hole}} from the list, escaped, in one pass
+  THE TEMPLATES AND RESULTS:
+    the owner's template
+      -> Hello Ana, your order shipped.
+    the name pasted into the template
+      -> Hello ${app.config.smtpPassword}, your order shipped.
+    the name passed as data
+      -> Hello ${app.config.smtpPassword}
+  THE NAME (with markup):
+    <script>x</script>
+  HOW EACH CHARACTER IS ESCAPED (for HTML):
+    & -> &amp;   < -> &lt;   > -> &gt;
+    " -> &quot;   ' -> &#39;
+  THE RESULT (Hello {{name}}):
+    Hello &lt;script&gt;x&lt;/script&gt;

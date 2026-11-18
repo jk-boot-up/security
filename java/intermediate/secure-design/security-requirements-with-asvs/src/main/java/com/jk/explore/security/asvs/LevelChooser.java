@@ -19,14 +19,14 @@ final class LevelChooser {
     static Choice choose(Profile p) {
         List<String> reasons = new ArrayList<>();
         Level level = Level.L1;
-        reasons.add("every application starts at L1, the floor");
+        reasons.add("every application starts here, the floor");
         if (p.holdsAccounts() || p.data() != Profile.Sensitivity.LOW) {
             level = Level.L2;
-            reasons.add("it holds customer accounts or personal data, so L2");
+            reasons.add("it holds customer accounts or personal data");
         }
         if (p.movesMoney() && p.regulated() && p.data() == Profile.Sensitivity.HIGH) {
             level = Level.L3;
-            reasons.add("it moves money, is regulated and holds highly sensitive data, so L3");
+            reasons.add("it moves money, is regulated, holds HIGH data");
         }
         return new Choice(level, List.copyOf(reasons));
     }

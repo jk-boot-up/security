@@ -21,6 +21,7 @@ Secrets are believed to be encrypted because they are called secrets, and tokens
 | The cluster and etcd reads | `Cluster` |
 | The encryption configuration | `Encryption` |
 | A raw etcd value | `Stored` |
+| Base64 undone by hand | `Base64Steps` |
 | A ServiceAccount token | `Jwt` |
 | OpenBao setup and calls | `OpenBao` |
 | The manifests | `Manifests` |
@@ -40,10 +41,10 @@ Secrets are believed to be encrypted because they are called secrets, and tokens
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 14, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 18, all passing |
+| Demo output | 87 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:19, 1920×1080, narrated in the amy-slow voice |
+| Video | 19:23, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

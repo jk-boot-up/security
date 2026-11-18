@@ -61,7 +61,8 @@ public final class Lab implements AutoCloseable {
 
     /** Turns injection on for the namespace and restarts its pods so each one gets a proxy. */
     void inject(String namespace, int pods) throws IOException, InterruptedException {
-        cluster.must("annotate", "namespace", namespace, "linkerd.io/inject=enabled", "--overwrite");
+        cluster.must("annotate", "namespace", namespace,
+                "linkerd.io/inject=enabled", "--overwrite");
         cluster.must("-n", namespace, "rollout", "restart", "deploy");
         cluster.must("-n", namespace, "rollout", "status", "deploy", "--timeout=240s");
         settle(namespace, pods);
@@ -95,8 +96,8 @@ public final class Lab implements AutoCloseable {
         return answered;
     }
 
-    Design.Diff diff() throws IOException, InterruptedException {
-        return DESIGN.compare(CALLERS, BANK, measure());
+    static Design.Diff diff(Set<String> answered) {
+        return DESIGN.compare(CALLERS, BANK, answered);
     }
 
     /** Applies the policy of the design: every bank service has a Server, and only the named callers are let in. */

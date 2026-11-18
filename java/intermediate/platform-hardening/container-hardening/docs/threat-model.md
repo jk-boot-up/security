@@ -52,6 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 ## How the tests check this
 
 - `ContainerTest` checks the attack rules for each setting, the three configurations, the Docker socket, the effect of a non-root user with and without no_new_privs, root with SYS_ADMIN, the Pod Security levels and violations, and the rendered flags and YAML.
+- `ContainerTest` also checks the nine Pod Security checks, the grouping of the attacks, the one-flag-per-line command and that every demo line fits a slide.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

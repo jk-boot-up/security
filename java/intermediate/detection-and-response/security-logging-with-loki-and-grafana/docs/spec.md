@@ -37,10 +37,10 @@ Logs on many machines cannot answer a question about the whole system, and nobod
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 29 lines, identical on every run |
+| Tests | 16, all passing |
+| Demo output | 104 lines, identical on every run |
 | Acts | 5 |
-| Video | 05:44, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:56, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

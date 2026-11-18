@@ -15,6 +15,14 @@ public class DetectionAsCodeDemo {
     static final long SEED = 20260302L;
     static final Path RULES = Path.of("rules");
 
+    /** Three process starts on a bank host: a web shell, the application server's health check, and a web shell under another server name. */
+    static final List<Map<String, String>> THREE_EVENTS = List.of(
+            Map.of("ParentImage", "/usr/sbin/nginx", "Image", "/bin/sh", "CommandLine", "sh -c id"),
+            Map.of("ParentImage", "/usr/lib/jvm/java-21/bin/java", "Image", "/bin/sh", "CommandLine", "/bin/sh -c /opt/bank/bin/healthcheck --deep"),
+            Map.of("ParentImage", "/usr/sbin/apache2", "Image", "/bin/sh", "CommandLine", "sh -c id"));
+    static final List<String> THREE_TRUTHS = List.of("attack (a web shell runs id)", "benign (the health check)",
+            "attack (the same, under apache2)");
+
     public static void main(String[] args) throws Exception {
         System.out.print(run());
     }
@@ -36,73 +44,63 @@ public class DetectionAsCodeDemo {
         return rules.keySet().stream().filter(n -> !n.equals("auth-failure")).toList();
     }
 
+    /** The whole demo: acts ONE to FIVE need no tools; act SIX runs pySigma and OpenSearch in Docker. */
     public static String run() throws Exception {
-        StringBuilder out = new StringBuilder();
         Map<String, Rule> rules = Sigma.load(RULES);
         Corpus corpus = Corpus.generate(SEED);
         corpus.write(Path.of("build", "logs", "events.jsonl"));
+        return offline(rules, corpus) + tools(rules, corpus);
+    }
+
+    /** Acts ONE to FIVE: Java only, the same on every machine. */
+    static String offline(Map<String, Rule> rules, Corpus corpus) throws IOException {
+        StringBuilder out = new StringBuilder();
         Map<String, Integer> budgets = budgets();
-
-        out.append("--- the recorded logs\n");
-        out.append(logs(corpus));
-
-        out.append("--- the rules\n");
-        long correlations = rules.values().stream().filter(r -> r.correlation() != null).count();
-        Set<String> techniques = new TreeSet<>();
-        rules.values().forEach(r -> techniques.addAll(r.techniques()));
-        out.append("rules: " + rules.size() + " in " + (rules.size() - 1) + " files (" + (rules.size() - correlations) + " detections, " + correlations + " correlation), ATT&CK techniques tagged: " + techniques.size() + "\n");
-
-        out.append("--- each rule against the truth\n");
         Map<String, Score> scores = new LinkedHashMap<>();
         for (String name : scored(rules)) {
-            Score s = Score.of(name, rules, corpus);
-            scores.put(name, s);
-            out.append(String.format(Locale.ROOT, "%-27s caught %2d of %2d, missed %d, false alarms %3d, precision %s, recall %s%n", name, s.detected(), s.attacks(), s.missed(), s.falsePositives(), f2(s.precision()), f2(s.recall())));
+            scores.put(name, Score.of(name, rules, corpus));
         }
-        int attacks = scores.values().stream().mapToInt(Score::attacks).sum();
-        int detected = scores.values().stream().mapToInt(Score::detected).sum();
-        int falseAlarms = scores.values().stream().mapToInt(Score::falsePositives).sum();
-        out.append("all rules: caught " + detected + " of " + attacks + ", false alarms " + falseAlarms + "\n");
-
-        out.append("--- false-positive budgets, false alarms per simulated day\n");
-        int over = 0;
-        for (Map.Entry<String, Score> e : scores.entrySet()) {
-            Score s = e.getValue();
-            int budget = budgets.get(e.getKey());
-            over += s.daysOver(budget) > 0 ? 1 : 0;
-            out.append(String.format(Locale.ROOT, "%-27s budget %d, mean %s, worst day %2d, days over %d of %d: %s%n", e.getKey(), budget, f1(s.meanPerDay()), s.worstDay(), s.daysOver(budget), Corpus.DAYS, s.daysOver(budget) == 0 ? "within" : "OVER"));
-        }
-        out.append("rules over budget: " + over + " of " + scores.size() + "\n");
-
-        out.append("--- tuning a rule on the same logs\n");
+        out.append("ONE. One Sigma rule against three events.\n");
+        out.append(oneRule(rules.get("web-server-shell")));
+        out.append("TWO. A week of labelled logs, and each rule scored.\n");
+        out.append(logs(corpus));
+        out.append(scoring(scores));
+        out.append("THREE. False-alarm budgets, and tuning a rule on the same logs.\n");
+        out.append(budgetCheck(scores, budgets));
         out.append(tuning(rules, corpus, scores, budgets));
-
-        out.append("--- the rule tests\n");
+        out.append("FOUR. Tests beside every rule, and mutants that check the tests.\n");
         out.append(tests(rules));
+        out.append("FIVE. ATT&CK coverage: what the tags say, and what the attacks show.\n");
+        out.append(coverage(rules, corpus));
+        return out.toString();
+    }
 
-        out.append("--- ATT&CK coverage\n");
-        out.append(coverage(rules, corpus, scores));
-
-        out.append("--- the rules converted by pySigma\n");
-        Pysigma pysigma = new Pysigma(Path.of("build"));
-        Map<String, Pysigma.Conversion> converted = pysigma.convert(RULES);
-        long ok = converted.values().stream().filter(c -> c.error() == null).count();
-        out.append("pySigma " + Pysigma.PYSIGMA + " with the OpenSearch backend " + Pysigma.OPENSEARCH_BACKEND + ": converted " + ok + " of " + converted.size() + " rules to Lucene queries\n");
-        converted.forEach((n, c) -> {
-            if (c.error() != null) {
-                out.append("not converted: " + n + ": " + c.error() + "\n");
-            }
-        });
-
-        out.append("--- the queries run in OpenSearch\n");
-        out.append(openSearch(rules, corpus, converted));
-
-        out.append("--- the bill\n");
-        out.append("a rule is a hypothesis: the attacks it was written for are caught, the ones spelled another way are missed, and only a labelled corpus says how many\n");
-        out.append("a filter that removes a false alarm is also a hole an attacker can use, so each one needs a test that says why it is there\n");
-        out.append("a budget turns noise into a number: a rule over budget gets a filter or a higher threshold, or it is read by nobody\n");
-        out.append("a threshold or a filter chosen on one week of logs fits that week: the next week is the test\n");
-        out.append("covering a technique with a tag is not detecting it: coverage is what the labelled attacks show\n");
+    static String oneRule(Rule rule) {
+        StringBuilder out = new StringBuilder();
+        out.append("  THE RULE " + rule.name() + " (level " + rule.doc().get("level") + "):\n");
+        out.append("    tags: " + String.join(", ", rule.techniques()) + "\n");
+        ConditionSteps.describe(rule).forEach(l -> out.append("    " + l + "\n"));
+        String condition = String.valueOf(Sigma.map(rule.doc().get("detection")).get("condition"));
+        int cut = condition.indexOf(" and not ");
+        out.append("    condition: " + condition.substring(0, cut) + "\n");
+        out.append("      " + condition.substring(cut + 1) + "\n");
+        out.append("  THE EVENTS (three process starts on a bank host):\n");
+        for (int i = 0; i < THREE_EVENTS.size(); i++) {
+            Map<String, String> e = THREE_EVENTS.get(i);
+            out.append("    " + (i + 1) + "  " + e.get("ParentImage") + " starts " + e.get("Image") + "\n");
+            out.append("       " + e.get("CommandLine") + "\n");
+            out.append("       truth  " + THREE_TRUTHS.get(i) + "\n");
+        }
+        out.append("  HOW THE CONDITION IS DECIDED:\n");
+        out.append("    event  parent  child  filter  alert  verdict\n");
+        for (int i = 0; i < THREE_EVENTS.size(); i++) {
+            Map<String, Boolean> s = ConditionSteps.selections(rule, THREE_EVENTS.get(i));
+            boolean alert = rule.matches(THREE_EVENTS.get(i));
+            boolean attack = THREE_TRUTHS.get(i).startsWith("attack");
+            String verdict = alert == attack ? (alert ? "caught" : "rightly quiet") : (alert ? "false alarm" : "missed");
+            out.append(String.format(Locale.ROOT, "    %-6s %-7s %-6s %-7s %-6s %s%n", i + 1, yes(s.get("selection_parent")), yes(s.get("selection_child")),
+                    yes(s.get("filter_healthcheck")), yes(alert), verdict));
+        }
         return out.toString();
     }
 
@@ -130,28 +128,82 @@ public class DetectionAsCodeDemo {
             }
         }
         long attackEvents = c.truth().values().stream().filter(Truth::attack).count();
-        return "events: " + c.events().size() + " over " + Corpus.DAYS + " days, " + c.events().size() / Corpus.DAYS + " a day\n"
-                + "benign: " + benign + ", look-alikes with a filter in the rule: " + filtered + ", look-alikes without one: " + lookalike + "\n"
-                + "attack events: " + attackEvents + " in " + instances.size() + " attacks (" + (instances.size() - evasions.size() - uncovered.size()) + " that a rule is written for, "
-                + evasions.size() + " evasions of those rules, " + uncovered.size() + " with no rule)\n";
+        return "  THE RECORDED LOGS (a seeded week of a bank's events):\n"
+                + "    events       " + c.events().size() + " over " + Corpus.DAYS + " days, " + c.events().size() / Corpus.DAYS + " a day\n"
+                + "    benign       " + benign + "\n"
+                + "    look-alikes  " + filtered + " that a filter in the rule removes\n"
+                + "                 " + lookalike + " that no filter removes\n"
+                + "    attacks      " + instances.size() + ", in " + attackEvents + " events, each labelled\n"
+                + "                 " + (instances.size() - evasions.size() - uncovered.size()) + " that a rule is written for\n"
+                + "                 " + evasions.size() + " evasions: the same attack spelled another way\n"
+                + "                 " + uncovered.size() + " that no rule is written for\n";
+    }
+
+    static String scoring(Map<String, Score> scores) {
+        StringBuilder out = new StringBuilder("  EACH RULE AGAINST THE TRUTH (false: false alarms):\n");
+        out.append("    rule                        caught    false  P     R\n");
+        for (Score s : scores.values()) {
+            out.append(String.format(Locale.ROOT, "    %-27s %2d of %2d  %5d  %s  %s%n", s.rule(), s.detected(), s.attacks(), s.falsePositives(), f2(s.precision()), f2(s.recall())));
+        }
+        int attacks = scores.values().stream().mapToInt(Score::attacks).sum();
+        int detected = scores.values().stream().mapToInt(Score::detected).sum();
+        int falseAlarms = scores.values().stream().mapToInt(Score::falsePositives).sum();
+        out.append(String.format(Locale.ROOT, "    %-27s %2d of %2d  %5d%n", "all rules", detected, attacks, falseAlarms));
+        Score s = scores.get("log-clearing");
+        out.append("  HOW PRECISION (P) AND RECALL (R) ARE MADE (" + s.rule() + "):\n");
+        out.append("    R = attacks caught / attacks = " + s.detected() + " / " + s.attacks() + " = " + f2(s.recall()) + "\n");
+        out.append("    P = alerts on its attacks / (those + false alarms)\n");
+        out.append("      = " + s.tpAlerts() + " / (" + s.tpAlerts() + " + " + s.falsePositives() + ") = " + f2(s.precision()) + "\n");
+        return out.toString();
+    }
+
+    static String budgetCheck(Map<String, Score> scores, Map<String, Integer> budgets) {
+        StringBuilder out = new StringBuilder("  THE BUDGETS (false alarms a day, set with the analysts):\n");
+        out.append("    rule                        budget  mean  worst  days over\n");
+        int over = 0;
+        for (Score s : scores.values()) {
+            int budget = budgets.get(s.rule());
+            over += s.daysOver(budget) > 0 ? 1 : 0;
+            out.append(String.format(Locale.ROOT, "    %-27s %6d  %4s  %5d  %d of %d %s%n", s.rule(), budget, f1(s.meanPerDay()), s.worstDay(), s.daysOver(budget), Corpus.DAYS,
+                    s.daysOver(budget) == 0 ? "within" : "OVER"));
+        }
+        out.append("    rules over budget: " + over + " of " + scores.size() + "\n");
+        Score s = scores.get("log-clearing");
+        int budget = budgets.get(s.rule());
+        StringBuilder days = new StringBuilder();
+        StringBuilder overDays = new StringBuilder();
+        for (int d = 0; d < Corpus.DAYS; d++) {
+            days.append(" ").append(s.falsePerDay()[d]);
+            if (s.falsePerDay()[d] > budget) {
+                overDays.append(" ").append(d + 1);
+            }
+        }
+        out.append("  HOW A BUDGET IS CHECKED (" + s.rule() + ", budget " + budget + "):\n");
+        out.append("    false alarms on days 1 to " + Corpus.DAYS + ":" + days + "\n");
+        out.append("    mean " + s.falsePositives() + " / " + Corpus.DAYS + " = " + f1(s.meanPerDay()) + ", worst day " + s.worstDay() + "\n");
+        out.append("    over " + budget + " on days" + overDays + ": " + s.daysOver(budget) + " of " + Corpus.DAYS + ", OVER\n");
+        return out.toString();
     }
 
     static String tuning(Map<String, Rule> rules, Corpus c, Map<String, Score> base, Map<String, Integer> budgets) {
         StringBuilder out = new StringBuilder();
-        List<Mutator.Mutant> mutants = Mutator.of(rules.get("web-server-shell"));
-        Mutator.Mutant noFilter = mutants.stream().filter(m -> m.what().equals("drop filter_healthcheck")).findFirst().orElseThrow();
+        Mutator.Mutant noFilter = Mutator.of(rules.get("web-server-shell")).stream().filter(m -> m.what().equals("drop filter_healthcheck")).findFirst().orElseThrow();
         Score loose = Score.of("web-server-shell", Mutator.with(rules, noFilter.rule()), c);
         Score now = base.get("web-server-shell");
-        out.append("web-server-shell without its health-check filter: false alarms " + now.falsePositives() + " -> " + loose.falsePositives() + ", worst day " + now.worstDay() + " -> " + loose.worstDay()
-                + ", budget " + budgets.get("web-server-shell") + ", days over " + loose.daysOver(budgets.get("web-server-shell")) + " of " + Corpus.DAYS + "\n");
+        int budget = budgets.get("web-server-shell");
+        out.append("  BEFORE THE FILTER IS DROPPED (web-server-shell, budget " + budget + "):\n");
+        out.append("    false alarms " + now.falsePositives() + ", worst day " + now.worstDay() + ", days over " + now.daysOver(budget) + " of " + Corpus.DAYS + "\n");
+        out.append("  AFTER THE FILTER IS DROPPED (the health check alerts):\n");
+        out.append("    false alarms " + loose.falsePositives() + ", worst day " + loose.worstDay() + ", days over " + loose.daysOver(budget) + " of " + Corpus.DAYS + "\n");
         Rule burst = rules.get("failed-login-burst");
-        Score before = base.get("failed-login-burst");
-        for (int gte : new int[] {5, 15, 20}) {
+        out.append("  A THRESHOLD MOVED (failed-login-burst: N failed logins\n");
+        out.append("  from one address in 5 minutes, now N = " + burst.correlation().gte() + "):\n");
+        out.append("    N         caught    false alarms\n");
+        for (int gte : new int[] {5, burst.correlation().gte(), 15, 20}) {
             Map<String, Object> doc = Sigma.documents(Mutator.dump(burst)).getFirst();
             Sigma.map(Sigma.map(doc.get("correlation")).get("condition")).put("gte", gte);
             Score s = Score.of("failed-login-burst", Mutator.with(rules, new Rule(doc)), c);
-            out.append("failed-login-burst at " + gte + " failures in 5 minutes (now " + burst.correlation().gte() + "): caught " + s.detected() + " of " + s.attacks() + " (now " + before.detected() + "), false alarms " + s.falsePositives()
-                    + " (now " + before.falsePositives() + ")\n");
+            out.append(String.format(Locale.ROOT, "    %-9s %2d of %2d  %d%n", gte == burst.correlation().gte() ? gte + " (now)" : String.valueOf(gte), s.detected(), s.attacks(), s.falsePositives()));
         }
         return out.toString();
     }
@@ -168,18 +220,29 @@ public class DetectionAsCodeDemo {
             failing += RuleTests.failures(e.getValue(), rules.get(e.getKey()), rules).size();
         }
         List<String> untested = rules.keySet().stream().filter(n -> !tests.containsKey(n)).toList();
-        out.append("test files: " + tests.size() + ", cases: " + cases + " (" + shouldMatch + " should match, " + (cases - shouldMatch) + " should not), failing: " + failing + ", rules with no test file: " + untested.size() + "\n");
+        List<RuleTests.Case> shell = tests.get("web-server-shell");
+        out.append("  THE CASES OF web-server-shell (rules/tests):\n");
+        for (RuleTests.Case c : shell) {
+            out.append(String.format(Locale.ROOT, "    %-9s %s%n", c.expect() ? "match" : "no match", c.name()));
+        }
+        out.append("  EVERY RULE'S CASES, RUN:\n");
+        out.append("    files " + tests.size() + ", cases " + cases + ": " + shouldMatch + " should match, " + (cases - shouldMatch) + " should not\n");
+        out.append("    failing " + failing + ", rules with no test file " + untested.size() + "\n");
+
+        out.append("  THE MUTANTS OF web-server-shell (one small change each):\n");
+        for (Mutator.Mutant m : Mutator.of(rules.get("web-server-shell"))) {
+            int failed = RuleTests.failures(shell, m.rule(), Mutator.with(rules, m.rule())).size();
+            out.append(String.format(Locale.ROOT, "    %-8s %-27s %d of %d fail%n", m.direction(), m.what().replaceFirst(" from .*", "").replace("the value ", ""), failed, shell.size()));
+        }
 
         int total = 0;
         int killed = 0;
         int loosen = 0;
-        int tighten = 0;
         List<String> survivors = new ArrayList<>();
         for (Rule r : rules.values()) {
             for (Mutator.Mutant m : Mutator.of(r)) {
                 total++;
                 loosen += m.direction().equals("loosen") ? 1 : 0;
-                tighten += m.direction().equals("tighten") ? 1 : 0;
                 if (!RuleTests.failures(tests.get(r.name()), m.rule(), Mutator.with(rules, m.rule())).isEmpty()) {
                     killed++;
                 } else {
@@ -187,43 +250,106 @@ public class DetectionAsCodeDemo {
                 }
             }
         }
-        out.append("mutants (a filter dropped, a field or a value dropped, and to or, a threshold moved): " + total + " (" + loosen + " loosen, " + tighten + " tighten)\n");
-        out.append("killed by the tests: " + killed + " of " + total + ", survived: " + survivors.size() + "\n");
-        survivors.forEach(s -> out.append("  survivor: " + s + "\n"));
-        Mutator.Mutant noFilter = Mutator.of(rules.get("web-server-shell")).stream().filter(m -> m.what().equals("drop filter_healthcheck")).findFirst().orElseThrow();
-        List<String> failed = RuleTests.failures(tests.get("web-server-shell"), noFilter.rule(), Mutator.with(rules, noFilter.rule()));
-        out.append("web-server-shell without its filter: " + failed.size() + " of " + tests.get("web-server-shell").size() + " cases fail (" + String.join("; ", failed) + ")\n");
+        out.append("  EVERY RULE'S MUTANTS, RUN AGAINST ITS CASES:\n");
+        out.append("    mutants " + total + ": " + loosen + " loosen, " + (total - loosen) + " tighten\n");
+        out.append("    killed by a failing case " + killed + " of " + total + ", survived " + survivors.size() + "\n");
+        survivors.forEach(s -> out.append("    survivor: " + s + "\n"));
         return out.toString();
     }
 
-    static String coverage(Map<String, Rule> rules, Corpus c, Map<String, Score> scores) {
+    static String coverage(Map<String, Rule> rules, Corpus c) {
         StringBuilder out = new StringBuilder();
         Set<Integer> alerted = new TreeSet<>();
         for (String name : scored(rules)) {
             alerted.addAll(Engine.alerts(rules.get(name), rules, c.events()));
         }
         List<Coverage.Row> rows = Coverage.matrix(rules, c, alerted);
+        long tagged = rows.stream().filter(r -> !r.rules().isEmpty()).count();
+        long attacked = rows.stream().filter(r -> r.attacks() > 0).count();
+        out.append("  THE TAGS AND THE ATTACKS:\n");
+        out.append("    techniques the rules are tagged with  " + tagged + "\n");
+        out.append("    techniques the labelled attacks used  " + attacked + "\n");
+        out.append("  THE MATRIX (one row a technique):\n");
+        out.append("    technique  attacks  caught  status    rule\n");
         for (Coverage.Row r : rows) {
-            out.append(String.format(Locale.ROOT, "%-10s %-48s attacks %2d, caught %2d: %s%n", r.technique(), r.rules().isEmpty() ? "-" : String.join(",", r.rules()), r.attacks(), r.detected(), r.status()));
+            String rule = r.rules().isEmpty() ? "-" : r.rules().getFirst() + (r.rules().size() > 1 ? " +" + (r.rules().size() - 1) : "");
+            String status = r.status().startsWith("untested") ? "untested" : r.status().equals("GAP no rule") ? "GAP" : r.status();
+            out.append(String.format(Locale.ROOT, "    %-10s %7d %7d  %-9s %s%n", r.technique(), r.attacks(), r.detected(), status, rule));
         }
-        out.append("techniques with a rule and every labelled attack caught: " + rows.stream().filter(r -> r.status().equals("covered")).count() + " of " + rows.size() + "\n");
-        out.append("gaps, attacked and no rule: " + String.join(", ", rows.stream().filter(r -> r.status().equals("GAP no rule")).map(r -> r.technique() + " (" + r.attacks() + ")").toList()) + "\n");
-        out.append("partial, a rule that misses some of the attacks: " + String.join(", ", rows.stream().filter(r -> r.status().equals("partial")).map(r -> r.technique() + " (" + (r.attacks() - r.detected()) + " missed)").toList()) + "\n");
-        out.append("tagged but never attacked in the logs: " + String.join(", ", rows.stream().filter(r -> r.status().startsWith("untested")).map(Coverage.Row::technique).toList()) + "\n");
+        out.append("  HOW THE STATUS IS DECIDED:\n");
+        out.append("    GAP       attacked, no rule tagged       " + count(rows, "GAP no rule") + "\n");
+        out.append("    partial   a rule, some attacks missed    " + count(rows, "partial") + "\n");
+        out.append("    covered   a rule, every attack caught    " + count(rows, "covered") + "\n");
+        out.append("    untested  a rule, no labelled attack     " + rows.stream().filter(r -> r.status().startsWith("untested")).count() + "\n");
+        out.append("    covered " + count(rows, "covered") + " of " + rows.size() + ": a tag alone is not a detection\n");
         return out.toString();
+    }
+
+    private static long count(List<Coverage.Row> rows, String status) {
+        return rows.stream().filter(r -> r.status().equals(status)).count();
+    }
+
+    /** Act SIX: the rules converted by pySigma, and the queries run in OpenSearch in Docker. */
+    static String tools(Map<String, Rule> rules, Corpus corpus) throws Exception {
+        StringBuilder out = new StringBuilder("SIX. pySigma turns the rules into queries; OpenSearch runs them.\n");
+        Pysigma pysigma = new Pysigma(Path.of("build"));
+        Map<String, Pysigma.Conversion> converted = pysigma.convert(RULES);
+        long ok = converted.values().stream().filter(c -> c.error() == null).count();
+        out.append("  THE QUERY pySigma MADE (Lucene, for OpenSearch):\n");
+        wrap(converted.get("web-server-shell").queries().getFirst(), 62).forEach(l -> out.append("    " + l + "\n"));
+        out.append("  THE CONVERSION OF EVERY RULE:\n");
+        out.append("    pySigma " + Pysigma.PYSIGMA + ", OpenSearch backend " + Pysigma.OPENSEARCH_BACKEND + ": " + ok + " of " + converted.size() + " converted\n");
+        converted.forEach((n, c) -> {
+            if (c.error() != null) {
+                out.append("    not converted: " + n + "\n");
+                out.append("      " + c.error() + "\n");
+            }
+        });
+        out.append(openSearch(rules, corpus, converted));
+        return out.toString();
+    }
+
+    /** A query cut into lines at the spaces that are not escaped, each line at most width characters where it can be. */
+    static List<String> wrap(String query, int width) {
+        List<String> words = new ArrayList<>();
+        StringBuilder w = new StringBuilder();
+        for (int i = 0; i < query.length(); i++) {
+            char ch = query.charAt(i);
+            if (ch == ' ' && (i == 0 || query.charAt(i - 1) != '\\')) {
+                words.add(w.toString());
+                w.setLength(0);
+            } else {
+                w.append(ch);
+            }
+        }
+        words.add(w.toString());
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : words) {
+            boolean breakHere = word.equals("AND") && !line.isEmpty();
+            if (!line.isEmpty() && (breakHere || line.length() + 1 + word.length() > width)) {
+                lines.add(line.toString());
+                line.setLength(0);
+            }
+            line.append(line.isEmpty() ? "" : " ").append(word);
+        }
+        lines.add(line.toString());
+        return lines;
     }
 
     static String openSearch(Map<String, Rule> rules, Corpus corpus, Map<String, Pysigma.Conversion> converted) throws Exception {
         if (!OpenSearch.dockerRuns()) {
-            return "Docker does not run: the converted queries were not run in OpenSearch\n";
+            return "  Docker does not run: the converted queries were not run in OpenSearch\n";
         }
         StringBuilder out = new StringBuilder();
         try (OpenSearch os = new OpenSearch()) {
             os.index(corpus);
-            out.append("OpenSearch, one node, security plugin off; events indexed: " + corpus.events().size() + ", every text field a keyword compared with no regard to case\n");
+            out.append("  THE QUERIES RUN IN OPENSEARCH " + OpenSearch.IMAGE.substring(OpenSearch.IMAGE.indexOf(':') + 1) + " (" + corpus.events().size() + " events):\n");
+            out.append("    rule                        java  opensearch  same\n");
             int same = 0;
             int queries = 0;
             int different = 0;
+            String burstLine = "";
             for (Rule rule : rules.values()) {
                 if (rule.correlation() != null) {
                     continue;
@@ -239,18 +365,18 @@ public class DetectionAsCodeDemo {
                 different += only.size();
                 boolean agree = java.equals(opensearch);
                 same += agree ? 1 : 0;
-                out.append(String.format(Locale.ROOT, "%-27s java %3d, opensearch %3d, the same events: %s%n", rule.name(), java.size(), opensearch.size(), yes(agree)));
+                out.append(String.format(Locale.ROOT, "    %-27s %4d  %10d  %s%n", rule.name(), java.size(), opensearch.size(), yes(agree)));
                 if (rule.name().equals("auth-failure")) {
                     Rule burst = rules.get("failed-login-burst");
                     List<Ev> hitEvents = corpus.events().stream().filter(e -> opensearch.contains(e.id())).toList();
                     List<Integer> fromOpenSearch = Engine.count(burst.correlation(), hitEvents);
                     List<Integer> fromJava = Engine.alerts(burst, rules, corpus.events());
-                    out.append(String.format(Locale.ROOT, "%-27s the backend has no correlation; the count over OpenSearch's failed logins gives %d alerts, Java %d, the same: %s%n", "failed-login-burst",
-                            fromOpenSearch.size(), fromJava.size(), yes(fromOpenSearch.equals(fromJava))));
+                    burstLine = String.format(Locale.ROOT, "    %-27s %4d  %10d  %s%n", "failed-login-burst *", fromJava.size(), fromOpenSearch.size(), yes(fromOpenSearch.equals(fromJava)));
                 }
             }
-            int events = corpus.events().size();
-            out.append("queries run: " + queries + " over " + events + " events, " + same + " of " + queries + " return exactly the events of the Java evaluation, events decided differently: " + different + "\n");
+            out.append(burstLine);
+            out.append("    * counted in Java over the failed logins OpenSearch found\n");
+            out.append("  THE RESULT: " + same + " of " + queries + " queries return the Java events, " + different + " differ\n");
         }
         return out.toString();
     }

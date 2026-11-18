@@ -14,12 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: A review that changes the page | 7 min |
-| 0:17 | Act 2: Encoding for the place the text goes | 7 min |
-| 0:24 | Act 3: Why filtering input is not the fix | 7 min |
-| 0:31 | Act 4: A strict Content-Security-Policy, with a fresh nonce for every page | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: A review that changes the page | 8 min |
+| 0:18 | Act 2: Encoding for the place the text goes | 8 min |
+| 0:26 | Act 3: Why filtering input is not the fix | 8 min |
+| 0:34 | Act 4: A strict Content-Security-Policy, with a fresh nonce | 8 min |
+| 0:42 | Exercises | 18 min |
 
 ## Walkthrough
 

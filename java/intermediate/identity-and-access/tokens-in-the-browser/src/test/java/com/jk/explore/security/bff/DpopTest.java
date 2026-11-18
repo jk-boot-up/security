@@ -19,6 +19,7 @@ class DpopTest {
         jwk.put("kty", "OKP");
         jwk.put("crv", "Ed25519");
         jwk.put("x", "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo");
+        assertEquals("{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}", DpopKey.canonical(jwk));
         assertEquals("kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k", DpopKey.thumbprint(jwk));
         DpopKey fromSeed = new DpopKey(Ed25519.fromSeed(Base64Url.decode("nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A")));
         assertEquals("kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k", fromSeed.thumbprint());

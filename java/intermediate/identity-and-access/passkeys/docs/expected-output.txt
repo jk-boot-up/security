@@ -1,38 +1,100 @@
 ONE. Registering a passkey: the bank keeps only a public key.
-  the bank sends a challenge of 32 random bytes and its relying party id bank.example
-  ana's phone makes a new P-256 key pair for bank.example, keeps the private key, and returns a credential id of 16 bytes and a public key of 91 bytes
-  the bank checks the challenge, the type, the origin and the relying party id hash: accepted (passkey ana's phone registered)
-  what the bank stores for ana's passkey: a credential id, a 91-byte public key and a counter of 0, and nothing that can sign
-  a copy of the bank's records cannot sign: an answer made with another key under ana's credential id: refused (signature does not match)
+  THE REQUEST (the bank to ana's phone, through the browser):
+    challenge  kppWym0d5TLqNpSHuZI4nNV6d9c1si0BD7r2Jf-Jes0
+               32 random bytes, base64url
+    rp id      bank.example
+  THE CLIENT DATA (the browser writes it, not the page):
+    {"type":"webauthn.create",
+    "challenge":"kppWym0d5TLqNpSHuZI4nNV6d9c1si0BD7r2Jf-Jes0",
+    "origin":"https://bank.example","crossOrigin":false}
+  THE RESPONSE (a new P-256 key pair, made for bank.example):
+    credential id  f8de8c471eaaf8bc92213f0e953b2e25 (16 bytes)
+    public key     91 bytes, starts 3059301306072a86
+    private key    stays on ana's phone
+  THE BANK'S CHECKS (challenge, type, origin, rp id hash):
+    accepted (passkey ana's phone registered)
+  WHAT THE BANK STORES:
+    credential id 16 bytes, public key 91 bytes, counter 0
+    nothing that can sign
+  A COPY OF THE RECORDS (another key, ana's credential id):
+    refused (signature does not match)
 TWO. Signing in: a fresh challenge, signed once.
-  ana touches her phone; it signs 37 bytes of authenticator data and the SHA-256 of the client data
-  the bank checks challenge, type, origin, relying party id hash, flags, signature and counter: accepted (signed in as ana with ana's phone)
-  the same answer sent again: refused (unknown or already used challenge)
-  an answer that arrives 301 seconds after its challenge: refused (challenge expired)
-  the same kind of answer with the user-verified flag switched on after signing: refused (signature does not match)
+  THE REQUEST (a fresh challenge, 32 bytes):
+    Iqpo4sN2OaPFl2mLT6AHAd9RXYLfcxfF6mHidhNNf5s
+  STEP 1. THE CLIENT DATA (133 bytes, the browser writes it):
+    {"type":"webauthn.get",
+    "challenge":"Iqpo4sN2OaPFl2mLT6AHAd9RXYLfcxfF6mHidhNNf5s",
+    "origin":"https://bank.example","crossOrigin":false}
+  STEP 2. SHA-256 OF THE CLIENT DATA (32 bytes):
+    6fa2b0548d1c68b5f6cb609179a397cd
+    ac15174953e27714fb77bdf454b25c37
+  STEP 3. THE AUTHENTICATOR DATA (37 bytes, the phone writes it):
+    rp id hash  05be55af508c5555...  SHA-256 of bank.example
+    flags       01  user present, not verified
+    counter     00000001  = 1
+  STEP 4. THE SIGNED BYTES (authenticator data + hash):
+    37 + 32 = 69 bytes
+  STEP 5. THE SIGNATURE (ES256, with the private key):
+    71 bytes, starts 304502204a365fb281a3a49f
+  THE BANK'S CHECK (the stored public key, the same 69 bytes):
+    signature valid: true
+    accepted (signed in as ana with ana's phone)
+  THE SAME ANSWER SENT AGAIN:
+    refused (unknown or already used challenge)
+  AN ANSWER 301 SECONDS AFTER ITS CHALLENGE (limit 300):
+    refused (challenge expired)
+  FLAGS CHANGED AFTER SIGNING (01 -> 05):
+    refused (signature does not match)
 THREE. A look-alike site gets nothing it can use.
-  ana opens https://bank-example.test, a copy of the bank's page
-  it asks for a passkey for its own name bank-example.test: nothing (the authenticator has no passkey for bank-example.test)
-  it passes on the bank's real challenge and asks for bank.example: nothing (the browser will not use bank.example for a page at https://bank-example.test)
-  even a browser that skipped that rule writes the page's real origin, and the bank checks it: refused (origin https://bank-example.test is not https://bank.example)
-  the same page asking for ana's password, which she types in: the password works at the bank: accepted (signed in as ana with a password)  <- A PASSWORD CAN BE PHISHED, A PASSKEY CANNOT
+  THE PAGE (a copy of the bank's page):
+    https://bank-example.test
+  REQUEST 1. A PASSKEY FOR ITS OWN NAME bank-example.test:
+    nothing (the authenticator has no passkey for bank-example.test)
+  REQUEST 2. THE BANK'S REAL CHALLENGE, RP ID bank.example:
+    is bank-example.test equal to bank.example?  no
+    does it end with .bank.example?  no
+    nothing (bank.example is not this page's site)
+  REQUEST 3. A BROWSER THAT SKIPPED THAT RULE:
+    signed client data: "origin":"https://bank-example.test"
+    the bank expects:   "origin":"https://bank.example"
+    refused (wrong origin https://bank-example.test)
+  THE SAME PAGE ASKS FOR ANA'S PASSWORD, AND SHE TYPES IT:
+    replayed at the bank: accepted (signed in as ana with a password)
+  a password can be phished; a passkey cannot
 FOUR. User verification for payments, and counters against copies.
-  a payment of 900 with only a touch: refused (user verification required)
-  the same payment with her fingerprint as well: accepted (signed in as ana with ana's phone)
-  ana's phone counts its signatures; the bank has now seen counter 6
-  an attacker copies the phone's key; the real phone signs in first: accepted (signed in as ana with ana's phone)
-  then the copy signs in: refused (counter 7 is not above 7: possible cloned authenticator)
-  the passkey is now suspended until ana confirms it, even for the real phone: refused (passkey suspended after a counter went backwards)
-  a synced passkey, counter 0: accepted (signed in as ana with ana's synced passkey)
-  a synced passkey, counter 0: accepted (signed in as ana with ana's synced passkey)
-  a synced passkey always reports 0, so a copy cannot be spotted by its counter: its protection is the account it syncs through
+  A PAYMENT OF 900 (the bank asks for user verification):
+    touch only, flags 01:
+      refused (user verification required)
+    touch and fingerprint, flags 05:
+      accepted (signed in as ana with ana's phone)
+  THE COUNTERS (the bank keeps the last one it saw):
+    the bank has seen 6
+    real phone:  counter 7, 7 > 6?  yes
+      accepted (signed in as ana with ana's phone)
+    copied key:  counter 7, 7 > 7?  no
+      refused (counter 7 is not above 7: a cloned key?)
+    real phone again, counter 8:
+      refused (passkey suspended after a counter went backwards)
+  A SYNCED PASSKEY (shared between ana's devices):
+    counter 0: accepted (signed in as ana with ana's synced passkey)
+    counter 0: accepted (signed in as ana with ana's synced passkey)
+  a synced passkey always reports 0: a copy cannot be spotted
 FIVE. The bill: recovery, lost devices and the move away from passwords.
-  ben registers 2 passkeys, his phone and a security key, and keeps 1 recovery code of 20 characters
-  ben's phone is lost; his new laptop has no passkey yet: nothing (the authenticator has no passkey for bank.example)
-  the security key from his drawer: accepted (signed in as ben with ben's security key)
-  the recovery code, once: accepted (recovered ben; register a new passkey now)
-  the recovery code, twice: refused (recovery code unknown or already used)
-  recovery is now the weakest way in, so it needs the same care as the passkeys themselves
-  ana's password still works alongside her passkeys: accepted (signed in as ana with a password)  <- THE WEAKEST WAY IN SETS THE LEVEL
-  once ana has two passkeys and the bank switches her password off: refused (password sign-in is switched off for ana)
-  a real bank uses a maintained WebAuthn library: the -with-spring-security version uses Spring Security's passkey support
+  BEN'S WAYS IN:
+    2 passkeys: his phone and a security key
+    1 recovery code of 20 characters; the bank keeps its SHA-256
+  BEN'S PHONE IS LOST:
+    new laptop:
+      nothing (the authenticator has no passkey for bank.example)
+    security key:
+      accepted (signed in as ben with ben's security key)
+    recovery code, once:
+      accepted (recovered ben; register a new passkey now)
+    recovery code, twice:
+      refused (recovery code unknown or already used)
+  recovery is now the weakest way in: guard it like a passkey
+  ANA'S OLD PASSWORD, STILL SWITCHED ON:
+    accepted (signed in as ana with a password)  <- THE WEAKEST WAY IN
+  ANA'S PASSWORD, SWITCHED OFF (she has two passkeys):
+    refused (password sign-in is switched off for ana)
+  a real bank uses a maintained WebAuthn library

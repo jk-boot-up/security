@@ -14,11 +14,11 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The application under test | 7 min |
-| 0:17 | Act 2: Passive and anonymous scans | 7 min |
-| 0:24 | Act 3: A logged-in scan | 7 min |
-| 0:31 | Act 4: The fixed application | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: One attack, worked out by hand | 7 min |
+| 0:17 | Act 2: The application, and a passive scan | 7 min |
+| 0:24 | Act 3: An active scan, without a login | 7 min |
+| 0:31 | Act 4: An active scan that is logged in | 7 min |
+| 0:38 | Act 5: The fixed application | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough

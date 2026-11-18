@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -63,16 +64,16 @@ class ImporterTest {
         assertEquals("imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", blocklist().importImage("http://2852039166/latest/meta-data/"));
         assertEquals("imported: DB_PASSWORD=demo-not-real", blocklist().importImage("http://127.1/"));
         assertEquals("imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", blocklist().importImage("http://[::ffff:a9fe:a9fe]/"));
-        assertEquals("imported: internal admin panel: 3 customers", blocklist().importImage("http://intranet.attacker.example/"));
+        assertEquals("imported: internal admin panel: 3 customers", blocklist().importImage("http://inside.evil.example/"));
         assertEquals("imported: AccessKeyId=DEMO-NOT-A-REAL-KEY", blocklist().importImage("http://evil.example/redirect"));
     }
 
     @Test
     void theGuardedImporterRefusesEverySpellingAndTheRedirect() {
         for (String address : new String[] {"http://169.254.169.254/", "http://2852039166/", "http://127.1/", "http://[::ffff:a9fe:a9fe]/",
-                "http://intranet.attacker.example/", "http://evil.example/redirect", "http://localhost/", "http://dual.attacker.example/cat.png"}) {
+                "http://inside.evil.example/", "http://evil.example/redirect", "http://localhost/", "http://dual.evil.example/cat.png"}) {
             String why = refusal(guarded(), address);
-            assertTrue(why.contains("resolves to a private address"), address + " -> " + why);
+            assertTrue(why.endsWith("not public"), address + " -> " + why);
         }
     }
 
@@ -86,14 +87,31 @@ class ImporterTest {
     @Test
     void theGuardedImporterConnectsToTheAddressItJudged() throws Exception {
         internet.resetNameServer();
-        assertEquals("imported: PNG-attacker-cat", guarded().importImage("http://rebind.attacker.example/cat.png"));
+        assertEquals("imported: PNG-attacker-cat", guarded().importImage("http://rebind.evil.example/cat.png"));
     }
 
     @Test
     void checkingAndThenConnectingByNameFallsToARebindingNameServer() throws Exception {
         internet.resetNameServer();
-        assertEquals("imported: internal admin panel: 3 customers",
-                new TwoStepImporter(internet, internet, fetcher).importImage("http://rebind.attacker.example/cat.png"));
+        Importer twoStep = new TwoStepImporter(internet, internet, fetcher);
+        assertEquals("imported: internal admin panel: 3 customers", twoStep.importImage("http://rebind.evil.example/cat.png"));
+        assertEquals(List.of("check: look up rebind.evil.example: [203.0.113.66], public", "look up rebind.evil.example: [10.0.0.5]",
+                "GET /cat.png at 10.0.0.5, Host: rebind.evil.example", "200 text/plain, 33 bytes"), twoStep.trace());
+    }
+
+    @Test
+    void theGuardedImporterLogsEveryCheckOfARedirect() {
+        Importer guarded = guarded();
+        assertEquals("169.254.169.254 is not public", refusal(guarded, "http://evil.example/redirect"));
+        assertEquals(List.of("port 80, no user info: allowed", "look up evil.example once: [203.0.113.66]", "203.0.113.66 is public: connect to it",
+                "GET /redirect at 203.0.113.66, Host: evil.example", "302 redirect to 169.254.169.254: check it again",
+                "port 80, no user info: allowed", "look up 169.254.169.254 once: [169.254.169.254]", "refused: 169.254.169.254 is not public"),
+                guarded.trace());
+    }
+
+    @Test
+    void theFormCarriesTheAddressPercentEncoded() {
+        assertEquals("url=http%3A%2F%2Fimages.example%2Fcat.png", SsrfSpringDemo.form(SsrfSpringDemo.HONEST));
     }
 
     @Test

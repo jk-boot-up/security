@@ -16,6 +16,11 @@ record Scan(List<Finding> findings) {
         boolean severe() {
             return severity.equals("Critical") || severity.equals("High");
         }
+
+        /** The CVE id: the alias when the advisory's own id is a GitHub one. */
+        String cve() {
+            return alias.isEmpty() ? id : alias;
+        }
     }
 
     static Scan ofImage(String image) throws IOException, InterruptedException {
@@ -45,6 +50,11 @@ record Scan(List<Finding> findings) {
 
     List<Finding> inPackages(String prefix) {
         return findings.stream().filter(f -> f.packageName().startsWith(prefix)).toList();
+    }
+
+    /** The critical and high findings in packages whose name starts with the prefix. */
+    List<Finding> severeIn(String prefix) {
+        return inPackages(prefix).stream().filter(Finding::severe).toList();
     }
 
     TreeSet<String> ids(String packagePrefix) {

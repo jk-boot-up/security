@@ -6,19 +6,21 @@ src/main/java/com/jk/explore/security/riskmgmt/
 ├── Optimizer.java           Chooses the set of controls that gives the largest net benefit (the loss avoided minus what the controls cost) within a budget, by trying every set
 ├── Register.java            The bank's register and its controls: made-up numbers in dollars, with ranges, the way an assessment workshop would produce them
 ├── Risk.java                A line of the register: how often it happens in a year, how much one event costs, and the 1 to 5 scores a heat map would use
-├── RiskManagementDemo.java  
+├── RiskManagementDemo.java  Prints the five acts
 ├── Simulation.java          Monte Carlo over years
-└── Tri.java                 A three-point estimate (the least, the most likely and the most that an expert will say) as a triangular distribution
+├── Tri.java                 A three-point estimate (the least, the most likely and the most that an expert will say) as a triangular distribution
+└── YearSteps.java           A teaching class: one simulated year of one risk, redone by hand from the same draws the simulation keeps
 ```
 
-**A bank's register of 8 risks, each with a range for how often it happens and what it costs, is simulated for 50,000 years: the heat map's top three share only 1 of 3 risks with the top three by expected loss; the whole register has an expected loss of $5.8M a year, 1 year in 20 loses more than $16.8M, and the chance of losing more than $5.0M in a year is 41.4%, against an appetite of 5%; the best set of controls within an $800k budget (backups, multi-factor login, vendor assessments and dual approval, $610k) cuts the expected loss to $3.1M and beats the cheapest-first set by $581k a year, but still leaves a 19.5% chance over the appetite; only all 7 controls ($1.7M) bring it to 4.1%.**
+**A bank's register of 8 risks, each with two ranges (how often, how much), is simulated for 50,000 years: ransomware alone, worked out by hand, costs $1.8M a year on average while 79.7% of years see none; the heat map's top three share only 1 of 3 with the top three by money; the whole register loses $5.8M in an average year, but 1 year in 20 loses more than $16.8M and 41.4% of years lose more than $5.0M; the best of 56 sets of controls within an $800k budget costs $610k and gains $2.1M a year, $581k more than buying the cheapest first, yet still leaves 19.5% of years over the board's appetite of 5%; only all 7 controls ($1.7M) reach 4.1%.**
 
 A risk register with a heat map says which risks look big; it does not say how much money is at stake, what a control is worth, or whether the bank is inside its appetite. This project keeps the register as ranges, a least, a most likely and a most value for how often a risk happens in a year and for what one event costs, and simulates **50,000 years** of events in Java (a seeded Monte Carlo, in the spirit of FAIR). It then picks controls within a budget by trying every set, and checks the residual risk against a stated appetite. It needs only the JDK; `./gradlew test`, then `./gradlew run`.
 
 What it shows:
+- **One risk by hand.** Ransomware's ranges average 0.233 events and $7.8M an event: **$1.8M** a year. One simulated year is worked out from its three draws, and **79.7%** of years see no ransomware at all.
 - **Heat map against money.** The top three risks by likelihood times impact share only **1 of 3** with the top three by expected loss.
 - **The whole register.** Expected loss **$5.8M** a year, **1 year in 20** loses more than **$16.8M**, and the chance of losing more than $5.0M in a year is **41.4%**; 1,000 years give an estimate 0.9% away.
-- **Treatment.** Within **$800k** the best set of four controls costs **$610k**, cuts the expected loss to **$3.1M**, and beats cheapest-first by **$581k** a year.
+- **Treatment.** Of the 127 sets of seven controls, 56 fit **$800k**; the best, four controls, costs **$610k**, cuts the expected loss to **$3.1M**, and beats cheapest-first by **$581k** a year.
 - **Appetite.** After the best set the chance over the appetite is **19.5%** against 5%; only all seven controls (**$1.7M**) give **4.1%**.
 - **The bill.** The inputs are an expert's ranges, the risks are taken as independent, and a number is easy to trust too much.
 
@@ -42,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Heat map against money | The top three risks by score share only 1 of 3 with the top three by expected loss. |
-| 2. The whole register | The expected loss is $5.8M a year, 1 year in 20 loses more than $16.8M, and 41.4% of years lose more than $5.0M. |
-| 3. Controls within a budget | The best set within $800k costs $610k and beats cheapest first by $581k a year. |
-| 4. Appetite and what is left | After the best set the chance of losing more than $5.0M is 19.5% against an appetite of 5%; all seven controls give 4.1%. |
-| 5. The bill | The inputs are ranges from a workshop, the risks are independent here, and a number is easy to trust too much. |
+| 1. One risk, from ranges to money | Ransomware is three-point ranges: 0.05, 0.15 and 0.5 events a year, and $500k, $3.0M and $20.0M for one event. Their averages, 0.233 and $7.8M, give an expected loss of $1.8M a year. Year 11 is worked out by hand from its three draws: 0.348 events a year, 1 event, a loss of $3.0M. Over 50,000 years, 79.7% have no ransomware at all. |
+| 2. The register: the heat map against money | Eight risks are scored on a heat map and simulated as money. The top three by score (card-breach, insider-fraud, outage) share only 1 of 3 with the top three by expected loss (ransomware $1.8M, third-party $1.0M, card-breach $920k). |
+| 3. The whole register: the bad years | Adding the eight risks year by year gives an expected loss of $5.8M (the eight averages also add to $5.8M), but 1 year in 10 loses more than $12.8M, 1 in 20 more than $16.8M, and 41.4% of years lose more than $5.0M. A ransomware loss 50% more likely to be large moves the total by $116k, as 0.233 x $1.5M / 3 predicts. |
+| 4. Controls within a budget | Seven controls each lower how often or how much. Of the 127 possible sets, 56 fit the $800k budget; the best (backups, mfa, vendors, approval) costs $610k, cuts the expected loss from $5.8M to $3.1M and gains $2.1M a year. Buying the cheapest first gains $1.5M: $581k a year less. |
+| 5. The appetite, and what is left | The board's appetite allows at most 5.0% of years to lose more than $5.0M. Before any control 41.4% do; after the best set 19.5% (outside), with a residual 1 in 20 year over $8.4M; only all seven controls, $1.7M, reach 4.1% (within), $910k over the budget. |
 
 ## Test
 
@@ -54,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `OptimizerTest`, `SimulationTest`. The distributions, the simulation, the optimizer and the register are tested with the JDK only. The demo is compared with its golden output.
+20 tests in `DemoRunsTest`, `OptimizerTest`, `SimulationTest`, `YearStepsTest`. The distributions, the simulation, the hand-worked year (`YearSteps`, proved equal to the simulation for every risk and year), the optimizer and the register are tested with the JDK only. The simulation is seeded and uses `StrictMath`, so the demo prints the same text on every run and machine, and it is compared with its golden output.
 
 ## What the simulation got right, and what it left out
 

@@ -17,6 +17,7 @@ import javax.xml.crypto.dsig.XMLSignatureFactory;
 import javax.xml.crypto.dsig.dom.DOMSignContext;
 import javax.xml.crypto.dsig.keyinfo.KeyInfo;
 import javax.xml.crypto.dsig.keyinfo.KeyInfoFactory;
+import javax.xml.crypto.dsig.keyinfo.KeyValue;
 import javax.xml.crypto.dsig.spec.C14NMethodParameterSpec;
 import javax.xml.crypto.dsig.spec.TransformParameterSpec;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -130,7 +131,8 @@ final class SamlTools {
             SignedInfo signedInfo = factory.newSignedInfo(factory.newCanonicalizationMethod(CanonicalizationMethod.EXCLUSIVE, (C14NMethodParameterSpec) null),
                     factory.newSignatureMethod("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", null), List.of(reference));
             KeyInfoFactory keyInfoFactory = factory.getKeyInfoFactory();
-            KeyInfo keyInfo = keyInfoFactory.newKeyInfo(List.of(keyInfoFactory.newKeyValue(key.getPublic())));
+            KeyValue publicKey = keyInfoFactory.newKeyValue(key.getPublic());
+            KeyInfo keyInfo = keyInfoFactory.newKeyInfo(List.of(publicKey));
             Node afterIssuer = element.getElementsByTagNameNS(SAML, "Issuer").item(0).getNextSibling();
             DOMSignContext context = new DOMSignContext(key.getPrivate(), element, afterIssuer);
             factory.newXMLSignature(signedInfo, keyInfo).sign(context);

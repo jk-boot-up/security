@@ -19,6 +19,7 @@ Security spending follows fashion and fear, and nobody has priced the attacker's
 | Role | Class |
 | --- | --- |
 | The tree | `Node`, `Analysis`, `BankTree` |
+| The arithmetic by hand | `GateSteps` |
 | Defences and planning | `Defence`, `Planner` |
 | Abuse cases | `AbuseCase`, `BankConfig` |
 | Entry point | `AttackTreeDemo` |
@@ -37,10 +38,10 @@ Security spending follows fashion and fear, and nobody has priced the attacker's
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 13, all passing |
-| Demo output | 66 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 121 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:46, 1920×1080, narrated in the amy-slow voice |
+| Video | 16:47, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

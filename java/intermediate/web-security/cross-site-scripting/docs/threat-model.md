@@ -47,7 +47,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 - Every place that writes user text uses the encoder for its context.
 - The nonce comes from a secure random source and is new for every response, and pages carrying it are not cached and shared.
-- In the demo, the problem is shown with a harmless bold tag and the policy is evaluated in Java.
+- In the demo, the examples are only text read by a small browser model, and the policy is evaluated in Java.
 
 ## Out of scope
 

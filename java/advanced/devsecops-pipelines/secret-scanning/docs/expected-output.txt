@@ -1,26 +1,94 @@
---- the history is the repository
-commits: 5, real secrets planted: 5, look-alikes: 4
-own scanner, files now:     2 of 5 real secrets found, 2 look-alikes flagged, 0 other alarms
-own scanner, all history:   5 of 5 real secrets found, 2 look-alikes flagged, 0 other alarms
-gitleaks, files now:        2 of 5 real secrets found, 1 look-alikes flagged, 0 other alarms
-gitleaks, all history:      4 of 5 real secrets found, 1 look-alikes flagged, 0 other alarms
---- what each one gets wrong
-own scanner misses: none
-own scanner flags: key in the documentation, test key of a fixture
-gitleaks misses: database password
-gitleaks flags: test key of a fixture
---- an allowlist and a baseline
-gitleaks with the allowlist: 4 of 5 real secrets found, 0 look-alikes flagged, 0 other alarms
-findings before the new commit: 7, exit 1
-with that report as the baseline, after one more token: 1 new, exit 1
---- blocking before the secret leaves the laptop
-the first, clean push: accepted, commits there: 1
-commit with a secret and the hook: refused, commits: 1
-the same commit with --no-verify: made, commits: 2
-push of it to the shared repository: rejected, commits there: 1
-a clean change: accepted, commits there: 2
---- the bill
-a fresh clone still holds the payment key that a commit removed: yes
-removing a file does not remove a secret: revoke the key first, then clean up
-a hook on a laptop can be skipped, a hook on the server cannot
-every scanner misses something and flags something: measure yours on planted secrets
+ONE. One string, measured by hand.
+  THE INPUT (k8s/secret.yaml, commit 5):
+    key: c2tfbGl2ZV81MVpw... (44 characters, base64)
+    pattern rules that match it: 0 (base64 hides the prefix)
+  HOW THE ENTROPY IS MADE (bits per character):
+    H = the sum of p x log2(1/p), p = count / 44
+    21 characters once:     21 x 1/44 x log2(44/1) = 2.606
+    6 characters twice:     6 x 2/44 x log2(44/2) = 1.216
+    2 characters 3 times:   2 x 3/44 x log2(44/3) = 0.528
+    1 character 5 times:    1 x 5/44 x log2(44/5) = 0.357
+    H = 4.707, the threshold 4.2: a secret
+  A LOOK-ALIKE (checksums.txt, a SHA-256 in hex):
+    9f86d081884c7d65... (64 characters, 16 different)
+    at most log2(16) = 4.000, H = 3.786: below 4.2
+  WHAT THE DETECTOR REPORTS:
+    the base64 key  high-entropy-string
+    the checksum    nothing
+    decoded, the key is sk_live_... (key in a Kubernetes Secret)
+TWO. The files now, and the whole history.
+  THE REPOSITORY (5 commits):
+    commit 1  first version of the payments service
+    commit 2  deploy script
+    commit 3  build on every push
+    commit 4  remove the secrets from the files
+    commit 5  store the key in a Kubernetes Secret
+  THE PLANTED STRINGS (5 real, 4 look-alikes):
+    real  payment key                  added 1, removed 4
+    real  database password            added 1, removed 4
+    real  cloud access key             added 2, removed 4
+    real  source token                 added 3, still there
+    real  key in a Kubernetes Secret   added 5, still there
+    fake  key in the documentation     added 1, still there
+    fake  checksum                     added 1, still there
+    fake  test key of a fixture        added 1, still there
+    fake  identifier                   added 1, removed 4
+  A SCAN OF THE FILES NOW (real secrets found):
+    our scanner 2 of 5, gitleaks 2 of 5
+  A SCAN OF THE WHOLE HISTORY (real secrets found):
+    our scanner 5 of 5, gitleaks 4 of 5
+  A FRESH CLONE:
+    holds the payment key that commit 4 removed: yes
+THREE. What each scanner gets wrong.
+  THE 9 STRINGS, AND WHAT EACH SCANNER SAYS:
+    the truth                        ours     gitleaks
+    real payment key                 found    found
+    real database password           found    missed
+    real cloud access key            found    found
+    real source token                found    found
+    real key in a Kubernetes Secret  found    found
+    fake key in the documentation    flagged  quiet
+    fake checksum                    quiet    quiet
+    fake test key of a fixture       flagged  flagged
+    fake identifier                  quiet    quiet
+  HOW THE SCORE IS MADE:
+                                ours        gitleaks
+    secrets found               5 of 5      4 of 5
+    look-alikes flagged         2 of 4      1 of 4
+    recall = found / real       5/5 = 100%  4/5 = 80%
+    precision = real / flagged  5/7 = 71%   4/5 = 80%
+  WHY THE PASSWORD IS MISSED BY GITLEAKS:
+    db.password=Summer20...: 11 characters, H = 3.096
+    no known prefix and little entropy; our scanner has a
+    rule for the word password, so it finds it
+FOUR. An allowlist and a baseline.
+  THE ALLOWLIST (gitleaks.toml):
+    paths ^docs/ and /test/resources/ are not reported
+  BEFORE THE ALLOWLIST:
+    secrets found 4 of 5, look-alikes flagged 1 of 4
+  AFTER THE ALLOWLIST:
+    secrets found 4 of 5, look-alikes flagged 0 of 4
+  THE BASELINE (today's report, 7 findings, exit 1):
+    commit 1  app.properties      stripe-access-token
+    commit 1  fixture.properties  stripe-access-token
+    commit 2  deploy.env          aws-access-token
+    commit 3  ci.properties       github-pat
+    commit 5  secret.yaml         generic-api-key
+    commit 5  secret.yaml         kubernetes-secret-yaml
+    commit 5  secret.yaml         stripe-access-token
+  AFTER ONE MORE COMMIT, WITH THAT BASELINE:
+    findings 1 new, exit 1
+    commit 6  ci.properties       github-pat
+FIVE. Blocking a secret before it is shared.
+  THE HOOKS (both run gitleaks):
+    pre-commit   on the laptop, scans what is staged
+    pre-receive  on the shared repository, scans each push
+  A CLEAN FIRST PUSH:
+    accepted, commits on the server 1
+  THE INPUT: A COMMIT WITH THE PAYMENT KEY (app.properties)
+    with the pre-commit hook: refused, commits on the laptop 1
+    with --no-verify: made, commits on the laptop 2
+  THE RESULT: THE PUSH OF THAT COMMIT
+    pre-receive: rejected, commits on the server 1
+  AFTER THE KEY IS TAKEN OUT, A CLEAN CHANGE:
+    accepted, commits on the server 2

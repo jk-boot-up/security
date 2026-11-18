@@ -4,15 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** The demo must print exactly the golden output. Needs python3, pip (first run, with a network) and Graphviz. */
-@Tag("integration")
+/** The demo, printed from the recorded pytm answers, must be exactly the golden output. Needs no Python. */
 class DemoRunsTest {
 
     @Test
     void demoOutputMatchesTheGoldenFile() throws Exception {
-        assertEquals(Files.readString(Path.of("docs", "expected-output.txt")), PytmDemo.run());
+        assertEquals(Files.readString(Path.of("docs", "expected-output.txt")), PytmDemo.run(new Recorded(Recorded.DIR)));
     }
 }

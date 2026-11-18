@@ -13,7 +13,8 @@ public final class Spki {
 
     public static String pin(PublicKey key) {
         try {
-            return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(key.getEncoded()));
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(key.getEncoded());
+            return Base64.getEncoder().encodeToString(hash);
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

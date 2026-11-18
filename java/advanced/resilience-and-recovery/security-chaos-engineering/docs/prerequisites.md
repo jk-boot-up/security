@@ -13,7 +13,7 @@
 ## What you will need
 
 - A JDK is optional: Gradle finds or downloads JDK 25 by itself. Everything else comes with the Gradle wrapper.
-- docker pull ghcr.io/shopify/toxiproxy
+- docker pull ghcr.io/shopify/toxiproxy:2.13.0
 - About an hour for the session guide.
 
 ## Tech stack and versions

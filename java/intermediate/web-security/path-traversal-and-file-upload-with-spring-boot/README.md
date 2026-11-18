@@ -4,7 +4,7 @@
 src/main/java/com/jk/explore/security/uploadspring/
 ├── Downloads.java        "Download invoice {name}": returns the text of the file
 ├── FilesController.java  The store's file routes: invoice downloads, photo uploads, the uploaded files, and the "return to" redirect
-├── FilesSpringDemo.java  Runs the invoice download, photo upload and "return to" story in six numbered acts against real Spring Boot servers on loopback
+├── FilesSpringDemo.java  Runs the invoice download, photo upload and "return to" story in eight numbered acts against real Spring Boot servers on loopback
 ├── Layout.java           The folders of the store's server, made in a temporary directory so the demo and the tests touch nothing else: <pre> invoices/ what customers may download invoices-private/ a sibling whose name starts the same way secrets/ the database settings config/ the application's settings webroot/ files the web server hands out as they are uploads-private/ where the fixed version keeps uploads, outside the web root </pre>
 ├── NaiveDownloads.java   The first version: the file is whatever the base folder plus the name says, {@code ..} included
 ├── NaiveUploads.java     The first version: the file is saved in the web root under the name the customer gave, whatever it contains
@@ -50,16 +50,18 @@ An online store lets customers download their invoices and staff upload product 
 ./gradlew run
 ```
 
-The demo tells the story in 6 acts, each printing exact numbers that the tests check:
+The demo tells the story in 8 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Downloading an invoice | An honest invoice name returns the invoice. |
-| 2. A name with dot-dot leaves the folder | ../secrets/db.txt returns the database password and ../config/app.properties returns the settings. |
-| 3. A text check on the path is not a path check | A startsWith on the path text refuses the secrets folder but lets the sibling folder invoices-private through. |
-| 4. Names, paths and links, all checked | The fixed download checks the name, the path and the real path after links; Spring's static handler refuses dot-dot but follows a link out of the folder. |
-| 5. Uploads | The naive shop keeps the customer's name, serves a script inline and overwrites the settings; the fixed shop makes its own name, checks the bytes, forces a download and limits the size. |
-| 6. Where to send the customer next | A naive return address sends the customer anywhere; the fixed one accepts only a path on this site, and an absolute address only on an exact host match. |
+| 1. An honest name downloads one invoice | The shop's folders are made in a temporary folder; the form sends GET /invoices?name=invoice-1001.txt; the controller joins the name to the invoices folder and answers 200 with Invoice 1001: Ana, 42.50. |
+| 2. A name with .. climbs out of the folder | GET /invoices?name=..%2Fsecrets%2Fdb.txt reaches the controller as ../secrets/db.txt; the path .../invoices/../secrets/db.txt is .../secrets/db.txt, and the shop answers 200 with the database password; ../config/app.properties gives the settings. |
+| 3. A text check is not a path check | The prefix version removes .. and checks that the path's text starts with .../invoices: the secrets file gets 400, but .../invoices-private/payroll.txt starts with the same letters and gets 200; compared as a path, invoices-private is not invoices. |
+| 4. The fixed version checks in four layers | Spring decodes the name once and the code never again; then the shape invoice-NNNN.txt, the path compared as a path, the real path after links: the honest invoice gets 200; the .. name, the encoded one and the double-encoded one get 400 not an invoice name; a link named invoice-5555.txt that points at the secrets file gets 400 only from the last layer. |
+| 5. Spring's static handler follows a link | A resource handler maps /static-invoices/** to the invoices folder: an encoded slash gets 400 and a dot-dot segment 404, but the link invoice-5555.txt gets 200 with the database password. |
+| 6. The naive upload trusts the customer's name | A multipart part carries filename="../../config/app.properties"; getOriginalFilename() returns it as sent; the naive shop saves cat.png, serves page.html as text/html inline, and the settings now read admin=mallory. |
+| 7. The fixed upload decides for itself | Spring's max-file-size=2KB and the code's 1 to 1000 bytes; PNG or JPEG from the first bytes; a server-made name outside the web root: the photo becomes /uploads/photo-0001.png, both scripts get 400, the .. name is ignored, 1500 bytes get 400 and 5000 bytes get 413 from Spring before the controller; the download is image/png, attachment, nosniff. |
+| 8. Return links stay on our own site | GET /continue?returnTo=... answers 302: the naive shop puts any link in Location; the fixed one keeps /orders?page=2 and sends the rest to /account with its reason; an absolute link is allowed only when its host is exactly shop.example. |
 
 ## Test
 
@@ -67,7 +69,7 @@ The demo tells the story in 6 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `FilesSpringTest`. Each test builds its own temporary layout, starts real servers over it and removes it.
+14 tests in `DemoRunsTest`, `FilesSpringTest`. Each test builds its own temporary layout, starts real servers over it and removes it.
 
 ## What the simulation got right, and what it left out
 

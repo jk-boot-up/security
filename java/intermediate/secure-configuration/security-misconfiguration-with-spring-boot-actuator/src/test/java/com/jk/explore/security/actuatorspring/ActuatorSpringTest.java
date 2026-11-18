@@ -120,7 +120,7 @@ class ActuatorSpringTest {
         try (Running store = Running.start("hardened", "management.endpoints.web.exposure.include=*")) {
             List<ActuatorChecker.Finding> findings = new ActuatorChecker().check(store);
             assertEquals(7, ActuatorChecker.score(findings));
-            assertEquals(List.of("route map hidden, even from an operator"), findings.stream().filter(f -> !f.pass()).map(ActuatorChecker.Finding::name).toList());
+            assertEquals(List.of("route map hidden"), findings.stream().filter(f -> !f.pass()).map(ActuatorChecker.Finding::name).toList());
             assertEquals(401, wire.status(store.managementUrl() + "/actuator/env", null));
         }
     }

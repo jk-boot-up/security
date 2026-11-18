@@ -27,13 +27,19 @@ public final class Evaluator {
         }
     }
 
-    public static Decision decide(Request r, Guard guard) {
+    /** The request with the keys every request carries: the user name, the principal's ARN and its tags. */
+    static Request withContext(Request r) {
         Principal p = r.principal();
         Map<String, String> context = new LinkedHashMap<>(r.context());
         context.putIfAbsent("aws:username", p.name());
         context.putIfAbsent("aws:PrincipalArn", p.arn());
         p.tags().forEach((k, v) -> context.putIfAbsent("aws:PrincipalTag/" + k, v));
-        Request req = new Request(p, r.action(), r.resource(), context);
+        return new Request(p, r.action(), r.resource(), context);
+    }
+
+    public static Decision decide(Request r, Guard guard) {
+        Request req = withContext(r);
+        Principal p = req.principal();
 
         for (Policy pol : p.policies()) {
             if (matches(pol, req, false, true)) {
@@ -132,7 +138,7 @@ public final class Evaluator {
         return false;
     }
 
-    private static boolean namesPrincipal(Policy policy, Request r) {
+    static boolean namesPrincipal(Policy policy, Request r) {
         for (Policy.Statement s : policy.statements()) {
             if (s.allow() && s.principals().contains(r.principal().arn()) && applies(s, r, true)) {
                 return true;

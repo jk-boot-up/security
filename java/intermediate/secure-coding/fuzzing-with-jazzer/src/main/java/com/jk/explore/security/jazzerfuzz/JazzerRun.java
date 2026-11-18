@@ -36,9 +36,18 @@ public final class JazzerRun {
             Files.writeString(corpus.resolve("seed" + i++), seed);
         }
         Path artifacts = Files.createDirectories(work.resolve("artifacts"));
-        List<String> command = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-XX:-OmitStackTraceInFastThrow", "-cp", System.getProperty("java.class.path"),
-                "com.code_intelligence.jazzer.Jazzer", "--target_class=com.jk.explore.security.jazzerfuzz.targets." + settings.target(), "--instrumentation_includes=com.jk.explore.security.jazzerfuzz.**",
-                "--keep_going=20", "-runs=" + settings.runs(), "-seed=" + settings.randomSeed(), "-max_len=" + settings.maxLen(), "-artifact_prefix=" + artifacts + "/", corpus.toString()));
+        List<String> command = new ArrayList<>(List.of(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-XX:-OmitStackTraceInFastThrow", "-cp", System.getProperty("java.class.path"),
+                "com.code_intelligence.jazzer.Jazzer",
+                "--target_class=com.jk.explore.security.jazzerfuzz.targets." + settings.target(),
+                "--instrumentation_includes=com.jk.explore.security.jazzerfuzz.**",
+                "--keep_going=20",
+                "-runs=" + settings.runs(),
+                "-seed=" + settings.randomSeed(),
+                "-max_len=" + settings.maxLen(),
+                "-artifact_prefix=" + artifacts + "/",
+                corpus.toString()));
         Process p = new ProcessBuilder(command).redirectErrorStream(true).directory(work.toFile()).start();
         String output = new String(p.getInputStream().readAllBytes());
         if (!p.waitFor(300, TimeUnit.SECONDS)) {

@@ -32,7 +32,8 @@ public final class SafeUploads implements Uploads {
         if (kind == null) {
             throw new Refused("not a PNG or JPEG image");
         }
-        String id = String.format("photo-%04d.%s", ++counter, kind.extension()); // the customer's file name is not used for anything
+        // the customer's file name is not used for anything
+        String id = String.format("photo-%04d.%s", ++counter, kind.extension());
         Path target = layout.uploadsPrivate().resolve(id);
         try {
             Files.write(target, bytes);

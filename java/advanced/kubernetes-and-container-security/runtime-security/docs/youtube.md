@@ -16,18 +16,36 @@ Chapters:
 
 ```
 00:00 Introduction
-01:54 The Scenario
-02:21 Act One — Falco on this machine
-02:35 Act Two — The service doing its work
-02:45 Act Three — A shell in the container
-02:52 Act Four — A write where it never writes
-03:04 Act Five — A connection it never makes
-03:15 Act Six — Prevent and detect
-03:26 What It Costs
-04:03 Who Does What
-04:23 Where You Have Seen It
-04:46 How To Use It
-05:05 Thanks for Watching
+00:48 The Scenario
+01:21 The Words
+01:56 What the Letters Stand For
+02:52 What the Letters Stand For (continued)
+03:09 How one audit record is read
+04:07 Valid rules, a driver that cannot load
+05:01 Act One — Falco on this machine
+05:15 Act One — Falco on this machine
+05:29 The baseline, the work, and no alert
+06:20 Act Two — Normal work, no alert
+06:30 Act Two — Normal work, no alert
+06:38 Act Two — Normal work, no alert
+07:05 A shell where none belongs
+07:47 Act Three — A shell in the container
+08:02 Act Three — A shell in the container
+08:12 Prevent with a read-only root, detect all the same
+09:03 Act Four — A write where it never writes
+09:18 Act Four — A write where it never writes
+09:31 A call to an address off the baseline
+10:16 Act Five — A connection it never makes
+10:38 What It Costs
+11:10 Where You Have Seen It
+11:41 How To Use It
+12:13 The Java Classes
+12:27 Audit — the container, from the cgroup path
+12:42 Audit — a socket address, from hex
+12:55 Rules — a shell, a write, a connection
+13:11 Sensor — a container that shares the kernel's processes
+13:26 Falco — falco --validate
+13:38 Thanks for Watching
 ```
 
 ## Tags

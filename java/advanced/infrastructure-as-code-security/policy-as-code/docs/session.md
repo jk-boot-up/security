@@ -14,16 +14,15 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Deny by default | 7 min |
-| 0:17 | Act 2: The holes | 7 min |
-| 0:24 | Act 3: Testing the policy and its tests | 7 min |
-| 0:31 | Act 4: In the cluster and in the build | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: Deny by default | 8 min |
+| 0:18 | Act 2: The holes: a missing field | 8 min |
+| 0:26 | Act 3: Testing the policy and its tests | 8 min |
+| 0:34 | Act 4: In the cluster and in the build | 8 min |
+| 0:42 | Exercises | 18 min |
 
 ## Walkthrough
 
-Run act two and find the two requests the draft allows. In act three find the four mutants that one test for each rule misses.
+Run act two and find the two requests the draft allows, and say why each step is undefined. In act three find the four mutants that one test for each rule misses, and write the tests that notice them.
 
 ## Exercises
 

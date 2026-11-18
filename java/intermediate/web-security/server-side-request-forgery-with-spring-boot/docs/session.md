@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Importing an image from a web address | 7 min |
-| 0:17 | Act 2: The server fetches whatever it is told | 7 min |
-| 0:24 | Act 3: A blocklist of names is easy to walk around | 7 min |
-| 0:31 | Act 4: Check the address the connection really uses | 7 min |
-| 0:38 | Act 5: Limits, and why checking and then connecting is not enough | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: The shop's import form works | 5 min |
+| 0:15 | Act 2: The server fetches whatever it is told | 5 min |
+| 0:20 | Act 3: A blocklist of names is easy to walk around | 5 min |
+| 0:25 | Act 4: Check the address the connection really uses | 5 min |
+| 0:30 | Act 5: Limits on what is fetched | 5 min |
+| 0:35 | Act 6: A second lookup can give a different answer | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

@@ -15,7 +15,7 @@ src/main/java/com/jk/explore/security/ssrfspring/
 ├── NaiveImporter.java      The first version: fetch whatever address the customer gives, and follow whatever redirect comes back
 ├── Router.java             Where a connection to an address really goes
 ├── ShopApp.java            
-├── SsrfSpringDemo.java     Runs the product image import story in five numbered acts against real Spring Boot servers and a small invented internet on loopback
+├── SsrfSpringDemo.java     Runs the product image import story in six numbered acts against real Spring Boot servers and a small invented internet on loopback
 ├── Target.java             An address taken apart by hand, the same way for every importer
 └── TwoStepImporter.java    The mistake that looks like a fix: resolve the name and judge it, then hand the same name to the client, which resolves it again
 ```
@@ -38,7 +38,7 @@ A receptionist who will phone any number a visitor writes on a slip. The visitor
 
 ## The scenario
 
-An online store lets staff import a product image from a web address. The demo starts the real shop five times, with a different importer each time, and posts addresses to it. The addresses lead into a small invented internet of local servers.
+An online store lets staff import a product image from a web address. The demo starts the real shop four times, with a different importer each time, and posts addresses to it. The addresses lead into a small invented internet of local servers.
 
 ## Run
 
@@ -46,15 +46,16 @@ An online store lets staff import a product image from a web address. The demo s
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. Importing an image from a web address | An honest address fetches the image. |
-| 2. The server fetches whatever it is told | The metadata address, localhost and the office admin page all answer the importer with their secrets. |
-| 3. A blocklist of names is easy to walk around | The listed name is refused; a decimal spelling, 127.1, a mapped IPv6 address, a name that points inside and a redirect all get through. |
-| 4. Check the address the connection really uses | The importer resolves the name once, judges every address, connects to the judged address and judges each redirect again; every disguise is refused and the honest address still works. |
-| 5. Limits, and why checking and then connecting is not enough | Odd ports, pages that are not images, large answers and slow answers are refused; a client that checks and then connects by name is beaten by a rebinding name server. |
+| 1. The shop's import form works | The invented internet has two public hosts and three inside ones; the staff form posts url=http%3A%2F%2Fimages.example%2Fcat.png, which decodes to http://images.example/cat.png; the importer looks up 203.0.113.10, sends GET /cat.png with Host: images.example, and the shop answers 200 imported: PNG-cat. |
+| 2. The server fetches whatever it is told | Three addresses that point inside each come back 200: the metadata address gives the demo cloud key, localhost gives DB_PASSWORD=demo-not-real, and 10.0.0.5 gives the office admin panel. |
+| 3. A blocklist of names is easy to walk around | A blocklist of four host names refuses 169.254.169.254 as written and nothing else: 2852039166, 127.1, [::ffff:a9fe:a9fe], inside.evil.example and a redirect from evil.example all import, because Java connects to the same inside addresses. |
+| 4. Check the address the connection really uses | The guarded importer allows only ports 80 and 443 with no user info, looks the name up once, refuses any answer that is not public, connects to the checked address with the original Host header and checks every redirect again: the honest image imports and the eight attacks get 400. |
+| 5. Limits on what is fetched | The guarded importer also limits the port to 80 or 443, the type to image/..., the size to 1024 bytes and the time to 1500 ms: port 22, a web page, a 5000-byte answer and a 3-second answer all get 400. |
+| 6. A second lookup can give a different answer | A two-step importer checks rebind.evil.example (203.0.113.66, public) and then lets the client look it up again (10.0.0.5): it imports the office admin panel; the guarded importer looks it up once and only reaches the attacker's own cat picture. |
 
 ## Test
 
@@ -62,7 +63,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `ImporterTest`, `PolicyTest`. Each server answers on its own thread, and the timeouts are generous, so the demo prints the same text on every run.
+17 tests in `DemoRunsTest`, `ImporterTest`, `PolicyTest`. Each server answers on its own thread, and the timeouts are generous, so the demo prints the same text on every run.
 
 ## What the simulation got right, and what it left out
 
@@ -144,4 +145,4 @@ If the shop knows which hosts it imports from, keep an allow-list of hosts and l
 
 ## Where this sits
 
-This is the tools version of [server-side-request-forgery](../server-side-request-forgery), in the [web-security](..) module. It follows the same five stories and prints the same lines where the stories match.
+This is the tools version of [server-side-request-forgery](../server-side-request-forgery), in the [web-security](..) module. It follows the same stories, in six acts, and adds the HTTP status, the form as posted and the importer's own log.

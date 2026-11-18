@@ -1,32 +1,118 @@
 ONE. nginx with a certificate from the local authority.
-  a client that trusts the lab's root asks for www.shop.localhost: 200 over TLSv1.3
-  a client that trusts only its own default roots: refused (the certificate is not signed by anything this client trusts)
-  the same client, asking for pay.shop.localhost, which the certificate does not name: refused (the certificate is not for that name)
-  plain http on its own port: 301, sent on to https: true
-  by default the Server header gives the exact version of nginx: true
-  with server_tokens off it says only: nginx
+THE CERTIFICATE (made with step, signed by the lab's root):
+  subject   www.shop.localhost
+  names     [www.shop.localhost]
+  issuer    Shop Lab Root
+  lifetime  24 hours
+THE NGINX LINES (the https server block):
+  listen 127.0.0.1:<https-port> ssl;
+  ssl_certificate <work>/ca/www.crt;
+  ssl_certificate_key <work>/ca/www.key;
+THE REQUESTS (the roots the client trusts, the name it asks):
+  1  the lab's root    www.shop.localhost
+  2  default roots     www.shop.localhost
+  3  the lab's root    pay.shop.localhost
+THE CHECKS, BY HAND (signed by a trusted root? name listed?):
+  1  Shop Lab Root trusted: yes; www.shop.localhost listed: yes
+  2  Shop Lab Root trusted: no
+  3  Shop Lab Root trusted: yes; pay.shop.localhost listed: no
+THE RESPONSES:
+  1  200 over TLSv1.3
+  2  refused: no trusted root signed it
+  3  refused: the certificate is not for that name
+THE REQUEST (plain http):
+  GET http://www.shop.localhost:<http-port>/cart
+THE RESPONSE:
+  301  Location: https://www.shop.localhost:<https-port>/cart
+BEFORE THE FIX (server_tokens on, the default):
+  Server: nginx/<version>
+AFTER THE FIX (server_tokens off;):
+  Server: nginx
 TWO. Which protocol versions it speaks.
-  the default accepts a client that offers only TLS 1.2: 200 over TLSv1.2; and one that offers 1.3: 200 over TLSv1.3
-  with ssl_protocols TLSv1.3, the client that offers only 1.2: refused (no protocol version in common); the one that offers 1.3: 200 over TLSv1.3
-  the price of the stricter setting is every client that cannot speak 1.3; the setting is one line, and a change needs a reload
+THE CLIENTS (what each one offers):
+  old client  [TLSv1.2]
+  new client  [TLSv1.3]
+BEFORE THE CHANGE (the default line):
+  ssl_protocols TLSv1.2 TLSv1.3;
+THE AGREEMENT, BY HAND (the highest version both speak):
+  old client  [TLSv1.2, TLSv1.3] and [TLSv1.2] -> TLSv1.2
+  new client  [TLSv1.2, TLSv1.3] and [TLSv1.3] -> TLSv1.3
+THE RESPONSES:
+  old client  200 over TLSv1.2
+  new client  200 over TLSv1.3
+AFTER THE CHANGE (one line):
+  ssl_protocols TLSv1.3;
+THE AGREEMENT, BY HAND (the highest version both speak):
+  old client  [TLSv1.3] and [TLSv1.2] -> none
+  new client  [TLSv1.3] and [TLSv1.3] -> TLSv1.3
+THE RESPONSES:
+  old client  refused: no protocol version in common
+  new client  200 over TLSv1.3
 THREE. HSTS, and the add_header trap.
-  by default the response has Strict-Transport-Security: false
-  with add_header in the server block: max-age=31536000; includeSubDomains; over plain http, where a browser would ignore it, it is sent: false
-  /account has its own add_header (X-Frame-Options): the page has X-Frame-Options: DENY and Strict-Transport-Security: false  <- A LOCATION'S add_header REPLACES THE SERVER'S
-  repeating it in the location: Strict-Transport-Security: true
-  a browser that has seen the header refuses plain http to this name for a year; max-age is a promise that is hard to take back
+BEFORE THE FIX (no add_header line):
+  GET / over https  Strict-Transport-Security: (none)
+THE LINE ADDED TO THE SERVER BLOCK:
+  add_header Strict-Transport-Security
+    "max-age=31536000; includeSubDomains" always;
+AFTER THE FIX (Strict-Transport-Security in the response):
+  GET / over https  max-age=31536000; includeSubDomains
+  GET / over http   (none)
+THE max-age, WORKED OUT:
+  31536000 s / 86400 s a day = 365 days
+  includeSubDomains: yes, so every name under www.shop.localhost too
+THE TRAP (/account has an add_header of its own):
+  location /account {
+      add_header X-Frame-Options DENY always;
+  }
+THE RULE, BY HAND (a location's own lines replace the server's):
+  server    [Strict-Transport-Security]
+  location  [X-Frame-Options]
+  applied   [X-Frame-Options]
+THE RESPONSE FROM GET /account:
+  X-Frame-Options: DENY
+  Strict-Transport-Security: (none)  <- THE SERVER'S LINE IS LOST
+AFTER THE FIX (the line repeated in the location):
+  X-Frame-Options: DENY
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
 FOUR. Caddy makes its own certificates.
-  the Caddyfile names only the site; Caddy made a root, an intermediate and a certificate by itself: 200 over TLSv1.3, chain of 2, issued by Caddy Local Authority - ECC Intermediate
-  the certificate lasts 12 hours, and Caddy renews it on its own
-  a client that trusts nginx's root but not Caddy's: refused (the certificate is not signed by anything this client trusts)
-  plain http: 308, sent on to https: true
-  the Server header says only: Caddy; Strict-Transport-Security by default: false
-  a client that offers only TLS 1.2 is accepted by default: 200 over TLSv1.2
-  with a header line in the Caddyfile: max-age=31536000; includeSubDomains
+THE CADDYFILE (the site block, all of it):
+  www.shop.localhost {
+      bind 127.0.0.1
+      respond "the shop"
+  }
+THE CHAIN CADDY MADE BY ITSELF:
+  www.shop.localhost  (sent by the server)
+    signed by Caddy Local Authority - ECC Intermediate  (sent)
+    signed by Caddy Local Authority - <year> ECC Root  (root)
+THE LIFETIME, WORKED OUT (not after - not before):
+  43200 s / 3600 s an hour = 12 hours
+THE REQUESTS AND RESPONSES:
+  trusts Caddy's root    200 over TLSv1.3
+  trusts the lab's root  refused: no trusted root signed it
+  offers only TLS 1.2    200 over TLSv1.2
+  plain http GET /cart   308
+    Location: https://www.shop.localhost/cart
+BEFORE THE FIX (the headers by default):
+  Server: Caddy
+  Strict-Transport-Security: (none)
+AFTER THE FIX (one line in the site block):
+  header Strict-Transport-Security
+    "max-age=31536000; includeSubDomains"
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
 FIVE. The bill.
-  ssl_stapling on, and the client asks for a stapled OCSP answer: 0 received; nginx says it found no responder to ask: true  <- STAPLING NEEDS A RESPONDER IN THE CERTIFICATE
-  Caddy's local certificates carry no responder either, so nothing is stapled: 0 received
-  a new certificate is written over the old file: on disk it is new: true, nginx still serves the old one: true  <- NGINX READS THE FILE ONLY WHEN IT STARTS OR RELOADS
-  after nginx -s reload it serves the new one: true
-  nginx needs a renewal job that ends with a reload; Caddy renews and swaps by itself, and needs its data folder kept, because that folder holds the keys of its local authority
-  every client needs the root of whichever authority signed: the lab's for nginx, Caddy's for Caddy; the browser's own list contains neither
+THE LINES (stapling: the server attaches a revocation answer):
+  ssl_stapling on;
+  ssl_trusted_certificate <work>/ca/root.crt;
+THE CERTIFICATES (does one name an OCSP responder?):
+  nginx's  no
+  Caddy's  no
+THE RESULT (stapled OCSP answers the client received):
+  nginx  0  <- STAPLING NEEDS A RESPONDER IN THE CERTIFICATE
+  Caddy  0
+NGINX'S ERROR LOG:
+  "ssl_stapling" ignored, no OCSP responder URL in the certificate
+THE RENEWAL (a new certificate written over the old file):
+  on disk          <new serial>
+  served by nginx  <old serial>  <- READ ONLY AT START OR RELOAD
+AFTER nginx -s reload:
+  served by nginx  <new serial>

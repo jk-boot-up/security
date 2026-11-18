@@ -1,6 +1,6 @@
 package com.jk.explore.security.ssrf;
 
-import java.util.Set;
+import java.util.List;
 
 /**
  * The second version, a blocklist of host <em>names</em>: it checks the text of the address, not the address the connection really goes to.
@@ -8,7 +8,8 @@ import java.util.Set;
  */
 public final class BlocklistImporter implements Importer {
 
-    private static final Set<String> BLOCKED = Set.of("localhost", "127.0.0.1", "169.254.169.254", "0.0.0.0");
+    static final List<String> BLOCKED = List.of("localhost", "127.0.0.1", "169.254.169.254", "0.0.0.0");
+    static final List<String> BLOCKED_STARTS = List.of("10.", "192.168.");
 
     private final Dns dns;
     private final Network network;
@@ -21,7 +22,7 @@ public final class BlocklistImporter implements Importer {
     @Override
     public String importImage(String address) {
         Url url = Url.parse(address);
-        if (BLOCKED.contains(url.host()) || url.host().startsWith("10.") || url.host().startsWith("192.168.")) {
+        if (BLOCKED.contains(url.host()) || BLOCKED_STARTS.stream().anyMatch(url.host()::startsWith)) {
             throw new ImportRefused("blocked host name " + url.host());
         }
         for (int hops = 0; hops < 10; hops++) {

@@ -49,7 +49,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `ResilienceUnitTest` checks the ledger, the guard, the ransomware simulation, the policies and the recovery arithmetic with the JDK only.
+- `ResilienceUnitTest` checks the ledger, the entropy worked out term by term, the guard, the ransomware simulation, the policies and the recovery arithmetic with the JDK only.
 - `DemoRunsTest` starts two RustFS containers and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

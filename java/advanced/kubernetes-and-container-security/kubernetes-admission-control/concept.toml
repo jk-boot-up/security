@@ -9,7 +9,7 @@ title = "Kubernetes Admission Control"
 short_title = "Admission Control"
 package = "k8sadmission"
 main_class = "KubernetesAdmissionControlDemo"
-tagline = "Stop a bank's unsafe workloads at the door of a real Kubernetes cluster with Kyverno policies that validate, mutate, verify signed images and take exceptions"
+tagline = "Kyverno at the door of a real cluster: refuse, mutate, verify, except"
 bold = "A real cluster (kind) with Kyverno as its admission controller refuses 6 of 10 requests for a bank's payments namespace, each by name (privileged, no limits, another registry, an image nobody signed with the bank's cosign key, and a Deployment checked through its pods); a signed image named by a tag is admitted and its tag is replaced by the digest that was signed; a rule starts in audit mode, the policy report shows the writable root filesystem and a privileged pod that was running before any policy, and the same rule then refuses a new pod; an exception for one pod is honoured only from the kyverno namespace and only until its date (1 of 4 requests admitted); and with the admission controller stopped Kyverno removes its webhooks (0 left) and the API server stops asking anyone."
 domain = "a bank"
 domain_note = ""
@@ -21,14 +21,14 @@ youtube_tags = ["kubernetes admission control", "kyverno", "admission webhook", 
 
 [readme]
 intro = """
-A request to create a pod passes the API server's authentication and authorization, and then the **admission controllers**: the last gate before the workload exists. This project runs a real cluster with **kind**, installs **Kyverno** (v1.19.2) as the admission controller and applies a bank's policies written in CEL. A Java program makes the cluster, a local registry and the bank's cosign key, and sends the requests (`brew install kind kubectl cosign`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`. The policies are in [`policies/`](policies).
+A request to create a pod passes the API server's authentication and authorization, and then the **admission controllers**: the last gate before the workload exists. This project runs a real cluster with **kind**, installs **Kyverno** (v1.19.2) as the admission controller and applies a bank's policies written in CEL. A Java program makes the cluster (kind node image pinned to Kubernetes 1.37.0 by digest), a local registry (pinned by digest) and the bank's cosign key, and sends the requests (`brew install kind kubectl cosign`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`. The policies are in [`policies/`](policies).
 
 What it shows:
 - **Policies that refuse.** Ten requests to a labelled namespace: **6 are refused**, each by the policies that name the reason (privileged, no limits, another registry, an image nobody signed); a privileged pod in a namespace without the label is admitted.
 - **Audit first.** A privileged pod that was running before the policies keeps running. A rule in audit mode admits a writable root filesystem, the **policy report** lists it, and when the rule becomes a denial the next such pod is refused.
 - **Mutation and signed images.** A pod that said nothing gets `allowPrivilegeEscalation: false`; the tag of a signed image is replaced by the **digest** that was signed; an image nobody signed is refused.
 - **Exceptions.** One named pod may break one rule until a date, from the `kyverno` namespace only: **1 of 4** requests is admitted.
-- **The bill.** With the admission controller stopped Kyverno removes its webhooks (**0 left**) and the API server admits what it is given.
+- **When the controller is down.** With the admission controller stopped Kyverno removes its webhooks (**0 left**) and the API server admits even a privileged pod.
 
 **Maps to:** NIST CSF 2.0 Protect (PR.PS) · NIST SP 800-53 CM-7, CM-14 · CIS Kubernetes Benchmark 5.2 · Pod Security Standards · SLSA and signed images.
 """
@@ -60,96 +60,215 @@ This is the first project of the [kubernetes-and-container-security](..) module.
 twin = """
 The cluster, Kyverno, the registry and the signatures are real. Only the images are tiny, built for the demo. The demo prints decisions and counts, never addresses, ids or timestamps.
 """
-test_note = "The requests, the verdicts and the policy files are tested with no tools. The demo makes a cluster (./gradlew integrationTest)."
+test_note = "The requests, the verdicts, the policy files, the tag rule and the retry rule are tested with no tools. The demo makes a cluster (./gradlew integrationTest)."
 
 [[act]]
 title = "Policies that refuse"
-summary = "Ten requests to a labelled namespace: 6 are refused, each by the policies that name the reason, and 4 are admitted."
+summary = "Five Deny policies in the labelled payments namespace. Of ten requests, six are refused, each by the policies that name the reason; nginx:latest privileged, no limits is refused by four. A signed image tagged latest is admitted, because the image policy first rewrites the tag to the signed digest. A privileged pod in the unlabelled scratch namespace is admitted."
 detail = """
-A privileged pod, a pod with no limits, an image from another registry, an image nobody signed and a privileged Deployment are refused. A pod that breaks three rules is refused by all of them. A signed image is admitted, by digest, by tag or tagged latest. The same privileged pod in a namespace without the label is admitted: admission covers only what is labelled.
+The policies, all Deny, in namespaces labelled bank/admission=enforced: disallow-privileged (no privileged containers), require-limits (cpu and memory limits on every container), no-latest-tag (a version tag or a digest, not latest), trusted-registry (images only from the bank's registry) and signed-images-only (a valid signature with the bank's key).
+The input is ten requests, each sent with kubectl apply --dry-run=server, so the API server and its admission webhooks decide without creating anything. Refused: privileged (disallow-privileged), no limits (require-limits), nginx:1.27 from another registry (trusted-registry), bank/rogue that nobody signed (signed-images-only), a privileged Deployment (disallow-privileged, through the rule Kyverno generates for the pods it would make), and nginx:latest privileged with no limits (four policies). Admitted: the good pod, the signed image named by the tag :1, the privileged pod in scratch (no label, so no policy applies), and the signed image tagged latest.
+Why "signed, tagged latest" is admitted: signed-images-only verifies the signature and replaces the tag with the digest that was signed before the validating policies run, so no-latest-tag sees name@sha256:... and has nothing to refuse.
+How one request is decided: for nginx:latest privileged, no limits, four policies fail and signed-images-only has no objection, because it checks only images from the bank's registry. A request is admitted only when no policy fails, so it is refused.
+How no-latest-tag reads an image name: a digest (@) is always allowed; otherwise there must be a tag, a ':' after the last '/', and it must not be :latest. registry:5000/bank/payments has a ':' only in the port, so it has no tag and is refused.
+"""
+figure = "requests_table"
+figure_title = "Ten requests, and how an image name is read"
+figure_speech = """
+First demo: policies that refuse. [[slnc 400]] On the left, the input: ten requests, sent to the payments namespace as a dry run, so nothing is created. [[slnc 300]] Next to each one, the answer from the A P I server. [[slnc 700]]
+Six are refused, and each refusal names its policy: privileged, no limits, another registry, an image nobody signed, and a privileged Deployment. [[slnc 300]] Two requests are admitted for a reason worth knowing. [[slnc 300]] The signed image tagged latest gets in, because the signature policy first replaces the tag with the digest that was signed. [[slnc 300]] So the latest rule sees a digest, and has nothing to refuse. [[slnc 300]] And the privileged pod in the scratch namespace gets in, because that namespace has no label, so no policy applies there. [[slnc 700]]
+On the right, how the latest rule reads an image name. [[slnc 300]] A digest is always fine. [[slnc 300]] Otherwise there must be a tag after the last slash, and it must not be latest. [[slnc 300]] A colon before the last slash is a port, so registry colon five thousand slash bank slash payments has no tag at all.
 """
 speech = """
-First demo: policies that refuse. [[slnc 400]] Ten requests go to a real cluster. [[slnc 600]] Six are refused, each by the policies that name the reason. [[slnc 300]] The same privileged pod in an unlabelled namespace is admitted.
+Here is the real output. [[slnc 400]] First the five policies, all in deny mode, each with what it asks for. [[slnc 300]] They apply only in namespaces with the bank's label.
+[[page]]
+The ten requests and their answers. [[slnc 300]] Six are refused, each by name. [[slnc 300]] The signed image tagged latest is admitted, because the signature policy swapped its tag for the signed digest first. [[slnc 300]] And the privileged pod in scratch is admitted, because scratch has no label.
+[[page]]
+How one request is decided. [[slnc 300]] Four policies fail, and the signature policy has no objection, because the image is not from the bank's registry. [[slnc 300]] One failure is enough, so it is refused.
+[[page]]
+How the latest rule reads an image name, redone in Java. [[slnc 300]] The columns are: a digest, a tag, the latest tag, and the result. [[slnc 300]] The name with only a port has no tag, so it is refused.
 """
 rows = { refuse = "active ok" }
 console = [
-    ["privileged: refused by disallow-privileged", "ok"],
-    ["image nobody signed: refused by signed-images-only", "ok"],
-    ["privileged, unlabelled namespace: admitted", "bad"],
+    ["THE POLICIES (Deny; namespaces with bank/admission=enforced):", "code"],
+    ["  disallow-privileged  no privileged containers", "muted"],
+    ["  require-limits       cpu and memory limits on every container", "muted"],
+    ["  no-latest-tag        a version tag or a digest, not latest", "muted"],
+    ["  trusted-registry     images only from the bank's registry", "muted"],
+    ["  signed-images-only   a valid signature with the bank's key", "muted"],
+    ["---", ""],
+    ["THE REQUESTS AND THE ANSWERS (apply --dry-run=server):", "code"],
+    ["  good: signed, limits                admitted", "ok"],
+    ["  privileged                          refused: disallow-privileged", "bad"],
+    ["  no limits                           refused: require-limits", "bad"],
+    ["  signed, tagged latest               admitted", "ok"],
+    ["  nginx:1.27 (another registry)       refused: trusted-registry", "bad"],
+    ["  bank/rogue (nobody signed it)       refused: signed-images-only", "bad"],
+    ["  signed, named by the tag :1         admitted", "ok"],
+    ["  nginx:latest privileged, no limits  refused: 4 policies (below)", "bad"],
+    ["  a privileged Deployment             refused: disallow-privileged", "bad"],
+    ["  privileged, in scratch (no label)   admitted", "bad"],
+    ["---", ""],
+    ["HOW ONE REQUEST IS DECIDED (nginx:latest privileged, no limits):", "code"],
+    ["  disallow-privileged  fails", "bad"],
+    ["  require-limits       fails", "bad"],
+    ["  no-latest-tag        fails", "bad"],
+    ["  trusted-registry     fails", "bad"],
+    ["  signed-images-only   no objection", "ok"],
+    ["  answer: refused (admitted only when no policy fails)", "bad"],
+    ["---", ""],
+    ["HOW no-latest-tag READS AN IMAGE NAME (redone in Java):", "code"],
+    ["  image                          @     tag   :latest allowed", "muted"],
+    ["  nginx:1.27                     no    yes   no      yes", "ok"],
+    ["  nginx:latest                   no    yes   yes     no", "bad"],
+    ["  registry:5000/bank/payments    no    no    no      no", "bad"],
+    ["  registry:5000/bank/payments:1  no    yes   no      yes", "ok"],
+    ["  bank/payments@sha256:...       yes   yes   no      yes", "ok"],
 ]
 
 [[act]]
-title = "Audit first, then deny"
-summary = "A privileged pod that was running before the policies keeps running; the policy report lists it, and a new rule refuses only new pods once it is switched to deny."
+title = "What was there before, and audit mode"
+summary = "legacy-agent, privileged, started before the policies and is still Running. readonly-rootfs starts in Audit: ledger, with a writable root filesystem, is admitted, and the policy report lists readonly-rootfs on ledger and disallow-privileged on legacy-agent as fail. Switched to Deny, readonly-rootfs refuses ledger2."
 detail = """
-The legacy agent is privileged and keeps running when the policies arrive, because admission sees requests, not what already runs. A rule in audit mode admits a pod with a writable root filesystem and the policy report says fail for it and for the legacy agent. When the rule is switched to deny the next such pod is refused.
+Before the policies, a privileged pod legacy-agent was started. After the policies, it is still Running: admission sees only new requests.
+A new policy, readonly-rootfs, starts in Audit. The input is ledger, a pod with a writable root filesystem; the result is admitted.
+The policy report lists what breaks a policy, refused or not: readonly-rootfs on ledger, fail, and disallow-privileged on legacy-agent, fail. The report is how a team finds what a new rule would break, and what already runs against the rules.
+After the switch to Deny, ledger2, the same kind of pod, is refused by readonly-rootfs.
+"""
+figure = "audit_timeline"
+figure_title = "Audit first: the report shows what admission cannot"
+figure_speech = """
+Second demo: what was there before, and audit mode. [[slnc 400]] From left to right, in time. [[slnc 300]] Before the policies, a privileged pod called legacy agent was started. [[slnc 300]] After the policies, it is still running. [[slnc 300]] Admission sees only new requests; it never looks at what already runs. [[slnc 700]]
+Then a new policy starts in audit mode: a read only root filesystem. [[slnc 300]] The ledger pod breaks it, and is admitted anyway. [[slnc 300]] Audit mode reports, and refuses nothing. [[slnc 700]]
+At the bottom, the policy report. [[slnc 300]] It lists both pods as failing: the ledger, and the legacy agent that started before any policy. [[slnc 300]] Once the teams have fixed what the report lists, the policy switches to deny, and the next such pod is refused.
 """
 speech = """
-Second demo: audit first. [[slnc 400]] Admission sees requests, not what already runs. [[slnc 600]] The policy report lists the pods that break a rule, and the rule is switched to deny when they are fixed.
+Before the policies, legacy agent started, privileged. [[slnc 300]] After them, it is still running. [[slnc 400]] The new policy in audit mode admits the ledger pod. [[slnc 300]] The policy report lists two failures, the ledger and the legacy agent. [[slnc 300]] After the switch to deny, ledger two is refused.
 """
-rows = { audit = "active ok" }
+rows = { audit = "active amber" }
 console = [
-    ["legacy-agent keeps running", "bad"],
-    ["report: readonly-rootfs on ledger fail", "ok"],
-    ["policy now in Deny: refused by readonly-rootfs", "ok"],
+    ["BEFORE THE POLICIES:", "code"],
+    ["  legacy-agent, privileged, started first", "muted"],
+    ["AFTER THE POLICIES:", "code"],
+    ["  legacy-agent is Running (admission sees only new requests)", "muted"],
+    ["A NEW POLICY IN AUDIT: readonly-rootfs (Audit)", "code"],
+    ["  ledger, a writable root filesystem: admitted", "bad"],
+    ["THE POLICY REPORT (what breaks a policy, refused or not):", "code"],
+    ["  readonly-rootfs     ledger        fail", "bad"],
+    ["  disallow-privileged legacy-agent  fail", "bad"],
+    ["AFTER THE SWITCH TO Deny:", "code"],
+    ["  ledger2, a writable root filesystem: refused by readonly-rootfs", "bad"],
 ]
 
 [[act]]
-title = "Mutation and signed images"
-summary = "A pod that said nothing gets allowPrivilegeEscalation false, and the tag of a signed image is replaced by its digest."
+title = "A policy that changes the request"
+summary = "The team sent image <registry>/bank/payments:1 and a securityContext with only readOnlyRootFilesystem: true. The API server would store the image as <registry>/bank/payments:1@<digest>, the digest the bank signed, and a securityContext with allowPrivilegeEscalation: false added. A privileged pod is still refused by disallow-privileged."
 detail = """
-A mutating policy adds allowPrivilegeEscalation false to containers that did not choose and keeps the settings they did choose. The image policy resolves the tag :1 of the signed image to its digest and writes the digest into the pod, so what runs is what was signed. A privileged pod is still refused after the mutation.
+Before the mutation, what the team sent: image <registry>/bank/payments:1, and securityContext with readOnlyRootFilesystem: true.
+After the mutation, what the API server would store: the image <registry>/bank/payments:1@<digest>, where the digest is the one the bank signed (yes), added by signed-images-only; and the securityContext with allowPrivilegeEscalation: false added by default-no-privilege-escalation, and readOnlyRootFilesystem: true kept.
+Mutating webhooks run before validating ones. The mutating policy skips privileged containers, and the privileged pod is still refused by disallow-privileged.
+"""
+figure = "mutation"
+figure_title = "Before and after the mutation"
+figure_speech = """
+Third demo: a policy that changes the request. [[slnc 400]] At the top, the input: what the team sent. [[slnc 300]] The image is named by the tag one, and the security context sets only a read only root filesystem. [[slnc 700]]
+In the middle, the result: what the A P I server would store. [[slnc 300]] The image now carries the digest after the tag. [[slnc 300]] It is the digest the bank signed, so the pod runs exactly the image that was checked, even if someone moves the tag later. [[slnc 300]] And the security context gained allow privilege escalation false, a safe default the team did not write. [[slnc 300]] Their own setting is kept. [[slnc 700]]
+At the bottom, a privileged pod. [[slnc 300]] Mutation runs first, then validation, and the privileged pod is still refused.
 """
 speech = """
-Third demo: mutation. [[slnc 400]] The controller can change a request before it decides. [[slnc 600]] A tag is replaced by the digest that was signed, so what runs is what was checked.
+Before the mutation: the image by tag, and one security setting. [[slnc 400]] After it: the image with the signed digest, and allow privilege escalation false added. [[slnc 300]] The digest is the one the bank signed. [[slnc 400]] A privileged pod is still refused by the validating policy.
 """
 rows = { mutate = "active ok" }
 console = [
-    ["allowPrivilegeEscalation false added: yes", "ok"],
-    ["tag :1 replaced by the signed digest: yes", "ok"],
-    ["privileged after the mutation: refused", "ok"],
+    ["BEFORE THE MUTATION (what the team sent):", "code"],
+    ["  image: <registry>/bank/payments:1", "muted"],
+    ["  securityContext:", "muted"],
+    ["    readOnlyRootFilesystem: true", "muted"],
+    ["AFTER THE MUTATION (what the API server would store):", "code"],
+    ["  image: <registry>/bank/payments:1@<digest>", "ok"],
+    ["  securityContext:", "muted"],
+    ["    allowPrivilegeEscalation: false", "ok"],
+    ["    readOnlyRootFilesystem: true", "muted"],
+    ["  <digest> is the digest the bank signed: yes", "ok"],
+    ["A PRIVILEGED POD (mutation first, then validation):", "code"],
+    ["  refused: disallow-privileged", "bad"],
 ]
 
 [[act]]
 title = "Exceptions"
-summary = "An exception for one named pod is honoured from the kyverno namespace until its date, and in no other case."
+summary = "An exception lets a pod named node-agent break disallow-privileged, and is read from the kyverno namespace only. node-agent with an exception until 2099 is admitted; another-agent with the same spec, node-agent with the exception in payments, and node-agent with an exception that expired in 2020 are refused: 1 of 4."
 detail = """
-node-agent is admitted while the exception lasts. Another pod with the same spec is refused. The same exception written in the team's own namespace is ignored, and an exception that ended in 2020 is ignored too. One request of four is admitted.
+The exception: policy disallow-privileged, applies to a pod named node-agent, read from the kyverno namespace only (the admission controller is started with --exceptionNamespace=kyverno, which developers cannot write to).
+The requests and the answers: node-agent with an exception until 2099 is admitted. another-agent, the same spec, is refused: the exception names one pod. node-agent with the exception written in the team's own namespace, payments, is refused: Kyverno does not read it there. node-agent with an exception that expired in 2020 is refused.
+"""
+figure = "exceptions"
+figure_title = "One exception, four requests"
+figure_speech = """
+Fourth demo: exceptions. [[slnc 400]] On the left, the exception. [[slnc 300]] It lets one pod, named node agent, break one policy: no privileged containers. [[slnc 300]] And Kyverno reads exceptions only from its own namespace, which developers cannot write to. [[slnc 700]]
+On the right, four requests. [[slnc 300]] Node agent, with an exception until twenty ninety nine, is admitted. [[slnc 300]] Another agent, with the same spec, is refused: the exception names one pod. [[slnc 300]] Node agent, with the exception written in the team's own namespace, is refused: the team cannot grant itself an exception. [[slnc 300]] And node agent, with an exception that expired in twenty twenty, is refused. [[slnc 500]] One of four gets through.
 """
 speech = """
-Fourth demo: exceptions. [[slnc 400]] One named pod may break one rule, until a date. [[slnc 600]] An exception written by the team in its own namespace, or one that has ended, changes nothing.
+The exception: one policy, one pod, read from the kyverno namespace only. [[slnc 400]] The answers: node agent with a valid exception is admitted. [[slnc 300]] Another pod, an exception in the wrong namespace, and an expired one are all refused.
 """
-rows = { except = "active ok" }
+rows = { except = "active amber" }
 console = [
-    ["node-agent, exception until 2099: admitted", "ok"],
-    ["same exception in the team's namespace: refused", "ok"],
-    ["exception expired in 2020: refused", "ok"],
+    ["THE EXCEPTION (node-agent may be privileged):", "code"],
+    ["  policy       disallow-privileged", "muted"],
+    ["  applies to   a pod named node-agent", "muted"],
+    ["  read from    the kyverno namespace only", "muted"],
+    ["THE REQUESTS AND THE ANSWERS:", "code"],
+    ["  node-agent, exception until 2099    admitted", "ok"],
+    ["  another-agent, same spec            refused: disallow-privileged", "bad"],
+    ["  node-agent, exception in payments   refused: disallow-privileged", "bad"],
+    ["  node-agent, exception expired 2020  refused: disallow-privileged", "bad"],
 ]
 
 [[act]]
-title = "The bill"
-summary = "With the admission controller stopped, 0 policy webhooks are left and the API server admits what it is given."
+title = "When the admission controller is down"
+summary = "With Kyverno running, a privileged pod is refused. With Kyverno stopped, no policy webhook is left in the API server (0), and both a good pod and a privileged pod are admitted. After Kyverno is back, the privileged pod is refused again."
 detail = """
-A stopped Kyverno removes its webhooks, and with none left the API server admits everything. Admission is also blind to what already runs and to namespaces without the label. The cost is an engine in the path of every request that must stay available.
+Before, with Kyverno running, a privileged pod is refused by disallow-privileged.
+Kyverno stopped (its admission controller scaled to zero): Kyverno removes its webhooks, so 0 policy webhooks are left in the API server. The API server asks no one: a good pod is admitted, and so is a privileged pod.
+After it is back, a good pod is admitted and a privileged pod is refused again.
+A gate that is down is no gate: run more than one replica, watch it, and decide whether the cluster should fail closed.
+"""
+figure = "controller_down"
+figure_title = "Kyverno stopped: the API server asks no one"
+figure_speech = """
+Fifth demo: when the admission controller is down. [[slnc 400]] On the left, Kyverno is running, and a privileged pod is refused, as before. [[slnc 700]]
+In the middle, Kyverno is stopped. [[slnc 300]] When it goes, it removes its webhooks from the A P I server, and zero are left. [[slnc 300]] So the A P I server asks no one. [[slnc 300]] The good pod is admitted, and so is the privileged pod. [[slnc 700]]
+On the right, Kyverno is back, its webhooks return, and the privileged pod is refused again. [[slnc 500]] Everything created while it was down stays, and only the policy report will show it.
 """
 speech = """
-Fifth demo: the bill. [[slnc 400]] Stop the admission controller and no policy webhook is left. [[slnc 600]] The API server then admits what it is given.
+Before: a privileged pod is refused. [[slnc 400]] Kyverno stopped: zero policy webhooks left, and both pods are admitted, the privileged one too. [[slnc 400]] After it is back: the privileged pod is refused again.
 """
-rows = { bill = "active wrong" }
+rows = { down = "active wrong" }
 console = [
-    ["policy webhooks left: 0", "bad"],
-    ["good pod, controller stopped: admitted", "bad"],
-    ["same pod after it is back: admitted", "ok"],
+    ["BEFORE (Kyverno running):", "code"],
+    ["  a privileged pod: refused: disallow-privileged", "bad"],
+    ["KYVERNO STOPPED:", "code"],
+    ["  policy webhooks left in the API server: 0", "bad"],
+    ["  a good pod: admitted", "ok"],
+    ["  a privileged pod: admitted", "bad"],
+    ["AFTER IT IS BACK:", "code"],
+    ["  a good pod: admitted", "ok"],
+    ["  a privileged pod: refused: disallow-privileged", "bad"],
 ]
+
+[highlight]
+console_green = ["AFTER THE MUTATION", "AFTER IT IS BACK", "THE EXCEPTION"]
+console_rose = ["KYVERNO STOPPED", "AFTER THE SWITCH", "BEFORE THE POLICIES", "A PRIVILEGED POD"]
+console_amber = ["HOW ONE REQUEST", "HOW no-latest-tag", "THE POLICY REPORT", "A NEW POLICY IN AUDIT", "AFTER THE POLICIES"]
+console_cyan = ["THE POLICIES", "THE REQUESTS", "BEFORE THE MUTATION", "BEFORE (Kyverno"]
 
 [animation]
 subtitle = "A bank's policies at the door of a real cluster."
 boxes = [
     ["refuse", "Policies that refuse", "6 of 10"],
     ["audit", "Audit first", "report, then deny"],
-    ["mutate", "Mutation, signatures", "digest"],
+    ["mutate", "Mutation", "digest, safe default"],
     ["except", "Exceptions", "1 of 4"],
-    ["bill", "The bill", "0 webhooks"],
+    ["down", "Controller down", "0 webhooks"],
 ]
 
 [docs.problem]
@@ -221,7 +340,7 @@ nongoals = [
 problem = """
 Rules for workloads that live in documents are not enforced, and rules enforced only in the pipeline are bypassed by anyone with kubectl.
 """
-roles = [["The cluster", "`Cluster`"], ["The admission controller", "`Kyverno`"], ["The registry and signatures", "`Registry`"], ["The requests", "`Pods`"], ["The answer", "`Verdict`"], ["Entry point", "`KubernetesAdmissionControlDemo`"]]
+roles = [["The cluster", "`Cluster`"], ["The admission controller", "`Kyverno`"], ["The registry and signatures", "`Registry`"], ["The requests", "`Pods`"], ["The policy files", "`Policies`"], ["The answer", "`Verdict`"], ["Teaching class", "`TagRule`"], ["Entry point", "`KubernetesAdmissionControlDemo`"]]
 requirements = [
     "Policies refuse in labelled namespaces and name the policy that refused.",
     "A new rule can start in audit mode and be switched to deny.",
@@ -347,7 +466,7 @@ out_of_scope = [
     "Vulnerabilities inside signed images.",
 ]
 tests = [
-    "`PodsAndPoliciesTest` and `VerdictTest` check the requests, the policy files and the verdicts with no tools.",
+    "`PodsAndPoliciesTest`, `VerdictTest` and `TagRuleAndPoliciesTest` check the requests, the policy files, the verdicts, the tag rule and the retry rule with no tools.",
     "`DemoRunsTest` makes the cluster and compares the whole demo with the golden output (integrationTest).",
 ]
 next = """
@@ -380,9 +499,9 @@ residual = "A controller that is down fails open"
 
 [poster]
 headline = [["ADMISSION", "text"], ["CONTROL", "accent"]]
-taglines = [["Stop a bank's unsafe workloads at the door of a real Kubernetes cluster", "gold"]]
-before = { code = "privileged, unlabelled namespace: admitted", note = "Policies that refuse", tag = "BEFORE" }
-after = { code = "denied the request: Policy disallow-privileged failed", note = "The bill", tag = "AFTER" }
+taglines = [["Kyverno at the door of a real cluster: refuse, mutate, verify, except", "gold"]]
+before = { code = "Kyverno stopped: privileged pod admitted", note = "No webhook, no gate", tag = "BEFORE" }
+after = { code = "denied the request: Policy disallow-privileged failed", note = "Refused by name", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -398,6 +517,28 @@ body = ["A bank's payments namespace", "on a real kind cluster,", "with Kyverno 
 narration = "Here is the scenario. [[slnc 400]] A bank runs its payment services in one namespace of a real Kubernetes cluster, made with kind. [[slnc 500]] Kyverno is the admission controller, and a local registry holds images, some signed with the bank's cosign key. [[slnc 500]] The demo sends ten requests, tries audit mode, a mutating policy, signed images, and exceptions, and finally stops the controller to see what gets through."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Admission controller: asked before anything is created", "Webhook: how the API server asks it", "Validating policy: admits or refuses", "Mutating policy: changes the request", "Audit mode: reports, does not refuse", "Digest: the image's own hash; a tag can move"]
+narration = """Before the demos, the words. [[slnc 500]] An admission controller is asked before anything is created in the cluster. [[slnc 500]] A webhook is how the A P I server asks it: an H T T P S call, with the request inside. [[slnc 500]] A validating policy admits or refuses. [[slnc 300]] A mutating policy changes the request first. [[slnc 500]] In audit mode, a policy only reports what breaks it, and refuses nothing. [[slnc 500]] And a digest is the image's own hash: it names exactly one image, while a tag like latest can move to another one."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-one-request"
+kind = "figure"
+title = "One request, every policy"
+body = "one_request"
+narration = """Let's see the core idea on one example: one request, and every policy. [[slnc 400]] On the left, the input: a pod with the image nginx latest, privileged, and with no limits. [[slnc 300]] kubectl sends it to the A P I server, which asks the admission controller before it creates anything. [[slnc 700]]
+In the middle, every policy looks at the same request. [[slnc 300]] Under each name is what the policy asks for. [[slnc 300]] Four of them fail: privileged, no limits, the latest tag, and another registry. [[slnc 300]] The signature policy has no objection, because it checks only images from the bank's registry. [[slnc 700]]
+On the right, the answer. [[slnc 300]] A request is admitted only when no policy fails, so it is refused, and the reply names all four policies."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -411,18 +552,11 @@ body = ["Admission sees new requests, not running ones", "Audit mode first, or t
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Admission sees new requests, not the workloads already running. [[slnc 500]] A new rule needs an audit period first, or it blocks teams overnight. [[slnc 500]] Every exception needs an owner, and an end date. [[slnc 500]] Signed images need keys to be kept, and rotated. [[slnc 300]] And when the controller is down, Kyverno removes its webhooks, and the cluster admits whatever it is given."
 
 [[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["Cluster: makes the kind cluster", "Registry: a local registry with signed images", "Kyverno: installs Kyverno and its policies", "Pods: the ten requests", "Verdict: admitted or refused, and by which policy", "KubernetesAdmissionControlDemo: the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] Cluster makes the kind cluster. [[slnc 300]] Registry runs a local registry, and signs some images with cosign. [[slnc 500]] Kyverno installs Kyverno, and the bank's policies. [[slnc 300]] Pods are the ten requests, from a good pod to a privileged one. [[slnc 500]] Verdict reads whether each request was admitted, or refused, and by which policy. [[slnc 300]] And KubernetesAdmissionControlDemo runs the five demos."
-
-[[scene]]
 key = "06-recognise"
 kind = "bullets"
 title = "Where You Have Seen It"
 body = ["admission webhook \"...\" denied the request", "A ClusterPolicy or ValidatingPolicy resource", "A PolicyReport listing failing pods", "An image replaced by name@sha256:..."]
-narration = "You have probably met this already. [[slnc 400]] Admission webhook denied the request, in a deploy log, is a policy refusing a workload. [[slnc 500]] A cluster policy, or a validating policy, resource is a Kyverno policy. [[slnc 500]] A policy report listing failing pods is audit mode at work. [[slnc 500]] And an image tag replaced by a digest, in a running pod, is a mutating policy pinning what was signed."
+narration = "You have probably met this already. [[slnc 400]] Admission webhook denied the request, in a deploy log, is a policy refusing a workload. [[slnc 500]] A cluster policy, or a validating policy, resource is a Kyverno policy. [[slnc 500]] A policy report listing failing pods is audit mode at work. [[slnc 500]] And an image tag replaced by a digest, in a running pod, is an image policy pinning what was signed."
 
 [[scene]]
 key = "07-verdict"
@@ -432,9 +566,101 @@ body = ["Label namespaces, and enforce on all that matter", "Audit first; deny w
 narration = "So, how do you use it? [[slnc 400]] Enforce policies on every namespace that matters, not only the labelled ones. [[slnc 500]] Start each rule in audit mode, and deny once the reports are clean. [[slnc 300]] Admit only signed images, pinned by digest. [[slnc 500]] Keep exceptions to one pod, one rule, and an end date. [[slnc 300]] Watch the controller, and decide whether the cluster should fail closed when it is down. [[slnc 300]] And scan what is already running."
 
 [[scene]]
+key = "12-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a policy that refuses a", "container with no readiness probe, in audit mode first."]
 narration = "That's Kubernetes admission control. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Admission control is the last gate before a workload exists, so refuse by name, pin what was signed, audit before you deny, and remember it sees only new requests, and only while it runs. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a policy that refuses a container with no readiness probe, starting in audit mode. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
 
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] The policies are Kyverno files; the Java classes make the cluster and the registry, send the requests, and read the answers. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "Cluster"
+what = "a real kind cluster on a pinned node image"
+[[class.part]]
+title = "its own kubeconfig, and timeouts tried again"
+code = """
+List<String> command = new ArrayList<>(List.of("kubectl", "--kubeconfig", kubeconfig.toString()));
+...
+if (r.ok() || attempt == 5 || !isTransient(r.output())) {
+    return r;
+"""
+speech = """The cluster runs Kubernetes one point thirty seven, on a node image pinned by digest. [[slnc 300]] kubectl always uses the cluster's own kubeconfig file, so it never touches another cluster. [[slnc 300]] A timeout on a busy machine is tried again; a refusal never is."""
+
+[[class]]
+name = "Registry"
+what = "a local registry, the bank's cosign key, and signed images"
+[[class.part]]
+title = "push, then read the digest the registry gives"
+code = """
+Sh.must(List.of("docker", "push", "-q", ref));
+...
+return head.headers().firstValue("Docker-Content-Digest").orElseThrow();
+"""
+speech = """Each image is pushed, and the registry answers with its digest. [[slnc 300]] Cosign then signs that digest with the bank's key, and stores the signature in the registry. [[slnc 300]] The rogue image is pushed, but never signed."""
+
+[[class]]
+name = "Kyverno"
+what = "installs a pinned Kyverno and applies the bank's policies"
+[[class.part]]
+title = "a pinned release, checked before it is applied"
+code = """
+static final String VERSION = "v1.19.2";
+...
+verifySha256(manifest, INSTALL_SHA256);
+"""
+speech = """Kyverno's install file is a fixed release, and its S H A two fifty six is checked before it is applied to the cluster. [[slnc 300]] Switching a policy from audit to deny is one patch of its validation actions."""
+
+[[class]]
+name = "Verdict"
+what = "reads the API server's answer"
+[[class.part]]
+title = "admitted, or refused by which policies"
+code = """
+Matcher m = POLICY.matcher(r.output());
+while (m.find()) {
+    names.add(m.group(1));
+"""
+speech = """kubectl apply with a server dry run asks the A P I server without creating anything. [[slnc 300]] A refusal names each policy that failed, and Verdict collects the names."""
+
+[[class]]
+name = "TagRule"
+what = "a teaching class: the no-latest-tag expression, step by step"
+[[class.part]]
+title = "a colon before the last slash is a port"
+code = """
+boolean digest = image.contains("@");
+// a ':' before the last '/' is a port, not a tag
+boolean tag = image.lastIndexOf(':') > image.lastIndexOf('/');
+boolean latest = image.endsWith(":latest");
+"""
+speech = """The policy's expression, redone in Java. [[slnc 300]] A digest is always fine. [[slnc 300]] Otherwise the name needs a tag after the last slash, and the tag must not be latest."""
+
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I means application programming interface. The Kubernetes A P I server receives every request to create something."
+[[acronym]]
+short = "HTTPS"
+long = "Hypertext Transfer Protocol Secure: the encrypted web protocol"
+say = "H T T P S is the hypertext transfer protocol inside transport layer security: how the A P I server calls a webhook."
+[[acronym]]
+short = "CEL"
+long = "Common Expression Language: how the policies are written"
+say = "C E L is the common expression language. The policies' rules are written in it."
+[[acronym]]
+short = "SHA, SHA-256"
+long = "Secure Hash Algorithm, 256 bits: the digest of an image"
+say = "S H A two fifty six is the secure hash algorithm with two hundred fifty six bits. An image digest is one."
+[[acronym]]
+short = "CPU"
+long = "Central Processing Unit"
+say = "C P U is the central processing unit. A cpu limit caps how much processor time a container may use."

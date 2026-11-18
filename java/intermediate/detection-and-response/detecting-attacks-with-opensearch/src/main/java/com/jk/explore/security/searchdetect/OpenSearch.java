@@ -122,6 +122,16 @@ public final class OpenSearch {
         }
     }
 
+    /** The index's field types as OpenSearch reports them: each type with its fields, in name order. */
+    public Map<String, List<String>> mapping(String index) throws IOException, InterruptedException {
+        Map<String, List<String>> byType = new java.util.TreeMap<>();
+        JsonNode props = call("GET", "/" + index + "/_mapping", null).json().get(index).get("mappings").get("properties");
+        for (String field : new java.util.TreeSet<>(props.propertyNames())) {
+            byType.computeIfAbsent(props.get(field).get("type").asString(), k -> new ArrayList<>()).add(field);
+        }
+        return byType;
+    }
+
     /** Creates a monitor and returns its id. */
     public String createMonitor(Object monitor) throws IOException, InterruptedException {
         Answer a = call("POST", "/_plugins/_alerting/monitors", monitor);

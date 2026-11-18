@@ -21,6 +21,11 @@ public final class PrivilegeChangeRule implements Rule {
     }
 
     @Override
+    public String describe() {
+        return "admin by a non-approver" + (requireTicket ? " or no ticket" : "");
+    }
+
+    @Override
     public List<Alert> evaluate(List<Event> log) {
         List<Alert> alerts = new ArrayList<>();
         for (Event e : log) {

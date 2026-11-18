@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> A local certificate authority in Java: signing requests, name constraints, revocation lists and short-lived certificates.
+> A local certificate authority in Java with real X.509 certificates, checked by the JDK's own validator: an offline root and a constrained issuing authority, a policy the issuer applies (lifetime, names, teams), signing requests that prove key possession, a name constraint that holds even when the policy is skipped, revocation lists that only help clients that check them and fail closed when stale, and 24-hour certificates renewed by automation instead.

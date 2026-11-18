@@ -75,4 +75,28 @@ class EngineTest {
         assertTrue(Baseline.fixed(now, accepted).isEmpty());
         assertEquals(1, Baseline.fixed(List.of(), accepted).size());
     }
+
+    @Test
+    void theTagIsWhatFollowsTheLastColonOrAtOfTheLastPart() {
+        assertEquals("", Rules.tag("shop/orders"));
+        assertEquals("", Rules.tag("registry.local:5000/shop/orders"));
+        assertEquals("latest", Rules.tag("shop/web:latest"));
+        assertEquals("1.8.2", Rules.tag("shop/web:1.8.2"));
+        assertTrue(Rules.tag("shop/web@sha256:ab12").endsWith("ab12"));
+    }
+
+    @Test
+    void theMatrixMarksEachBrokenRuleAndCountsPerContainer() {
+        List<String> m = Engine.matrix(Manifests.FIRST, Engine.scan(Manifests.FIRST));
+        assertEquals("web      x  x  x  x  .  .  x  x   6", m.get(1));
+        assertEquals("agent    .  .  .  .  .  x  .  .   1", m.get(3));
+    }
+
+    @Test
+    void theSettingsAreWrappedAndShowWhereAPasswordComesFrom() {
+        List<String> first = Engine.settings(Manifests.FIRST, 58);
+        assertTrue(first.stream().allMatch(l -> l.length() <= 58));
+        assertTrue(String.join(" ", first).contains("DB_PASSWORD=hunter2"));
+        assertTrue(String.join(" ", Engine.settings(Manifests.FIXED, 58)).contains("DB_PASSWORD=from a Secret"));
+    }
 }

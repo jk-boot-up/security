@@ -16,7 +16,7 @@ domain_note = ""
 youtube_description = "OpenID Connect login with Spring Security 7 and a real Keycloak 26 in Docker: the authorization request with state, nonce and PKCE, the ID token against the access token, what Spring's validator refuses (a key never published, a wrong issuer, a wrong audience, azp, expiry with skew, no subject, alg none), discovery that checks the issuer and not where the keys are, key rotation, an account takeover by e-mail address through a second provider, userinfo, RP-initiated logout, and real back-channel logout from Keycloak that ends one of Ana's two sessions."
 thumb_lines = ["OPENID CONNECT", "WITH SPRING SECURITY"]
 thumb_code = "oauth2Login().oidcLogout()"
-youtube_title = "OpenID Connect with Spring Security and Keycloak: ID Token Checks, Account Takeover, Back-Channel Logout"
+youtube_title = "OpenID Connect with Spring Security and Keycloak: ID Token Checks, Takeover, Back-Channel Logout"
 youtube_tags = ["openid connect", "spring security", "keycloak", "id token", "nonce", "back-channel logout", "oauth2login", "owasp top 10", "a07", "java"]
 
 [readme]
@@ -64,103 +64,319 @@ test_note = "The tests that need Keycloak are tagged integration and share one c
 
 [[act]]
 title = "OAuth gives access; OpenID Connect adds who signed in"
-summary = "The store sends Ana to the bank with openid scope, state, nonce and PKCE; the reply holds an ID token for the store and an access token for the API; an access token is refused as a sign-in."
+summary = "Spring Security sends Ana to Keycloak with response_type code, scope openid email, a state, a nonce and an S256 PKCE challenge; she signs in at Keycloak, the store redeems the code; the ID token (19 claims) names her as the bank realm and her subject; the access token offered as a sign-in, a reply without openid, and a callback from another sign-in are all refused."
 detail = """
-The store sends Ana to Keycloak with the scope openid email and a state, a nonce and a PKCE challenge kept for her browser. She signs in at Keycloak, never at the store, and the store redeems the code itself. The ID token's claims include acr, at_hash, aud, auth_time, azp, email, email_verified, exp, iat, iss, nonce, sid, sub and typ. Ana is signed in to the store as the bank realm and her subject, with her e-mail address, verified. The nonce in her ID token is the one the store sent. The reply holds two tokens: an ID token for the store, typ ID, audience store-web, and an access token for the bank's API, typ Bearer, with no audience claim. The access token handed to the store as proof of sign-in is refused by Spring's decoder: its audience is missing. A sign-in without the openid scope gets no ID token. A callback from another sign-in, carried to Ana's browser, is refused.
+The request: Ana's browser goes to <keycloak>/realms/bank/protocol/openid-connect/auth with response_type code, client_id store-web, scope
+openid email, a random state and nonce kept in her session, and code_challenge (the SHA-256 of a random verifier) with method S256. She types her
+password at Keycloak, never at the store, and the store redeems the code server to server. The ID token has 19 claims: iss <keycloak>/realms/bank,
+sub a0a0a0a0-0000-4000-8000-000000000001, aud and azp store-web, typ ID, the nonce sent in this sign-in, and the verified email ana@mail.example.
+The result: Ana is signed in as <keycloak>/realms/bank | a0a0a0a0-0000-4000-8000-000000000001. The reply holds an ID token (typ ID, aud store-web)
+and an access token (typ Bearer, no aud claim). The access token offered as a sign-in is refused (invalid claims {aud=null}); a sign-in with only
+the email scope gets no ID token; and a callback from another sign-in, opened in Ana's browser, is refused because no sign-in in her browser has that
+state.
+"""
+figure = "signin_request"
+figure_title = "The request Spring Security builds, and the claims that come back"
+figure_speech = """
+First demo: a real sign-in, with Keycloak in Docker. [[slnc 400]] On the left, the request Spring Security builds. [[slnc 300]] It asks for a code. [[slnc 300]] It names the store, store web. [[slnc 300]] It asks for the scopes open I D and email. [[slnc 300]] It adds a random state and a random nonce, and keeps both in Ana's session. [[slnc 300]] And for P K C E, it sends the S H A two five six of a random verifier, and keeps the verifier. [[slnc 700]]
+On the right, the claims of the I D token that comes back. [[slnc 300]] The issuer is the bank realm. [[slnc 300]] The subject is Ana's fixed id at the bank. [[slnc 300]] The audience is the store. [[slnc 300]] The nonce is the one sent in this sign-in. [[slnc 300]] And the email, which the bank has verified. [[slnc 700]]
+At the bottom: Ana is signed in, as the issuer and the subject together.
 """
 speech = """
-First demo: O Auth gives access, Open I D Connect adds who signed in. [[slnc 400]] The store sends Ana to the bank with the openid scope, a state, a nonce, and a P K C E challenge. [[slnc 600]]
-She signs in at Keycloak, never at the store. [[slnc 300]] The store redeems the code itself, and checks the I D token. [[slnc 600]]
-The access token is for the bank's A P I. [[slnc 300]] Offered as a sign in, it is refused. [[slnc 600]]
-And a callback from another sign in is refused too.
+Here is the real output. [[slnc 400]] The request: Keycloak's authorize address, then each parameter. [[slnc 300]] State, nonce and the challenge are random, so they are shown as placeholders. [[slnc 400]] Ana types her password at Keycloak, not the store, and the store redeems the code itself.
+[[page]]
+The I D token's claims. [[slnc 300]] Nineteen in all: the important ones first, then the rest by name. [[slnc 400]] The result: Ana is signed in as the bank realm, bar, her subject.
+[[page]]
+The two tokens. [[slnc 300]] The I D token has type I D and the store as its audience. [[slnc 300]] The access token has type bearer, and no audience claim. [[slnc 400]] Offered as a sign-in, it is refused. [[slnc 400]] Without the open I D scope, no I D token at all. [[slnc 400]] And a callback from another sign-in, carried into Ana's browser, is refused: her session holds no such state.
 """
 rows = { signin = "active ok" }
 console = [
-    ["state, nonce and a PKCE challenge kept for her browser", "ok"],
-    ["the ID token: typ ID, audience store-web", "ok"],
-    ["the access token as a sign-in -> refused (aud=null)", "ok"],
-    ["a callback from another sign-in -> refused", "ok"],
+    ["THE REQUEST (the store sends Ana's browser to Keycloak):", "code"],
+    ["  <keycloak>/realms/bank/protocol/openid-connect/auth", "muted"],
+    ["  response_type          code", "muted"],
+    ["  client_id              store-web", "muted"],
+    ["  scope                  openid email", "muted"],
+    ["  state                  <random, kept in her session>", "muted"],
+    ["  nonce                  <random, kept in her session>", "muted"],
+    ["  code_challenge         <SHA-256 of a random verifier>", "muted"],
+    ["  code_challenge_method  S256", "muted"],
+    ["THE SIGN-IN:", "code"],
+    ["  Ana types her password at Keycloak, not the store: true", "muted"],
+    ["  the store redeems the code, server to server: true", "muted"],
+    ["---", ""],
+    ["THE ID TOKEN'S CLAIMS (19 claims, as the store sees them):", "code"],
+    ["  iss    <keycloak>/realms/bank", "muted"],
+    ["  sub    a0a0a0a0-0000-4000-8000-000000000001", "muted"],
+    ["  aud    store-web, azp store-web, typ ID", "muted"],
+    ["  nonce  <random>, the one sent in this sign-in: true", "muted"],
+    ["  email  ana@mail.example, email_verified true", "muted"],
+    ["  also   acr, at_hash, auth_time, exp, family_name, given_name,", "muted"],
+    ["         iat, jti, name, preferred_username, sid", "muted"],
+    ["THE RESULT:", "code"],
+    ["  Ana is signed in to the store as", "muted"],
+    ["  <keycloak>/realms/bank | a0a0a0a0-0000-4000-8000-000000000001", "muted"],
+    ["---", ""],
+    ["THE TWO TOKENS IN THE REPLY (Keycloak's token endpoint):", "code"],
+    ["  ID token      typ ID      aud store-web: for the store", "muted"],
+    ["  access token  typ Bearer  no aud claim: for the API", "muted"],
+    ["THE ACCESS TOKEN, OFFERED AS PROOF OF SIGN-IN:", "code"],
+    ["  refused: invalid claims {aud=null}", "ok"],
+    ["  <- AN ACCESS TOKEN SAYS WHAT IS ALLOWED, NOT WHO", "amber"],
+    ["A SIGN-IN WITHOUT THE openid SCOPE (scope email):", "code"],
+    ["  no ID token in the reply: true; only API access", "muted"],
+    ["A CALLBACK FROM ANOTHER SIGN-IN, IN ANA'S BROWSER:", "code"],
+    ["  refused: no sign-in in this browser has that state", "ok"],
 ]
 
 [[act]]
 title = "Checking the ID token"
-summary = "Spring Security's decoder refuses a key never published, an issuer with an extra slash, another issuer or audience, a missing azp, an expired token, no subject and alg none."
+summary = "A test provider signs an ID token with RS256 (a 42-character header part, a 132-character claims part, a 256-byte signature); Spring Security checks the signature, the time with 30 seconds of skew, then iss, sub, aud and azp; one thing changed at a time is refused, except azp store-web and 29 seconds past expiry."
 detail = """
-Against a local provider that signs claims Keycloak would never issue: the bank's own ID token is accepted. The same claims signed with a key the bank never published, under the bank's key id: refused, invalid signature. Issuer https://bank.example/ with one extra slash, and issuer https://wallet.example signed by the bank: refused. Audience budget-app: refused. Audiences store-web and budget-app with no azp: refused; with azp store-web: accepted. 29 seconds past its expiry, inside the 30 second skew: accepted; 31 seconds past: refused as expired. No subject: refused. A header saying alg none: refused. The nonce is checked by the sign-in itself, against the one kept in the browser's session.
+The store's settings: issuer https://bank.example, client_id store-web, the provider's key lab-key, 30 seconds of clock skew. Before signing: the
+header {"kid":"lab-key","alg":"RS256"} and the claims aud, exp, iat, iss, sub, with exp = iat + 300 seconds. The header part is base64url(header),
+42 characters; the claims part 132 characters; the signing input is the two joined by a dot; the signature is RSA over the SHA-256 of that input,
+which with a 2048-bit key is 256 bytes, 342 base64url characters. Spring Security checks the signature with the published key named by kid, then exp
+and iat with 30 seconds of skew, then iss exactly, sub, aud and azp: accepted. One thing changed at a time: a key never published (Invalid
+signature), iss with an extra slash, another iss, aud budget-app, two audiences without azp, no sub, and alg none are refused; two audiences with azp
+store-web are accepted. 29 seconds past exp is accepted, 31 seconds past is refused as expired. The nonce is checked by the sign-in itself, with the
+state, as act one showed.
+"""
+figure = "decoder_checks"
+figure_title = "What the store checks every ID token against"
+figure_speech = """
+Second demo: checking the I D token. [[slnc 400]] Keycloak only issues good tokens, so a small test provider signs bad ones. [[slnc 600]]
+Top left, the store's settings: the issuer, the client, the provider's key, and thirty seconds of clock skew. [[slnc 600]]
+Below, how a token is signed. [[slnc 300]] The header becomes the header part, in base sixty four U R L. [[slnc 300]] The claims become the claims part. [[slnc 300]] The two are joined with a dot. [[slnc 300]] And the private key signs the S H A two five six of those bytes, with R S A. [[slnc 300]] A two thousand and forty eight bit key gives a two hundred and fifty six byte signature. [[slnc 700]]
+On the right, what Spring Security checks, in order. [[slnc 300]] The signature, with the published key. [[slnc 300]] The time. [[slnc 300]] Then the claims. [[slnc 300]] And below, the changes it refuses.
 """
 speech = """
-Second demo: checking the I D token. [[slnc 400]] A key the bank never published is refused. [[slnc 600]]
-An issuer with one extra slash is refused, and so is another issuer, or another audience. [[slnc 600]]
-Two audiences need an authorized party that names this client. [[slnc 600]]
-Twenty nine seconds past expiry is accepted, thirty one is refused. [[slnc 300]] And a token with alg none is refused.
+Here is the output. [[slnc 400]] The store's settings: issuer, client, key, and skew. [[slnc 400]] The header and the claims, before signing. [[slnc 300]] Expiry is issued at plus three hundred seconds.
+[[page]]
+How it is signed, step by step: a forty two character header part, a hundred and thirty two character claims part, and a signature of two hundred and fifty six bytes. [[slnc 400]] Then the checks, in order, and the result: accepted.
+[[page]]
+One thing changed at a time. [[slnc 300]] A key never published: invalid signature. [[slnc 300]] An extra slash in the issuer, or another issuer: refused. [[slnc 300]] Another audience: refused. [[slnc 300]] Two audiences without an authorized party: refused; with it: accepted.
+[[page]]
+No subject: refused. [[slnc 300]] A header saying none: refused. [[slnc 300]] The nonce is checked by the sign-in itself, as in act one. [[slnc 500]] And the time: twenty nine seconds late is inside the skew, accepted. [[slnc 300]] Thirty one seconds late is past it, expired.
 """
 rows = { check = "active ok" }
 console = [
-    ["a key the bank never published -> refused (Invalid signature)", "ok"],
-    ["issuer with an extra slash -> refused (iss)", "ok"],
-    ["two audiences, no azp -> refused; with azp -> accepted", "ok"],
-    ["29 seconds past expiry -> accepted; 31 -> refused", "ok"],
+    ["THE STORE'S SETTINGS (every ID token is checked against them):", "code"],
+    ["  issuer      https://bank.example", "muted"],
+    ["  client_id   store-web", "muted"],
+    ["  keys        the provider's jwks.json, key lab-key", "muted"],
+    ["  clock skew  30 seconds", "muted"],
+    ["BEFORE SIGNING (a test provider makes the ID token):", "code"],
+    ["  header  {\"kid\":\"lab-key\",\"alg\":\"RS256\"}", "muted"],
+    ["  claims  aud, exp, iat, iss, sub; exp = iat + 300 s", "muted"],
+    ["---", ""],
+    ["HOW IT IS SIGNED (step by step):", "code"],
+    ["  1. header part = base64url(header)", "muted"],
+    ["     eyJraWQiOiJsYWIta2V5IiwiYWxnIjoiUlMyNTYifQ (42 chars)", "muted"],
+    ["  2. claims part = base64url(claims): 132 chars", "muted"],
+    ["  3. signing input = header part + \".\" + claims part", "muted"],
+    ["  4. signature = RSA(private key, SHA-256(signing input))", "muted"],
+    ["     a 2048-bit key gives 256 bytes = 342 base64url chars", "muted"],
+    ["HOW SPRING SECURITY CHECKS IT (in this order):", "code"],
+    ["  1. the signature, with the published key named by kid", "muted"],
+    ["  2. exp and iat against now, with 30 seconds of skew", "muted"],
+    ["  3. iss exactly, sub present, aud has store-web, azp", "muted"],
+    ["THE RESULT:", "code"],
+    ["  accepted", "ok"],
+    ["---", ""],
+    ["ONE THING CHANGED AT A TIME (the input, then the result):", "code"],
+    ["  signed with a key the bank never published, kid lab-key", "muted"],
+    ["    -> refused: Signed JWT rejected: Invalid signature", "ok"],
+    ["  iss https://bank.example/ (one extra slash)", "muted"],
+    ["    -> refused: invalid claims {iss=https://bank.example/}", "ok"],
+    ["  iss https://wallet.example, signed by the bank", "muted"],
+    ["    -> refused: invalid claims {iss=https://wallet.example}", "ok"],
+    ["  aud budget-app", "muted"],
+    ["    -> refused: invalid claims {aud=[budget-app]}", "ok"],
+    ["  aud [store-web, budget-app], no azp", "muted"],
+    ["    -> refused: invalid claims {azp=null}", "ok"],
+    ["  aud [store-web, budget-app], azp store-web", "muted"],
+    ["    -> accepted", "ok"],
+    ["---", ""],
+    ["THE SUBJECT, THE HEADER AND THE NONCE (input, then result):", "code"],
+    ["  no sub claim", "muted"],
+    ["    -> refused: invalid claims {sub=null}", "ok"],
+    ["  header {\"alg\":\"none\"}, no signature", "muted"],
+    ["    -> refused: Unsupported algorithm of none", "ok"],
+    ["  the nonce: checked by the sign-in itself, with the state,", "muted"],
+    ["    against the one kept in the browser's session (act one)", "muted"],
+    ["THE TIME CHECK (skew 30 seconds):", "code"],
+    ["  exp = now - 29 s: now < exp + 30", "muted"],
+    ["    -> accepted", "ok"],
+    ["  exp = now - 31 s: now > exp + 30", "muted"],
+    ["    -> refused: expired", "ok"],
 ]
 
 [[act]]
 title = "Discovery and keys"
-summary = "The store is configured with one issuer; discovery refuses a document that names another issuer but not one whose keys are elsewhere; a second signing key is picked up by itself."
+summary = "From one issuer-uri Spring Security reads Keycloak's metadata and checks that it names that issuer; forged metadata naming another issuer is refused, but keys on another site are accepted, so the issuer address must be https and trusted; Keycloak adds a key and the store fetches it on its own."
 detail = """
-The store is configured with one value, the issuer. It reads the discovery document, which names the issuer it asked for, and the authorization, token and key addresses all start with the issuer's own address. A document at that address naming the issuer https://wallet.example is refused: one provider cannot pose as another. A document whose keys are on https://keys.example is accepted by Spring Security, which checks the issuer and not where the keys are, so the issuer address must be https and trusted. Keycloak publishes 1 signing key. The bank adds a second key and signs new tokens with it; it now publishes 2, and the store, which has not seen the new key id, reloads the key set on its own: tokens signed with the old key and with the new key are both accepted.
+The store is configured with one value, issuer-uri <keycloak>/realms/bank. It reads <keycloak>/realms/bank/.well-known/openid-configuration, which
+names the issuer, the authorization, token, jwks_uri and end-session addresses, all under the issuer. Spring Security checks that the issuer equals the
+configured one, and the addresses start with the issuer's own address. A test provider serves forged metadata: one naming https://wallet.example is
+refused; one whose jwks_uri is https://keys.example/jwks.json is accepted, because Spring Security checks the issuer, not where the keys are, so the
+issuer address must be https and trusted. Key rotation on the real Keycloak: it publishes 1 signing key; the bank adds a second and signs new tokens
+with it, so 2 keys are published and the new token's kid is new; the store reloads the key set on its own, and tokens signed with either key are
+accepted.
+"""
+figure = "discovery_rotation"
+figure_title = "From one issuer to the metadata, and a key rotation"
+figure_speech = """
+Third demo: discovery and keys. [[slnc 400]] Top left, the configuration: one value, the issuer U R I of the bank realm. [[slnc 600]]
+From it, Spring Security reads the metadata at the well known address. [[slnc 300]] The document names the issuer again, and that must match. [[slnc 300]] It names the authorize, token, key set and logout addresses, all under the issuer. [[slnc 700]]
+On the right, key rotation, on the real Keycloak. [[slnc 300]] At first, one signing key. [[slnc 300]] The bank adds a second, and signs new tokens with it. [[slnc 300]] A new token names a key id the store has never seen. [[slnc 300]] So the store fetches the key set again, on its own. [[slnc 300]] Old and new tokens are both accepted.
 """
 speech = """
-Third demo: discovery and keys. [[slnc 400]] The store is configured with one value, the issuer. [[slnc 600]]
-A discovery document that names another issuer is refused. [[slnc 600]]
-A document whose keys are on another site is accepted, because Spring Security checks the issuer and not where the keys are. [[slnc 600]]
-When the bank adds a second key, the store reloads the key set by itself.
+Here is the output. [[slnc 400]] The configuration, the request, and the response: the issuer and four addresses, each starting with the issuer.
+[[page]]
+Both checks hold. [[slnc 400]] Then forged metadata, from a test provider. [[slnc 300]] Another issuer: refused. [[slnc 300]] Keys on another site: accepted. [[slnc 300]] Spring Security checks the issuer, not where the keys are. [[slnc 300]] So the issuer address must be H T T P S, and trusted.
+[[page]]
+Key rotation, step by step. [[slnc 300]] One key at first. [[slnc 300]] Then two, and the new token's key id is new. [[slnc 300]] The store fetches the key set again on its own, and both tokens are accepted.
 """
 rows = { keys = "active ok" }
 console = [
-    ["a document naming another issuer -> refused", "ok"],
-    ["a document with keys on another site -> accepted", "amber"],
-    ["Keycloak adds a second signing key: 2 published", "ok"],
-    ["old and new tokens are accepted after the reload", "ok"],
+    ["THE CONFIGURATION (the store knows one value):", "code"],
+    ["  issuer-uri <keycloak>/realms/bank", "muted"],
+    ["THE REQUEST:", "code"],
+    ["  GET <keycloak>/realms/bank/.well-known/", "muted"],
+    ["      openid-configuration", "muted"],
+    ["THE RESPONSE (the fields the store uses; <iss> = issuer):", "code"],
+    ["  issuer                 <keycloak>/realms/bank", "muted"],
+    ["  authorization_endpoint <iss>/protocol/openid-connect/auth", "muted"],
+    ["  token_endpoint         <iss>/protocol/openid-connect/token", "muted"],
+    ["  jwks_uri               <iss>/protocol/openid-connect/certs", "muted"],
+    ["  end_session_endpoint   <iss>/protocol/openid-connect/logout", "muted"],
+    ["---", ""],
+    ["THE CHECKS:", "code"],
+    ["  issuer equals the configured issuer: true", "muted"],
+    ["  the addresses start with the issuer's own address: true", "muted"],
+    ["FORGED METADATA (a test provider; input, then result):", "code"],
+    ["  issuer https://wallet.example", "muted"],
+    ["    -> refused: the metadata names another issuer", "ok"],
+    ["    <- ONE PROVIDER CANNOT POSE AS ANOTHER", "amber"],
+    ["  jwks_uri https://keys.example/jwks.json", "muted"],
+    ["    -> accepted by Spring Security: true", "ok"],
+    ["    <- IT CHECKS THE ISSUER, NOT WHERE THE KEYS ARE,", "amber"],
+    ["    <- SO THE ISSUER ADDRESS MUST BE https AND TRUSTED", "amber"],
+    ["---", ""],
+    ["KEY ROTATION (step by step, on the real Keycloak):", "code"],
+    ["  1. Keycloak publishes 1 signing key", "muted"],
+    ["     a token signed with it: accepted", "muted"],
+    ["  2. the bank adds a key and signs new tokens with it", "muted"],
+    ["     keys published: 2; the new token's kid is new: true", "muted"],
+    ["  3. the store reloads the key set on its own", "muted"],
+    ["     old key's token: accepted; new key's: accepted", "muted"],
 ]
 
 [[act]]
 title = "Who signed in: issuer and subject, never the email"
-summary = "A wallet user with Ana's unverified e-mail address takes over her account in a store that keys accounts by e-mail; keyed by issuer and subject Mallory gets a new account."
+summary = "The bank and the wallet realms both give the address ana@mail.example, only the bank verified; keyed by e-mail address Mallory gets Ana's account; keyed by issuer and subject she gets a new account; userinfo answers Ana's access token with her subject and refuses the ID token."
 detail = """
-The bank says Ana's subject has the e-mail address ana@mail.example, verified. The wallet says its user also has the e-mail address ana@mail.example, not verified. A store that keys accounts by e-mail address gives Mallory, who signed in with the wallet, the account of Ana: account takeover. Keyed by issuer and subject, Ana gets the account of Ana and Mallory gets a new account for wallet and her own subject. Userinfo with Ana's access token answers 200 with the same subject as the ID token. Userinfo with the ID token instead is refused with 401.
+The bank says its user a0a0a0a0-0000-4000-8000-000000000001 has the address ana@mail.example, verified. The wallet says its user
+c0c0c0c0-0000-4000-8000-000000003301 has the same address, not verified. Before the fix the store keys accounts by e-mail address, and Mallory, signing
+in with the wallet, gets the account of Ana: an account takeover. After the fix accounts are keyed by issuer and subject: Ana gets the account of Ana,
+and Mallory gets a new account for wallet | c0c0c0c0-0000-4000-8000-000000003301. Userinfo with Ana's access token answers 200 with her subject, the
+same as in the ID token; the ID token instead is refused with 401.
+"""
+figure = "email_takeover"
+figure_title = "One e-mail address, two people"
+figure_speech = """
+Fourth demo: who signed in. [[slnc 400]] At the top, the two realms. [[slnc 300]] The bank says its user has the address ana at mail dot example, and it has verified it. [[slnc 300]] The wallet says its user, Mallory, has the same address. [[slnc 300]] It never checked. [[slnc 700]]
+On the left, before the fix. [[slnc 300]] The store finds accounts by e-mail address. [[slnc 300]] Mallory signs in with the wallet, and gets Ana's account. [[slnc 300]] An account takeover, and Spring Security did nothing wrong: every token was valid. [[slnc 700]]
+On the right, after the fix. [[slnc 300]] Accounts are found by issuer and subject. [[slnc 300]] Ana gets her account. [[slnc 300]] Mallory gets a new one, of her own.
 """
 speech = """
-Fourth demo: who signed in. [[slnc 400]] The wallet says its user has Ana's e-mail address, not verified. [[slnc 600]]
-A store that keys its accounts by e-mail gives Mallory the account of Ana. [[slnc 300]] That is account takeover. [[slnc 600]]
-Keyed by issuer and subject, Mallory gets a new account. [[slnc 600]]
-Userinfo answers to the access token, and not to the I D token.
+Here is the output. [[slnc 400]] The two providers, the same address, verified true and false. [[slnc 400]] Keyed by e-mail address: Mallory gets the account of Ana. [[slnc 400]] Keyed by issuer and subject: two accounts.
+[[page]]
+The userinfo endpoint. [[slnc 300]] Ana's access token: two hundred, with her subject, the same as in the I D token. [[slnc 400]] The I D token in its place: refused, four oh one.
 """
 rows = { who = "active wrong" }
 console = [
-    ["the wallet: mal has ana@mail.example, verified: false", "amber"],
-    ["keyed by e-mail: Mallory gets the account of Ana", "bad"],
-    ["keyed by issuer and subject: Mallory gets a new account", "ok"],
-    ["userinfo with the ID token -> refused (401)", "ok"],
+    ["THE TWO PROVIDERS SAY (realm, subject, e-mail address):", "code"],
+    ["  bank    a0a0a0a0-0000-4000-8000-000000000001", "muted"],
+    ["          ana@mail.example, verified true", "muted"],
+    ["  wallet  c0c0c0c0-0000-4000-8000-000000003301", "muted"],
+    ["          ana@mail.example, verified false", "muted"],
+    ["BEFORE THE FIX (the store keys accounts by e-mail address):", "code"],
+    ["  Mallory signs in with the wallet and gets:", "muted"],
+    ["    account of Ana  <- ACCOUNT TAKEOVER", "amber"],
+    ["AFTER THE FIX (accounts keyed by issuer and subject):", "code"],
+    ["  Ana gets: account of Ana", "muted"],
+    ["  Mallory gets:", "muted"],
+    ["    new account for wallet | c0c0c0c0-0000-4000-8000-000000003301", "muted"],
+    ["---", ""],
+    ["THE USERINFO REQUEST (input, then result):", "code"],
+    ["  Ana's access token", "muted"],
+    ["    -> 200, sub a0a0a0a0-0000-4000-8000-000000000001", "ok"],
+    ["    -> the same subject as the ID token: true", "ok"],
+    ["  the ID token instead", "muted"],
+    ["    -> refused (401)", "ok"],
 ]
 
 [[act]]
 title = "Signing out, and the bill"
-summary = "Sign-out at the store reaches Keycloak with id_token_hint; Keycloak's back-channel logout ends the laptop's session and leaves the phone's; a made-up logout token and an ID token are refused."
+summary = "Ana's sign-out ends the store's session and sends her browser to Keycloak's logout with id_token_hint and post_logout_redirect_uri; Keycloak ends the laptop's session and posts a logout token, which ends only the laptop's store session; a made-up token and an ID token are refused."
 detail = """
-Ana signs out at the store: the store's session ended. Her browser is sent to Keycloak's logout endpoint with id_token_hint and post_logout_redirect_uri, Keycloak ends its session and sends the browser back to the store, and signing in again asks for her password. Ana is signed in on a laptop and a phone, two Keycloak sessions. Keycloak ends the laptop's session through the admin API and sends the store a back-channel logout token: the laptop is signed out and the phone stays signed in. A made-up logout token is refused with 400, and an ID token sent as a logout token is refused too, with a 500 from this version of Spring Security, and the phone stays signed in. Back-channel logout makes the store post to its own logout address, which by default is built from the request and so names host.docker.internal; the store is told its own address.
+Ana signs out at the store with a CSRF-protected POST: the store's session ends, and her browser is sent to
+<keycloak>/realms/bank/protocol/openid-connect/logout with id_token_hint and post_logout_redirect_uri. Keycloak ends its session and sends her back;
+signing in again asks for her password. Then Ana is signed in on a laptop and a phone, with two Keycloak sessions and two sids. Keycloak ends the
+laptop's session (its admin API answers 204) and posts a logout token with that sid to the store's /logout/connect/back-channel/bank: the laptop is
+signed out and the phone is not. A made-up logout token is refused with 400 and an ID token sent as a logout token with 500; the phone stays signed
+in. The bill: use a certified library, keep the ID token in the store, and make sign-out reach every party.
+"""
+figure = "logout_paths"
+figure_title = "Two ways out: through the browser, and server to server"
+figure_speech = """
+Fifth demo: signing out. [[slnc 400]] On the left, R P initiated logout, through the browser. [[slnc 300]] Ana signs out at the store, and the store's session ends. [[slnc 300]] Her browser is sent to Keycloak's logout address, with her I D token as a hint, and the address to come back to. [[slnc 300]] Keycloak ends its own session, and sends her back. [[slnc 300]] Signing in again asks for her password. [[slnc 700]]
+On the right, back-channel logout, server to server. [[slnc 300]] Ana is signed in on a laptop and a phone. [[slnc 300]] Keycloak ends the laptop's session, and posts a logout token with that session id straight to the store. [[slnc 300]] The laptop is signed out. [[slnc 300]] The phone stays signed in.
 """
 speech = """
-Fifth demo: signing out. [[slnc 400]] Ana signs out at the store, and her browser is sent to Keycloak, which ends its session. [[slnc 600]]
-Ana is signed in on a laptop and a phone. [[slnc 300]] Keycloak ends the laptop's session, and sends the store a back channel logout token. [[slnc 600]]
-The laptop is signed out. [[slnc 300]] The phone stays signed in. [[slnc 600]]
-A made up logout token, or an I D token sent as one, ends nothing.
+Here is the output. [[slnc 400]] The store's session ended. [[slnc 300]] The browser goes to Keycloak's logout address, with both parameters. [[slnc 300]] Keycloak's session ends too, and the next sign-in asks for her password.
+[[page]]
+Two devices, two sessions. [[slnc 300]] Keycloak ends the laptop's, and posts a logout token to the store's back-channel address. [[slnc 300]] After it: the laptop is signed out, the phone is not.
+[[page]]
+Broken logout tokens. [[slnc 300]] A made-up one: refused. [[slnc 300]] An I D token in its place: refused. [[slnc 300]] The phone stays signed in both times. [[slnc 500]] And the bill. [[slnc 300]] Use a certified library. [[slnc 300]] Keep the I D token in the store. [[slnc 300]] And make sign out reach every application.
 """
-rows = { out = "active ok" }
+rows = { out = "active amber" }
 console = [
-    ["sign-out at the store: id_token_hint sent to Keycloak", "ok"],
-    ["Keycloak ends the laptop's session -> the laptop signed out", "ok"],
-    ["the phone stays signed in", "ok"],
-    ["a made-up logout token -> refused (400)", "ok"],
+    ["ANA SIGNS OUT AT THE STORE (RP-initiated logout):", "code"],
+    ["  the store's session ended: true", "muted"],
+    ["  her browser is sent to", "muted"],
+    ["  <keycloak>/realms/bank/protocol/openid-connect/logout", "muted"],
+    ["  with id_token_hint and post_logout_redirect_uri: true", "muted"],
+    ["  Keycloak ends its session, sends her back: true", "muted"],
+    ["  signing in again asks for her password: true", "muted"],
+    ["---", ""],
+    ["BEFORE THE LOGOUT TOKEN (Ana on a laptop and a phone):", "code"],
+    ["  two Keycloak sessions, two sids: true", "muted"],
+    ["THE LOGOUT TOKEN (Keycloak, server to server):", "code"],
+    ["  Keycloak ends the laptop's session (answer 204)", "muted"],
+    ["  and POSTs a logout token with that sid to the store:", "muted"],
+    ["  /logout/connect/back-channel/bank", "muted"],
+    ["AFTER THE LOGOUT TOKEN:", "code"],
+    ["  laptop signed in: false; phone signed in: true", "muted"],
+    ["---", ""],
+    ["BROKEN LOGOUT TOKENS (input, then result):", "code"],
+    ["  a made-up logout token, not.a.token", "muted"],
+    ["    -> refused, the store answered 400; phone still in: true", "ok"],
+    ["  an ID token sent as a logout token", "muted"],
+    ["    -> refused, the store answered 500; phone still in: true", "ok"],
+    ["THE BILL:", "code"],
+    ["  many checks and options: use a certified library", "muted"],
+    ["  the ID token stays in the store; never take an access token", "muted"],
+    ["    as a sign-in", "muted"],
+    ["  sign-out must reach the store, the provider and every app", "muted"],
 ]
+
+[highlight]
+console_green = ["THE RESULT", "AFTER THE FIX", "AFTER THE LOGOUT TOKEN", "THE CHECKS", "HOW SPRING SECURITY CHECKS IT", "THE SIGN-IN"]
+console_rose = ["BEFORE THE FIX", "FORGED METADATA", "BROKEN LOGOUT TOKENS", "THE ACCESS TOKEN", "A SIGN-IN WITHOUT", "A CALLBACK FROM"]
+console_amber = ["THE REQUEST", "BEFORE SIGNING", "ONE THING CHANGED", "THE SUBJECT, THE HEADER", "THE TIME CHECK", "THE CONFIGURATION", "BEFORE THE LOGOUT TOKEN", "ANA SIGNS OUT", "THE BILL", "THE USERINFO", "KEY ROTATION", "THE STORE'S SETTINGS"]
+console_cyan = ["THE RESPONSE", "THE ID TOKEN'S CLAIMS", "HOW IT IS SIGNED", "THE TWO PROVIDERS", "THE LOGOUT TOKEN", "THE TWO TOKENS"]
 
 [animation]
 subtitle = "An online store, two providers, and the sign-in the library does not finish for you."
@@ -419,9 +635,9 @@ residual = "A provider or store that is unreachable when the logout is sent"
 
 [poster]
 headline = [["OPENID CONNECT", "text"], ["WITH SPRING SECURITY", "accent"]]
-taglines = [["Spring Security checks the ID token and keeps the state and nonce; what it leaves to the s", "gold"]]
-before = { code = "state, nonce and a PKCE challenge kept for her brows", note = "OAuth gives access; OpenID Connect adds ", tag = "BEFORE" }
-after = { code = "oauth2Login().oidcLogout()", note = "Signing out, and the bill", tag = "AFTER" }
+taglines = [["Access is not identity", "gold"]]
+before = { code = "keyed by e-mail: account of Ana", note = "Mallory gets Ana's account", tag = "BEFORE" }
+after = { code = "keyed by issuer | subject", note = "one account per person", tag = "AFTER" }
 
 [[scene]]
 key = "01-poster"
@@ -437,6 +653,26 @@ body = ["An online store lets shoppers sign in", "with their bank login, or a wa
 narration = "Here is the scenario. [[slnc 400]] An online store lets shoppers sign in with their bank login, or with a wallet login. [[slnc 500]] The demo starts a real Keycloak in Docker, with those two sign-in providers, and the real store on Spring Boot. [[slnc 500]] Ana and Mallory sign in. [[slnc 300]] Then the demo tries the forged tokens, the shared e-mail address, and the sign-outs that go wrong."
 
 [[scene]]
+key = "02-words"
+kind = "bullets"
+title = "The Words"
+body = ["Relying party: the store, which trusts the sign-in", "ID token: who signed in, for this store", "Issuer and subject: who the customer is", "State and nonce: tie a reply to one sign-in", "Realm: one provider inside Keycloak"]
+narration = """Before the demos, the words. [[slnc 500]] The relying party is the app that trusts the sign-in: here, the store. [[slnc 500]] The I D token says who signed in, for this store. [[slnc 500]] The issuer and the subject, together, are who the customer is. [[slnc 500]] The state and the nonce tie a reply to one sign-in, in one browser. [[slnc 500]] And a realm is one provider inside Keycloak: here, the bank and the wallet."""
+
+[[scene]]
+key = "02-letters"
+kind = "acronyms"
+title = "Letters"
+narration = "unused"
+
+[[scene]]
+key = "02-two-tokens"
+kind = "figure"
+title = "One sign-in, two tokens"
+body = "two_tokens"
+narration = """Let's see the whole idea on one picture. [[slnc 400]] One sign-in at Keycloak gives the store two tokens. [[slnc 600]] On the left, the I D token. [[slnc 300]] Its type is I D, and its audience is the store. [[slnc 300]] It names the issuer, the bank realm, and the subject, Ana's id at the bank. [[slnc 300]] And it carries the nonce from this sign-in. [[slnc 300]] It answers one question: who signed in. [[slnc 700]] On the right, the access token. [[slnc 300]] Its type is bearer, and it is meant for the bank's A P I. [[slnc 300]] It says what the store may do, not who is at the browser. [[slnc 700]] So when the access token is offered to the store as a sign-in, Spring Security refuses it. [[slnc 300]] Access is not identity."""
+
+[[scene]]
 key = "03-acts"
 kind = "acts"
 title = "Acts"
@@ -448,13 +684,6 @@ kind = "bullets"
 title = "What It Costs"
 body = ["Every provider is a trust decision", "The library checks only the flows it knows", "Back-channel logout: Keycloak must reach the store", "Two sessions to keep in step", "Key rotation waits on the key cache"]
 narration = "Nothing is free. [[slnc 400]] Here is what it costs. [[slnc 500]] Every provider you accept is a trust decision, because it decides who your customers are. [[slnc 500]] The library checks only the flows it knows about. [[slnc 500]] Back-channel logout needs Keycloak to be able to reach the store. [[slnc 500]] The session at the provider and the session in the store must be kept in step. [[slnc 300]] And key rotation waits on the store's cache of keys."
-
-[[scene]]
-key = "05-roles"
-kind = "bullets"
-title = "Who Does What"
-body = ["KeycloakLab, realm files: the providers", "StoreSecurity, StoreController: the store", "StoreAccounts: who each customer is", "Shopper: the browser", "Tokens, LocalProvider: tokens to test with", "OidcSpringDemo: runs the five demos"]
-narration = "Here is who does what in the code. [[slnc 400]] KeycloakLab starts Keycloak, and the two realm files are the bank and the wallet. [[slnc 500]] StoreSecurity and StoreController are the store, using Spring Security's O Auth 2 login. [[slnc 300]] StoreAccounts decides which store account a sign-in belongs to. [[slnc 500]] Shopper is the browser. [[slnc 500]] Tokens and LocalProvider make tokens that Keycloak would never issue, to test the checks. [[slnc 300]] And OidcSpringDemo runs the five demos."
 
 [[scene]]
 key = "06-recognise"
@@ -471,8 +700,156 @@ body = ["A tested library; a trusted issuer over HTTPS", "Key customers by issue
 narration = "So, how do you use it? [[slnc 400]] Use a well tested library, and the issuer address of a provider you trust, over H T T P S. [[slnc 500]] Key customers by issuer and subject. [[slnc 300]] Treat the e-mail address as an attribute, never as the identity. [[slnc 500]] Keep the I D token in the store, and send only access tokens to A P I's. [[slnc 500]] Sign out at the store and at the provider. [[slnc 300]] And use back-channel logout, so a sign-out reaches every other session."
 
 [[scene]]
+key = "07-classes"
+kind = "classes"
+title = "Classes"
+narration = "unused"
+
+[[scene]]
 key = "08-outro"
 kind = "outro"
 title = "Thanks for Watching"
 body = ["Full source, notes, diagrams and an animated walkthrough", "are in the repository. Add a third provider and decide", "what happens when two claim one e-mail address."]
 narration = "That's Open I D Connect with Spring Security and Keycloak. [[slnc 400]] If you remember one sentence, make it this one. [[slnc 300]] Open I D Connect tells the store who signed in, as an issuer and a subject, in a token the library checks, and everything after that, the account, the session and the sign-out, is the store's own work. [[slnc 500]] The full source code, written notes, diagrams, and an animated walkthrough are all in the repository. [[slnc 300]] It runs on your own machine. [[slnc 500]] Here is one exercise to try. [[slnc 300]] Add a third provider, and decide what the store does when two providers claim the same verified e-mail address. [[slnc 500]] If you found this useful, a like really helps other people discover it. [[slnc 300]] Kindly subscribe to the channel. [[slnc 300]] It helps the channel grow and bring you more content. [[slnc 400]] Thanks for watching!"
+
+[classes]
+title = "The Java Classes"
+narration = """Now, a quick look at the code. [[slnc 300]] Spring Security does the protocol; the store's own classes are small. [[slnc 300]] Here are the ones that matter."""
+
+[[class]]
+name = "StoreSecurity"
+what = "sign-in and sign-out"
+[[class.part]]
+title = "sign-in with PKCE, sign-out at both ends"
+code = """
+logout.setPostLogoutRedirectUri("{baseUrl}/");
+...
+.oauth2Login(o -> o.authorizationEndpoint(a -> a.authorizationRequestResolver(resolver)))
+.logout(l -> l.logoutSuccessHandler(logout))
+"""
+speech = """One filter chain does the protocol. [[slnc 300]] O Auth two login sends the shopper to Keycloak with a state, a nonce and P K C E, and checks the I D token that comes back. [[slnc 300]] Logout ends the store's session, then sends the browser to Keycloak to end its session too."""
+
+[[class]]
+name = "StoreController"
+what = "who is signed in, as the store sees it"
+[[class.part]]
+title = "issuer and subject from the checked ID token"
+code = """
+Map<String, Object> me(@AuthenticationPrincipal OidcUser user) {
+...
+me.put("issuer", user.getIssuer().toString());
+me.put("subject", user.getSubject());
+"""
+speech = """After sign-in, Spring Security hands the store an O I D C user, built from the checked I D token. [[slnc 300]] The store reads the issuer and the subject from it: together, they are the customer."""
+
+[[class]]
+name = "StoreAccounts"
+what = "the store's customers, keyed two ways"
+[[class.part]]
+title = "by e-mail address, and by issuer and subject"
+code = """
+synchronized String byEmail(String email) {
+    return byEmail.computeIfAbsent(email, e -> "new account for " + e);
+...
+synchronized String bySubject(String issuer, String subject) {
+"""
+speech = """Keyed by e-mail address, whoever shows Ana's address gets Ana's account. [[slnc 300]] Keyed by issuer and subject, a user of another provider always gets an account of her own."""
+
+[[class]]
+name = "OidcSpringDemo"
+what = "the test decoder"
+[[class.part]]
+title = "the checks Spring Security runs"
+code = """
+OidcIdTokenValidator oidc = new OidcIdTokenValidator(r);
+oidc.setClockSkew(SKEW);
+return new DelegatingOAuth2TokenValidator<>(new JwtTimestampValidator(SKEW), oidc);
+"""
+speech = """For the second demo, the decoder is built the way the store's is. [[slnc 300]] The timestamp validator checks expiry with thirty seconds of skew. [[slnc 300]] The O I D C validator checks the issuer, the subject, the audience and the authorized party."""
+
+[[class]]
+name = "KeycloakLab"
+what = "a real Keycloak in Docker, with the bank and wallet realms"
+[[class.part]]
+title = "ending a session at the provider"
+code = """
+int endSession(String realm, String sessionId) throws IOException, InterruptedException {
+"""
+speech = """The lab starts Keycloak in Docker, with the two realms from the infra folder. [[slnc 300]] Ending a session through Keycloak's admin A P I is what makes it send the back-channel logout token to the store."""
+
+[[acronym]]
+short = "OAuth"
+long = "Open Authorization: lets an app act for a user"
+say = "O Auth is open authorization. It lets an app act on a user's behalf, with an access token."
+[[acronym]]
+short = "OIDC"
+long = "OpenID Connect: who signed in, on top of OAuth"
+say = "O I D C is Open I D Connect. It adds who signed in, in an I D token, on top of O Auth."
+[[acronym]]
+short = "ID"
+long = "identity: an ID token says who signed in"
+say = "I D means identity. An I D token says who signed in, and for which app."
+[[acronym]]
+short = "PKCE"
+long = "Proof Key for Code Exchange: ties the code to this sign-in"
+say = "P K C E is proof key for code exchange. The store sends the S H A two five six of a random verifier, and later proves it knows the verifier."
+[[acronym]]
+short = "SHA-256, S256"
+long = "Secure Hash Algorithm, 256 bits; S256 names it in PKCE"
+say = "S H A two five six is the secure hash algorithm with a two hundred and fifty six bit result. S two five six is its name in P K C E."
+[[acronym]]
+short = "JWT"
+long = "JSON Web Token: header.claims.signature"
+say = "J W T is a JSON web token: a header, the claims, and a signature, joined by dots."
+[[acronym]]
+short = "JSON"
+long = "JavaScript Object Notation: text with names and values"
+say = "J S O N is JavaScript object notation: text made of names and values."
+[[acronym]]
+short = "RSA, RS256"
+long = "Rivest-Shamir-Adleman signatures; RS256 = RSA with SHA-256"
+say = "R S A is the Rivest, Shamir, Adleman algorithm. RS256 names an R S A signature over a S H A two five six hash."
+[[acronym]]
+short = "API"
+long = "Application Programming Interface"
+say = "A P I is an application programming interface: here, the bank's service for other programs."
+[[acronym]]
+short = "HTTP, HTTPS"
+long = "Hypertext Transfer Protocol; S = secured with TLS"
+say = "H T T P is the hypertext transfer protocol. H T T P S is the same, secured with T L S, transport layer security."
+[[acronym]]
+short = "TLS"
+long = "Transport Layer Security: the encryption under HTTPS"
+say = "T L S is transport layer security, the encryption under H T T P S."
+[[acronym]]
+short = "URL, URI"
+long = "Uniform Resource Locator / Identifier: an address"
+say = "U R L is a uniform resource locator, and U R I a uniform resource identifier. Both are addresses on the web."
+[[acronym]]
+short = "JWKS"
+long = "JSON Web Key Set: the provider's public keys"
+say = "J W K S is a JSON web key set: the list of public keys a provider publishes."
+[[acronym]]
+short = "RP"
+long = "Relying Party: the app that trusts the sign-in"
+say = "R P is the relying party: the app that relies on the sign-in, here the store."
+[[acronym]]
+short = "iss, sub, aud"
+long = "issuer, subject, audience: who says, who signed in, for whom"
+say = "I S S is the issuer, who says so. Sub is the subject, who signed in. Aud is the audience, which app the token is for."
+[[acronym]]
+short = "iat, exp"
+long = "issued at, expires: seconds since 1970"
+say = "I A T is issued at, and exp is the expiry, both in seconds since nineteen seventy."
+[[acronym]]
+short = "azp, sid, kid"
+long = "authorized party; session id; key id"
+say = "A Z P is the authorized party. S I D is the provider's session id. K I D is the key id in a token's header."
+[[acronym]]
+short = "CSRF"
+long = "Cross-Site Request Forgery: a sign-out needs its token"
+say = "C S R F is cross site request forgery. The store's sign out form carries a C S R F token, so another site cannot sign Ana out."
+[[acronym]]
+short = "base64url"
+long = "bytes as letters, digits, - and _, safe in an address"
+say = "Base sixty four U R L writes bytes as letters, digits, dash and underscore, so they are safe in an address."

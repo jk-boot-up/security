@@ -14,10 +14,10 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: What the checker finds on a typical image | 8 min |
+| 0:10 | Act 1: The shop's server image, before any fix | 8 min |
 | 0:18 | Act 2: The fixes a machine can make | 8 min |
 | 0:26 | Act 3: The decisions a person makes | 8 min |
-| 0:34 | Act 4: Running it again | 8 min |
+| 0:34 | Act 4: Running it again, in every build | 8 min |
 | 0:42 | Exercises | 18 min |
 
 ## Walkthrough

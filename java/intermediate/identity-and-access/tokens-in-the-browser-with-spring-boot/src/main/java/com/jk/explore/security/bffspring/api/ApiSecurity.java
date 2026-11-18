@@ -50,7 +50,9 @@ class ApiSecurity {
                         .requestMatchers(HttpMethod.GET, "/accounts").hasAuthority("SCOPE_accounts.read")
                         .requestMatchers(HttpMethod.POST, "/transfers").hasAuthority("SCOPE_payments.write")
                         .anyRequest().denyAll())
-                .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()).dPoP(Customizer.withDefaults()));
+                .oauth2ResourceServer(o -> o
+                        .jwt(Customizer.withDefaults())
+                        .dPoP(Customizer.withDefaults()));
         return http.build();
     }
 }

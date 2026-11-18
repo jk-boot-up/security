@@ -1,47 +1,166 @@
-== 1. Downloading an invoice ==
-invoice-1001.txt                   -> read: Invoice 1001: Ana, 42.50
-
-== 2. A name with .. leaves the folder ==
-../secrets/db.txt                  -> read: DB_PASSWORD=demo-not-real
-../config/app.properties           -> read: admin=ana
-
-== 3. A text check on the path is not a path check ==
-../secrets/db.txt                  -> refused: outside the invoice folder
-../invoices-private/payroll.txt    -> read: payroll: demo salaries
-
-== 4. Names, paths and links, all checked ==
-invoice-1001.txt                   -> read: Invoice 1001: Ana, 42.50
-../secrets/db.txt                  -> refused: not an invoice name
-%2e%2e%2fsecrets%2fdb.txt          -> refused: not an invoice name
-../invoices-private/payroll.txt    -> refused: not an invoice name
-invoice-9999.txt                   -> refused: no such file
-invoice-5555.txt (a link)          -> read: DB_PASSWORD=demo-not-real
-invoice-5555.txt (a link)          -> read: DB_PASSWORD=demo-not-real
-invoice-5555.txt (a link)          -> refused: link leads outside the invoice folder
-Spring's own static handler for the invoice folder:
-an encoded slash, ..%2f            -> 400
-a dot-dot segment, %2e%2e/         -> 404
-invoice-5555.txt (a link)          -> 200 DB_PASSWORD=demo-not-real  <- THE HANDLER FOLLOWS THE LINK
-
-== 5. Uploads ==
-a photo called cat.png             -> /uploads/cat.png
-a script called page.html          -> served as text/html, inline
-a name with ..                     -> config now reads: admin=mallory
-a photo called cat.png             -> /uploads/photo-0001.png (image/png, download=true, nosniff=true)
-a script called page.html          -> refused: not a PNG or JPEG image
-a script renamed cat.png           -> refused: not a PNG or JPEG image
-a name with ..                     -> /uploads/photo-0002.png
-after those uploads                -> config still reads: admin=ana
-a photo of 1500 bytes              -> refused: size not allowed
-a photo of 5000 bytes              -> 413, refused by spring.servlet.multipart.max-file-size before the controller runs
-
-== 6. Where to send the customer next ==
-"/orders?page=2"                   -> naive: /orders?page=2             safe: /orders?page=2
-"https://evil.example/login"       -> naive: https://evil.example/login safe: /account
-"//evil.example"                   -> naive: //evil.example             safe: /account
-"/\evil.example"                   -> naive: /\evil.example             safe: /account
-"javascript:steal()"               -> naive: javascript:steal()         safe: /account
-""                                 -> naive:                            safe: /account
-own host, exact match              -> true
-shop.example.evil.example          -> false
-shop.example@evil.example          -> false
+ONE. An honest name downloads one invoice.
+  THE FOLDERS (in a temporary folder, shown as .../):
+    invoices/          invoice-1001.txt  invoice-1002.txt
+    invoices-private/  payroll.txt
+    secrets/           db.txt
+    config/            app.properties
+    webroot/uploads/   (empty)
+    uploads-private/   (empty)
+  THE REQUEST (the form sends the name):
+    GET /invoices?name=invoice-1001.txt
+  THE PATH (the invoices folder joined with the name):
+    .../invoices/invoice-1001.txt
+  THE RESPONSE:
+    200 Invoice 1001: Ana, 42.50
+TWO. A name with .. climbs out of the folder.
+  THE REQUEST:
+    GET /invoices?name=..%2Fsecrets%2Fdb.txt
+  THE NAME (Spring decodes the parameter once):
+    ../secrets/db.txt
+  THE PATH THE CONTROLLER OPENS (.. is the folder above):
+    .../invoices/../secrets/db.txt
+    = .../secrets/db.txt
+  THE RESPONSE:
+    200 DB_PASSWORD=demo-not-real  <- THE PASSWORD
+  THE REQUEST:
+    GET /invoices?name=..%2Fconfig%2Fapp.properties
+  THE NAME (Spring decodes the parameter once):
+    ../config/app.properties
+  THE PATH THE CONTROLLER OPENS (.. is the folder above):
+    .../invoices/../config/app.properties
+    = .../config/app.properties
+  THE RESPONSE:
+    200 admin=ana  <- THE SETTINGS
+THREE. A text check is not a path check.
+  THE CHECK (the second version reads only if):
+    the path's text starts with ".../invoices"
+  THE REQUEST:
+    GET /invoices?name=..%2Fsecrets%2Fdb.txt
+  THE PATH (joined, then .. removed):
+    .../secrets/db.txt
+  THE COMPARISON:
+    as text    starts with ".../invoices"?  no
+    as a path  "secrets" is "invoices"?  no
+  THE RESPONSE:
+    400 outside the invoice folder
+  THE REQUEST:
+    GET /invoices?name=..%2Finvoices-private%2Fpayroll.txt
+  THE PATH (joined, then .. removed):
+    .../invoices-private/payroll.txt
+  THE COMPARISON:
+    as text    starts with ".../invoices"?  yes
+    as a path  "invoices-private" is "invoices"?  no
+  THE RESPONSE:
+    200 payroll: demo salaries  <- ANOTHER FOLDER
+FOUR. The fixed version checks in four layers.
+  THE LAYERS (in order; the first that fails refuses):
+    1 decode once    by Spring, never again
+    2 the shape      invoice-, four digits, .txt
+    3 the path       remove .., then compare as a path
+    4 the real path  follow links, then compare again
+  THE REQUEST:
+    GET /invoices?name=invoice-1001.txt
+  THE RESPONSE:
+    200 Invoice 1001: Ana, 42.50
+  THE REQUESTS (GET /invoices?name=..., as sent):
+    name=..%2Fsecrets%2Fdb.txt
+    name=%2e%2e%2fsecrets%2fdb.txt
+      Spring decodes it once: ../secrets/db.txt
+    name=%252e%252e%252fsecrets%252fdb.txt
+      Spring decodes it once: %2e%2e%2fsecrets%2fdb.txt
+    name=invoice-9999.txt
+  THE RESPONSES:
+    400 not an invoice name
+    400 not an invoice name
+    400 not an invoice name
+    400 no such file
+  THE LINK (made inside the invoices folder):
+    .../invoices/invoice-5555.txt -> .../secrets/db.txt
+  THE REQUEST (a good shape, a path inside the folder):
+    GET /invoices?name=invoice-5555.txt
+  THE RESPONSES:
+    naive   200 DB_PASSWORD=demo-not-real
+    prefix  200 DB_PASSWORD=demo-not-real
+    fixed   400 link leads outside the invoice folder
+  THE REAL PATH (layer 4 follows the link):
+    .../secrets/db.txt  <- OUTSIDE THE FOLDER
+FIVE. Spring's static handler follows a link.
+  THE HANDLER (/static-invoices/** serves the folder):
+    addResourceLocations(.../invoices/)
+  THE REQUESTS:
+    GET /static-invoices/..%2fsecrets/db.txt
+    GET /static-invoices/%2e%2e/secrets/db.txt
+    GET /static-invoices/invoice-5555.txt
+  THE RESPONSES:
+    400 (refused)
+    404 (refused)
+    200 DB_PASSWORD=demo-not-real  <- FOLLOWS THE LINK
+SIX. The naive upload trusts the customer's name.
+  THE REQUEST (one part of a multipart POST /uploads):
+    Content-Disposition: form-data; name="file";
+        filename="../../config/app.properties"
+  THE UPLOADS (getOriginalFilename(), the first bytes):
+    cat.png                     89 50 4e 47  .PNG
+    page.html                   3c 68 74 6d  <htm
+    ../../config/app.properties 61 64 6d 69  admi
+  THE RESPONSES (saved in .../webroot/uploads/):
+    cat.png
+      -> 200 /uploads/cat.png
+    page.html
+      -> served as text/html, inline  <- OUR PAGE
+    ../../config/app.properties
+      -> .../config/app.properties: admin=mallory
+SEVEN. The fixed upload decides for itself.
+  THE RULES (the customer's name is not used):
+    size     Spring: max-file-size=2KB
+             the code: 1 to 1000 bytes
+    PNG      first bytes 89 50 4e 47
+    JPEG     first bytes ff d8 ff
+    name     photo-NNNN, counted by the server
+    place    .../uploads-private/, outside the web root
+  THE UPLOADS (name, first bytes, size):
+    cat.png                     89 50 4e 47  .PNG    11 bytes
+    page.html                   3c 68 74 6d  <htm    37 bytes
+    cat.png (page.html renamed) 3c 68 74 6d  <htm    37 bytes
+    ../../config/app.properties 89 50 4e 47  .PNG    11 bytes
+    big.png                     89 50 4e 47  .PNG  1500 bytes
+    huge.png                    89 50 4e 47  .PNG  5000 bytes
+  THE RESPONSES:
+    200 /uploads/photo-0001.png
+    400 not a PNG or JPEG image
+    400 not a PNG or JPEG image
+    200 /uploads/photo-0002.png
+    400 size not allowed
+    413 refused by Spring, before the controller
+  THE RESPONSE TO GET /uploads/photo-0001.png:
+    Content-Type: image/png
+    Content-Disposition: attachment
+    X-Content-Type-Options: nosniff
+  THE SETTINGS AFTER THOSE UPLOADS:
+    .../config/app.properties: admin=ana
+EIGHT. Return links stay on our own site.
+  THE REQUESTS (GET /continue?returnTo=...):
+    /orders?page=2
+    https://evil.example/login
+    //evil.example
+    /\evil.example
+    javascript:steal()
+  THE NAIVE RESPONSES (302, Location:):
+    /orders?page=2
+    https://evil.example/login   <- NOT OUR SITE
+    //evil.example               <- NOT OUR SITE
+    /\evil.example               <- NOT OUR SITE
+    javascript:steal()           <- NOT OUR SITE
+  THE FIXED RESPONSES (302, Location:, and why):
+    /orders?page=2
+    /account  (does not start with /)
+    /account  (starts with //: another host)
+    /account  (has a backslash: browsers read /\ as //)
+    /account  (does not start with /)
+  THE HOST CHECK (the host must be shop.example):
+    https://shop.example/x
+      host shop.example -> allowed
+    https://shop.example.evil.example/x
+      host shop.example.evil.example -> refused
+    https://shop.example@evil.example/x
+      host evil.example, user shop.example -> refused

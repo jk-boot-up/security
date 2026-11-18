@@ -4,7 +4,7 @@ Prepared text for YouTube Studio. **Nothing is uploaded until the author has rev
 
 ## Title
 
-OpenID Connect with Spring Security and Keycloak: ID Token Checks, Account Takeover, Back-Channel Logout
+OpenID Connect with Spring Security and Keycloak: ID Token Checks, Takeover, Back-Channel Logout
 
 ## Description
 
@@ -16,17 +16,43 @@ Chapters:
 
 ```
 00:00 Introduction
-01:34 The Scenario
-01:56 Act One — OAuth gives access; OpenID Connect adds who signed in
-02:34 Act Two — Checking the ID token
-03:07 Act Three — Discovery and keys
-03:37 Act Four — Who signed in: issuer and subject, never the email
-04:07 Act Five — Signing out, and the bill
-04:41 What It Costs
-05:10 Who Does What
-05:36 Where You Have Seen It
-05:53 How To Use It
-06:17 Thanks for Watching
+00:57 The Scenario
+01:26 The Words
+01:58 What the Letters Stand For
+03:05 What the Letters Stand For (continued)
+04:04 What the Letters Stand For (continued)
+05:05 What the Letters Stand For (continued)
+05:15 One sign-in, two tokens
+06:10 The request Spring Security builds, and the claims that come back
+07:14 Act One — OAuth gives access; OpenID Connect adds who signed in
+07:36 Act One — OAuth gives access; OpenID Connect adds who signed in
+07:51 Act One — OAuth gives access; OpenID Connect adds who signed in
+08:21 What the store checks every ID token against
+09:26 Act Two — Checking the ID token
+09:41 Act Two — Checking the ID token
+09:59 Act Two — Checking the ID token
+10:21 Act Two — Checking the ID token
+10:43 From one issuer to the metadata, and a key rotation
+11:39 Act Three — Discovery and keys
+11:50 Act Three — Discovery and keys
+12:13 Act Three — Discovery and keys
+12:30 One e-mail address, two people
+13:21 Act Four — Who signed in: issuer and subject, never the email
+13:38 Act Four — Who signed in: issuer and subject, never the email
+13:53 Two ways out: through the browser, and server to server
+14:47 Act Five — Signing out, and the bill
+15:04 Act Five — Signing out, and the bill
+15:20 Act Five — Signing out, and the bill
+15:44 What It Costs
+16:17 Where You Have Seen It
+16:50 How To Use It
+17:28 The Java Classes
+17:39 StoreSecurity — sign-in with PKCE, sign-out at both ends
+18:01 StoreController — issuer and subject from the checked ID token
+18:16 StoreAccounts — by e-mail address, and by issuer and subject
+18:30 OidcSpringDemo — the checks Spring Security runs
+18:49 KeycloakLab — ending a session at the provider
+19:03 Thanks for Watching
 ```
 
 ## Tags

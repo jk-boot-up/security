@@ -26,6 +26,17 @@ class IsolationTest {
     }
 
     @Test
+    void theMeasuredPairsAreThoseTheLayoutWorksOut() throws Exception {
+        for (Layout layout : List.of(Layout.flat(), Layout.tiers(), Layout.of(Intent.shop(), true))) {
+            try (Lab lab = new Lab()) {
+                lab.apply(layout, java.util.Set.of());
+                Thread.sleep(1000);
+                assertEquals(layout.pairs(), lab.pairs());
+            }
+        }
+    }
+
+    @Test
     void aLayoutBuiltFromTheIntentMatchesItExactly() throws Exception {
         Intent intent = Intent.shop();
         try (Lab lab = new Lab()) {

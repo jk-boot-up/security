@@ -1,34 +1,83 @@
 ONE. A certificate authority that runs.
-  the root: CN=Shop Internal CA Root CA,O=Shop Internal CA, self-signed: true, valid 10 years
-  the issuing authority: CN=Shop Internal CA Intermediate CA,O=Shop Internal CA, signed by the root: true, may not create authorities below it: true
-  the CA answers over https, and a client that trusts the root reads /health: ok
-  a client that has not been given the root: refused (the CA's certificate is not signed by anything this client trusts)
-  the root's private key is a file on this machine, kept encrypted with the CA's password: true
+  THE ROOT (made by step ca init):
+    subject      Shop Internal CA Root CA
+    self-signed  true
+    valid        10 years
+    key file     secrets/root_ca_key, encrypted: true
+  THE ISSUING AUTHORITY:
+    subject      Shop Internal CA Intermediate CA
+    signed by    the root: true
+    path length  0: it may not create authorities
+    valid        10 years
+  THE CA'S POLICY (in ca.json):
+    allowed names  localhost, *.shop.localhost
+  THE REQUEST: GET /health over https
+  THE RESPONSES:
+    a client that trusts the root: ok
+    a client without the root: refused (PKIX path building failed)
 TWO. A certificate for a service, with a token.
-  the web team's service asks with a one-time token for www.shop.localhost: issued, lasting 24 hours by default, key EC
-  a client that trusts the root checks it: accepted
-  the same token used a second time: refused (not authorized)
-  a token for another name used for www.shop.localhost: refused (the token was issued for another name)
-  asking for 2000 hours: refused (longer than the longest lifetime the CA allows)
-  a name outside what the policy allows, pay.example, with a valid token: refused (that name is outside what the CA's policy allows)
-  with a day of life, a stolen key is useful for a day, without any revocation list
+  THE TOKEN (step ca token www.shop.localhost):
+    parts        3: header.payload.signature
+    header       alg ES256, typ JWT
+    sub          www.shop.localhost
+    sans         [www.shop.localhost]
+    iss          tokens (the provisioner that signed it)
+    aud          <ca address>/1.0/sign
+    exp - nbf    300 seconds
+    sha          the SHA-256 of the root: true
+    jti          <random id, 64 characters>
+  THE CERTIFICATE (step ca certificate ... --token):
+    issued, [www.shop.localhost], 24 hours, key EC
+    serial <random>, issued by Shop Internal CA Intermediate CA
+    a client that trusts the root: accepted
+  THE TOKENS THE CA REFUSES:
+    the same token a second time
+      -> refused (not authorized)
+    a token for api.shop.localhost, used for www
+      -> refused (the token was issued for another name)
+    a valid token, asking for 2000 hours
+      -> refused (longer than the longest lifetime the CA allows)
+    a valid token for pay.example
+      -> refused (that name is outside what the CA's policy allows)
 THREE. A certificate for a service, with ACME.
-  the service asks through the ACME provisioner and answers the CA's challenge on port 80 of its own name: issued, 24 hours, for [www.shop.localhost]
-  a client that trusts the root checks it: accepted
-  ACME for a name outside the policy, evil.example: refused (the ACME server will not issue for that name)
-  ACME proves that the asker controls the name now; it does not prove that the asker is the team that should have it, which is what the policy and the token are for
+  THE REQUEST (step ca certificate --provisioner acme):
+    www.shop.localhost; the CA calls it back on port 80
+  THE CERTIFICATE:
+    issued, [www.shop.localhost], 24 hours, key EC
+    serial <random>, issued by Shop Internal CA Intermediate CA
+    a client that trusts the root: accepted
+  ACME FOR A NAME OUTSIDE THE POLICY (evil.example):
+    -> refused (the ACME server will not issue for that name)
 FOUR. Renewing before it ends.
-  the service renews with the certificate and its key: renewed, a new serial number: true, the same key: true, ends later: true
-  renewing with a new key: renewed, a different key: true
-  a service that has lost its key cannot renew: refused (the key does not match the certificate, so the TLS call to the CA fails)  <- ONLY THE HOLDER OF THE KEY RENEWS
-  with a day of life, a renewal job that stops is noticed within a day: the certificate runs out
+  BEFORE THE RENEWAL (www.shop.localhost):
+    serial <random>, 24 hours, key EC
+  AFTER step ca renew (the certificate and its key):
+    renewed, 24 hours
+    a new serial: true; the same key: true; ends later: true
+  AFTER step ca rekey:
+    renewed; a different key: true
+  A SERVICE THAT LOST ITS KEY (renews with another key):
+    -> refused (the key does not match: the TLS call fails)
+    <- ONLY THE HOLDER OF THE KEY RENEWS
 FIVE. Revocation, and the bill.
-  the acme certificate's key is reported stolen and revoked: true
-  the CA then refuses to renew it: refused (not authorized)
-  the CA publishes a revocation list signed by the issuing authority, listing 1 serial number: true
-  a client that checks the list: refused (REVOKED)
-  a client that never checks: accepted  <- A REVOKED CERTIFICATE STILL WORKS THERE
-  a client that wants to check and has no list: refused (UNDETERMINED_REVOCATION_STATUS)  <- NO LIST, SO NO: IT FAILS CLOSED
-  the other certificate, www.shop.localhost, against the same list: accepted
-  the CA holds the issuing key online and the root key on disk; whoever reads that disk and knows the password can issue for the policy's names, so the password and the machine are what the whole trust rests on
-  the policy is enforced by the CA itself, so a stolen CA key is not held back by it; a client gets that protection only from a name constraint in the CA certificate, which the plain local-certificate-authority project shows
+  THE REVOCATION (step ca revoke, the acme certificate):
+    revoked: true
+    a renewal afterwards
+      -> refused (not authorized)
+  THE REVOCATION LIST (GET /1.0/crl):
+    signed by    Shop Internal CA Intermediate CA: true
+    entries      1; the acme serial: true
+    current for  5 minutes (next update - this update)
+  THE CHECKS:
+    acme, the client checks the list
+      -> refused (REVOKED)
+    acme, a client that never checks
+      -> accepted  <- A REVOKED CERTIFICATE STILL WORKS
+    acme, a client that wants to check but has no list
+      -> refused (UNDETERMINED_REVOCATION_STATUS)
+      <- NO LIST, SO NO: IT FAILS CLOSED
+    www.shop.localhost, the same list
+      -> accepted
+  THE KEYS THE CA HOLDS (the bill):
+    issuing  secrets/intermediate_ca_key, online, encrypted: true
+    root     secrets/root_ca_key, same disk, encrypted: true

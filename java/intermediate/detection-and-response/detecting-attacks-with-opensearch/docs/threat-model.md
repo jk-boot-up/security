@@ -1,6 +1,6 @@
 # Threat Model — Detecting Attacks with OpenSearch
 
-A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online store.
+A threat model answers four questions: what are we protecting, who or what could harm it, how, and what do we do about it. This one covers this project's own demo system, not a production deployment. Domain: an online bank's sign-in and admin logs.
 
 ## Scope
 
@@ -49,7 +49,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `QueryShapeTest` checks the scenario, the documents and the shape of the queries and monitors with no server.
+- `QueryShapeTest` checks the scenario, the documents, the shape of the queries and monitors, their four parts as `QueryParts` reads them, and the fixed buckets worked out by hand (15 and 15), with no server.
 - `OpenSearchTest` runs a real OpenSearch for the index, every detection, the tuning, the monitors, the read-back for impossible travel, the mapping and the bucket edge.
 - `DemoRunsTest` compares the whole demo with the golden output.
 

@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> SIEM basics for a bank: collecting web, database and syslog lines, dead letters for what does not parse, one common event shape, the time zone mistake that breaks a correlation, a rule that sees an attack only across sources, and turning alerts into cases.
+> SIEM basics for a bank: one web, database and syslog line each turned into one common event shape, dead letters for what does not parse, one query on the common fields, the time zone offset worked out and the alert it decides, a brute-force rule that only sees the attack across sources, and two alerts grouped into one case.

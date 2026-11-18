@@ -163,7 +163,7 @@ class PasskeysSpringTest {
             assertEquals(401, bank.browser().signInWithPasskey(clone, true, ORIGIN, RP).status());
             assertEquals(401, bank.browser().signInWithPasskey(phone, true, ORIGIN, RP).status());
             HardenedRelyingParty rp = (HardenedRelyingParty) bank.context().getBean(WebAuthnRelyingPartyOperations.class);
-            assertEquals("counter 4 is not above 4: possible cloned authenticator", rp.refusals().get(rp.refusals().size() - 2));
+            assertEquals("counter 4 is not above 4: a cloned key?", rp.refusals().get(rp.refusals().size() - 2));
             assertEquals("passkey suspended after a counter went backwards", rp.refusals().getLast());
             assertTrue(rp.isSuspended(Bytes.fromBase64(phone.credentialId())));
         }

@@ -17,17 +17,43 @@ Chapters:
 ```
 00:00 Introduction
 00:59 The Scenario
-01:22 The Words
-01:54 Act One — What a bill of materials answers, and what it does not
-02:34 Act Two — Provenance: who built it, from what
-03:11 Act Three — Checking before deploying
-03:55 Act Four — SLSA build levels, and builds that can be repeated
-04:43 Act Five — The bill
-05:16 Questions Before a Release Runs
-05:44 Who Does What
-06:13 Where You Have Seen It
-06:40 How To Use It
-07:08 Thanks for Watching
+01:28 The Words
+02:09 What the Letters Stand For
+03:14 What the Letters Stand For (continued)
+03:37 One library in the SBOM
+04:30 What the SBOM records, and what it cannot say
+05:27 Act One — What a bill of materials answers, and what it does not
+05:38 Act One — What a bill of materials answers, and what it does not
+06:07 Act One — What a bill of materials answers, and what it does not
+06:29 The statement, the bytes that are signed, and the envelope
+07:35 Act Two — Provenance: who built it, from what
+07:49 Act Two — Provenance: who built it, from what
+08:17 Act Two — Provenance: who built it, from what
+08:31 Eight releases against the gate's seven checks
+09:33 Act Three — Checking before deploying
+09:43 Act Three — Checking before deploying
+09:56 Act Three — Checking before deploying
+10:07 Act Three — Checking before deploying
+10:28 Build levels, and builds that can be repeated
+11:33 Act Four — SLSA build levels, and builds that can be repeated
+11:49 Act Four — SLSA build levels, and builds that can be repeated
+11:59 Act Four — SLSA build levels, and builds that can be repeated
+12:12 What still goes wrong
+13:04 Act Five — The bill
+13:30 Questions Before a Release Runs
+13:58 What It Costs
+14:34 Where You Have Seen It
+15:00 How To Use It
+15:29 The Java Classes
+15:40 Sbom — one component: package URL and SHA-256
+15:52 Sbom — is this the SBOM for this jar?
+16:05 Provenance — the subject, the source and the builder
+16:19 Dsse — the pre-authentication encoding
+16:29 Dsse — open: the type, then the signature
+16:39 Policy — a refusal names its check
+16:53 Pipeline — the level from three facts
+17:06 Archive — sorted entries, the commit's time
+17:18 Thanks for Watching
 ```
 
 ## Tags

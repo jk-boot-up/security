@@ -8,28 +8,37 @@ A parser or an engine that runs instructions found in its input must be told not
 
 ### 1. An invoice upload
 
-A supplier uploads a small XML invoice with a customer, a total and a note. The JDK parser, as it comes, reads it and the shop stores the three fields.
+The upload is a small XML file: an invoice element holding a customer, a total and a note. The note is written Thanks &amp; see you soon, because a bare & is not allowed in XML.
+&amp; is a built-in entity: a name that the parser replaces by its value, here the character &.
+The JDK's parser, as it comes, reads the file and the shop stores three fields: customer Ana, total 42.50, note Thanks & see you soon.
 
 ### 2. The parser reads what the file tells it to
 
-The uploaded file starts with a DOCTYPE that defines the entity xxe as the contents of a file on the server, and the note is `&xxe;`. The parser fetches the file and the shop stores it
-as the note: demo-secret-from-the-server. A second file defines six levels of ten references each; the JDK's default expansion limit stops it, which is luck of the library and not a defence.
+The uploaded file starts with a DOCTYPE, the part of an XML file that may define entities. It defines xxe with the word SYSTEM and the address of a file on the server, and the note is &xxe;.
+The parser opens that file and puts its text where &xxe; stands, so the shop stores the note demo-secret-from-the-server. In the demo the file is a temporary file the program writes and deletes.
+A second file, the entity bomb, is 464 characters long. a0 is lol; a1 holds ten a0; each level holds ten of the level below, up to a6. a6 is 10 x 10 x 10 x 10 x 10 x 10 = 1,000,000 copies of lol, 3,000,000 characters.
+The JDK's default entity expansion limit stops it. That is luck of the library, not a setting of ours.
 
 ### 3. Refuse the DOCTYPE
 
-An invoice has no use for a DOCTYPE, so the safe parser is told to refuse one. The honest invoice is read as before. The file with the external entity and the bomb are both
-refused with the same message, before any entity is looked at. External DTDs and schemas, XInclude and entity expansion are switched off as well, and uploads over 10,000 characters are refused.
+An invoice has no use for a DOCTYPE, so the safe parser refuses one: the feature disallow-doctype-decl is true. The settings are read back from the parser the code builds.
+The other settings are extra layers in case somebody switches the first one off later: secure processing is on, no external DTDs or schemas may be fetched, XInclude is off and entity references are not expanded. Uploads over 10,000 characters are refused before parsing.
+The same three files again: the honest invoice is accepted, Ana and 42.50. The external entity and the bomb are both refused with a DOCTYPE is not allowed in an invoice, before any entity is looked at. An invoice of 10,095 characters is refused as too large.
 
 ### 4. A template engine that evaluates expressions
 
-The e-mail template engine evaluates `${customer.name}` by walking properties by reflection, and `app` is reachable from every template. The owner's template works. When the code builds the template
-by pasting the customer's name into it, a name of `${app.config.smtpPassword}` prints the demo SMTP password, and `${customer.class.name}` shows the class that holds the data. The same name
-passed to a fixed template as data is not evaluated again.
+The e-mail engine evaluates ${...} by walking properties by reflection, and two names are reachable from every template: customer and app. app.config.smtpPassword is the mail password, here the marker demo-smtp-password.
+The owner's template Hello ${customer.name}, your order shipped. prints Hello Ana, your order shipped.
+A customer signs up with the name ${app.config.smtpPassword}. The code builds the template by pasting the name in. The engine works it out step by step: app is the App object; .config calls config() and gets an AppConfig; .smtpPassword calls smtpPassword() and gets demo-smtp-password. The e-mail says Hello demo-smtp-password.
+${customer.class.name} walks customer -> getClass() -> getName() and prints com.jk.explore.security.xmlinj.Customer: any public method is reachable.
+Passed as data to the fixed template Hello ${customer.name}, the same name prints as text: the engine does not evaluate its own output again.
 
 ### 5. A logic-less engine keeps data as data
 
-The fixed engine has `{{name}}` and `{{email}}` and nothing else: no expressions, no reflection, one pass. A name pasted into the template stays the text `${app.config.smtpPassword}`.
-Markup in a name is escaped for HTML. The better habit is still to keep customer text out of the template: pass it as a value.
+The logic-less engine fills {{name}} and {{email}} from a flat list of two values and does nothing else: no expressions, no reflection, one pass over the template.
+The owner's template prints Hello Ana, your order shipped. The name pasted into the template stays the text ${app.config.smtpPassword}, and so does the name passed as data.
+A name with markup, <script>x</script>, is escaped for HTML: & becomes &amp;, < becomes &lt;, > becomes &gt;, " becomes &quot; and ' becomes &#39;. The e-mail says Hello &lt;script&gt;x&lt;/script&gt;, which a mail reader shows as text.
+The better habit is still to keep customer text out of the template and pass it as a value.
 
 ## The verdict
 

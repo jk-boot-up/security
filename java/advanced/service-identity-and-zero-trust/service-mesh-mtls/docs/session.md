@@ -14,12 +14,13 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: Before and after the proxies | 7 min |
-| 0:17 | Act 2: Identities from ServiceAccounts | 7 min |
-| 0:24 | Act 3: Mutual TLS is not a decision | 7 min |
-| 0:31 | Act 4: A policy names who may call | 7 min |
-| 0:38 | Act 5: What the mesh does not protect | 7 min |
-| 0:45 | Exercises | 15 min |
+| 0:10 | Act 1: Before and after the proxies | 5 min |
+| 0:15 | Act 2: An identity from each ServiceAccount | 5 min |
+| 0:20 | Act 3: Mutual TLS alone does not decide | 5 min |
+| 0:25 | Act 4: A policy names who may call | 5 min |
+| 0:30 | Act 5: What the mesh does not protect | 5 min |
+| 0:35 | Act 6: Certificate lifetime and renewal | 5 min |
+| 0:40 | Exercises | 20 min |
 
 ## Walkthrough
 

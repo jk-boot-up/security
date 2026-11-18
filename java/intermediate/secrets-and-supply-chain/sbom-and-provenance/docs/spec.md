@@ -44,10 +44,10 @@ Teams sign releases and publish SBOMs, but deploy without checking where a relea
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 19, all passing |
-| Demo output | 38 lines, identical on every run |
+| Tests | 21, all passing |
+| Demo output | 134 lines, identical on every run |
 | Acts | 5 |
-| Video | 08:05, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:14, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

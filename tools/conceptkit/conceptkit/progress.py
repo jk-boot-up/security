@@ -1,4 +1,5 @@
 """Counts built and planned projects in java/learning-path.md and writes the Status table between its markers."""
+import json
 import re
 
 START, END = "<!-- status:start -->", "<!-- status:end -->"
@@ -64,9 +65,39 @@ def table(counts):
     return "\n".join(rows), b, p
 
 
+def cells(line):
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def row(cs):
+    return "| " + " | ".join(cs) + " |"
+
+
+def videos(text, registry):
+    """Gives every project table a last Video column: a link for a public video, a dash otherwise."""
+    out, has = [], False
+    for line in text.splitlines():
+        if line.startswith("| # | Project |"):
+            cs = cells(line)
+            has = cs[-1] == "Video"
+            line = row(cs if has else cs + ["Video"])
+        elif line.startswith("| ---: |"):
+            line = line if has else line.rstrip() + " --- |"
+        elif m := re.match(r"\| \d+ \| \[[^\]]+\]\(([^)]+)\)", line):
+            e = registry.get(m.group(1).strip("/"), {})
+            link = "[Watch](https://youtu.be/%s)" % e["id"] if e.get("visibility") == "Public" and e.get("id") else "-"
+            cs = cells(line)
+            line = row((cs[:-1] if has else cs) + [link])
+        out.append(line)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
 def update(path):
-    """Rewrites the Status block of the learning path; returns (built, planned)."""
+    """Rewrites the Status block of the learning path and its Video links; returns (built, planned)."""
     text = path.read_text()
+    reg = path.parent.parent / "docs" / "youtube-links.json"
+    if reg.exists():
+        text = videos(text, json.loads(reg.read_text()))
     tbl, b, p = table(count(text))
     block = "%s\n## Status\n\n**Built: %d projects. Planned: %d projects.** Counted from the tables below by `conceptkit.sh progress`.\n\n%s\n\n**By kind.** *Plain* uses the JDK only; *With tools* uses a library, framework or local tool; *Unclassified* are advanced projects not yet designed as one or the other.\n\n%s\n%s" % (START, b, p, tbl, kind_table(kinds(text)), END)
     if START in text:

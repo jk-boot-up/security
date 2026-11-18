@@ -48,7 +48,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `DetectorTest` and `ScoreTest` check the rules, the entropy and the scoring with no tools.
+- `DetectorTest`, `EntropyStepsTest`, `ScoreTest` and `GitleaksAndPlantedTest` check the rules, the entropy steps, the scoring and the verdicts with no tools.
 - `DemoRunsTest` runs git and gitleaks and compares the whole demo with the golden output (integrationTest).
 
 ## Where this model goes next

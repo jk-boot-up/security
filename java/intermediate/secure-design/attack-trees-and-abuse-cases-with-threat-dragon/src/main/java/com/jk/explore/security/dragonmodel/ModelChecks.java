@@ -2,7 +2,9 @@ package com.jk.explore.security.dragonmodel;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -15,7 +17,42 @@ public final class ModelChecks {
     private static final Set<String> SEVERITY = Set.of("High", "Medium", "Low");
     private static final Set<String> STRIDE = Set.of("Spoofing", "Tampering", "Repudiation", "Information disclosure", "Denial of service", "Elevation of privilege");
 
+    /** The rules, in the order they are checked, and what each one asks of the file. */
+    public static final Map<String, String> RULES = new LinkedHashMap<>();
+
+    static {
+        RULES.put("complete-threat", "every threat has its six fields");
+        RULES.put("known-status", "status is Open, Mitigated or NA");
+        RULES.put("known-severity", "severity is High, Medium or Low");
+        RULES.put("stride-type", "type is a STRIDE type");
+        RULES.put("mitigated-names-its-defence", "a Mitigated threat names it");
+        RULES.put("unique-numbers", "no two threats share a number");
+        RULES.put("open-flag-matches-threats", "a cell's flag matches them");
+        RULES.put("flow-ends-exist", "both ends of a flow are cells");
+        RULES.put("threat-top-is-highest-number", "threatTop is the top number");
+        RULES.put("every-abuse-case-has-a-threat", "no abuse case is left out");
+    }
+
     private ModelChecks() {
+    }
+
+    /** One threat as the file holds it, with the name of the cell it sits on. */
+    public record Row(String id, String cell, String type, String severity, String status, String mitigation, String score) {
+    }
+
+    /** Every threat in the file, sorted by abuse case. */
+    public static List<Row> threats(String modelJson) {
+        List<Row> out = new ArrayList<>();
+        for (JsonNode cell : JSON.readTree(modelJson).get("detail").get("diagrams").get(0).get("cells")) {
+            if (cell.get("data").has("threats")) {
+                for (JsonNode t : cell.get("data").get("threats")) {
+                    out.add(new Row(t.get("title").asString().split(":")[0], cell.get("data").get("name").asString(), t.get("type").asString(),
+                            t.get("severity").asString(), t.get("status").asString(), t.get("mitigation").asString(), t.get("score").asString()));
+                }
+            }
+        }
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return out;
     }
 
     /** One broken rule and where. */
@@ -54,7 +91,8 @@ public final class ModelChecks {
                     if (!STRIDE.contains(t.get("type").asString())) {
                         problems.add(new Problem("stride-type", where));
                     }
-                    if (t.get("status").asString().equals("Mitigated") && t.get("mitigation").asString().isBlank()) {
+                    boolean mitigated = t.get("status").asString().equals("Mitigated");
+                    if (mitigated && t.get("mitigation").asString().isBlank()) {
                         problems.add(new Problem("mitigated-names-its-defence", where));
                     }
                     if (t.get("status").asString().equals("Open")) {

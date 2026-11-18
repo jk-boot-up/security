@@ -15,8 +15,13 @@ record Statement(String name, String version, String channel, String sha256, int
     }
 
     byte[] bytes() {
-        return (HEADER + "\nname=" + name + "\nversion=" + version + "\nchannel=" + channel + "\nsha256=" + sha256 + "\nsigned-day=" + signedDay + "\n")
-                .getBytes(StandardCharsets.UTF_8);
+        String text = HEADER + "\n"
+                + "name=" + name + "\n"
+                + "version=" + version + "\n"
+                + "channel=" + channel + "\n"
+                + "sha256=" + sha256 + "\n"
+                + "signed-day=" + signedDay + "\n";
+        return text.getBytes(StandardCharsets.UTF_8);
     }
 
     /** Reads only the exact canonical form: any other shape is refused. */

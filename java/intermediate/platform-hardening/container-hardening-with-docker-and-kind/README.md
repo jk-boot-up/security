@@ -2,11 +2,13 @@
 
 ```
 src/main/java/com/jk/explore/security/containerhard/
+├── Capabilities.java            A teaching class: reads the {@code CapEff} line of {@code /proc/self/status}, a hexadecimal bit mask in which bit n is the capability with number n (from linux/capability.h)
 ├── Cluster.java                 A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
-├── ContainerHardeningDemo.java  What each attack that works means, in a few words
+├── ContainerHardeningDemo.java  Starts the shop's image with different docker run options and a kind cluster with Pod Security Standards, runs thirteen real attempts inside each container, and prints the results in six numbered acts
 ├── Image.java                   The shop's application image, as an ordinary team would have built it: an app user that owns the app, and a secret in the environment
 ├── Pods.java                    The three pods of the lesson as manifests: the tutorial's, the default, and the hardened one
 ├── Probes.java                  Thirteen things a hijacked process tries, written as shell commands that run inside the container as whatever user the container runs as
+├── Report.java                  How the demo prints what the probes and the cluster returned: labelled sections, at most {@link #WIDTH} characters a line
 ├── Run.java                     One container started with a list of docker run options, probed, and removed
 ├── Seccomp.java                 A seccomp profile that denies the system calls Docker's own default profile denies (mount, unshare, ptrace, kernel modules, keys, bpf, clock changes...)
 └── Sh.java                      Runs a program and returns what it printed, whether it worked or not
@@ -39,15 +41,16 @@ An online store runs its application in a container. The demo assumes that a pro
 ./gradlew run
 ```
 
-The demo tells the story in 5 acts, each printing exact numbers that the tests check:
+The demo tells the story in 6 acts, each printing exact numbers that the tests check:
 
 | Act | What it shows |
 | --- | --- |
-| 1. What docker run with no options gives an attacker | Seven of thirteen attempts work: secrets, a writable root, a dropped file, root, raw sockets and no limits. |
-| 2. The configuration from the tutorial | --privileged, no seccomp, the host's network and processes, the Docker socket and the host's /etc: all thirteen work. |
-| 3. One setting at a time | 13, 8, 7, 5, 5, 5, 3, 1: the number goes down only when an option takes away something an attack uses. |
-| 4. The hardened container | One attack left, the secret the application must read; NET_RAW changes nothing, and root with SYS_ADMIN is held only by the seccomp profile. |
-| 5. The same on Kubernetes, with Pod Security Standards on kind | Baseline refuses the tutorial's pod, restricted refuses a plain pod and admits the hardened one, which still has two attacks left. |
+| 1. What docker run with no options gives an attacker | The input: the shop's image run with only a seccomp profile (the lab's Docker has none of its own). The probes read id -u 0, CapEff 00000000a80425fb (14 capabilities, NET_RAW bit 13 set, SYS_ADMIN bit 21 clear), Seccomp 2, no memory or process limit. The result: container 4 + kernel 1 + host 0 + resources 2 = 7 of 13. |
+| 2. The configuration from the tutorial | The input: --privileged, seccomp=unconfined, the host network and PID namespace, the Docker socket and the host's /etc mounted. The result: every attempt works, 4 + 3 + 4 + 2 = 13 of 13. |
+| 3. One setting at a time | From 13 of 13: no host access 8, a seccomp profile 7, drop all capabilities 5, a user that is not root 5 (blocks become-root, opens tamper-with-app), no new privileges 5 (nothing to stop), a read-only root with a noexec /tmp 3, memory and process limits 1: read-secrets is left. |
+| 4. The hardened container | The input: a seccomp profile, --cap-drop ALL, --user 10001, no new privileges, a read-only root with a noexec /tmp, --memory 512m and --pids-limit 200. The probes read id -u 10001, CapEff 0, Seccomp 2, memory.max 536870912 (= 512 MiB) and pids.max 200. The result: 1 of 13, read-secrets. |
+| 5. Settings that look harmless | Before: the hardened container, 1 of 13. --cap-add NET_RAW: still 1, because NET_RAW works only for root. --user 0 --cap-add SYS_ADMIN: 2 (become-root), and only the seccomp profile still blocks mount. And with seccomp=unconfined as well: 4 (become-root, dangerous-syscalls, mount-host). |
+| 6. The same on Kubernetes, with Pod Security Standards on kind | The input: a one-node kind cluster with namespaces that enforce privileged, baseline and restricted, and three pods sent with --dry-run=server. The result: the tutorial's pod is refused by baseline (3 checks) and restricted (7), a plain pod is admitted by baseline and refused by restricted (4), the hardened pod is admitted everywhere; probed from inside, the plain pod has 7 attempts left and the hardened pod 2. |
 
 ## Test
 
@@ -55,7 +58,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-15 tests in `DemoRunsTest`, `HardeningTest`, `ParsingTest`. The readers of the probe output and of admission messages are tested on text. The rest starts containers and a kind cluster and removes them (./gradlew integrationTest). They need Docker, kind and kubectl.
+24 tests in `DemoRunsTest`, `HardeningTest`, `ParsingTest`, `ReportTest`. The readers of the probe output and of admission messages are tested on text. The rest starts containers and a kind cluster and removes them (./gradlew integrationTest). They need Docker, kind and kubectl.
 
 ## What the simulation got right, and what it left out
 

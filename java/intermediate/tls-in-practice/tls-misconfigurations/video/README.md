@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> A TLS configuration checker in Java: protocols, cipher suites, certificates, HSTS and a grade.
+> A TLS configuration checker in Java for an online shop's servers: old protocols, broken and non-forward-secret cipher suites, expired, misnamed and incomplete certificate chains, weak keys and SHA-1 signatures, missing HSTS, redirects and Secure cookies, each a rule with a stable id and a severity, a report with a grade, and a move to Mozilla's intermediate policy that shows what a configuration can fix and what it cannot.

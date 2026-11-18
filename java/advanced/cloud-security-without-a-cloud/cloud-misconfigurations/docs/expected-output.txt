@@ -1,34 +1,124 @@
-CRITICAL  s3-public-acl          bucket bank-statements       the ACL grants READ to everyone
-HIGH      s3-no-public-access-block bucket bank-statements       nothing stops a public ACL or policy from being added
-MEDIUM    s3-no-encryption       bucket bank-statements       no default encryption at rest
-LOW       s3-no-versioning       bucket bank-statements       an overwritten or deleted object cannot be recovered
-CRITICAL  s3-public-policy       bucket bank-exports          the bucket policy allows s3:GetObject to everyone
-HIGH      s3-no-public-access-block bucket bank-exports          nothing stops a public ACL or policy from being added
-MEDIUM    s3-no-encryption       bucket bank-exports          no default encryption at rest
-LOW       s3-no-versioning       bucket bank-exports          an overwritten or deleted object cannot be recovered
-CRITICAL  iam-wildcard-admin     policy developer-everything  allows every action on every resource
-HIGH      sg-world-admin-port    group web                    port 22 is open to 0.0.0.0/0
-HIGH      sg-world-admin-port    group database               port 5432 is open to 0.0.0.0/0
-HIGH      ec2-imdsv1             the web server               the metadata service answers without a token (IMDSv1), so one SSRF reads the role's credentials
-MEDIUM    ebs-unencrypted        2 disks                      not encrypted at rest
---- after the fixes
---- files before deploy
-checkov: first version fails=true, nine problems left in the fixed files=1, other advice left=true
-trivy:   first version fails=true, nine problems left in the fixed files=1, other advice left=true
-the one left is s3-no-encryption=true: both tools ask for a customer-managed key, the rule accepts AES256
-found by both tools: 7 of 9
-ebs-unencrypted            checkov=true  trivy=true
-ec2-imdsv1                 checkov=true  trivy=true
-iam-wildcard-admin         checkov=true  trivy=false
-s3-no-encryption           checkov=true  trivy=true
-s3-no-public-access-block  checkov=true  trivy=true
-s3-no-versioning           checkov=true  trivy=true
-s3-public-acl              checkov=true  trivy=true
-s3-public-policy           checkov=true  trivy=false
-sg-world-admin-port        checkov=true  trivy=true
---- the metadata endpoint
-imds v1: url fetch 200 leaked=true; request forgery 200 leaked=true; behind a proxy 403
-imds v2: url fetch 401 leaked=false; request forgery 200 leaked=true; behind a proxy 403
---- the bill
-fixes that replace a resource: the server and the disks (2 of 9 rules)
-a scanner sees the setting, not the intent: a public bucket for a website needs a written, dated exception
+ONE. The first version, deployed to the emulator.
+  THE ACCOUNT (what the scanner read from Moto):
+    bucket           public  block  encryption  versions
+    bank-statements  ACL     none   none        off
+    bank-exports     policy  none   none        off
+    bank-audit       no      all    AES256      on
+    developer-everything  Allow * on *
+    statements-reader     Allow s3:GetObject on bank-statements/*
+    group web             443 from 0.0.0.0/0, 22 from 0.0.0.0/0
+    group database        5432 from 0.0.0.0/0
+    server web            tokens optional, hop limit 2
+    disks                 2, 0 encrypted
+  THE SCAN (13 findings, worst first):
+    CRITICAL  s3-public-acl              bank-statements
+    CRITICAL  s3-public-policy           bank-exports
+    CRITICAL  iam-wildcard-admin         developer-everything
+    HIGH      s3-no-public-access-block  bank-statements
+    HIGH      s3-no-public-access-block  bank-exports
+    HIGH      sg-world-admin-port        group web
+    HIGH      sg-world-admin-port        group database
+    HIGH      ec2-imdsv1                 server web
+    MEDIUM    s3-no-encryption           bank-statements
+    MEDIUM    s3-no-encryption           bank-exports
+    MEDIUM    ebs-unencrypted            2 disks
+    LOW       s3-no-versioning           bank-statements
+    LOW       s3-no-versioning           bank-exports
+  HOW THE FINDINGS ADD UP:
+    by severity  3 CRITICAL + 5 HIGH + 3 MEDIUM + 2 LOW = 13
+    by rule      9 rules; 4 fire twice: 9 + 4 = 13
+    twice        s3-no-public-access-block, s3-no-encryption,
+                 s3-no-versioning, sg-world-admin-port
+TWO. The fixes, made with the same SDK.
+  BEFORE THE FIXES:
+    3 CRITICAL + 5 HIGH + 3 MEDIUM + 2 LOW = 13 findings
+  THE FIXES (edit: in place; replace: delete and create):
+    edit     ACL private on bank-statements
+    edit     bucket policy deleted on bank-exports
+    edit     block all, AES256, versions on 2 buckets
+    edit     developer-everything: s3:GetObject only
+    edit     port 22 closed on group web
+    edit     port 5432 closed on group database
+    edit     tokens required, hop limit 1 on server web
+    replace  server web: new, with an encrypted root disk
+    replace  data disk: new, encrypted
+  AFTER THE FIXES (what the scanner read):
+    bucket           public  block  encryption  versions
+    bank-statements  no      all    AES256      on
+    bank-exports     no      all    AES256      on
+    bank-audit       no      all    AES256      on
+    developer-everything  Allow s3:GetObject on bank-statements/*
+    statements-reader     Allow s3:GetObject on bank-statements/*
+    group web             443 from 0.0.0.0/0
+    group database        no inbound rules
+    server web            tokens required, hop limit 1
+    disks                 2, 2 encrypted
+  THE SCAN AFTER THE FIXES:
+    0 findings
+    9 changes = 7 edits + 2 replacements
+THREE. Before deploy: the same setup as files, read by two scanners.
+  THE FILES (main.tf, OpenTofu):
+    first  9 resources: public buckets, Action *, 0.0.0.0/0
+    fixed  13 resources: + access blocks, encryption, versions
+  THE REPORTS (failed checks):
+    checkov 3.3.30  first 37   fixed 16
+    trivy 0.76.0    first 26   fixed  5
+  OUR NINE RULES, AND THE CHECK EACH TOOL FIRED (first files):
+    rule                       checkov      trivy
+    s3-public-acl              CKV_AWS_20   AWS-0092
+    s3-public-policy           CKV_AWS_70   -
+    s3-no-public-access-block  CKV2_AWS_6   AWS-0086
+    s3-no-encryption           CKV_AWS_145  AWS-0132
+    s3-no-versioning           CKV_AWS_21   AWS-0090
+    iam-wildcard-admin         CKV_AWS_355  -
+    sg-world-admin-port        CKV_AWS_24   AWS-0107
+    ec2-imdsv1                 CKV_AWS_79   AWS-0028
+    ebs-unencrypted            CKV_AWS_3    AWS-0026
+  HOW THE COMPARISON IS MADE:
+    found by both   7 of 9
+    checkov only    s3-public-policy, iam-wildcard-admin
+    trivy only      none
+    port 22   on web       checkov yes trivy yes
+    port 5432 on database  checkov no  trivy no
+  THE FIXED FILES:
+    rules left      checkov s3-no-encryption
+                    trivy   s3-no-encryption
+    why             CKV_AWS_145 and AWS-0132 want a key of your own;
+                    our rule accepts AES256
+    other advice    checkov 14, trivy 3 (logging, monitoring...)
+FOUR. The metadata endpoint, reached through the web server.
+  THE REQUEST (a feature that fetches a link for the visitor):
+    GET /latest/meta-data/iam/security-credentials/web-role
+  THE RESPONSE:
+    IMDSv1  200, the role's credentials leaked
+    IMDSv2  401, nothing leaked
+  THE REQUESTS (a webhook tester: method and header chosen):
+    PUT /latest/api/token
+        X-aws-ec2-metadata-token-ttl-seconds: 60
+    GET .../web-role
+        X-aws-ec2-metadata-token: <the token>
+  THE RESPONSE:
+    IMDSv2  PUT 200, a token of 36 characters
+            GET 200, the role's credentials leaked
+  THE REQUESTS (the same, through a proxy):
+    the proxy adds X-Forwarded-For: 203.0.113.9
+  THE RESPONSE:
+    IMDSv1  GET 200, the role's credentials leaked
+    IMDSv2  PUT 403, no token
+            GET 401, nothing leaked
+FIVE. What the scanners and the emulator cannot tell.
+  THE CALLS (on bank-audit, whose public access is blocked):
+    PutBucketPolicy  Principal * may s3:GetObject
+    PutBucketAcl     public-read
+  THE ANSWER FROM MOTO:
+    PutBucketPolicy  200 accepted
+    PutBucketAcl     200 accepted
+    (AWS answers 403 AccessDenied: the block is enforced there)
+  THE SCAN AFTERWARDS:
+    CRITICAL  s3-public-acl              bank-audit
+    CRITICAL  s3-public-policy           bank-audit
+  WHAT IS LEFT FOR PEOPLE:
+    replacement  a disk is encrypted only when it is made
+    intent       a public website bucket looks like a leak:
+                 it needs a written exception, an owner, a date
+    drift        scan the files before deploy, the account after

@@ -14,14 +14,20 @@ public final class Run {
 
     /** Starts the shop image with {@code options}, runs the thirteen attempts inside it, and removes it. */
     public static Map<String, Boolean> probe(List<String> options) throws IOException, InterruptedException {
+        return Probes.parse(probeOutput(options));
+    }
+
+    /** Like {@link #probe}, but returns what the script printed, facts included. */
+    public static String probeOutput(List<String> options) throws IOException, InterruptedException {
         String name = "probe-" + UUID.randomUUID().toString().substring(0, 8);
-        List<String> command = new ArrayList<>(List.of("docker", "run", "-d", "--rm", "--name", name));
+        List<String> command = new ArrayList<>(List.of("docker", "run", "-d", "--rm",
+                "--name", name));
         command.addAll(options);
         command.add(Image.TAG);
         try {
             Sh.must(command);
             Thread.sleep(300);
-            return Probes.parse(Sh.must(List.of("docker", "exec", name, "sh", "-c", Probes.SCRIPT)));
+            return Sh.must(List.of("docker", "exec", name, "sh", "-c", Probes.SCRIPT));
         } finally {
             Sh.run("docker", "rm", "-f", name);
         }

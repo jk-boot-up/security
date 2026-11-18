@@ -3,8 +3,8 @@ package com.jk.explore.security.archreview;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -17,7 +17,7 @@ public record Adr(String number, String title, String status) {
 
     /** The records in a folder, by number as it is written in the file name: 0001, 0002, and so on. */
     public static Map<String, Adr> load(Path dir) throws IOException {
-        Map<String, Adr> adrs = new HashMap<>();
+        Map<String, Adr> adrs = new TreeMap<>();
         try (Stream<Path> files = Files.list(dir)) {
             for (Path p : files.filter(f -> f.toString().endsWith(".md")).toList()) {
                 String text = Files.readString(p);

@@ -23,6 +23,7 @@ Security controls are tested when they work and rarely when their dependencies f
 | Toxiproxy from Java | `Toxiproxy`, `Fault` |
 | The audit trails | `DroppingAudit`, `SpooledAudit` |
 | The monitor | `Monitor` |
+| A deadline on the whole call | `Http` |
 | The experiments and scoreboard | `Experiment`, `Lab` |
 
 ## Requirements
@@ -39,10 +40,10 @@ Security controls are tested when they work and rarely when their dependencies f
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 18, all passing |
-| Demo output | 167 lines, identical on every run |
-| Acts | 5 |
-| Video | 06:31, 1920×1080, narrated in the amy-slow voice |
+| Tests | 21, all passing |
+| Demo output | 121 lines, identical on every run |
+| Acts | 7 |
+| Video | 16:35, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

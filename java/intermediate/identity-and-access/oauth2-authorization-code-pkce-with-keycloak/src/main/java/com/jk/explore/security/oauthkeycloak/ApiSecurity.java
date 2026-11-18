@@ -36,11 +36,14 @@ class ApiSecurity {
 
     @Bean
     JwtDecoder decoder(@Value("${bank.issuer}") String issuer, Clock clock) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(issuer + "/protocol/openid-connect/certs").build();
+        NimbusJwtDecoder decoder = NimbusJwtDecoder
+                .withJwkSetUri(issuer + "/protocol/openid-connect/certs").build();
         JwtTimestampValidator timestamps = new JwtTimestampValidator(Duration.ofSeconds(30));
         timestamps.setClock(clock);
-        OAuth2TokenValidator<Jwt> audience = new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(AUDIENCE));
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(new JwtIssuerValidator(issuer), audience, timestamps));
+        OAuth2TokenValidator<Jwt> audience =
+                new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(AUDIENCE));
+        OAuth2TokenValidator<Jwt> issuedHere = new JwtIssuerValidator(issuer);
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuedHere, audience, timestamps));
         return decoder;
     }
 

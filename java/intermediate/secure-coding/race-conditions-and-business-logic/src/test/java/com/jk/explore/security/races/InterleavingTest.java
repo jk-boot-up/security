@@ -67,11 +67,11 @@ class InterleavingTest {
     void aCouponClaimedInOneStepIsUsedOnceInEveryOrder() {
         for (String order : allOrders(6)) {
             CouponBook book = new CouponBook();
-            Interleaving.run(order, new CouponRedemption("A", book, "SAVE20", 20, true), new CouponRedemption("B", book, "SAVE20", 20, true));
+            Interleaving.run(order, new CouponRedemption("A", book, "SUMMER20", 20, true), new CouponRedemption("B", book, "SUMMER20", 20, true));
             assertEquals(20, book.discountGiven(), order);
         }
         CouponBook racy = new CouponBook();
-        Interleaving.run("ABABAB", new CouponRedemption("A", racy, "SAVE20", 20, false), new CouponRedemption("B", racy, "SAVE20", 20, false));
+        Interleaving.run("ABABAB", new CouponRedemption("A", racy, "SUMMER20", 20, false), new CouponRedemption("B", racy, "SUMMER20", 20, false));
         assertEquals(40, racy.discountGiven());
     }
 

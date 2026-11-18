@@ -3,11 +3,14 @@
 ```
 src/main/java/com/jk/explore/security/archreview/
 ├── Adr.java                     The architecture decision records of a design: a number, a title and a status
-├── ArchitectureReviewDemo.java  
+├── ArchitectureReviewDemo.java  Reviews the bank's first design with rules, scores them on the planted weaknesses, and checks the reviewed design
+├── Changes.java                 What changed between two versions of a design: part properties, flows and decision records
 ├── Design.java                  A design read from a Structurizr DSL file: the parts with their zone and properties, and the flows between them
 ├── Finding.java                 What a rule reports: the rule, the part or flow it is about, and a sentence
+├── FlowCheck.java               A teaching class: the questions the flow rules ask about one flow, answered one by one, and the rules that fire
 ├── Planted.java                 A weakness put in the first design on purpose: what it is, which rule should report it and on what
-└── Rules.java                   The review rules, each a few lines of Java over the design: trust zones, flows, data stores, owners and decisions
+├── Rules.java                   The review rules, each a few lines of Java over the design: trust zones, flows, data stores, owners and decisions
+└── Stride.java                  The STRIDE letters a review asks about each kind of part and about each flow, and how many questions that makes
 ```
 
 **A bank's online banking design is written in the Structurizr DSL with 9 parts in 6 trust zones and 9 flows, 8 of them crossing a zone, and 4 decision records of which 2 are accepted; 65 STRIDE questions follow from its parts and flows; 10 weaknesses are planted in it: the first 8 rules report 8 of the 10, the ninth rule (every flow encrypted and authenticated) reports 9 of 10, and the tenth, a web application that trusts a hidden form field, is in no model and needs a person; the reviewed design has 0 findings, no path from the web zone to confidential data, and 4 of 4 decisions accepted.**
@@ -41,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The design as drawn | 9 parts, 9 flows in 6 zones, 4 decision records, and 65 STRIDE questions that follow from them. |
-| 2. Rules over the design | The first 8 rules report 8 of the 10 planted weaknesses. |
-| 3. One more rule | A rule that wants every flow encrypted and authenticated finds the internal ledger calls: 9 of 10. |
-| 4. The reviewed design | After the review the design has 0 findings, no path from the web zone to confidential data, and 4 of 4 decisions accepted. |
-| 5. The bill | Rules read the model, and the model is what the team drew; a design with no findings is not a safe one. |
+| 1. The design as drawn | 9 parts in 6 zones, 9 flows of which 8 cross a zone, 4 decision records of which 2 are accepted, and 65 STRIDE questions that follow from the model. |
+| 2. Rules over the design | Ten weaknesses are planted; the first 8 rules report 8 of them, plus 1 finding that matches no planted one. |
+| 3. One more rule | A rule that wants every flow encrypted and authenticated, inside a zone too, finds the internal ledger calls: 9 of 10. |
+| 4. The reviewed design | After the review the design has 0 findings from all 9 rules, no flow from the dmz to confidential data, and 4 of 4 decisions accepted. |
+| 5. The bill | The rules gave 9 of 10 and a clean reviewed design; 62 STRIDE questions and 1 weakness no rule can find are still left to people. |
 
 ## Test
 
@@ -53,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `ReviewTest`. The parsing, the rules, the decision records and the scoring are tested with the JDK and the Structurizr library only. The demo is compared with its golden output.
+15 tests in `DemoRunsTest`, `ReviewTest`. The parsing, the rules, the decision records, the STRIDE count, the changes between the designs and the scoring are tested with the JDK and the Structurizr library only; a test proves FlowCheck fires the same rules as Rules on every flow. The demo is compared with its golden output.
 
 ## What the simulation got right, and what it left out
 

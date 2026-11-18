@@ -48,7 +48,7 @@ final class Interleaving {
                 return new Result(trace, false, waits);
             }
             if (!progress) {
-                trace.add("every request is waiting for a lock another one holds: deadlock");
+                trace.add("each waits for a lock the other holds: deadlock");
                 return new Result(trace, true, waits);
             }
         }

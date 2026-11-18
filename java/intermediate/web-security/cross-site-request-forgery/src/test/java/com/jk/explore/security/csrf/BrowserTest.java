@@ -72,4 +72,32 @@ class BrowserTest {
             assertEquals(995, server.bank().balance("ana"));
         }
     }
+
+    @Test
+    void theLastSentRequestShowsWhatTheBankSees() throws Exception {
+        try (BankServer server = new BankServer(new Bank(Protection.none()))) {
+            Browser ana = CsrfDemo.ana(server, false);
+            ana.submit(CsrfDemo.EVIL, "POST", CsrfDemo.TRANSFER, FORM);
+            Browser.Sent sent = ana.lastSent();
+            assertEquals("amount=5&to=mallory", sent.body());
+            assertTrue(sent.headers().get("Cookie").startsWith("sid="));
+            assertEquals(CsrfDemo.EVIL, sent.headers().get("Origin"));
+            assertEquals("cross-site", sent.headers().get("Sec-Fetch-Site"));
+            assertEquals("Cookie: sid=<id>", CsrfDemo.masked("Cookie: " + sent.headers().get("Cookie"), "<id>"));
+        }
+    }
+
+    @Test
+    void theDemosTokenCheckAgreesWithTheBank() throws Exception {
+        try (BankServer server = new BankServer(new Bank(Protection.none().withTokens()))) {
+            Browser ana = CsrfDemo.ana(server, false);
+            String token = CsrfDemo.token(ana);
+            assertEquals(43, token.length());
+            assertTrue(CsrfDemo.compare(token, token).startsWith("equal"));
+            assertEquals("not equal", CsrfDemo.compare(token + "x", token));
+            assertEquals("missing", CsrfDemo.compare(null, token));
+            assertEquals(403, ana.submit(CsrfDemo.BANK, "POST", CsrfDemo.TRANSFER, Map.of("to", "mallory", "amount", "5", "csrf", token + "x")).status());
+            assertEquals(200, ana.submit(CsrfDemo.BANK, "POST", CsrfDemo.TRANSFER, Map.of("to", "mallory", "amount", "5", "csrf", token)).status());
+        }
+    }
 }

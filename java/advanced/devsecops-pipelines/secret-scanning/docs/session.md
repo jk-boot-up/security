@@ -14,16 +14,16 @@ By the end of the session you can:
 | Start | Topic | Time |
 | --- | --- | --- |
 | 0:00 | The problem and the analogy | 10 min |
-| 0:10 | Act 1: The history is the repository | 7 min |
-| 0:17 | Act 2: What each one gets wrong | 7 min |
-| 0:24 | Act 3: An allowlist and a baseline | 7 min |
-| 0:31 | Act 4: Blocking the next one | 7 min |
-| 0:38 | Act 5: The bill | 7 min |
+| 0:10 | Act 1: One string, measured by hand | 7 min |
+| 0:17 | Act 2: The files now, and the whole history | 7 min |
+| 0:24 | Act 3: What each scanner gets wrong | 7 min |
+| 0:31 | Act 4: An allowlist and a baseline | 7 min |
+| 0:38 | Act 5: Blocking a secret before it is shared | 7 min |
 | 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 
-Run the demo and compare the first two scans. In the second act find the secret that gitleaks misses and the look-alike that both flag.
+Run the demo and work the entropy of the checksum out by hand. In the third act find the secret that gitleaks misses and the look-alike that both scanners flag.
 
 ## Exercises
 

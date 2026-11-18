@@ -20,6 +20,20 @@ public final class RateLimiter {
         this.perSecond = perSecond;
     }
 
+    /** The tokens {@code key} has now, refill included, without taking any. */
+    public double tokens(String key) {
+        Bucket b = buckets.getOrDefault(key, new Bucket(capacity, clock.now()));
+        return Math.min(capacity, b.tokens() + (clock.now() - b.at()) * perSecond);
+    }
+
+    public double capacity() {
+        return capacity;
+    }
+
+    public double perSecond() {
+        return perSecond;
+    }
+
     /** Takes {@code cost} tokens, or returns how many seconds to wait; 0 means allowed. */
     public int tryTake(String key, double cost) {
         double now = clock.now();

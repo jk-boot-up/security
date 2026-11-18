@@ -41,7 +41,8 @@ public final class Checkout {
             if (safe) {
                 String ref = String.format("ref-%04d", ++references);
                 log.error("checkout failed [" + ref + "]", e);
-                return new Response(500, "Something went wrong. Quote reference " + ref + " to support.");
+                return new Response(500,
+                        "Something went wrong. Quote reference " + ref + " to support.");
             }
             log.error("checkout failed", e);
             return new Response(500, describe(e));

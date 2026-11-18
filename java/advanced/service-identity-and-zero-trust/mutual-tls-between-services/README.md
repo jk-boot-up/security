@@ -2,29 +2,31 @@
 
 ```
 src/main/java/com/jk/explore/security/mtls/
-├── Ca.java             A real private certificate authority: step-ca running on this machine, driven with the step command line
+├── Ca.java             A real private certificate authority: step-ca (the pinned release in StepTools), driven with the step command line
 ├── Caller.java         A service calling another over HTTPS with the certificate it holds (or none)
+├── ChainSteps.java     A teaching class: the chain check the ledger's TLS makes on a caller's certificates, redone by hand
 ├── Credential.java     A certificate chain with its private key, read from files
 ├── Identities.java     Reads the identity of a service from a certificate: the URI in the subject alternative name, never the subject name
 ├── Ledger.java         The bank's ledger service: HTTPS that demands a client certificate and decides by the identity in it
-├── MutualTlsDemo.java  
+├── MutualTlsDemo.java  Mutual TLS between a bank's services: a real private CA (step-ca), a ledger service on the JDK's HTTPS server that demands a client certificate and decides by the identity in it, and callers using the JDK's HttpClient
 ├── NetworkGate.java    The old way: a plain HTTP service that lets in anything coming from the trusted network (here the loopback range) and asks nothing else
 ├── Policy.java         Which service identity may call which endpoint
 ├── Sh.java             Runs a program and returns what it printed, whether it worked or not
+├── StepTools.java      The step command line and step-ca, one pinned release each
 ├── Tls.java            Builds the TLS settings of a service: the certificate it shows and the authorities it trusts
 └── Traffic.java        A service that keeps calling the ledger on new connections while certificates are renewed and the server reloads
 ```
 
-**A bank's ledger service runs real HTTPS that demands a client certificate from a real private CA (step-ca): a call with no certificate and a call with a certificate from another CA that names itself payments are both refused at the handshake and neither reaches the ledger's code (0 requests); the identity is the URI in the certificate's SAN, so payments is allowed to POST /transfers (200) and refused GET /statements (403), reporting is the other way round, and a valid fraud-engine certificate with no rule gets 403; an allow-the-network rule lets 2 of 2 callers on the same host in, the certificate identity 1 of 2; a certificate that lives 8 seconds is renewed halfway, the server reloads its certificate and trust file without a restart with 0 failed calls out of at least 20 made meanwhile, and the old certificate is refused after its expiry while the renewed one gets 200; a stolen certificate that is revoked at the CA still gets 200 at the ledger until the ledger reads the CA's revocation list, and then gets 403.**
+**step-ca issues each service a certificate whose subject is a host-style name (CN=svc-payments-7) and whose SAN holds the identity (spiffe://bank/payments); the chain payments sends, 2 certificates, is checked by hand link by link up to the one root in trust.pem; no certificate, a certificate from Partner Bank CA that names payments, and a server certificate for another host are all refused at the handshake, and 0 requests reach the ledger's code; payments gets 200 on POST /transfers and 403 on GET /statements, reporting the other way round, fraud-engine 403; trusting the network lets 2 of 2 callers in, the certificate identity 1 of 2; a certificate that lives 8 seconds is renewed halfway, the server reloads its certificate and trust file without a restart (roots 1, then 2), at least 20 calls fail 0 times, and the expired certificate is refused; a stolen certificate revoked at the CA still gets 200 until the ledger reads the CRL, then 403.**
 
-In ordinary TLS only the server proves who it is. In **mutual TLS** the caller shows a certificate too, so the server learns **which service** is calling and can decide by that identity instead of by the network address. This project runs a bank's **ledger service** as a real HTTPS server (the JDK's `HttpsServer`) that demands a client certificate, and a real private CA, **step-ca**, that issues the certificates; the Java code drives the `step` command line and makes real TLS calls with the JDK's `HttpClient`. The demo is tagged `integration` (needs `step` and `step-ca` on the PATH, about 25 seconds): `./gradlew integrationTest`.
+In ordinary TLS only the server proves who it is. In **mutual TLS** the caller shows a certificate too, so the server learns **which service** is calling and can decide by that identity instead of by the network address. This project runs a bank's **ledger service** as a real HTTPS server (the JDK's `HttpsServer`) that demands a client certificate, and a real private CA, **step-ca**, that issues the certificates; the Java code drives the `step` command line and makes real TLS calls with the JDK's `HttpClient`. What step-ca issues decides the golden output, so the demo downloads one pinned release of `step` (0.31.0) and `step-ca` (0.30.2) into `build/tools` and checks each against its SHA-256. The demo is tagged `integration` (about 25 seconds): `./gradlew integrationTest`.
 
 What it shows:
-- **Who gets in.** No certificate, or a certificate from another CA that names itself `payments`, is refused at the handshake and **0** requests reach the ledger's code. A server that shows a certificate for another host is refused by the client.
-- **Identity from the SAN.** The ledger takes the caller from the URI in the certificate (`spiffe://bank/payments`), not from the subject name. `payments` gets **200** on `POST /transfers` and **403** on `GET /statements`; `reporting` the other way round; `fraud-engine`, with a valid certificate and no rule, gets **403**.
-- **Identity, not the network.** An allow-the-network rule lets **2 of 2** callers on the same host in; the certificate identity lets **1 of 2**.
-- **Rotation.** A certificate that lives **8 seconds** is renewed halfway; the server reloads its certificate and trust file without a restart, and **0** of at least 20 calls on new connections fail; the old certificate is refused after its expiry and the renewed one gets 200.
-- **A compromised certificate.** Revoked at the CA, it still gets **200** at the ledger until the ledger reads the CA's revocation list; then **403**.
+- **The identity in a certificate.** The subject is `CN=svc-payments-7`; the identity is the URI in the SAN, `spiffe://bank/payments`. The chain payments sends (**2** certificates) is checked by hand, link by link, up to the one root in `trust.pem`.
+- **Who gets in.** No certificate, a certificate from Partner Bank CA that names `payments`, and a server certificate for another host are all refused at the handshake; **0** requests reach the ledger's code.
+- **Identity, not the network.** `payments` gets **200** on `POST /transfers` and **403** on `GET /statements`; `reporting` the other way round; `fraud-engine` **403**. Trusting the network lets **2 of 2** callers in; the certificate identity **1 of 2**.
+- **Rotation.** A certificate that lives **8 seconds** is renewed halfway; the server reloads its certificate and trust file without a restart; **0** of at least 20 calls fail; the expired certificate is refused.
+- **A stolen certificate.** Revoked at the CA, it still gets **200** until the ledger reads the CA's revocation list; then **403**.
 
 **Maps to:** NIST SP 800-207 (zero trust) · NIST SP 800-204B · OWASP ASVS 5.0 V12 Secure Communication · PCI DSS 4.0 req. 4.2 and 8.6 · RFC 8446, RFC 5280.
 
@@ -46,11 +48,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Who gets in | No certificate, or a certificate from another CA, is refused at the handshake and no request reaches the ledger's code. |
-| 2. Identity, not the network | payments and reporting get different answers for the same call; an allow-the-network rule lets both in. |
-| 3. Rotation | A certificate that lives 8 seconds is renewed halfway and the server reloads trust with no failed call; the old one is refused after expiry. |
-| 4. A compromised certificate | A stolen certificate revoked at the CA still gets 200 until the ledger reads the revocation list. |
-| 5. The bill | A revocation is only as good as the server that reads it; short lifetimes are the revocation that always works; a CA in the trust file can mint any identity. |
+| 1. The identity in a certificate | step-ca issues the ledger a certificate for DNS localhost and each caller one whose subject is a host-style name and whose SAN is a URI: payments is CN=svc-payments-7 with spiffe://bank/payments. payments sends 2 certificates; checked by hand, each names and is verified by the next, up to the one root in trust.pem. The ledger ignores the subject, takes the URI and removes the prefix spiffe://bank/: payments. The key is EC, signed with SHA256withECDSA, and lives 600 seconds. |
+| 2. Who gets through the handshake | Three calls to POST /transfers: no client certificate; a certificate from Partner Bank CA that names spiffe://bank/payments; and payments calling a ledger whose certificate names DNS ledger-old.bank.internal. All three are refused at the handshake, the first two by the ledger and the third by the client, and 0 requests reach the ledger's own code. |
+| 3. Allowed by identity, not by the network | The ledger's rules: POST /transfers for payments, GET /statements for reporting. payments gets 200 and 403, reporting 200 and 403, and fraud-engine, with a valid certificate and no rule, 403. The same two callers on one host: a rule that trusts the network lets 2 of 2 in, the identity in the certificate 1 of 2. |
+| 4. Rotation: a certificate that lives 8 seconds | payments gets a certificate with notAfter - notBefore = 8 seconds, accepted at first, while a caller keeps calling on new connections. Halfway through its life it is renewed: new serial number, later expiry. The ledger reloads a renewed server certificate and a trust file that grows from 1 root to 2, without a restart; Partner Bank CA's certificate for payments goes from handshake refused to 200. After its expiry the first certificate is refused at the handshake, 0 requests reach the ledger, the renewed one gets 200, and of at least 20 calls meanwhile 0 failed. |
+| 5. A stolen certificate, and revocation | A copy of payments' certificate and key, used from another process, gets 200 on POST /transfers. It is revoked at the CA and is on the CA's revocation list (CRL, 1 entry, signature checked). Before the ledger reads the list it still gets 200; after, 403, certificate revoked. payments' own certificate, not revoked, still gets 200. |
 
 ## Test
 
@@ -58,11 +60,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-9 tests in `DemoRunsTest`, `IdentitiesTest`, `PolicyTest`. The identity rule and the policy are tested with no tools. The demo starts step-ca and takes about 25 seconds (./gradlew integrationTest).
+14 tests in `ChainStepsTest`, `DemoRunsTest`, `IdentitiesTest`, `PolicyTest`. The identity rule, the policy, the SAN listing and the chain check by hand (against the JDK's own check, on a fixed chain made once with step) are tested with no tools. The demo runs the pinned step and step-ca (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 
-step-ca, the step command line, the TLS handshake and the HTTP calls are real and run on this machine. The bank, its services and the endpoints are made up. The demo prints counts and yes or no, never ports, serial numbers or paths.
+step-ca, step and the TLS handshakes are real; the CA runs on this machine from a pinned release. Keys, serial numbers, ports and times change on every run, so the demo prints names, lifetimes, answers and comparisons only. The services are the project's own.
 
 ## Technologies and versions
 
@@ -120,23 +122,22 @@ The handshake first, then the identity.
 
 ## What it costs
 
-- **A CA is now critical infrastructure:** if it is down, nothing renews.
-- **Short lifetimes need a renewal job that never fails,** and a clock that is right.
-- **Revocation does not happen by itself:** a server must read the list.
-- **Every CA in a trust file can mint any identity.**
-- **Every service needs a key it can keep secret.**
+- **Revocation works only where the list is read.**
+- **Short lifetimes need a renewal that never fails.**
+- **Every CA in the trust file can mint any identity.**
+- **Certificates must be issued, renewed and watched** for every service.
 
 ## When this is too much
 
-A few services behind one gateway on a private network may be fine with the gateway doing TLS. Use mutual TLS when many services call each other and the network alone cannot say who is calling.
+Two processes on one machine that only talk to each other over a local socket do not need mutual TLS. Any call that crosses a network, or a team, does.
 
 ## Where you have already met this
 
-- An internal API that trusts anything from the office network.
-- A shared API key in every service's configuration.
-- A certificate that expired on a Sunday and stopped payments.
-- A firewall rule named after a subnet that nobody can explain.
+- An internal API that trusts the source address.
+- A client certificate checked for validity but never for who it names.
+- A certificate renewal that is a calendar reminder.
+- A revocation that nobody's server reads.
 
 ## Where this sits
 
-This is the first project of the [service-identity-and-zero-trust](..) module. The service mesh version, where the mesh issues the identities and does the handshake, comes next.
+This is the first project of the [service-identity-and-zero-trust](..) module. The next one, service-mesh-mtls, lets a mesh issue and rotate these certificates; workload-identity replaces the private CA with SPIRE.

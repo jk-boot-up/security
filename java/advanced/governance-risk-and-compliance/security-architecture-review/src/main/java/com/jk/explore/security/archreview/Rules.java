@@ -15,6 +15,18 @@ public final class Rules {
     public static final List<String> ALL = List.of("no-direct-path-to-data", "cross-zone-encrypted", "cross-zone-authenticated", "wide-access-to-data",
             "confidential-encrypted-at-rest", "has-owner", "decision-is-accepted", "confidential-has-decision", "every-flow-encrypted-and-authenticated");
 
+    /** What each rule wants, in a few words. */
+    public static final Map<String, String> WANTS = Map.of(
+            "no-direct-path-to-data", "no outer zone reads confidential",
+            "cross-zone-encrypted", "a crossing is encrypted",
+            "cross-zone-authenticated", "a crossing checks the caller",
+            "wide-access-to-data", "under 3 containers per store",
+            "confidential-encrypted-at-rest", "confidential stores encrypted",
+            "has-owner", "every part has an owner",
+            "decision-is-accepted", "its decision is Accepted",
+            "confidential-has-decision", "confidential stores cite an ADR",
+            "every-flow-encrypted-and-authenticated", "every flow, inside a zone too");
+
     private static boolean weak(String auth) {
         return auth.isEmpty() || auth.equals("none");
     }
@@ -22,16 +34,20 @@ public final class Rules {
     public static List<Finding> run(Design design, Map<String, Adr> adrs, List<String> rules) {
         List<Finding> out = new ArrayList<>();
         for (Design.Flow f : design.flows()) {
-            if (rules.contains("no-direct-path-to-data") && f.to().kind() == Design.Kind.DATASTORE && f.to().prop("classification").equals("confidential") && (f.from().zone().equals("dmz") || f.from().zone().equals("internet"))) {
-                out.add(new Finding("no-direct-path-to-data", f.id(), f.from().name() + " in the " + f.from().zone() + " zone reaches confidential data directly"));
+            boolean toConfidential = f.to().kind() == Design.Kind.DATASTORE
+                    && f.to().prop("classification").equals("confidential");
+            boolean fromOuter = f.from().zone().equals("dmz") || f.from().zone().equals("internet");
+            if (rules.contains("no-direct-path-to-data") && toConfidential && fromOuter) {
+                out.add(new Finding("no-direct-path-to-data", f.id(), f.from().name() + " reaches confidential data directly"));
             }
-            if (rules.contains("cross-zone-encrypted") && f.crossesZones() && !f.prop("encrypted").equals("yes")) {
+            boolean encrypted = f.prop("encrypted").equals("yes");
+            if (rules.contains("cross-zone-encrypted") && f.crossesZones() && !encrypted) {
                 out.add(new Finding("cross-zone-encrypted", f.id(), "a flow between zones is not encrypted"));
             }
             if (rules.contains("cross-zone-authenticated") && f.crossesZones() && weak(f.prop("auth"))) {
                 out.add(new Finding("cross-zone-authenticated", f.id(), "a flow between zones does not authenticate the caller"));
             }
-            if (rules.contains("every-flow-encrypted-and-authenticated") && (!f.prop("encrypted").equals("yes") || weak(f.prop("auth")))) {
+            if (rules.contains("every-flow-encrypted-and-authenticated") && (!encrypted || weak(f.prop("auth")))) {
                 out.add(new Finding("every-flow-encrypted-and-authenticated", f.id(), "a flow is not encrypted or not authenticated"));
             }
         }
@@ -51,7 +67,8 @@ public final class Rules {
             if (rules.contains("decision-is-accepted") && !p.prop("adr").isEmpty()) {
                 Adr adr = adrs.get(p.prop("adr"));
                 if (adr == null || !adr.accepted()) {
-                    out.add(new Finding("decision-is-accepted", p.id(), "rests on decision " + p.prop("adr") + (adr == null ? ", which does not exist" : ", which is " + adr.status())));
+                    String why = adr == null ? "does not exist" : "is " + adr.status();
+                    out.add(new Finding("decision-is-accepted", p.id(), "decision " + p.prop("adr") + " " + why));
                 }
             }
             if (rules.contains("confidential-has-decision") && p.kind() == Design.Kind.DATASTORE && p.prop("classification").equals("confidential") && p.prop("adr").isEmpty()) {
@@ -60,18 +77,5 @@ public final class Rules {
         }
         out.sort(java.util.Comparator.comparing(Finding::rule).thenComparing(Finding::subject));
         return out;
-    }
-
-    /** The STRIDE questions a review asks about the design, one set for each part and flow by its kind. */
-    public static int strideQuestions(Design design) {
-        int n = 0;
-        for (Design.Part p : design.parts()) {
-            n += switch (p.kind()) {
-                case PERSON, EXTERNAL -> 2;
-                case PROCESS -> 6;
-                case DATASTORE -> 4;
-            };
-        }
-        return n + 3 * design.flows().size();
     }
 }

@@ -23,6 +23,9 @@ final class Hybrid {
             byte[] classicalSecret, byte[] kemSecret) {
     }
 
+    /** The label at the start of the context, so this key is never confused with a key of another protocol. */
+    static final String LABEL = "bank hybrid key exchange v1";
+
     private Hybrid() {
     }
 
@@ -55,20 +58,26 @@ final class Hybrid {
     /** HKDF-SHA256 over both secrets; the transcript (all public values) is the context, so a changed message gives a different key. */
     static byte[] combine(byte[] classical, byte[] kem, KeyPair clientX, KeyPair clientK, KeyPair serverX, byte[] ciphertext)
             throws GeneralSecurityException {
+        return derive(classical, kem, info(clientX, clientK, serverX, ciphertext));
+    }
+
+    /** The context: the label, then every public value of the exchange in the order it was sent. */
+    static byte[] info(KeyPair clientX, KeyPair clientK, KeyPair serverX, byte[] ciphertext) {
         ByteArrayOutputStream info = new ByteArrayOutputStream();
-        info.writeBytes("bank hybrid key exchange v1".getBytes(StandardCharsets.US_ASCII));
+        info.writeBytes(LABEL.getBytes(StandardCharsets.US_ASCII));
         info.writeBytes(clientX.getPublic().getEncoded());
         info.writeBytes(clientK.getPublic().getEncoded());
         info.writeBytes(serverX.getPublic().getEncoded());
         info.writeBytes(ciphertext);
-        return derive(classical, kem, info.toByteArray());
+        return info.toByteArray();
     }
 
     static byte[] derive(byte[] classical, byte[] kem, byte[] info) throws GeneralSecurityException {
         ByteArrayOutputStream secrets = new ByteArrayOutputStream();
         secrets.writeBytes(classical);
         secrets.writeBytes(kem);
-        HKDFParameterSpec spec = HKDFParameterSpec.ofExtract().addIKM(secrets.toByteArray()).thenExpand(info, 32);
+        HKDFParameterSpec spec = HKDFParameterSpec.ofExtract()
+                .addIKM(secrets.toByteArray()).thenExpand(info, 32);
         SecretKey key = KDF.getInstance("HKDF-SHA256").deriveKey("AES", spec);
         return key.getEncoded();
     }

@@ -71,7 +71,10 @@ def loudnorm_filter(src, integrated=-16.0, true_peak=-1.5, lra=11.0):
     m = json.loads(blob[:blob.index("}") + 1])
     gain = integrated - float(m["input_i"])
     limit = 10 ** (true_peak / 20)
-    return ("volume=%.2fdB,alimiter=limit=%.4f:attack=5:release=50:level=0:latency=1"
+    # The limiter runs at 4x the sample rate so it also catches the peaks between
+    # samples; at 48 kHz it misses them and the AAC encode then clips.
+    return ("volume=%.2fdB,aresample=192000,"
+            "alimiter=limit=%.4f:attack=5:release=50:level=0:latency=1,aresample=48000"
             % (gain, limit))
 
 

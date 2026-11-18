@@ -48,4 +48,20 @@ class StrideTest {
         Threat store = StrideRules.generate(bank).stream().filter(x -> x.key().equals("I:S2")).findFirst().orElseThrow();
         assertEquals(new Rating(2, 3), Rating.of(bank, store));
     }
+
+    @Test
+    void theExplanationOfOneFlowAgreesWithTheRules() {
+        Flow f2 = bank.flows().stream().filter(f -> f.id().equals("F2")).findFirst().orElseThrow();
+        java.util.Map<Stride, String> why = StrideRules.explain(bank, f2);
+        for (Stride s : Stride.values()) {
+            assertEquals(keys.contains(s.letter + ":F2"), why.get(s).startsWith("yes"), s.letter);
+        }
+        assertEquals("yes  it crosses the internet boundary", why.get(Stride.TAMPERING));
+        assertEquals("device", Rating.weakerZone(bank, f2));
+    }
+
+    @Test
+    void everyLetterSaysWhatItIsAskedOf() {
+        assertEquals(Stride.values().length, StrideRules.ASKED_OF.size());
+    }
 }

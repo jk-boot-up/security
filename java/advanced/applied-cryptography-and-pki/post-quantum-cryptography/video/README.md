@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Post-quantum cryptography in the JDK for a bank: ML-KEM and ML-DSA, a hybrid X25519 plus ML-KEM key exchange, size tables, harvest now decrypt later with Mosca's inequality, implicit rejection, an inventory of classical cryptography, and a Bouncy Castle cross-check.
+> Post-quantum cryptography in the JDK for a bank: ML-KEM and ML-DSA, a hybrid X25519 plus ML-KEM key exchange with HKDF worked by hand, size tables, implicit rejection, harvest now decrypt later with Mosca's inequality, an inventory that orders the migration, and a Bouncy Castle cross-check.

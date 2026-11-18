@@ -24,8 +24,17 @@ final class Decryptor {
     private Decryptor() {
     }
 
+    /** The sizes of each value on the way from the recording to the request, and the request. */
+    record Opened(int encryptedSecretBytes, int premasterBytes, int masterBytes, int keyBlockBytes, int clientKeyBytes, int saltBytes, String text) {
+    }
+
     /** The client's application data from a recorded connection, or nothing when the key does not open it. */
     static Optional<String> clientData(byte[] clientToServer, byte[] serverToClient, PrivateKey key) {
+        return open(clientToServer, serverToClient, key).map(Opened::text);
+    }
+
+    /** Like clientData, with the size of every value derived on the way. */
+    static Optional<Opened> open(byte[] clientToServer, byte[] serverToClient, PrivateKey key) {
         try {
             List<TlsRecords.Rec> up = TlsRecords.records(clientToServer);
             List<byte[]> clientHs = TlsRecords.clearHandshake(up);
@@ -42,11 +51,14 @@ final class Decryptor {
             }
             byte[] clientRandom = TlsRecords.random(hello);
             byte[] serverRandom = TlsRecords.random(serverHello);
-            byte[] master = prf(premaster, "master secret", concat(clientRandom, serverRandom), 48);
-            byte[] block = prf(master, "key expansion", concat(serverRandom, clientRandom), 40);
+            byte[] master = prf(premaster, "master secret",
+                    concat(clientRandom, serverRandom), 48);
+            byte[] block = prf(master, "key expansion",
+                    concat(serverRandom, clientRandom), 40);
             byte[] clientKey = Arrays.copyOfRange(block, 0, 16);
             byte[] clientSalt = Arrays.copyOfRange(block, 32, 36);
-            return readEncrypted(up, clientKey, clientSalt);
+            return readEncrypted(up, clientKey, clientSalt).map(text -> new Opened(exchange.length - 6, premaster.length, master.length,
+                    block.length, clientKey.length, clientSalt.length, text));
         } catch (GeneralSecurityException | RuntimeException cannot) {
             return Optional.empty();
         }

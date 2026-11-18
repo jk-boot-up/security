@@ -22,7 +22,8 @@ import java.util.stream.Collectors;
 final class Keycloak implements AutoCloseable {
 
     static final String VERSION = "26.8.1";
-    static final String IMAGE = "quay.io/keycloak/keycloak:" + VERSION;
+    /** The release tag and its digest, so the image cannot change under the golden output. */
+    static final String IMAGE = "quay.io/keycloak/keycloak:" + VERSION + "@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244";
     static final String PASSWORD = "demopassword";
 
     /** What a login returns: the access token and the refresh token that ends the session. */
@@ -53,7 +54,7 @@ final class Keycloak implements AutoCloseable {
         Sh.must(List.of("docker", "run", "-d", "--name", kc.container, "-p", "127.0.0.1:" + port + ":8080",
                 "-v", realmFile.toAbsolutePath() + ":/opt/keycloak/data/import/bank-realm.json:ro",
                 IMAGE, "start-dev", "--import-realm"));
-        for (int i = 0; i < 120; i++) {
+        for (int i = 0; i < 180; i++) {
             try {
                 if (kc.http.send(HttpRequest.newBuilder(URI.create(kc.issuer() + "/.well-known/openid-configuration")).build(),
                         HttpResponse.BodyHandlers.discarding()).statusCode() == 200) {

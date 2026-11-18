@@ -14,6 +14,9 @@ final class FraudServer implements AutoCloseable {
 
     enum Mode { UP, ERROR, SLOW, GARBAGE, DROP }
 
+    /** How long the service takes to answer when it is slow. */
+    static final long SLOW_MS = 2000;
+
     private final HttpServer server;
     private final AtomicInteger calls = new AtomicInteger();
     private volatile Mode mode = Mode.UP;
@@ -47,7 +50,7 @@ final class FraudServer implements AutoCloseable {
             case GARBAGE -> reply(exchange, 200, "text/html", "<html>maintenance page</html>");
             case SLOW -> {
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(SLOW_MS);
                     reply(exchange, 200, "application/json", "{\"risk\":\"low\"}");
                 } catch (InterruptedException | IOException e) {
                     exchange.close();

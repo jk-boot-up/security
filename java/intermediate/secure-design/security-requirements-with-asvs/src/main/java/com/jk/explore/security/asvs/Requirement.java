@@ -5,7 +5,8 @@ package com.jk.explore.security.asvs;
  * to, a short statement in the team's own words, how it is verified, the check that verifies it (empty for manual ones), and the edition of
  * the standard it was mapped against.
  */
-record Requirement(String id, String chapter, Level level, Verification verification, String check, String edition, String statement) {
+record Requirement(String id, String chapter, Level level, Verification verification,
+                   String check, String edition, String statement) {
 
     Requirement {
         if (id.isBlank() || chapter.isBlank() || statement.isBlank() || edition.isBlank()) {

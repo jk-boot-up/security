@@ -199,8 +199,10 @@ public final class Workload {
 
     /** A TLS context whose certificate comes from the source (read again at every handshake) and which accepts only the one server identity. */
     private static SSLContext context(X509Source source, String expectedId) throws Exception {
-        return SpiffeSslContextFactory.getSslContext(SslContextOptions.builder().x509Source(source)
-                .acceptedSpiffeIdsSupplier(() -> Set.of(SpiffeId.parse(expectedId))).build());
+        return SpiffeSslContextFactory.getSslContext(SslContextOptions.builder()
+                .x509Source(source)
+                .acceptedSpiffeIdsSupplier(() -> Set.of(SpiffeId.parse(expectedId)))
+                .build());
     }
 
     /** What a call came to: the HTTP status, or refused when the connection failed. */

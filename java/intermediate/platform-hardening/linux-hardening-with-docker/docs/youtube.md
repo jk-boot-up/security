@@ -16,17 +16,37 @@ Chapters:
 
 ```
 00:00 Introduction
-01:31 The Scenario
-01:47 Act One — What the scan finds in a typical image
-02:10 Act Two — The fixes a machine can make, and where they live
-02:31 Act Three — The decisions a person makes, in the recipe
-02:49 Act Four — Running it again
-03:04 Act Five — The bill
-03:21 What It Costs
-03:42 Who Does What
-04:00 Where You Have Seen It
-04:17 How To Use It
-04:36 Thanks for Watching
+00:50 The Scenario
+01:21 The Words
+01:56 What the Letters Stand For
+03:01 What the Letters Stand For (continued)
+03:43 Where a fix in a container lives
+04:32 Nineteen findings in a real container
+05:26 Act One — What the scan finds in a typical image
+05:48 Act One — What the scan finds in a typical image
+06:11 Act One — What the scan finds in a typical image
+06:21 Act One — What the scan finds in a typical image
+06:35 Nineteen, twelve, and nineteen again
+07:19 Act Two — The fixes a machine can make, and where they live
+07:34 Act Two — The fixes a machine can make, and where they live
+07:50 The same script, before and after the recipe
+08:40 Act Three — The decisions a person makes, in the recipe
+08:55 Act Three — The decisions a person makes, in the recipe
+09:07 Act Three — The decisions a person makes, in the recipe
+09:22 Drift inside a running container
+10:03 Act Four — Running it again
+10:29 One kernel, shared
+11:01 Act Five — The bill
+11:29 What It Costs
+12:02 Where You Have Seen It
+12:32 How To Use It
+13:00 The Java Classes
+13:13 Docker — run a script as root inside a container
+13:28 Scanner — the snapshot script
+13:41 Scanner — a rule with its fix
+13:54 Listeners — every interface, and the port in hex
+14:04 Images — the decisions, in the recipe
+14:18 Thanks for Watching
 ```
 
 ## Tags

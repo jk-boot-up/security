@@ -25,12 +25,16 @@ class ShopSecurity {
         OpenSaml5AuthenticationProvider provider = new OpenSaml5AuthenticationProvider();
         // Spring Security's default accepts an assertion up to five minutes past its end; the shop tightens that.
         OpenSaml5AuthenticationProvider.AssertionValidator validator = OpenSaml5AuthenticationProvider.AssertionValidator.withDefaults();
-        validator.setValidationContextParameters(parameters -> parameters.put(SAML2AssertionValidationParameters.CLOCK_SKEW, Duration.ofSeconds(skewSeconds)));
+        Duration skew = Duration.ofSeconds(skewSeconds);
+        validator.setValidationContextParameters(p ->
+                p.put(SAML2AssertionValidationParameters.CLOCK_SKEW, skew));
         provider.setAssertionValidator(validator);
         http.authorizeHttpRequests(a -> a.requestMatchers("/", "/error").permitAll().anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .saml2Login(l -> l.authenticationManager(new ProviderManager(provider)).failureHandler((request, response, exception) -> {
-                    String code = exception instanceof Saml2AuthenticationException s ? s.getSaml2Error().getErrorCode() : exception.getClass().getSimpleName();
+                    String code = exception instanceof Saml2AuthenticationException s
+                            ? s.getSaml2Error().getErrorCode()
+                            : exception.getClass().getSimpleName();
                     refusals.add(code);
                     response.sendError(HttpStatus.UNAUTHORIZED.value());
                 }));

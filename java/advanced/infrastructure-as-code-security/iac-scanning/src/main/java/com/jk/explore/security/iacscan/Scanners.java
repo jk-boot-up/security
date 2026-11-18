@@ -16,6 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
 public final class Scanners {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    static final String TRIVY_VERSION = "0.76.0";
+    static final String TRIVY_IMAGE = "aquasec/trivy:" + TRIVY_VERSION;
     static final String KICS_IMAGE = "checkmarx/kics@sha256:ef29dbac14b046b1ef65f3280646112e927a61781c5f01bca1aeb723e0b96003";  // was :latest; pinned so the golden findings depend on a fixed KICS ruleset
 
     private Scanners() {
@@ -46,10 +48,23 @@ public final class Scanners {
         return ids;
     }
 
-    public static Set<String> trivy(Path dir, String... extra) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>(List.of("trivy", "config", "--format", "json", "--skip-version-check"));
-        cmd.addAll(List.of(extra));
-        cmd.add(dir.toString());
+    /** Trivy from a pinned image with the checks built into it, so the findings do not change with a newer download. */
+    public static Set<String> trivy(Path dir) throws IOException, InterruptedException {
+        return trivy(dir, null);
+    }
+
+    /** Trivy with an ignore file: the check ids it lists are not reported. */
+    public static Set<String> trivy(Path dir, Path ignoreFile) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>(List.of("docker", "run", "--rm", "-v", dir.toAbsolutePath() + ":/src:ro"));
+        if (ignoreFile != null) {
+            cmd.addAll(List.of("-v", ignoreFile.toAbsolutePath() + ":/ignore/.trivyignore:ro"));
+        }
+        cmd.addAll(List.of(TRIVY_IMAGE, "config", "--format", "json", "--quiet",
+                "--skip-version-check", "--skip-check-update"));
+        if (ignoreFile != null) {
+            cmd.addAll(List.of("--ignorefile", "/ignore/.trivyignore"));
+        }
+        cmd.add("/src");
         Set<String> ids = new TreeSet<>();
         for (JsonNode r : JSON.readTree(run(cmd)).get("Results")) {
             if (r.has("Misconfigurations")) {
@@ -64,7 +79,9 @@ public final class Scanners {
     }
 
     public static Set<String> kics(Path dir) throws IOException, InterruptedException {
-        Path out = Files.createTempDirectory(dir.toAbsolutePath().getParent(), "kics-");
+        Path out = dir.toAbsolutePath().getParent().resolve("kics-" + dir.getFileName());
+        Files.createDirectories(out);
+        Files.deleteIfExists(out.resolve("results.json"));
         run(List.of("docker", "run", "--rm", "-v", dir.toAbsolutePath() + ":/src:ro", "-v", out + ":/out", KICS_IMAGE, "scan", "-p", "/src", "-o", "/out", "--report-formats", "json"));
         Set<String> names = new TreeSet<>();
         for (JsonNode q : JSON.readTree(out.resolve("results.json").toFile()).get("queries")) {
@@ -84,5 +101,10 @@ public final class Scanners {
 
     public static boolean catches(Set<String> failed, List<String> candidates) {
         return candidates.stream().anyMatch(failed::contains);
+    }
+
+    /** The first of a rule's checks that failed, or "-" when the tool found nothing for the rule. */
+    public static String first(Set<String> failed, List<String> candidates) {
+        return candidates.stream().filter(failed::contains).findFirst().orElse("-");
     }
 }

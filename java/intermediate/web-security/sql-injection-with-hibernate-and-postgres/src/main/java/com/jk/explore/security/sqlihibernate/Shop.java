@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.hibernate.SessionFactory;
@@ -45,8 +46,14 @@ public final class Shop {
 
     /** A session factory for one database user. The admin factory also creates the tables. */
     public static SessionFactory factory(PostgresLab lab, String user, String password, boolean createTables) {
+        return factory(lab, user, password, createTables, new SqlLog());
+    }
+
+    /** The same, with an inspector that keeps every SQL statement Hibernate sends. */
+    public static SessionFactory factory(PostgresLab lab, String user, String password, boolean createTables, SqlLog log) {
         QUIET.setLevel(Level.OFF);
         Configuration configuration = new Configuration()
+                .setStatementInspector(log)
                 .setProperty("hibernate.connection.url", lab.url())
                 .setProperty("hibernate.connection.username", user)
                 .setProperty("hibernate.connection.password", password)
@@ -57,10 +64,21 @@ public final class Shop {
     }
 
     public static SessionFactory admin(PostgresLab lab) {
-        return factory(lab, "postgres", PostgresLab.ADMIN_PASSWORD, false);
+        return admin(lab, new SqlLog());
+    }
+
+    public static SessionFactory admin(PostgresLab lab, SqlLog log) {
+        return factory(lab, "postgres", PostgresLab.ADMIN_PASSWORD, false, log);
+    }
+
+    /** The tables a database user was granted select on, as PostgreSQL itself reports them. */
+    public static List<String> grants(SessionFactory admin, String user) {
+        return admin.fromSession(session -> session.createNativeQuery(
+                "select table_name from information_schema.role_table_grants where grantee = :user and privilege_type = 'SELECT' order by table_name",
+                String.class).setParameter("user", user).getResultList());
     }
 
     public static SessionFactory searchUser(PostgresLab lab) {
-        return factory(lab, SEARCH_USER, SEARCH_PASSWORD, false);
+        return factory(lab, SEARCH_USER, SEARCH_PASSWORD, false, new SqlLog());
     }
 }

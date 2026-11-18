@@ -56,8 +56,7 @@ final class BudgetApp {
     AuthorizationServer.Tokens callback(String browserSession, Map<String, String> query) throws OAuthException {
         Pending pending = pendingBySession.remove(browserSession);
         String state = query.get("state");
-        if (pending == null || state == null
-                || !MessageDigest.isEqual(pending.state().getBytes(StandardCharsets.US_ASCII), state.getBytes(StandardCharsets.US_ASCII))) {
+        if (pending == null || !sameText(pending.state(), state)) {
             throw new OAuthException("invalid_state", "this browser did not start this sign-in");
         }
         if (query.containsKey("error")) {
@@ -72,6 +71,11 @@ final class BudgetApp {
         AuthorizationServer.Tokens tokens = tokenEndpoint.call(form);
         tokensBySession.put(browserSession, tokens);
         return tokens;
+    }
+
+    /** Compares in constant time, so the time taken says nothing about how much of the state was right. */
+    private static boolean sameText(String expected, String given) {
+        return given != null && MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII), given.getBytes(StandardCharsets.US_ASCII));
     }
 
     /** The pending state of a session, for tests and the demo; never shown to anyone else. */

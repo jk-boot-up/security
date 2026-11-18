@@ -1,42 +1,116 @@
 ONE. The system as a data-flow model.
-  the bank: 2 external entities, 3 processes, 2 data stores, 8 flows and 3 trust boundaries
-  internet boundary (device | dmz): crossed by F2
-  gateway boundary (dmz | internal): crossed by F3, F8
-  partner boundary (internal | partner): crossed by F6, F7
-  problems in the model: 0
-  an earlier draft, where the app writes card numbers straight into a card vault: 2 problems
-    D1 goes from device to internal with no single boundary between them: it skips a boundary, or one is missing from the picture
+  THE ELEMENTS, BY ZONE (trust 0 is the least):
+    device    0  E1 customer            external entity
+    device    0  P1 mobile app          process
+    partner   1  E2 card processor      external entity
+    dmz       1  P2 API gateway         process, public
+    internal  2  P3 payments service    process
+    internal  2  S1 accounts database   data store
+    internal  2  S2 audit log           data store
+  THE TRUST BOUNDARIES:
+    internet boundary  device | dmz
+    gateway boundary   dmz | internal
+    partner boundary   internal | partner
+  THE FLOWS, AND THE BOUNDARY EACH ONE CROSSES:
+    F1  E1 -> P1  login and payment request   -
+    F2  P1 -> P2  payment request with token  internet
+    F3  P2 -> P3  authorized payment          gateway
+    F4  P3 -> S1  balance update              -
+    F5  P3 -> S2  payment record              -
+    F6  P3 -> E2  card charge                 partner
+    F7  E2 -> P3  charge result               partner
+    F8  P2 -> S2  request record              gateway
+  THE CHECK OF THE PICTURE:
+    the bank as built  0 problems
+  BEFORE THE CHECK: AN EARLIER DRAFT ADDS
+    S3  card vault, a data store in internal, owner: none
+    D1  P1 -> S3  card number, from device to internal
+  AFTER THE CHECK: 2 PROBLEMS
+    D1 goes from device to internal, skipping a boundary
     S3 card vault has no owner
-  a picture that skips a boundary hides the threats that live on it, so the model is checked before it is used
-TWO. STRIDE per element: questions nobody forgets to ask.
-  the rules find 20 candidate threats: S 4, T 5, R 4, I 2, D 1, E 4
-  TH-01 S:E1 spoofing: someone pretends to be the customer
-  TH-05 T:F2 tampering: the payment request with token is changed between the mobile app and the API gateway, across the internet boundary
-  TH-11 R:F3 repudiation: whoever sent the authorized payment through the API gateway later denies sending it
-  TH-14 I:S1 information disclosure: the accounts database is read by someone who should not see it
-  TH-16 D:P2 denial of service: the API gateway is flooded until customers cannot pay
-  TH-19 E:F7 elevation of privilege: a caller from the partner zone gains the rights of the payments service
-  each category is the opposite of a property: spoofing against authenticity, tampering against integrity, and so on
+TWO. STRIDE per element.
+  SIX QUESTIONS ASKED OF ONE FLOW (F2 payment request with token):
+    S  spoofing     no   asked of entities and processes
+    T  tampering    yes  it crosses the internet boundary
+    R  repudiation  yes  it moves money
+    I  disclosure   no   asked of data stores
+    D  denial       no   asked of public processes
+    E  elevation    yes  device (trust 0) to dmz (trust 1)
+  THE RULES ON THE WHOLE MODEL:
+    S  4  E1 E2 P2 P3     entities; processes fed across
+    T  5  F2 F3 F6 F7 F8  flows that cross a boundary
+    R  4  F2 F3 F4 F6     flows that move money
+    I  2  S1 S2           data stores
+    D  1  P2              public-facing processes
+    E  4  F2 F3 F7 F8     flows into a more trusted zone
+    total 20 candidate threats
+  SIX OF THEM, ONE PER LETTER:
+    S:E1  someone pretends to be the customer
+    T:F2  the payment request with token is changed in transit
+    R:F3  whoever sent the authorized payment denies it
+    I:S1  the accounts database is read by the wrong person
+    D:P2  the API gateway is flooded until customers cannot pay
+    E:F7  a partner caller gets the rights of the payments service
 THREE. Rating and deciding.
-  highest risk: E:F2 likelihood 5 x impact 5 = 25 (a caller from the device zone gains the rights of the API gateway)
-  highest risk: R:F2 likelihood 5 x impact 5 = 25 (whoever sent the payment request with token through the mobile app later denies sending it)
-  highest risk: T:F2 likelihood 5 x impact 5 = 25 (the payment request with token is changed between the mobile app and the API gateway, across the internet boundary)
-  decisions: mitigate 17, accept 1, transfer 1, avoid 1
-  accepted R:F6, the processor's signed receipts and the contract cover disputes; owner payments lead, review on day 90
-  transferred D:P2 to the hosting provider's denial-of-service protection, under contract
-  avoided I:S2: card numbers and secrets are never written to the audit log
-  undecided threats: 0
+  HOW ONE THREAT IS RATED (T:F2):
+    likelihood  5  the weaker end of F2 is the device zone
+    impact      5  F2 moves money (other flows 3)
+    risk        5 x 5 = 25
+  THE 20 THREATS ON THE RISK MATRIX (count per cell):
+    likelihood \ impact   1   2   3   4   5
+    5 (device)            .   .   .   1   3
+    4 (dmz)               .   .   2   2   3
+    3 (partner)           .   .   2   1   2
+    2 (internal)          .   .   1   .   3
+    1                     .   .   .   .   .
+  THE TOP THREE RISKS (ties in key order):
+    E:F2  5 x 5 = 25
+    R:F2  5 x 5 = 25
+    T:F2  5 x 5 = 25
+  THE DECISIONS (people decide, the rules do not):
+    mitigate   17  each one names a check
+    accept      1  R:F6  signed receipts and the contract cover it
+                     owner payments lead, review on day 90
+    transfer    1  D:P2  to the hosting provider, under contract
+    avoid       1  I:S2  no card numbers in the audit log
+    undecided   0
 FOUR. Mitigations as tests.
-  8 checks; every mitigation names one: true
-  checks failing on the bank as built: 0
-  a design change adds F9: the payments service sends refunds to the card processor, unencrypted
-  checks failing now: 1
-    TLS on every flow that crosses a boundary: F9 refund is not encrypted  <- THE TEST FAILS BEFORE THE RELEASE
-  new threats with no decision: 2 (T:F9, R:F9)
-  the earlier draft fails 3 checks, so it would never have shipped either
+  BEFORE THE CHANGE (the bank as built):
+    checks failing     0 of 8
+    undecided threats  0
+  THE CHANGE (refunds to the card processor):
+    F9  P3 -> E2  refund, crosses partner boundary, encrypted: no
+  AFTER THE CHANGE:
+    checks failing     1 of 8  <- FAILS BEFORE THE RELEASE
+      TLS on every boundary-crossing flow
+        F9 refund is not encrypted
+    undecided threats  2: T:F9, R:F9
+  THE 8 CHECKS ON THREE MODELS:
+                                               built   +F9  draft
+    TLS on every boundary-crossing flow         pass  FAIL   pass
+    both ends authenticated across boundaries   pass  pass   FAIL
+    money receivers write to the audit log      pass  pass   pass
+    authorization wherever trust rises          pass  pass   pass
+    customers sign in with a passkey            pass  pass   pass
+    stores encrypted, reached only from inside  pass  pass   FAIL
+    public processes check tokens, limit rates  pass  pass   pass
+    every data store has a named owner          pass  pass   FAIL
+  WHAT BREAKS IN THE EARLIER DRAFT:
+    D1 card number is not authenticated
+    S3 card vault is not encrypted at rest
+    D1 reaches card vault from the device zone
+    S3 card vault has no owner
 FIVE. The bill, and the habit.
-  the model is 7 elements, 8 flows and 20 threats: small enough to read in one sitting, and to keep up to date
-  today is day 120; accepted risks past their review day: 1  <- AN ACCEPTED RISK IS A DECISION WITH AN EXPIRY DATE
-  review the model when a flow, a store, a boundary or a third party is added, not once a year
-  four questions, every time: what is being built? what can go wrong? what is being done about it? was it done well enough?
-  the rules only find candidates: people still judge likelihood, impact and the right control
+  THE SIZE OF THE MODEL:
+    7 elements, 8 flows, 3 boundaries, 20 threats, 8 checks
+  THE ACCEPTED RISK R:F6:
+    accepted    day 0, review on day 90
+    today       day 120
+    overdue     120 - 90 = 30 days  <- THE DECISION HAS EXPIRED
+  WHEN TO OPEN THE MODEL AGAIN:
+    a new flow, store, boundary or third party; not once a year
+  THE FOUR QUESTIONS, AND THE PART THAT ANSWERS EACH:
+    what is being built?          the model (act ONE)
+    what can go wrong?            STRIDE (act TWO)
+    what is being done about it?  the decisions (act THREE)
+    was it done well enough?      the checks (act FOUR)

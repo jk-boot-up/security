@@ -49,7 +49,8 @@ final class SessionManager {
         }
         byte[] hash = SessionIds.hash(id);
         Session session = store.get(SessionIds.key(hash));
-        return session != null && MessageDigest.isEqual(session.idHash, hash) ? session : null;
+        boolean same = session != null && MessageDigest.isEqual(session.idHash, hash);
+        return same ? session : null;
     }
 
     private void remove(String id) {
@@ -127,7 +128,11 @@ final class SessionManager {
         if (answer != Answer.ALLOWED) {
             return answer;
         }
-        return clock.now() - find(id).authenticatedAt > settings.reauthSeconds() ? Answer.REAUTH_REQUIRED : Answer.ALLOWED;
+        long sincePassword = clock.now() - find(id).authenticatedAt;
+        if (sincePassword > settings.reauthSeconds()) {
+            return Answer.REAUTH_REQUIRED;
+        }
+        return Answer.ALLOWED;
     }
 
     /** Giving the password again before a payment. The session keeps its age, and gets a new id. */

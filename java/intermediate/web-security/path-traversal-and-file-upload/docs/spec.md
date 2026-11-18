@@ -38,10 +38,10 @@ Developers join customer text to paths and addresses, and save what customers se
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 42 lines, identical on every run |
-| Acts | 6 |
-| Video | 07:17, 1920×1080, narrated in the amy-slow voice |
+| Tests | 14, all passing |
+| Demo output | 146 lines, identical on every run |
+| Acts | 7 |
+| Video | 20:26, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

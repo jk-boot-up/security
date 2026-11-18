@@ -51,7 +51,8 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `LinuxHardeningTest` checks every rule on the prepared tree, the allow-lists, the order of the report, the mechanical fixes (and what they leave alone), the hardened tree, missing files and links; the tests are skipped without Unix file modes.
+- `LinuxHardeningTest` checks every rule on the prepared tree, the allow-lists, the order of the report, the mechanical fixes and their worked-out steps (and what they leave alone), the hardened tree, a regression that fails the build gate, missing files and links; the tests are skipped without Unix file modes.
+- `ReadingTest` checks, without a file system, the mode digits as letters, the little-endian hex addresses of the port table, the steps of a fix and the build gate.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

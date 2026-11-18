@@ -3,24 +3,26 @@
 ```
 src/main/java/com/jk/explore/security/k8sadmission/
 ├── Cluster.java                         A real Kubernetes cluster made by kind (one node, itself a container), with its own kubeconfig file, deleted on close
-├── KubernetesAdmissionControlDemo.java  
+├── KubernetesAdmissionControlDemo.java  The answer to a request, short: a list of more than one policy is given below the table
 ├── Kyverno.java                         Kyverno, an admission controller, installed from its release manifest, and the bank's policies applied from the policies/ folder
 ├── Pods.java                            Pod and Deployment manifests for the requests, built as text
+├── Policies.java                        What each policy file says about itself: its name, its action (Deny or Audit) and the message a refusal carries
 ├── Registry.java                        A local image registry (a container on kind's Docker network), the bank's cosign key, and images pushed and signed in it
 ├── Sh.java                              Runs a program and returns what it printed, whether it worked or not
+├── TagRule.java                         A teaching class: the no-latest-tag policy's expression, redone in Java step by step
 └── Verdict.java                         What the API server said to a request: admitted, or refused by which policies
 ```
 
 **A real cluster (kind) with Kyverno as its admission controller refuses 6 of 10 requests for a bank's payments namespace, each by name (privileged, no limits, another registry, an image nobody signed with the bank's cosign key, and a Deployment checked through its pods); a signed image named by a tag is admitted and its tag is replaced by the digest that was signed; a rule starts in audit mode, the policy report shows the writable root filesystem and a privileged pod that was running before any policy, and the same rule then refuses a new pod; an exception for one pod is honoured only from the kyverno namespace and only until its date (1 of 4 requests admitted); and with the admission controller stopped Kyverno removes its webhooks (0 left) and the API server stops asking anyone.**
 
-A request to create a pod passes the API server's authentication and authorization, and then the **admission controllers**: the last gate before the workload exists. This project runs a real cluster with **kind**, installs **Kyverno** (v1.19.2) as the admission controller and applies a bank's policies written in CEL. A Java program makes the cluster, a local registry and the bank's cosign key, and sends the requests (`brew install kind kubectl cosign`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`. The policies are in [`policies/`](policies).
+A request to create a pod passes the API server's authentication and authorization, and then the **admission controllers**: the last gate before the workload exists. This project runs a real cluster with **kind**, installs **Kyverno** (v1.19.2) as the admission controller and applies a bank's policies written in CEL. A Java program makes the cluster (kind node image pinned to Kubernetes 1.37.0 by digest), a local registry (pinned by digest) and the bank's cosign key, and sends the requests (`brew install kind kubectl cosign`, Docker running); the demo makes a cluster, so it is tagged `integration`: `./gradlew integrationTest`. The policies are in [`policies/`](policies).
 
 What it shows:
 - **Policies that refuse.** Ten requests to a labelled namespace: **6 are refused**, each by the policies that name the reason (privileged, no limits, another registry, an image nobody signed); a privileged pod in a namespace without the label is admitted.
 - **Audit first.** A privileged pod that was running before the policies keeps running. A rule in audit mode admits a writable root filesystem, the **policy report** lists it, and when the rule becomes a denial the next such pod is refused.
 - **Mutation and signed images.** A pod that said nothing gets `allowPrivilegeEscalation: false`; the tag of a signed image is replaced by the **digest** that was signed; an image nobody signed is refused.
 - **Exceptions.** One named pod may break one rule until a date, from the `kyverno` namespace only: **1 of 4** requests is admitted.
-- **The bill.** With the admission controller stopped Kyverno removes its webhooks (**0 left**) and the API server admits what it is given.
+- **When the controller is down.** With the admission controller stopped Kyverno removes its webhooks (**0 left**) and the API server admits even a privileged pod.
 
 **Maps to:** NIST CSF 2.0 Protect (PR.PS) · NIST SP 800-53 CM-7, CM-14 · CIS Kubernetes Benchmark 5.2 · Pod Security Standards · SLSA and signed images.
 
@@ -42,11 +44,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Policies that refuse | Ten requests to a labelled namespace: 6 are refused, each by the policies that name the reason, and 4 are admitted. |
-| 2. Audit first, then deny | A privileged pod that was running before the policies keeps running; the policy report lists it, and a new rule refuses only new pods once it is switched to deny. |
-| 3. Mutation and signed images | A pod that said nothing gets allowPrivilegeEscalation false, and the tag of a signed image is replaced by its digest. |
-| 4. Exceptions | An exception for one named pod is honoured from the kyverno namespace until its date, and in no other case. |
-| 5. The bill | With the admission controller stopped, 0 policy webhooks are left and the API server admits what it is given. |
+| 1. Policies that refuse | Five Deny policies in the labelled payments namespace. Of ten requests, six are refused, each by the policies that name the reason; nginx:latest privileged, no limits is refused by four. A signed image tagged latest is admitted, because the image policy first rewrites the tag to the signed digest. A privileged pod in the unlabelled scratch namespace is admitted. |
+| 2. What was there before, and audit mode | legacy-agent, privileged, started before the policies and is still Running. readonly-rootfs starts in Audit: ledger, with a writable root filesystem, is admitted, and the policy report lists readonly-rootfs on ledger and disallow-privileged on legacy-agent as fail. Switched to Deny, readonly-rootfs refuses ledger2. |
+| 3. A policy that changes the request | The team sent image <registry>/bank/payments:1 and a securityContext with only readOnlyRootFilesystem: true. The API server would store the image as <registry>/bank/payments:1@<digest>, the digest the bank signed, and a securityContext with allowPrivilegeEscalation: false added. A privileged pod is still refused by disallow-privileged. |
+| 4. Exceptions | An exception lets a pod named node-agent break disallow-privileged, and is read from the kyverno namespace only. node-agent with an exception until 2099 is admitted; another-agent with the same spec, node-agent with the exception in payments, and node-agent with an exception that expired in 2020 are refused: 1 of 4. |
+| 5. When the admission controller is down | With Kyverno running, a privileged pod is refused. With Kyverno stopped, no policy webhook is left in the API server (0), and both a good pod and a privileged pod are admitted. After Kyverno is back, the privileged pod is refused again. |
 
 ## Test
 
@@ -54,7 +56,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-12 tests in `DemoRunsTest`, `PodsAndPoliciesTest`, `VerdictTest`. The requests, the verdicts and the policy files are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
+18 tests in `DemoRunsTest`, `PodsAndPoliciesTest`, `TagRuleAndPoliciesTest`, `VerdictTest`. The requests, the verdicts, the policy files, the tag rule and the retry rule are tested with no tools. The demo makes a cluster (./gradlew integrationTest).
 
 ## What the simulation got right, and what it left out
 

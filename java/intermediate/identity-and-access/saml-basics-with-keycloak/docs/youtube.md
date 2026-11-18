@@ -16,17 +16,35 @@ Chapters:
 
 ```
 00:00 Introduction
-01:33 The Scenario
-01:57 Act One — Signing in through the bank
-02:24 Act Two — A valid signature is not the same as the bank's signature
-02:51 Act Three — A valid signature on one assertion, and another one read
-03:17 Act Four — The statement itself is checked
-03:46 Act Five — The bill: keys, metadata and XML
-04:11 What It Costs
-04:36 Who Does What
-05:04 Where You Have Seen It
-05:18 How To Use It
-05:40 Thanks for Watching
+01:07 The Scenario
+01:41 The Words
+02:12 What the Letters Stand For
+03:06 What the Letters Stand For (continued)
+04:07 What the Letters Stand For (continued)
+04:11 One key the shop trusts
+04:55 The request, the signed response, and its two signatures
+06:01 Act One — Signing in through the bank
+06:25 Act One — Signing in through the bank
+06:52 Three valid-looking signatures, one trusted key
+07:45 Act Two — A valid signature is not the same as the bank's signature
+08:06 Act Two — A valid signature is not the same as the bank's signature
+08:22 A signed assertion, and an unsigned one beside it
+09:12 Act Three — Signature wrapping: one assertion checked, another read
+09:28 Act Three — Signature wrapping: one assertion checked, another read
+09:48 Signed by the bank, and still refused
+10:34 Act Four — The statement itself is checked
+11:03 A key rotation at the bank, seen from the shop
+11:45 Act Five — The bill: keys, metadata and XML
+12:14 What It Costs
+12:48 Where You Have Seen It
+13:22 How To Use It
+13:57 The Java Classes
+14:11 Running — the one key the shop trusts
+14:29 ShopSecurity — a tight clock, and a reason for every refusal
+14:46 SignatureByHand — the digest, then RSA with the metadata key
+15:06 SamlTools — a valid signature, with the attacker's key
+15:24 KeycloakLab — a new signing key, with a higher priority
+15:43 Thanks for Watching
 ```
 
 ## Tags

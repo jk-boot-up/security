@@ -5,10 +5,10 @@ src/main/java/com/jk/explore/security/threathunt/
 ├── Events.java             The three kinds of record that the hunts read: name lookups with the bytes sent out, process starts, and logins
 ├── Generator.java          A made-up but seeded week at a bank: 40 workstations, 5 servers, 60 users, a lot of ordinary activity, four attacks, and benign things that look like attacks
 ├── Hunts.java              The hunts: each starts from a hypothesis about what an intruder does and asks the data for leads that a person then judges
-└── ThreatHuntingDemo.java  What really happened in the week: the leads that are attacks
+└── ThreatHuntingDemo.java  Runs four hunts over a seeded week at a bank, judges every lead against the planted truth, and turns the beacon hunt into a rule
 ```
 
-**A simulated week at a bank has 74,831 name lookups, 11,204 process starts and 803 logins, with 4 planted attacks (a beacon, a shell started by a document, an upload in bulk, a stolen service account) and benign things that look like them; looking only for regular calls gives 87 leads, adding rarity gives 2 (1 attack, 1 heartbeat), a limit that is too strict misses the beacon's 10% jitter, rare parent and child pairs give 3 leads (2 attacks), a new address at a new hour gives 1 lead (an attack), and bulk volume gives 2 leads (1 attack); the four hunts hand over 7 leads to review and find 4 of the 4 attacks the logs can show, while a fifth attack, a scheduled task, is in no log; the beacon hunt becomes a rule that raises 1 false alert on a clean week until the heartbeat is allowlisted.**
+**A seeded week at a bank has 74,831 name lookups, 11,204 process starts and 803 logins, with 4 planted attacks (a beacon, a shell started by a document, an upload in bulk, a stolen service account) and benign things that look like them; looking only for regular calls gives 87 leads, adding rarity gives 2 (1 attack, 1 heartbeat), a limit that is too strict misses the beacon's 10% jitter, rare parent and child pairs give 3 leads (2 attacks), a new address at a new hour gives 1 lead (an attack), and bulk volume gives 2 leads (1 attack); the four hunts hand over 7 leads to review and find 4 of the 4 attacks the logs can show, while a fifth attack, a scheduled task, is in no log; the beacon hunt becomes a rule that raises 1 false alert on a clean week until the heartbeat is allowlisted.**
 
 A hunt starts with a guess about what an intruder does, not with an alert. This project simulates **a week at a bank** (40 workstations, 5 servers, 60 users, about 74,000 name lookups, 11,000 process starts and 800 logins) with **four attacks** hidden in it and several ordinary things that look like attacks, and runs four hunts in Java: a **timer** in the lookups (beaconing), **programs nobody else runs** (stacking parent and child pairs), **accounts in odd places** and **data leaving in bulk**. Each hunt gives leads; a person judges them against what really happened. It needs only the JDK: `./gradlew test`, then `./gradlew run`.
 
@@ -39,11 +39,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. The week | A simulated week with 74,831 lookups, 11,204 process starts and 803 logins, and 4 planted attacks. |
-| 2. Hunt 1: a timer in the lookups | Regular calls alone give 87 leads; adding rarity gives 2; a limit that is too strict loses the beacon. |
+| 1. The week | A seeded week with 74831 name lookups, 11204 process starts and 803 logins; 5 planted attacks, 4 of them in the logs, and 5 benign look-alikes. |
+| 2. Hunt 1: a timer in the lookups | Regular calls alone give 87 leads; adding rarity gives 2; a limit that is too strict loses the beacon; the allowlist leaves 1, the attack. |
 | 3. Hunts 2 and 3: pairs and accounts | Rare parent and child pairs give 3 leads, 2 of them attacks; a new address at a new hour gives 1 lead, an attack. |
-| 4. Hunt 4 and the scoreboard | Bulk volume gives 2 leads; the four hunts hand over 7 leads and find 4 of the 4 attacks the logs can show. |
-| 5. From a hunt to a rule | The beacon hunt as a rule raises 1 false alert on a clean week until the heartbeat is allowlisted. |
+| 4. Hunt 4 and the scoreboard | Bulk volume gives 2 leads, 1 an attack; the four hunts hand over 7 leads and find 4 of the 4 attacks the logs can show. |
+| 5. From a hunt to a rule | The beacon hunt as a rule raises 1 false alert on a clean week until the heartbeat is allowlisted; then 0, and 1 true alert on the attack week. |
 
 ## Test
 
@@ -51,7 +51,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-9 tests in `DemoRunsTest`, `HuntsTest`. The hunts and the generator are tested with the JDK only. The demo is compared with its golden output.
+13 tests in `DemoRunsTest`, `HuntsTest`. The hunts and the generator are tested with the JDK only. The demo is compared with its golden output.
 
 ## What the simulation got right, and what it left out
 

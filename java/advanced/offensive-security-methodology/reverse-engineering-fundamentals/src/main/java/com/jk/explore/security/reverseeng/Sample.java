@@ -5,6 +5,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
@@ -35,7 +36,7 @@ public final class Sample {
             files = s.filter(p -> p.toString().endsWith(".java")).map(Path::toString).sorted().toList();
         }
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        java.util.ArrayList<String> args = new java.util.ArrayList<>(List.of("--release", "21", "-d", out.toString()));
+        List<String> args = new ArrayList<>(List.of("--release", "21", "-d", out.toString()));
         args.addAll(files);
         if (compiler.run(null, null, null, args.toArray(String[]::new)) != 0) {
             throw new IllegalStateException("the sample did not compile");
@@ -51,7 +52,8 @@ public final class Sample {
     /** Runs the entry point with a key and returns what it printed. */
     public String run(String key) throws Exception {
         try (URLClassLoader loader = new URLClassLoader(new URL[] {classes.toUri().toURL()}, getClass().getClassLoader().getParent())) {
-            Object result = loader.loadClass(entryClass).getMethod(entryMethod, String.class).invoke(null, key);
+            Class<?> entry = loader.loadClass(entryClass);
+            Object result = entry.getMethod(entryMethod, String.class).invoke(null, key);
             return String.valueOf(result);
         }
     }

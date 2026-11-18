@@ -18,6 +18,8 @@ import javax.net.ssl.SSLSocket;
 /** A server that speaks what old clients speak: TLS 1.0 and 1.1 next to 1.2, and only RSA key exchange, so no forward secrecy. The JDK refuses all of that unless it is told otherwise. */
 final class LegacyServer implements AutoCloseable {
 
+    static final String[] PROTOCOLS = {"TLSv1", "TLSv1.1", "TLSv1.2"};
+
     private final SSLServerSocket socket;
     private final Thread thread;
 
@@ -33,7 +35,7 @@ final class LegacyServer implements AutoCloseable {
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(keys.getKeyManagers(), null, null);
         socket = (SSLServerSocket) context.getServerSocketFactory().createServerSocket(0, 50, InetAddress.getLoopbackAddress());
-        socket.setEnabledProtocols(new String[] {"TLSv1", "TLSv1.1", "TLSv1.2"});
+        socket.setEnabledProtocols(PROTOCOLS);
         List<String> suites = new ArrayList<>();
         for (String suite : socket.getSupportedCipherSuites()) {
             if (suite.startsWith("TLS_RSA_WITH_") && !suite.contains("NULL")) {

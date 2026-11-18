@@ -37,10 +37,10 @@ Containers run with defaults and tutorial flags, so one application flaw becomes
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 11, all passing |
-| Demo output | 54 lines, identical on every run |
+| Tests | 15, all passing |
+| Demo output | 142 lines, identical on every run |
 | Acts | 5 |
-| Video | 06:53, 1920×1080, narrated in the amy-slow voice |
+| Video | 18:03, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

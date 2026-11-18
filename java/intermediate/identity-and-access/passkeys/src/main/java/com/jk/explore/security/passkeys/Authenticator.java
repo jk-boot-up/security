@@ -8,6 +8,7 @@ import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,15 +45,20 @@ final class Authenticator {
         }
     }
 
-    private static final SecureRandom RANDOM = new SecureRandom();
-
     private final String name;
     private final boolean synced;
+    private final SecureRandom random;
     private final List<Credential> credentials = new ArrayList<>();
 
     Authenticator(String name, boolean synced) {
+        this(name, synced, new SecureRandom());
+    }
+
+    /** The demo passes a FixedRandom so its keys and signatures repeat; everything else uses a real SecureRandom. */
+    Authenticator(String name, boolean synced, SecureRandom random) {
         this.name = name;
         this.synced = synced;
+        this.random = random;
     }
 
     String name() {
@@ -67,10 +73,10 @@ final class Authenticator {
     Registration create(String rpId, byte[] clientDataJson, boolean userVerified) {
         try {
             KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-            generator.initialize(new ECGenParameterSpec("secp256r1"), RANDOM);
+            generator.initialize(new ECGenParameterSpec("secp256r1"), random);
             KeyPair keys = generator.generateKeyPair();
             byte[] id = new byte[16];
-            RANDOM.nextBytes(id);
+            random.nextBytes(id);
             credentials.add(new Credential(rpId, id, keys, 0));
             int flags = AuthenticatorData.USER_PRESENT | AuthenticatorData.ATTESTED_CREDENTIAL
                     | (userVerified ? AuthenticatorData.USER_VERIFIED : 0);
@@ -98,17 +104,24 @@ final class Authenticator {
             }
             int flags = AuthenticatorData.USER_PRESENT | (userVerified ? AuthenticatorData.USER_VERIFIED : 0);
             byte[] data = new AuthenticatorData(Sha256.of(rpId), flags, credential.counter, null).encode();
-            return Optional.of(new Assertion(credential.id.clone(), data, clientDataJson, sign(credential.keys, data, clientDataJson)));
+            return Optional.of(new Assertion(credential.id.clone(), data, clientDataJson, sign(credential.keys, data, clientDataJson, random)));
         }
         return Optional.empty();
     }
 
-    static byte[] sign(KeyPair keys, byte[] authenticatorData, byte[] clientDataJson) {
+    /** The bytes a passkey signs: the authenticator data, then the SHA-256 of the client data (37 + 32 = 69 when signing in). */
+    static byte[] signedBytes(byte[] authenticatorData, byte[] clientDataJson) {
+        byte[] hash = Sha256.of(clientDataJson);
+        byte[] out = Arrays.copyOf(authenticatorData, authenticatorData.length + hash.length);
+        System.arraycopy(hash, 0, out, authenticatorData.length, hash.length);
+        return out;
+    }
+
+    static byte[] sign(KeyPair keys, byte[] authenticatorData, byte[] clientDataJson, SecureRandom random) {
         try {
             Signature signer = Signature.getInstance("SHA256withECDSA");
-            signer.initSign(keys.getPrivate(), RANDOM);
-            signer.update(authenticatorData);
-            signer.update(Sha256.of(clientDataJson));
+            signer.initSign(keys.getPrivate(), random);
+            signer.update(signedBytes(authenticatorData, clientDataJson));
             return signer.sign();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
@@ -117,7 +130,7 @@ final class Authenticator {
 
     /** A copy of this authenticator's keys and counters at this moment, as an attacker who extracted the keys would hold. */
     Authenticator copyAs(String copyName) {
-        Authenticator copy = new Authenticator(copyName, synced);
+        Authenticator copy = new Authenticator(copyName, synced, random);
         for (Credential credential : credentials) {
             copy.credentials.add(new Credential(credential.rpId, credential.id.clone(), credential.keys, credential.counter));
         }

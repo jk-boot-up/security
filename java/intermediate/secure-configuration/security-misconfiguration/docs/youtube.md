@@ -16,18 +16,36 @@ Chapters:
 
 ```
 00:00 Introduction
-01:10 The Scenario
-01:30 The Words
-01:57 Act One — The store started with its shipped defaults
-02:33 Act Two — Secure defaults, and a gate at startup
-03:06 Act Three — Drift: development settings that reach production
-03:42 Act Four — Banners, methods and file permissions
-04:20 Act Five — The bill: a baseline that must be checked again and again
-04:57 Where Each Check Runs
-05:25 Who Does What
-05:54 Where You Have Seen It
-06:17 How To Use It
-06:43 Thanks for Watching
+01:17 The Scenario
+01:37 The Words
+02:04 What the Letters Stand For
+03:13 One store, two settings files
+04:09 Four requests a scanner tries first
+05:08 Act One — The store started with its shipped defaults
+05:35 Act One — The store started with its shipped defaults
+05:53 Act One — The store started with its shipped defaults
+06:08 Eight checks, and a gate before the port opens
+07:03 Act Two — Secure defaults, and a gate at startup
+07:26 Act Two — Secure defaults, and a gate at startup
+07:48 Act Two — Secure defaults, and a gate at startup
+08:06 A production file copied from development
+08:54 Act Three — Drift: development settings that reach production
+09:14 Act Three — Drift: development settings that reach production
+09:32 Three small leaks
+10:33 Act Four — Banners, methods and file permissions
+10:56 Act Four — Banners, methods and file permissions
+11:13 A new setting, and where each check runs
+12:02 Act Five — The bill: a baseline that must be checked again and again
+12:30 Where You Have Seen It
+12:53 How To Use It
+13:19 The Java Classes
+13:35 StoreServer — a debug page and detailed errors, behind a switch
+13:50 ConfigChecker — one check: send a request, judge the reply
+14:03 StartupGate — runs before the port opens
+14:17 Secrets — empty, a known default, or too short
+14:28 ProfileDrift — three kinds of drift
+14:43 ConfigFile — explicit permissions
+14:55 Thanks for Watching
 ```
 
 ## Tags

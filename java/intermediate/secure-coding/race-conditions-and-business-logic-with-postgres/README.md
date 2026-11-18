@@ -5,7 +5,8 @@ src/main/java/com/jk/explore/security/racepg/
 ├── Db.java                  A real PostgreSQL 18 in a container on a free loopback port, removed on close, and the small things every act needs from it
 ├── Hib.java                 Hibernate ORM 7 against the lab's database, remembering every SQL statement it sends
 ├── HibAccount.java          An account as Hibernate sees it: the version column is what makes the update conditional
-└── RaceConditionsDemo.java  Runs on a thread of its own, so that the caller can watch it wait
+├── RaceConditionsDemo.java  The online bank's races, run against a real PostgreSQL 18 in Docker, in five numbered acts
+└── SqlStates.java           The PostgreSQL error codes (SQLSTATE) this lesson meets, and what the application should do about each one
 ```
 
 **In a real PostgreSQL 18 two withdrawals that read before either writes pay out 160 from 100; a check constraint and a conditional update, a row lock with wait, NOWAIT, a timeout and SKIP LOCKED, REPEATABLE READ and SERIALIZABLE against write skew, a Hibernate @Version column and a one-time key claimed in the same transaction as the money each close the gap in their own way, but they bring retries, deadlocks that PostgreSQL cancels, and waits behind a person, and a lock in one server's memory protects nothing in another.**
@@ -39,11 +40,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Check, then act: two requests in the gap | Two withdrawals that read before either writes pay out 160 from 100; a check constraint, a conditional update and a one-statement claim close the gap. |
-| 2. Row locks: making the check and the write one step | SELECT FOR UPDATE makes the second request wait and then see the first; NOWAIT, a timeout and SKIP LOCKED are the other ways to meet a lock. |
-| 3. Isolation levels | READ COMMITTED applies a relative update to the new value; REPEATABLE READ refuses it; only SERIALIZABLE stops write skew. |
-| 4. Optimistic locking with Hibernate, and one-time keys | A version column makes the update conditional; a payment key claimed in the same transaction as the money runs once. |
-| 5. The bill | Opposite lock order deadlocks, locks in one server's memory protect nothing in another, and a transaction that waits for a person keeps everyone waiting. |
+| 1. Check, then act: two requests in the gap | Two withdrawals of 80 that both read 100 before either writes pay out 160 from 100 in a real PostgreSQL 18; a check constraint (20 - 80 = -60 < 0, 23514) and a condition inside the update (B changes 0 rows) refuse the second; a coupon claimed in one statement is used once. |
+| 2. Row locks: making the check and the write one step | With select ... for update, A locks ANA-1 and reads 100, B waits (pg_stat_activity shows the wait), A pays 80 and commits, and B then reads 20 and refuses: paid out 80, balance 20; nowait refuses at once with 55P03, lock_timeout gives up after 300 ms, and skip locked takes the next free row. |
+| 3. Isolation levels | Under READ COMMITTED a relative update after B's commit is applied to the new value, 70 - 30 = 40; under REPEATABLE READ it is refused with 40001 and A retries to 40; two transactions that each take 150 from a different row of a total of 200 leave -100 under REPEATABLE READ (write skew), and SERIALIZABLE refuses the second, total 50. |
+| 4. Optimistic locking with Hibernate, and one-time keys | Both sessions load balance 100 at version 0; A's update sets balance 20 and version 0 + 1 = 1 where version = 0; B's update still asks for version 0, changes no row and gets an OptimisticLockException, and its retry loads 20 and refuses; a payment key inserted twice at once runs once, ana 100 - 70 = 30. |
+| 5. The bill | Two transfers that each lock their own sender first deadlock, and PostgreSQL cancels 1 with 40P01 while the other is done; one lock order (order by id) finishes both; two servers' own locks pay out 80 + 80 = 160 from 100; a row locked while a person confirms makes B give up after 300 ms; 40001 and 40P01 are retried, 23514 is refused. |
 
 ## Test
 
@@ -51,7 +52,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-11 tests in `DemoRunsTest`, `RaceConditionsTest`. The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker.
+17 tests in `DemoRunsTest`, `HibAccountTest`, `RaceConditionsTest`, `SqlStatesTest`. The tests start one PostgreSQL for the whole class and remove it (./gradlew integrationTest). They need Docker.
 
 ## What the simulation got right, and what it left out
 

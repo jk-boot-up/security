@@ -28,6 +28,10 @@ public final class Repository {
         return this;
     }
 
+    public List<Artifact> artifacts() {
+        return List.copyOf(artifacts);
+    }
+
     public List<Artifact> find(String packageName, VersionRange range) {
         return artifacts.stream().filter(a -> a.name().equals(packageName) && range.contains(a.version())).toList();
     }

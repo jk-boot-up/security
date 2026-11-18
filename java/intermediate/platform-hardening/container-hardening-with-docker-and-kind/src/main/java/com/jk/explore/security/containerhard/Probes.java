@@ -28,7 +28,62 @@ public final class Probes {
             N=see-host-processes; r sh -c '[ "$(ls /proc | grep -c "^[0-9]")" -gt 15 ]'
             N=exhaust-memory; r sh -c '[ "$(cat /sys/fs/cgroup/memory.max)" = max ]'
             N=fork-bomb; r sh -c '[ "$(cat /sys/fs/cgroup/pids.max)" = max ]'
+            echo "fact id-u=$(id -u)"
+            echo "fact CapEff=$(grep CapEff /proc/self/status | cut -f2)"
+            echo "fact Seccomp=$(grep Seccomp: /proc/self/status | cut -f2)"
+            echo "fact memory.max=$(cat /sys/fs/cgroup/memory.max)"
+            echo "fact pids.max=$(cat /sys/fs/cgroup/pids.max)"
             """;
+
+    public static final String CONTAINER = "inside the container";
+    public static final String KERNEL = "the kernel";
+    public static final String HOST = "the host";
+    public static final String RESOURCES = "the node's resources";
+
+    /** What each attack reaches, in the order the groups are printed. */
+    public static final Map<String, String> REACH = new LinkedHashMap<>();
+
+    static {
+        for (String n : NAMES) {
+            REACH.put(n, switch (n) {
+                case "read-secrets", "tamper-with-app", "drop-and-run", "become-root" -> CONTAINER;
+                case "dangerous-syscalls", "sniff-network", "mount-host" -> KERNEL;
+                case "exhaust-memory", "fork-bomb" -> RESOURCES;
+                default -> HOST;
+            });
+        }
+    }
+
+    /** What the probe saw, in a few words: why it worked, or why it did not. */
+    public static String reason(String name, boolean possible) {
+        return switch (name) {
+            case "read-secrets" -> possible ? "DB_PASSWORD is in the env" : "no secret in the env";
+            case "tamper-with-app" -> possible ? "/app/shop.jar is writable" : "/app/shop.jar not writable";
+            case "drop-and-run" -> possible ? "a script in /tmp runs" : "a script in /tmp cannot run";
+            case "become-root" -> possible ? "id -u is 0" : "id -u is not 0";
+            case "dangerous-syscalls" -> possible ? "Seccomp is 0: no filter" : "Seccomp is 2: a filter is on";
+            case "sniff-network" -> possible ? "the NET_RAW bit is set" : "the NET_RAW bit is clear";
+            case "mount-host" -> possible ? "mount tmpfs worked" : "mount tmpfs was refused";
+            case "docker-socket" -> possible ? "the socket is mounted" : "no Docker socket";
+            case "host-files" -> possible ? "/hostetc/passwd is there" : "no host directory mounted";
+            case "host-network" -> possible ? "it sees docker0 or veth" : "its own network namespace";
+            case "see-host-processes" -> possible ? "more than 15 processes" : "its own process namespace";
+            case "exhaust-memory" -> possible ? "memory.max is max" : "memory.max is set";
+            case "fork-bomb" -> possible ? "pids.max is max" : "pids.max is set";
+            default -> throw new IllegalArgumentException(name);
+        };
+    }
+
+    /** The {@code fact name=value} lines of the script's output: what the probes read. */
+    public static Map<String, String> facts(String output) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String line : output.split("\n")) {
+            if (line.startsWith("fact ") && line.indexOf('=') > 5) {
+                out.put(line.substring(5, line.indexOf('=')), line.substring(line.indexOf('=') + 1).strip());
+            }
+        }
+        return out;
+    }
 
     private Probes() {
     }

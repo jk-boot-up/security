@@ -3,7 +3,9 @@ package com.jk.explore.security.cloudmisconf;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
@@ -15,8 +17,43 @@ public final class IacScanners {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    /** What a scanner reported for a folder: how many checks failed and the ids of the failures. */
-    public record Report(int failed, Set<String> ids) {
+    /** Trivy runs from a pinned image with the checks built into it, so the findings do not change with a newer download. */
+    static final String TRIVY_VERSION = "0.76.0";
+    static final String TRIVY_IMAGE = "aquasec/trivy:" + TRIVY_VERSION;
+
+    /** What a scanner reported for a folder: every failed check as "id resource", such as "CKV_AWS_24 aws_security_group.web". */
+    public record Report(List<String> hits) {
+
+        public int failed() {
+            return hits.size();
+        }
+
+        public Set<String> ids() {
+            Set<String> ids = new TreeSet<>();
+            hits.forEach(h -> ids.add(h.split(" ")[0]));
+            return ids;
+        }
+
+        /** The first of a rule's check ids that failed here, or "-" when the tool found nothing for the rule. */
+        public String first(List<String> candidates) {
+            return candidates.stream().filter(ids()::contains).findFirst().orElse("-");
+        }
+
+        public boolean caught(List<String> candidates) {
+            return !first(candidates).equals("-");
+        }
+
+        /** Whether one of the check ids failed on this resource, such as "aws_security_group.database". */
+        public boolean caughtOn(List<String> candidates, String resource) {
+            return candidates.stream().anyMatch(id -> hits.contains(id + " " + resource));
+        }
+
+        /** How many failures are none of the mapped check ids: the tool's other advice. */
+        public long otherThan(Collection<List<String>> mapped) {
+            Set<String> known = new TreeSet<>();
+            mapped.forEach(known::addAll);
+            return hits.stream().filter(h -> !known.contains(h.split(" ")[0])).count();
+        }
     }
 
     private IacScanners() {
@@ -35,46 +72,40 @@ public final class IacScanners {
         if (root.isArray()) {
             root = root.get(0);
         }
-        Set<String> ids = new TreeSet<>();
-        int failed = 0;
+        List<String> hits = new ArrayList<>();
         for (JsonNode c : root.get("results").get("failed_checks")) {
-            ids.add(c.get("check_id").asString());
-            failed++;
+            hits.add(c.get("check_id").asString() + " " + c.get("resource").asString());
         }
-        return new Report(failed, ids);
+        return new Report(hits.stream().sorted().toList());
     }
 
     public static Report trivy(Path dir) throws IOException, InterruptedException {
-        String json = run(List.of("trivy", "config", "--format", "json", "--skip-version-check", dir.toString()));
-        Set<String> ids = new TreeSet<>();
-        int failed = 0;
+        String json = run(List.of("docker", "run", "--rm", "-v", dir.toAbsolutePath() + ":/src:ro", TRIVY_IMAGE,
+                "config", "--format", "json", "--quiet",
+                "--skip-version-check", "--skip-check-update", "/src"));
+        List<String> hits = new ArrayList<>();
         for (JsonNode r : JSON.readTree(json).get("Results")) {
             if (r.has("Misconfigurations")) {
                 for (JsonNode m : r.get("Misconfigurations")) {
-                    ids.add(m.get("ID").asString());
-                    failed++;
+                    if (m.get("Status").asString().equals("FAIL")) {
+                        hits.add(m.get("ID").asString() + " " + m.get("CauseMetadata").get("Resource").asString());
+                    }
                 }
             }
         }
-        return new Report(failed, ids);
+        return new Report(hits.stream().sorted().toList());
     }
 
-    /** For each of our rules, the check ids that a scanner has for the same problem. */
-    public static final java.util.Map<String, List<String>> CHECKOV = java.util.Map.of("s3-public-acl", List.of("CKV_AWS_20"), "s3-public-policy", List.of("CKV_AWS_70"),
+    /** For each of our rules, the check ids that a scanner has for the same problem (empty: it has none). */
+    public static final Map<String, List<String>> CHECKOV = Map.of("s3-public-acl", List.of("CKV_AWS_20"), "s3-public-policy", List.of("CKV_AWS_70"),
             "s3-no-public-access-block", List.of("CKV2_AWS_6", "CKV_AWS_53", "CKV_AWS_54", "CKV_AWS_55", "CKV_AWS_56"), "s3-no-encryption", List.of("CKV_AWS_145", "CKV_AWS_19"), "s3-no-versioning", List.of("CKV_AWS_21"),
             "iam-wildcard-admin", List.of("CKV_AWS_355", "CKV_AWS_62", "CKV_AWS_63"), "sg-world-admin-port", List.of("CKV_AWS_24", "CKV_AWS_25"), "ec2-imdsv1", List.of("CKV_AWS_79"), "ebs-unencrypted", List.of("CKV_AWS_3"));
 
-    public static final java.util.Map<String, List<String>> TRIVY = java.util.Map.of("s3-public-acl", List.of("AWS-0092"), "s3-public-policy", List.of(),
+    public static final Map<String, List<String>> TRIVY = Map.of("s3-public-acl", List.of("AWS-0092"), "s3-public-policy", List.of(),
             "s3-no-public-access-block", List.of("AWS-0086", "AWS-0087", "AWS-0091", "AWS-0093", "AWS-0094"), "s3-no-encryption", List.of("AWS-0132", "AWS-0088"), "s3-no-versioning", List.of("AWS-0090"),
             "iam-wildcard-admin", List.of("AWS-0057"), "sg-world-admin-port", List.of("AWS-0107"), "ec2-imdsv1", List.of("AWS-0028"), "ebs-unencrypted", List.of("AWS-0026", "AWS-0131"));
 
-    public static List<String> catches(Set<String> failedIds, List<String> candidates) {
-        List<String> out = new ArrayList<>();
-        for (String c : candidates) {
-            if (failedIds.contains(c)) {
-                out.add(c);
-            }
-        }
-        return out;
-    }
+    /** Our nine rules in the order the demo prints them. */
+    public static final List<String> RULES = List.of("s3-public-acl", "s3-public-policy", "s3-no-public-access-block", "s3-no-encryption",
+            "s3-no-versioning", "iam-wildcard-admin", "sg-world-admin-port", "ec2-imdsv1", "ebs-unencrypted");
 }

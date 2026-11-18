@@ -48,7 +48,9 @@ class BffController {
             return ResponseEntity.status(401).body("no tokens for this session");
         }
         try {
-            RestClient.RequestBodySpec spec = api.method(org.springframework.http.HttpMethod.valueOf(method)).uri(path).headers(h -> h.setBearerAuth(client.getAccessToken().getTokenValue()));
+            String accessToken = client.getAccessToken().getTokenValue();
+            RestClient.RequestBodySpec spec = api.method(org.springframework.http.HttpMethod.valueOf(method)).uri(path)
+                    .headers(h -> h.setBearerAuth(accessToken));
             ResponseEntity<String> answer = spec.retrieve().toEntity(String.class);
             return ResponseEntity.status(answer.getStatusCode()).body(answer.getBody());
         } catch (HttpClientErrorException e) {

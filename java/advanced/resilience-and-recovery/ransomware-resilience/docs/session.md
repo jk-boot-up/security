@@ -19,9 +19,10 @@ By the end of the session you can:
 | 0:15 | Act 2: Versioning only | 5 min |
 | 0:20 | Act 3: Object lock in COMPLIANCE mode | 5 min |
 | 0:25 | Act 4: Isolation and an air-gapped copy | 5 min |
-| 0:30 | Act 5: Ransomware and the poisoned backup | 5 min |
-| 0:35 | Act 6: The restore exercise | 5 min |
-| 0:40 | Exercises | 20 min |
+| 0:30 | Act 5: The guard: a canary file and entropy | 5 min |
+| 0:35 | Act 6: Ransomware and the poisoned backup | 5 min |
+| 0:40 | Act 7: The restore exercise | 5 min |
+| 0:45 | Exercises | 15 min |
 
 ## Walkthrough
 

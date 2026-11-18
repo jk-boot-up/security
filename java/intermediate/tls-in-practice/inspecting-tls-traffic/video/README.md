@@ -13,4 +13,4 @@ A narrated, slide-based video built by `./build_video.sh` with the shared videok
 
 Suggested description:
 
-> Inspecting TLS traffic in Java: what a capture shows, what a key log decrypts, and why forward secrecy matters.
+> Inspecting TLS traffic in plain Java, with nothing hidden: a TLS 1.3 style key schedule (HKDF-SHA-256, X25519) and AES-GCM records, what a capture shows a network observer, the NSS key log format behind SSLKEYLOGFILE, a client that refuses to write one in production, a decryptor that opens exactly the connections and directions a key log lists, and forward secrecy: a leaked server key opens recorded static RSA sessions and nothing ephemeral.

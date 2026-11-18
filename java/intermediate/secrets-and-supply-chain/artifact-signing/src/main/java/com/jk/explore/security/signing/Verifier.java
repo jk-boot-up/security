@@ -20,30 +20,30 @@ final class Verifier {
         try {
             statement = Statement.parse(release.statement());
         } catch (IllegalArgumentException e) {
-            return Verdict.refuse("the statement is not a release statement");
+            return Verdict.refuse("not a release statement");
         }
         KeyRing.TrustedKey key = keys.find(release.keyId()).orElse(null);
         if (key == null) {
             return Verdict.refuse("unknown key " + release.keyId());
         }
         if (!Ed25519.verify(key.publicKey(), release.statement(), release.signature())) {
-            return Verdict.refuse("the signature does not match");
+            return Verdict.refuse("bad signature");
         }
         if (!key.channel().equals(expectedChannel) || !statement.channel().equals(expectedChannel)) {
-            return Verdict.refuse("key " + key.keyId() + " signs for " + key.channel() + ", not " + expectedChannel);
+            return Verdict.refuse(key.keyId() + " signs " + key.channel() + ", not " + expectedChannel);
         }
         if (statement.signedDay() >= key.revokedFromDay()) {
-            return Verdict.refuse("signed on day " + statement.signedDay() + ", after key " + key.keyId() + " was revoked on day " + key.revokedFromDay());
+            return Verdict.refuse("signed day " + statement.signedDay() + ", revoked day " + key.revokedFromDay());
         }
         if (statement.signedDay() < key.validFromDay()) {
-            return Verdict.refuse("signed on day " + statement.signedDay() + ", before key " + key.keyId() + " was valid");
+            return Verdict.refuse("signed day " + statement.signedDay() + ", valid from day " + key.validFromDay());
         }
         if (!statement.name().equals(expectedName)) {
             return Verdict.refuse("signed for " + statement.name() + ", not " + expectedName);
         }
         if (!Digests.same(Digests.unhex(statement.sha256()), artifact.sha256())) {
-            return Verdict.refuse("the artifact does not match the signed digest");
+            return Verdict.refuse("jar differs from the signed digest");
         }
-        return Verdict.accept("signed by " + key.keyId() + " for " + statement.name() + " " + statement.version());
+        return Verdict.accept("signed by " + key.keyId());
     }
 }

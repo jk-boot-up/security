@@ -1,24 +1,91 @@
---- the code under test
-files: 6, flaws planted: 7, safe look-alikes: 7
---- a pattern rule and a taint rule on the SQL
-pattern rule: 4 of 4 flaws found, 3 of 4 safe lines flagged
-taint rule:   3 of 4 flaws found, 1 of 4 safe lines flagged
-pattern rule flags: sql-parsed, sql-constant, sql-allowlisted
-taint rule misses: sql-other-file, flags: sql-allowlisted
---- every flaw class with the taint rules
-taint rules and weak hash: 6 of 7 flaws found, 1 of 7 safe lines flagged
-  command: 1 of 1 flaws found, 0 of 1 safe lines flagged
-  path: 1 of 1 flaws found, 0 of 1 safe lines flagged
-  weak-hash: 1 of 1 flaws found, 0 of 0 safe lines flagged
---- tests for the rules
-semgrep --test: 4 of 4 checks pass, rule files with no test: 1
-the same tests on a rule with its parseInt sanitizer removed: 3 of 4 checks pass
---- triage
-findings: 7 (6 real, 1 false), exit code 1
-with a suppression that says why and who: 6 findings, suppressions 1, well written 1
-a second one with no reason: suppressions 2, well written 1, the build check fails: yes
-a file with no flaw: 0 findings, exit code 0
---- the bill
-a taint rule follows input inside a method: the sink in another file is missed
-a rule that sees no check cannot know that an allowlist is one: write the suppression, with a reason
-a rule without a test is a guess, and a test is only as good as its cases
+ONE. One flaw, as a taint rule sees it.
+  THE CODE (AccountController.java, lines 22 to 24):
+    String name = request.getParameter("name");
+    String sql = "SELECT * FROM clients WHERE name = '" + name + "'";
+    return stmt.executeQuery(sql).getString(1);
+  THE RULE sql-taint (rules/taint.yml):
+    source     $REQ.getParameter(...)
+    sink       $S.executeQuery(...)
+    sanitizer  Integer.parseInt(...), Validate.fileName(...)
+  HOW THE TAINT TRAVELS (worked out by hand):
+    line 22  name               tainted: from the source
+    line 23  sql                tainted: from name
+    line 24  executeQuery(sql)  a tainted value reaches the sink
+  WHAT SEMGREP REPORTS:
+    sql-taint  AccountController:24, the same line: yes
+TWO. A pattern rule and a taint rule on the SQL.
+  THE CODE UNDER TEST (corpus/bank):
+    files 6, flaws planted 7, safe look-alikes 7
+    each such line ends in // VULN or // SAFE
+  THE RULES:
+    pattern  sql-concat: executeQuery($Q + ...), executeQuery($Q)
+    taint    sql-taint: from getParameter to executeQuery
+  THE 8 SQL LINES, AND WHAT EACH RULE SAYS:
+    the line's marker       pattern  taint
+    VULN sql-direct         found    found
+    VULN sql-variable       found    found
+    VULN sql-helper         found    found
+    SAFE sql-prepared       quiet    quiet
+    SAFE sql-parsed         flagged  quiet
+    SAFE sql-constant       flagged  quiet
+    SAFE sql-allowlisted    flagged  flagged
+    VULN sql-other-file     found    missed
+  HOW THE SCORE IS MADE:
+                                pattern     taint
+    flaws found                 4 of 4      3 of 4
+    safe lines flagged          3 of 4      1 of 4
+    recall = found / flaws      4/4 = 100%  3/4 = 75%
+    precision = real / flagged  4/7 = 57%   3/4 = 75%
+THREE. Every flaw class with the taint rules.
+  THE RULES (rules/taint.yml):
+    sql-taint, command-taint, path-taint: taint
+    weak-hash: a pattern, MD5 or SHA-1
+  WHAT THEY REPORT (7 findings):
+    sql-taint      AccountController:18  VULN sql-direct
+    sql-taint      AccountController:24  VULN sql-variable
+    sql-taint      AccountController:29  VULN sql-helper
+    sql-taint      AccountController:56  SAFE sql-allowlisted
+    weak-hash      Hashing:10            VULN weak-hash
+    command-taint  ReportController:16   VULN command
+    path-taint     ReportController:25   VULN path
+  BY CLASS:
+    class      flaws found   safe lines flagged
+    sql        3 of 4        1 of 4
+    command    1 of 1        0 of 1
+    path       1 of 1        0 of 1
+    weak-hash  1 of 1        0 of 0
+    all        6 of 7        1 of 7
+FOUR. Tests for the rules.
+  THE TEST FILE (rules/taint.java):
+    // ruleid: <rule>  the next line must be flagged: 6
+    // ok: <rule>      the next line must not be: 5
+  BEFORE THE CHANGE (semgrep --test rules):
+    command-taint  pass  expected 32, reported 32
+    path-taint     pass  expected 42, reported 42
+    sql-taint      pass  expected 10 16, reported 10 16
+    weak-hash      pass  expected 52 54, reported 52 54
+    4 of 4 pass; rule files with no test: pattern.yml
+  THE CHANGE:
+    the sanitizer Integer.parseInt(...) removed from sql-taint
+  AFTER THE CHANGE:
+    sql-taint      FAIL  expected 10 16, reported 10 16 22
+    3 of 4 pass
+  WHY LINE 22 (rules/taint.java, lines 20 to 22):
+    int n = Integer.parseInt(request.getParameter("n"));
+    // ok: sql-taint
+    stmt.executeQuery("SELECT 1 FROM t WHERE id = " + n);
+FIVE. Triage.
+  BEFORE THE SUPPRESSION (semgrep --error):
+    findings 7 (6 real, 1 false), exit code 1: the build fails
+  THE SUPPRESSION (a comment above AccountController line 56):
+    rule   nosemgrep: rules.sql-taint
+    why    -- the column is checked against an allowlist above
+    owner  (owner: payments-team)
+  AFTER THE SUPPRESSION:
+    findings 6, exit code 1: the real flaws still fail the build
+    suppressions 1, well written 1
+  A SECOND SUPPRESSION, WITH NO REASON (above line 20):
+    // nosemgrep: rules.sql-taint
+    suppressions 2, well written 1, the build check fails: yes
+  A FILE WITH NO FLAW (Validate.java):
+    findings 0, exit code 0: the build passes

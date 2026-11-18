@@ -52,7 +52,7 @@ STRIDE is a checklist of six kinds of threat: **Spoofing** (S), **Tampering** (T
 
 ## How the tests check this
 
-- `IncidentTest` checks the preparation checklist, detection times, the copying rate and its stop, the effect of a reboot, a rebuild with and without an image, scoping with enough and too little log history, the account that cannot be disabled when unknown, and the three outcomes.
+- `IncidentTest` checks the preparation checklist, detection times, the copying rate and the minute it stops, the effect of a reboot, a rebuild with and without an image, scoping with enough and too little log history, the account that cannot be disabled when unknown, the way the attacker returns, the action that closes each way back in, the step where B and C part ways, and the three outcomes.
 - `DemoRunsTest` compares the whole demo with the golden output.
 
 ## Where this model goes next

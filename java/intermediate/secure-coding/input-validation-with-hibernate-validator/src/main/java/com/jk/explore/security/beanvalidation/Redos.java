@@ -36,11 +36,8 @@ public @interface Redos {
 
         private static final Pattern NESTED = Pattern.compile("((a+)+)+b");
 
-        @Override
-        public boolean isValid(String value, ConstraintValidatorContext context) {
-            if (value == null) {
-                return true;
-            }
+        /** Runs a pattern's find() on the value, adding one step for every character the engine reads. */
+        static boolean find(Pattern pattern, String value) {
             CharSequence counted = new CharSequence() {
                 @Override
                 public int length() {
@@ -58,7 +55,15 @@ public @interface Redos {
                     return value.subSequence(start, end);
                 }
             };
-            return NESTED.matcher(counted).find();
+            return pattern.matcher(counted).find();
+        }
+
+        @Override
+        public boolean isValid(String value, ConstraintValidatorContext context) {
+            if (value == null) {
+                return true;
+            }
+            return find(NESTED, value);
         }
     }
 }

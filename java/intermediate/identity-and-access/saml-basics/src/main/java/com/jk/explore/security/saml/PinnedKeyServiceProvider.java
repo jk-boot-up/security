@@ -1,5 +1,7 @@
 package com.jk.explore.security.saml;
 
+import static com.jk.explore.security.saml.SignatureCheck.pinned;
+
 import java.security.PublicKey;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -24,8 +26,9 @@ public final class PinnedKeyServiceProvider implements ServiceProvider {
         if (sigs.isEmpty()) {
             throw new SamlRefused("no signature");
         }
-        SignatureCheck.validate(doc, (Element) sigs.get(0), SignatureCheck.pinned(idpKey));
-        Element assertion = (Element) Xml.byName(doc, Xml.SAML, "Assertion").item(0); // the FIRST assertion, signed or not
+        SignatureCheck.validate(doc, (Element) sigs.get(0), pinned(idpKey));
+        // the FIRST assertion in the document, signed or not
+        Element assertion = (Element) Xml.byName(doc, Xml.SAML, "Assertion").item(0);
         return Xml.text(assertion, Xml.SAML, "NameID");
     }
 }

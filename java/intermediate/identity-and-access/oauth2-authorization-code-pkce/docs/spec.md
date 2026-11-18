@@ -23,6 +23,7 @@ missing state checks, long-lived codes and refresh tokens that never rotate.
 | The authorization server | `AuthorizationServer` |
 | What the bank knows about a client | `ClientRegistration` |
 | PKCE | `Pkce` |
+| The S256 steps worked out by hand | `ChallengeSteps` |
 | The bank's API | `BankApi` |
 | The budgeting app | `BudgetApp` |
 | The token endpoint as the app sees it | `TokenEndpoint` |
@@ -46,10 +47,10 @@ missing state checks, long-lived codes and refresh tokens that never rotate.
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 33, all passing |
-| Demo output | 55 lines, identical on every run |
+| Tests | 37, all passing |
+| Demo output | 139 lines, identical on every run |
 | Acts | 5 |
-| Video | 09:15, 1920×1080, narrated in the amy-slow voice |
+| Video | 20:36, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

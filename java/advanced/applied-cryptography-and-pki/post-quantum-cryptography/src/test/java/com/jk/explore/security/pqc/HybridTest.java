@@ -36,4 +36,14 @@ class HybridTest {
     void twoExchangesGiveDifferentKeys() throws Exception {
         assertFalse(Hybrid.same(Hybrid.run().clientKey(), Hybrid.run().clientKey()));
     }
+
+    @Test
+    void hkdfByHandGivesTheJdkKey() throws Exception {
+        Hybrid.Exchange h = Hybrid.run();
+        byte[] info = Hybrid.info(h.clientX(), h.clientK(), h.serverX(), h.ciphertext());
+        byte[] ikm = new byte[64];
+        System.arraycopy(h.classicalSecret(), 0, ikm, 0, 32);
+        System.arraycopy(h.kemSecret(), 0, ikm, 32, 32);
+        assertArrayEquals(h.clientKey(), HkdfSteps.expand(HkdfSteps.extract(ikm), info));
+    }
 }

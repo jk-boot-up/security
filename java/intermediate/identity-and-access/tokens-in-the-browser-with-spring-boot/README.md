@@ -50,11 +50,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Tokens kept in the browser | A third-party script takes 2 tokens from localStorage, the stolen access token reads the balance until it expires, and the stolen refresh token gets a new one from Keycloak. |
-| 2. A backend for the frontend keeps the tokens on the server | The BFF signs Ana in on the server, the browser gets a __Host-bff cookie, the script takes 0 tokens, a script on the open page can still act as Ana, and the BFF refreshes the token itself. |
-| 3. Requests started by another site | SameSite=Strict keeps the cookie off a link or form from evil.example, an older browser still needs the XSRF header, the preflight names no allowed origin, and the bank's own page transfers with the header. |
-| 4. Tokens bound to a key, with DPoP | Keycloak binds the token to the app's key, and Spring Security's resource server refuses it as a bearer token, with another key's proof, with a reused, old or mismatched proof; a stolen refresh token needs the key too. |
-| 5. The bill | A second BFF does not know the first one's sessions, every call has one more hop, clearing storage loses the DPoP key, and a script on the open page can still ask the key for a proof. |
+| 1. Tokens kept in the browser | Keycloak gives the single-page app a five-minute access token and a refresh token that lives with the session; a third-party script takes both from localStorage; the access token is refused 331 seconds later, but the refresh token gets a new one. |
+| 2. A backend for the frontend keeps the tokens on the server | Spring's oauth2Login signs Ana in on the BFF, which keeps 2 tokens in its OAuth2AuthorizedClientService; the browser gets a __Host-bff cookie (Secure, HttpOnly, SameSite=Strict) and an XSRF-TOKEN cookie; the script takes 0 tokens but can still use the open page. |
+| 3. Requests started by another site | SameSite=Strict keeps the cookie off a link and a form from evil.example (401, 403); an older browser sends the cookie but not the X-XSRF-TOKEN header (403); the preflight gets no Access-Control-Allow-Origin, so the header is never sent; only the bank's page makes a transfer. |
+| 4. Tokens bound to a key, with DPoP | The app's P-256 key, written in RFC 7638 order and hashed with SHA-256, gives the thumbprint Keycloak puts in cnf.jkt; Spring's resource server accepts the token only with a fresh proof from that key, and refuses the token alone, another key's proof, a replay, a proof for another request, an old proof and a proof without ath. |
+| 5. The bill | A second BFF with its own session store answers Ana's cookie with 401; every call takes one more hop; a cleared browser loses its DPoP key, and the new key's thumbprint does not match; and a script on the open page can still ask the key for a proof: 200. |
 
 ## Test
 
@@ -62,7 +62,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-26 tests in `BffFlowTest`, `DemoRunsTest`, `DpopKeyTest`, `RealmFileTest`, `ShopperTest`. The tests that need Keycloak are tagged integration and share one container, one API and one BFF per class (./gradlew integrationTest). The realm file, proof and cookie tests need no Docker.
+27 tests in `BffFlowTest`, `DemoRunsTest`, `DpopKeyTest`, `RealmFileTest`, `ShopperTest`. The tests that need Keycloak are tagged integration and share one container, one API and one BFF per class (./gradlew integrationTest). The realm file, proof and cookie tests need no Docker.
 
 ## What the simulation got right, and what it left out
 

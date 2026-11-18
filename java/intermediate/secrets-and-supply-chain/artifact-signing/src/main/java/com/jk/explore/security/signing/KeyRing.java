@@ -27,7 +27,8 @@ final class KeyRing {
     /** Signatures dated on or after this day no longer count. Signatures made before it stay valid. */
     void revoke(String keyId, int fromDay) {
         TrustedKey key = keys.get(keyId);
-        keys.put(keyId, new TrustedKey(key.keyId(), key.channel(), key.publicKey(), key.validFromDay(), fromDay));
+        keys.put(keyId, new TrustedKey(key.keyId(), key.channel(), key.publicKey(),
+                key.validFromDay(), fromDay));
     }
 
     Optional<TrustedKey> find(String keyId) {

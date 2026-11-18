@@ -17,6 +17,7 @@ src/main/java/com/jk/explore/security/beanvalidation/
 ├── PostalCodeMatchesCountry.java  A rule across two fields: the postal code has the shape of the country's
 ├── Redos.java                     A pattern with repetitions nested two deep, as a constraint, with its work counted: every character the regular expression engine reads is a step
 ├── Review.java                    A product review title whose message repeats the value, and a coupon field written two ways, for what validation does not do
+├── Rules.java                     A teaching class: reads the constraints written on a record component and prints them short, such as {@code @Pattern([A-Z]{3}-\d{4}) @InStock}, so the demo shows the rules from the code itself rather than from a copy
 ├── SafeMessage.java               The version of {@link UnsafeMessage} that passes the visitor's text as a message parameter
 └── UnsafeMessage.java             A custom constraint written the way it should not be: it puts what the visitor typed into the message template, which is then interpolated
 ```
@@ -52,11 +53,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Where validation belongs | The same service takes a quantity of -3 as a refund, or refuses it because its parameter has constraints. |
-| 2. Say what is allowed, in annotations | Built-in constraints on a record, all violations at once, and a built-in check that is wider than the shop's rule. |
-| 3. Your own constraints, across fields, and in an order | An invisible-character rule, a postal code that must fit the country, and a group sequence that asks the catalogue only when the cheap checks pass. |
-| 4. Limits are validation too | A cart of 10000 lines and an address of 10013 characters are refused first, and a nested pattern costs sixteen times more for four more characters unless a length limit runs before it. |
-| 5. The bill: what validation does not do | A message can repeat markup, a template built from the visitor's text is evaluated when method calls are allowed, and valid text is not safe text. |
+| 1. Where validation belongs | A shop that trusts the page totals a quantity of -3 as 89.90 x -3 = -269.70; the service whose parameter is @NotNull @Valid Checkout refuses it at the path place.checkout.lines[0].quantity, refuses a missing form, and totals an honest order 89.90 x 2 = 179.80. The form has no price field at all. |
+| 2. Say what is allowed, in annotations | The rules are read from the records: quantity @Min(1) @Max(99), sku @Pattern([A-Z]{3}-\d{4}), email @Size(max=254) @Email, country @Country. 0, 100, sho-1042, ben@@shop.example and ZZ are refused; the built-in @Email accepts ben@localhost; a form with five bad fields gets five violations at once. |
+| 3. Your own constraints, across fields, and in an order | Five logins: @NoInvisible alone catches 3 of 5, all the login's rules catch 5 of 5; a cross-field rule refuses DE 1011 (DE codes match \d{5}) on the postal code and accepts IN 110001; the group sequence Limits, Default, Expensive refuses sho-1042 with 0 catalogue lookups and SHO-9999 with 1. |
+| 4. Limits are validation too | A cart of 10000 lines and a 10013-character address stop in the Limits group with 0 lookups; ((a+)+)+b takes 2264, 36808 and 589752 steps on 8, 12 and 16 a's (about 16 times per 4 a's), while @Size(max = 20) in the Limits group refuses 5000 a's in 0 steps; the JDK's (a+)+$ grows only 3 to 4 times when the a's double. |
+| 5. The bill: what validation does not do | A review title message repeats <b>great</b>, markup and all; a coupon ${1+1} put into a message template becomes "the coupon 2 does not exist" when templates may call methods, while Hibernate Validator 9's default and a message parameter keep it as text. |
 
 ## Test
 
@@ -64,7 +65,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `BeanValidationTest`, `DemoRunsTest`. The tests run the real validator and need no other tool.
+16 tests in `BeanValidationTest`, `DemoRunsTest`, `RulesTest`. The tests run the real validator and need no other tool.
 
 ## What the simulation got right, and what it left out
 

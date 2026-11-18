@@ -30,6 +30,11 @@ public final class SprayingRule implements Rule {
     }
 
     @Override
+    public String describe() {
+        return distinctUsers + " accounts fail from 1 address, " + window.toMinutes() + " min";
+    }
+
+    @Override
     public List<Alert> evaluate(List<Event> log) {
         Map<String, Deque<Event>> byIp = new HashMap<>();
         Set<String> alerted = new HashSet<>();

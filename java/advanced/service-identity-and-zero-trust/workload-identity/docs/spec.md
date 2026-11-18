@@ -23,6 +23,7 @@ Services prove who they are with a secret that every copy shares and that never 
 | SPIRE in Docker | `Lab` |
 | The Java workloads | `Workload` |
 | Counting rotations | `Rotations` |
+| A SPIFFE ID taken apart | `SpiffeIds` |
 | Entry point | `WorkloadIdentityDemo` |
 
 ## Requirements
@@ -39,10 +40,10 @@ Services prove who they are with a secret that every copy shares and that never 
 | What | Value |
 | --- | --- |
 | Language and build | Java 25, Gradle wrapper |
-| Tests | 10, all passing |
-| Demo output | 47 lines, identical on every run |
-| Acts | 6 |
-| Video | 06:11, 1920×1080, narrated in the amy-slow voice |
+| Tests | 13, all passing |
+| Demo output | 93 lines, identical on every run |
+| Acts | 7 |
+| Video | 19:23, 1920×1080, narrated in the amy-slow voice |
 
 ## Files every project has
 

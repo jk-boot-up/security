@@ -100,8 +100,12 @@ public final class KeycloakLab implements AutoCloseable {
     int addSigningKey(String realm) throws IOException, InterruptedException {
         String body = "{\"name\":\"rsa-new\",\"providerId\":\"rsa-generated\",\"providerType\":\"org.keycloak.keys.KeyProvider\","
                 + "\"config\":{\"priority\":[\"200\"],\"enabled\":[\"true\"],\"active\":[\"true\"],\"keySize\":[\"2048\"]}}";
-        return http.send(HttpRequest.newBuilder(URI.create(base() + "/admin/realms/" + realm + "/components")).header("Authorization", "Bearer " + adminToken())
-                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+        URI components = URI.create(base() + "/admin/realms/" + realm + "/components");
+        HttpRequest create = HttpRequest.newBuilder(components)
+                .header("Authorization", "Bearer " + adminToken())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        return http.send(create, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
     /** The address of the realm's SAML identity provider metadata. */

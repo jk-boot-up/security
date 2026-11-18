@@ -6,7 +6,8 @@ src/main/java/com/jk/explore/security/lokilogs/
 ├── Grafana.java       Grafana's HTTP API: a Loki data source for one tenant, and a query sent through it
 ├── Lab.java           A real Loki 3 (with its rule evaluator) and a real Grafana 13 on a private Docker network, each bound to a free loopback port and removed on close
 ├── Loki.java          Loki's HTTP API, for one tenant: push lines, ask LogQL questions, list labels and streams, read the alerts the rule evaluator holds
-└── LokiLogsDemo.java  
+├── LokiLogsDemo.java  Ships the online bank's security events to a real Loki, asks LogQL questions, compares labels with content, raises an alert, and shows what is left to the team
+└── Streams.java       A teaching class: Loki keeps one stream for each distinct set of labels, so the number of streams can be worked out before a single line is sent
 ```
 
 **A real Loki 3 holds the bank's eight security events as JSON lines with two labels, answers who moved 500 and what else came from that address in LogQL, shows through Grafana the same lines for the same tenant and none for another, evaluates a rule that fires on four failed logins from one address, and does it per tenant; but a user as a label makes a stream for each user, a rule with a typo runs in silence, an old event is refused, Loki neither signs nor lets you change a line, and access to Grafana is access to the logs.**
@@ -40,11 +41,11 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 
 | Act | What it shows |
 | --- | --- |
-| 1. Shipping the events | Eight JSON lines with two labels are pushed and answered with 204; a push with no tenant is refused with 401. |
-| 2. Asking questions in LogQL | Who moved 500 or more, everything from that address in order, and failures by address: the old logger's question in one line. |
-| 3. Labels and content | A user as a label makes 150 streams; the same users in the line make one, and both answer the question. |
-| 4. Alerting | A rule fires for four failed logins from one address; a rule with a typo runs without complaint and never fires. |
-| 5. The bill | Tenants separate data, old events are refused, there is no delete route, and access to Grafana is access to the logs. |
+| 1. Shipping the events | The morning's 8 events go to a real Loki as JSON lines with the tenant header bank and two labels, app and event_type; each push is answered 204, the 4 distinct label sets make 4 streams, and a push with no tenant is refused with 401. |
+| 2. Asking questions in LogQL | A text filter finds the 3 lines that mention ANA-1; a query by fields finds the transfer of 500 by ana from 198.51.100.66; everything from that address is 2 failures, a success and the transfer; and Loki counts 2 failures for that address. |
+| 3. Labels and content | 150 more logins, sent with the user as a label, make 150 streams (1 x 1 x 150, and Loki agrees); sent with the user inside the line, they make 1. Both find user7's single line, but every label value is a stream and an index entry. |
+| 4. Alerting | The rule PasswordGuessing counts failures per address over 5 minutes and fires at 3 or more: with ana's 2 failures (2 >= 3? no) nothing fires; after 4 failures from 203.0.113.9 (4 >= 3? yes) it fires; the rule with the typo outcom counts nothing and stays inactive/ok without an error. |
+| 5. The bill | Another tenant sees 0 of the bank's 12 lines; an event 10 days old is refused because the limit is 168h = 7 days; there is no delete route (404); Grafana finds the same 6 failures through the bank's data source and 0 lines through the shop's; and access, proof and retention stay the team's job. |
 
 ## Test
 
@@ -52,7 +53,7 @@ The demo tells the story in 5 acts, each printing exact numbers that the tests c
 ./gradlew test
 ```
 
-13 tests in `DemoRunsTest`, `EventTest`, `LokiTest`. The event tests run with no server. The rest start Loki and Grafana once for the whole class and remove them (./gradlew integrationTest). They need Docker.
+16 tests in `DemoRunsTest`, `EventTest`, `LokiTest`, `StreamsTest`. The event tests run with no server. The rest start Loki and Grafana once for the whole class and remove them (./gradlew integrationTest). They need Docker.
 
 ## What the simulation got right, and what it left out
 

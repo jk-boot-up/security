@@ -18,16 +18,34 @@ Chapters:
 00:00 Introduction
 01:04 The Scenario
 01:21 The Words
-01:53 Act One — A request Ana did not intend
-02:28 Act Two — A token in every form
-03:09 Act Three — SameSite cookies
-03:47 Act Four — Where the request came from, and GET
-04:30 Act Five — The bill
-05:15 The Defences, Side by Side
-05:45 Who Does What
-06:14 Where You Have Seen It
-06:41 How To Use It
-07:13 Thanks for Watching
+01:53 What the Letters Stand For
+03:11 What the Letters Stand For (continued)
+03:21 One cookie, two pages
+04:07 A page on another site sends Ana's request
+05:13 Act One — A request Ana did not intend
+05:30 Act One — A request Ana did not intend
+05:45 A token only the bank's page knows
+06:57 Act Two — A token in every form
+07:15 Act Two — A token in every form
+07:34 When the browser sends the cookie
+08:38 Act Three — SameSite cookies
+08:56 Act Three — SameSite cookies
+09:09 Act Three — SameSite cookies
+09:25 Headers that say where a request came from
+10:32 Act Four — Where the request came from, and GET
+10:51 Act Four — Where the request came from, and GET
+11:10 What each defence still misses
+12:12 Act Five — The bill
+12:31 Act Five — The bill
+12:48 The Defences, Side by Side
+13:18 Where You Have Seen It
+13:46 How To Use It
+14:18 The Java Classes
+14:35 Bank — the form token check
+14:53 Bank — where the request came from, and GET
+15:14 Browser — the SameSite rule
+15:34 Site — the value of Sec-Fetch-Site
+15:53 Thanks for Watching
 ```
 
 ## Tags

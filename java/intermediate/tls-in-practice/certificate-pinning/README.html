@@ -23,13 +23,15 @@ blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:4px solid var(--accent);
 <button data-t="dim" aria-pressed="false">Dim</button><button data-t="dark" aria-pressed="false">Dark</button></div>
 <main><h1>Certificate Pinning and What It Costs</h1>
 <pre><code>src/main/java/com/jk/explore/security/pinning/
+├── ChainWalk.java     The two checks of a pinning client, redone by hand: which device root signed the top of the chain, and which key of the chain is pinned
 ├── Der.java           The few ASN.1 DER encodings an X.509 certificate and a revocation list need
 ├── Fleet.java         The installed apps of a bank, and how many of them still carry an old pin when the server changes its key
 ├── Outcome.java       What the client did with a server's chain
 ├── PinPolicy.java     The pins an app ships with: at least one key in the chain must match one of them
+├── PinSteps.java      The pin of a key, worked out step by step: the key's SubjectPublicKeyInfo bytes, their SHA-256 hash, and the hash in Base64, with the first Base64 group done by hand
 ├── PinStore.java      Dynamic pinning as browsers once did it (HPKP): the &lt;em&gt;server&lt;/em&gt; tells the browser which keys to pin and for how long, in a response header, and the browser remembers it
 ├── PinnedClient.java  A mobile-style client
-├── PinningDemo.java   Runs the pinning story in five numbered acts and prints exact, repeatable results
+├── PinningDemo.java   Runs the pinning story in five acts and prints exact, repeatable results: the clock is fixed and the keys come from a seeded generator
 ├── Pki.java           Just enough certificate making to build chains for the demo: a root, an intermediate and a leaf, as real X.509 DER read back by the JDK
 └── Spki.java          The pin of a key: the SHA-256 hash of its SubjectPublicKeyInfo, in Base64 (the form used by HPKP, OkHttp and Android's network security configuration)
 </code></pre>
@@ -41,7 +43,7 @@ with the hash of a <strong>public key</strong> (the SPKI hash) and refuses a ser
 - <strong>Changing the server's key breaks every app</strong> that pinned the old one. With 10,000 installs, all 10,000 fail at once, and 1,500 stay locked out a week later because they have not updated.
 - <strong>Pinning choices soften the price:</strong> pin an issuing CA's key (changes rarely), or the leaf plus a <strong>backup pin</strong> for a key that is generated, kept offline and not yet in use. A <strong>report-only</strong> mode shows what would break before it does.
 - <strong>Pins set by the server</strong> (the old <code>Public-Key-Pins</code> header, HPKP) let anyone who controls one response, or a site that loses its own keys, lock visitors out for up to a year. Browsers removed the feature for that reason.</p>
-<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · RFC 8470 and Certificate Transparency as the modern alternatives.</p>
+<p><strong>Maps to:</strong> OWASP Top 10 (2025) A04 Cryptographic Failures · CWE-295 · CWE-296 · OWASP MASVS-NETWORK · RFC 7469 (HPKP, now historic) · Certificate Transparency (RFC 9162) as the modern alternative.</p>
 <h2>The idea in everyday terms</h2>
 <p>Instead of letting any notary in the country vouch for your bank, you carry a photo of the one banker you know. A forger with a perfectly genuine notary stamp is turned away. But if the bank changes its banker, everyone who carries the old photo
 walks away from the real bank too, until they get a new photo.</p>
@@ -61,32 +63,32 @@ walks away from the real bank too, until they get a new photo.</p>
 <tbody>
 <tr>
 <td>1. An app that trusts the device</td>
-<td>Without pins, the app accepts the genuine server and also an interceptor whose root the device trusts.</td>
+<td>The phone trusts a public root and a root a company proxy added; both chains end at one of them, so an app without pins accepts the interceptor too.</td>
 </tr>
 <tr>
 <td>2. An app that pins the server's key</td>
-<td>With the leaf key pinned, the interceptor is refused by the pin; on a clean device the interceptor fails ordinary validation anyway.</td>
+<td>The pin is the SHA-256 of the leaf's 91-byte SubjectPublicKeyInfo, in Base64 (44 characters); the app refuses any chain with no pinned key, so the interceptor is refused even though its root is on the phone.</td>
 </tr>
 <tr>
 <td>3. The server renews with a new key</td>
-<td>The app pinned to the old leaf key refuses the renewed certificate; of 10,000 installs, all 10,000 fail on day 0 and 1,500 are still locked out after a week.</td>
+<td>On day 80 the bank renews with a new key, whose pin is different; the app refuses its own bank, and of 10000 installs, 1500 are still locked out a week later.</td>
 </tr>
 <tr>
 <td>4. Pins chosen so that rotation does not break the app</td>
-<td>Pinning the issuing CA survives the renewal and still refuses the interceptor; a leaf pin plus a backup pin survives a switch to the backup key; report-only mode accepts and records a mismatch.</td>
+<td>Pinning the issuing CA's key survives the renewal and still refuses the interceptor; a backup pin lets the server switch keys; report-only mode accepts and records one report.</td>
 </tr>
 <tr>
 <td>5. Why browsers stopped letting servers set pins</td>
-<td>One response with a pin header for the meddler's keys blocks the genuine site for every returning visitor for up to a year; a site that loses its pinned keys locks itself out the same way.</td>
+<td>A meddler's Public-Key-Pins header with max-age 31536000 seconds (365 days) blocks the genuine bank on day 30 and expires by day 400; a site that pins its own keys and then changes key is blocked until day 365.</td>
 </tr>
 </tbody>
 </table>
 <h2>Test</h2>
 <pre><code class="language-bash">./gradlew test
 </code></pre>
-<p>11 tests in <code>DemoRunsTest</code>, <code>PinningTest</code>. Keys are random and never printed, and the clock is fixed, so the demo prints the same text on every run.</p>
+<p>18 tests in <code>ChainWalkTest</code>, <code>DemoRunsTest</code>, <code>PinStepsTest</code>, <code>PinningTest</code>. The clock is fixed and the demo seeds its key generator, so it prints the same pins on every run. PinStepsTest proves the pin worked out by hand (Base64 included) equals Spki.pin; ChainWalkTest proves the by-hand root and pin checks agree with the JDK validator. No tool is needed: ./gradlew test runs everything.</p>
 <h2>What the simulation got right, and what it left out</h2>
-<p>The chains are real X.509 certificates built in the project and validated with the JDK's PKIX code. The pins are real SPKI SHA-256 hashes in Base64, as in HPKP and OkHttp. The fleet and the header store are small models. Keys are random and never printed; the clock is fixed.</p>
+<p>The chains are real X.509 certificates built in the project and validated with the JDK's PKIX code. The pins are real SPKI SHA-256 hashes in Base64, as in HPKP and OkHttp. The fleet and the header store are small models. The clock is fixed and the keys come from a seeded generator, so the pins printed are the same on every run (never do that for real keys).</p>
 <h2>Technologies and versions</h2>
 <p>Every version below is pinned in the project's build files and was the latest stable release when the project was built.</p>
 <table>

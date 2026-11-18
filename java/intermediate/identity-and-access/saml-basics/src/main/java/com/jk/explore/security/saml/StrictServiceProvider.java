@@ -1,5 +1,7 @@
 package com.jk.explore.security.saml;
 
+import static com.jk.explore.security.saml.SignatureCheck.pinned;
+
 import java.security.PublicKey;
 import java.time.Clock;
 import java.time.Instant;
@@ -48,7 +50,8 @@ public final class StrictServiceProvider implements ServiceProvider {
         if (sigs.size() != 1 || sigs.get(0).getParentNode() != assertion) {
             throw new SamlRefused("the assertion must carry its own single signature");
         }
-        SignatureCheck.Result checked = SignatureCheck.validate(doc, (Element) sigs.get(0), SignatureCheck.pinned(idpKey));
+        Element signature = (Element) sigs.get(0);
+        SignatureCheck.Result checked = SignatureCheck.validate(doc, signature, pinned(idpKey));
         String id = assertion.getAttribute("ID");
         if (id.isEmpty() || !id.equals(checked.coveredId()) || countIds(doc, id) != 1) {
             throw new SamlRefused("the signature does not cover the assertion that was read");

@@ -114,6 +114,20 @@ final class TlsRecords {
         return "none";
     }
 
+    /** The length of the value in a ClientKeyExchange message: an RSA-encrypted secret or a DH public value (two length bytes) or an EC point (one). */
+    static int keyExchangeValueLength(byte[] clientKeyExchange, boolean ecPoint) {
+        return ecPoint ? clientKeyExchange[4] & 0xff : u16(clientKeyExchange, 4);
+    }
+
+    /** The last eight bytes of a hello's random, in hex. */
+    static String randomTail(byte[] hello) {
+        StringBuilder hex = new StringBuilder();
+        for (byte b : Arrays.copyOfRange(random(hello), 24, 32)) {
+            hex.append(hex.isEmpty() ? "" : " ").append(String.format("%02X", b & 0xff));
+        }
+        return hex.toString();
+    }
+
     static int u16(byte[] b, int i) {
         return (b[i] & 0xff) << 8 | (b[i + 1] & 0xff);
     }

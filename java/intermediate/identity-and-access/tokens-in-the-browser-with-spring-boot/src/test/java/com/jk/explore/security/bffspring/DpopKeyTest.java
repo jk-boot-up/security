@@ -57,4 +57,13 @@ class DpopKeyTest {
         assertNotEquals(a.thumbprint(), b.thumbprint());
         assertNotEquals(a.proof("GET", "http://x/", null), a.proof("GET", "http://x/", null));
     }
+
+    @Test
+    void theThumbprintWorkedOutByHandIsTheLibrarysAndASeededKeyIsAlwaysTheSame() {
+        DpopKey key = DpopKey.seeded("ana's browser key");
+        assertEquals(key.thumbprint(), key.thumbprintByHand());
+        assertEquals(key.thumbprint(), DpopKey.seeded("ana's browser key").thumbprint());
+        assertNotEquals(key.thumbprint(), DpopKey.seeded("someone else's key").thumbprint());
+        assertTrue(key.canonical().startsWith("{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\""));
+    }
 }

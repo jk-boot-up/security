@@ -16,7 +16,7 @@ import java.util.UUID;
 /** A Toxiproxy container started from Java and driven through its HTTP API. Names and ports are never printed. */
 final class Toxiproxy implements AutoCloseable {
 
-    static final String IMAGE = "ghcr.io/shopify/toxiproxy";
+    static final String IMAGE = "ghcr.io/shopify/toxiproxy:2.13.0";  // pinned: the toxics drive the golden output
 
     private final String container = "sc-toxi-" + UUID.randomUUID().toString().substring(0, 8);
     private final HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();

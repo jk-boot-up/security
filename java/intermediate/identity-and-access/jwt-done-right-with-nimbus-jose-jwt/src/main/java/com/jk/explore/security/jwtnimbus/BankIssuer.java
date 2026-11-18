@@ -42,6 +42,11 @@ final class BankIssuer {
         return key;
     }
 
+    /** Keeps a key made elsewhere (the demo's fixed keys), without publishing or using it yet. */
+    void addKey(ECKey key) {
+        keys.put(key.getKeyID(), key);
+    }
+
     void signWith(String kid) {
         this.signingKey = kid;
     }
@@ -78,7 +83,8 @@ final class BankIssuer {
 
     /** Signs claims with any key, and puts the given key id in the header. */
     static String sign(JWTClaimsSet claims, JOSEObjectType type, String kid, ECKey key) throws JOSEException {
-        JWSHeader.Builder header = new JWSHeader.Builder(JWSAlgorithm.ES256).type(type);
+        JWSHeader.Builder header = new JWSHeader.Builder(JWSAlgorithm.ES256)
+                .type(type);
         if (kid != null) {
             header.keyID(kid);
         }

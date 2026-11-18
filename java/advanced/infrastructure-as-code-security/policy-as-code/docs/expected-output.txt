@@ -1,36 +1,105 @@
---- deny by default
-good                   allow             
-foreign registry       deny R2           
-latest tag             deny R8           
-no security context    deny R3           
-privileged             deny R4           
-no limits              deny R5           
-no owner label         deny R6           
-host network           deny R7           
-cluster role binding   deny R1           
-default namespace      deny R9           
-three mistakes         deny R2 R3 R8     
-an empty object        deny R1           
-no containers          deny R10          
-the policy and the reviewer agree on 13 of 13 requests
---- the holes
-draft: an empty object        allow              <- the reviewer expected a denial of [R1]
-draft: no containers          allow              <- the reviewer expected a denial of [R10]
-the first draft agrees on 11 of 13
-a list of what is forbidden (naive.rego) on a container with no securityContext and no limits: allow
-the same container against main.rego: deny R3 R5
---- testing the policy
-opa test: 17 of 17 tests pass
-switching off one rule at a time (12 mutants), tests notice: with 3 tests 2, with one test for each rule 8, with all 12
---- in the cluster and in the build
-admission review of a bad Deployment: allowed=false, 2 reasons
-admission review of the good one: allowed=true
-conftest on three files: exit 1
-  b-cart.yaml: R8 image registry.bank.example/payments:latest uses the latest tag
-  c-legacy.yaml: R2 image docker.io/library/nginx:latest is not from registry.bank.example/
-  c-legacy.yaml: R8 image docker.io/library/nginx:latest uses the latest tag
-a new rule as warn: exit 0, 1 warnings, 0 failures
-a new rule as deny: exit 1, 0 warnings, 1 failures
---- the bill
-a policy is code: it is reviewed, versioned and tested, and its tests are tested
-a missing field must mean deny; a rule must be rolled out as a warning first
+ONE. Deny by default: twelve rules, thirteen requests.
+  THE RULES IN policy/main.rego (each one a deny rule):
+    R1: an allowed kind            R2: the bank's registry
+    R3: runAsNonRoot is true       R4: not privileged
+    R5: a cpu limit                R5: a memory limit
+    R6: an owner label             R7: no host network
+    R8: no latest tag              R9: not the default namespace
+    R1: a kind at all              R10: at least one container
+  THE REQUEST "three mistakes" (the good one, changed):
+    image            docker.io/library/nginx:latest
+    securityContext  (none)
+  THE ANSWER (the messages of data.main.deny):
+    R2 image docker.io/library/nginx:latest: foreign registry
+    R3 container payments may run as root
+    R8 image docker.io/library/nginx:latest uses the latest tag
+    allow  false (3 messages; allow needs 0)
+  THE DECISIONS (what a reviewer expects, what the policy says):
+    request               reviewer       policy
+    good                  allow          allow
+    foreign registry      deny R2        deny R2
+    latest tag            deny R8        deny R8
+    no security context   deny R3        deny R3
+    privileged            deny R4        deny R4
+    no limits             deny R5        deny R5
+    no owner label        deny R6        deny R6
+    host network          deny R7        deny R7
+    cluster role binding  deny R1        deny R1
+    default namespace     deny R9        deny R9
+    three mistakes        deny R2 R3 R8  deny R2 R3 R8
+    an empty object       deny R1        deny R1
+    no containers         deny R10       deny R10
+  THE RESULT:
+    the policy and the reviewer agree on 13 of 13 requests
+TWO. The holes: a missing field denies nothing.
+  BEFORE THE FIX (the first draft, without the last two rules):
+    request               reviewer       draft
+    an empty object       deny R1        allow
+    no containers         deny R10       allow
+    the first draft agrees on 11 of 13
+  HOW THE EMPTY OBJECT IS READ (the value of each step):
+    object.kind                                 undefined
+    not object.kind in allowed_kinds            undefined
+    not object.kind                             true
+  HOW THE DEPLOYMENT WITH NO CONTAINERS IS READ:
+    count(containers)                           0
+    count(containers) == 0                      true
+  AFTER THE FIX (rules that ask for what is required):
+    R1: a kind at all              not object.kind
+    R10: at least one container    count(containers) == 0
+    the policy agrees on 13 of 13
+  THE SAME TRAP IN A LIST OF WHAT IS FORBIDDEN:
+    the request: the good one, no securityContext, no limits
+    c.securityContext.runAsNonRoot              undefined
+    c.securityContext.runAsNonRoot == false     undefined
+    not c.securityContext.runAsNonRoot == true  true
+    naive.rego (== false)        allow
+    main.rego (not ... == true)  deny R3 R5
+THREE. Testing the policy, and testing its tests.
+  THE TESTS (policy/main_test.rego):
+    opa test: 17 of 17 tests pass
+  HOW A MUTANT IS MADE (rule 5 of 12, R5: a cpu limit):
+    BEFORE  deny contains msg if {
+    AFTER   deny_off contains msg if {
+    nobody asks for deny_off, so the rule denies nothing
+  WHICH MUTANTS THE TESTS NOTICE (one rule switched off):
+    rule switched off              3 tests   13 tests  17 tests
+    R1: an allowed kind            yes       yes       yes
+    R2: the bank's registry        no        yes       yes
+    R3: runAsNonRoot is true       no        yes       yes
+    R4: not privileged             no        yes       yes
+    R5: a cpu limit                no        no        yes
+    R5: a memory limit             no        no        yes
+    R6: an owner label             no        yes       yes
+    R7: no host network            no        yes       yes
+    R8: no latest tag              no        yes       yes
+    R9: not the default namespace  no        yes       yes
+    R1: a kind at all              yes       no        yes
+    R10: at least one container    no        no        yes
+  THE RESULT:
+    noticed, of 12                 2         8         12
+FOUR. In the cluster and in the build.
+  THE REQUEST (an AdmissionReview from the API server):
+    apiVersion  admission.k8s.io/v1
+    request     uid 705ab4f5, a Deployment named payments
+    image       docker.io/library/nginx:latest
+  THE RESPONSE:
+    allowed     false
+    R2 image docker.io/library/nginx:latest: foreign registry
+    R8 image docker.io/library/nginx:latest uses the latest tag
+    (the good Deployment: allowed true)
+  THE FILES IN THE BUILD (conftest test build/demo/fleet):
+    a-payments.yaml  registry.bank.example/payments:2.3.1
+    b-cart.yaml      registry.bank.example/payments:latest
+    c-legacy.yaml    docker.io/library/nginx:latest
+  WHAT CONFTEST SAYS:
+    a-payments.yaml  pass
+    b-cart.yaml      fail R8
+    c-legacy.yaml    fail R2 R8
+    exit 1: the build stops
+  A NEW RULE, R11: a read-only root filesystem
+    payments.yaml does not set readOnlyRootFilesystem
+  FIRST, AS A WARNING (warn contains msg):
+    exit 0, 1 warning, 0 failures: the build goes on
+  LATER, AS A DENIAL (deny contains msg):
+    exit 1, 0 warnings, 1 failure: the build stops
